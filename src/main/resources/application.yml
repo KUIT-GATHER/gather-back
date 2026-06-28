@@ -1,0 +1,12 @@
+spring:
+  application:
+    name: gather
+  profiles:
+    active: local
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
