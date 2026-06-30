@@ -1,0 +1,30 @@
+name: Discord PR Notification
+
+on:
+  pull_request:
+    types:
+      - opened
+      - closed
+      - reopened
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Send Discord Notification
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+        run: |
+          ACTION="${{ github.event.action }}"
+          REPO="${{ github.repository }}"
+          NUMBER="${{ github.event.pull_request.number }}"
+          TITLE="${{ github.event.pull_request.title }}"
+          URL="${{ github.event.pull_request.html_url }}"
+
+          curl -H "Content-Type: application/json" \
+          -X POST \
+          -d "{
+            \"content\": \"[$REPO] Pull request $ACTION: #$NUMBER $TITLE\n$URL\"
+          }" \
+          "$DISCORD_WEBHOOK"
