@@ -3,6 +3,8 @@ spring:
     name: gather
   profiles:
     active: local
+  config:
+    import: optional:application-secret.yml
   jpa:
     hibernate:
       ddl-auto: validate
