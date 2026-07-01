@@ -2,7 +2,17 @@ openapi: 3.0.3
 
 info:
   title: Gather Auth API
-  description: Gather 서비스 인증 및 회원가입 관련 API 명세입니다.
+  description: |
+    Gather 서비스 인증 및 회원가입 관련 API 명세입니다.
+
+    프론트 연동 참고사항:
+    - `signup`, `login`, `logout`, `reissue`는 인증 행위 API이므로 동사형 경로를 사용합니다.
+    - `regions`, `categories` 조회 API는 auth 도메인 소유는 아니지만 회원가입 화면에서 필요하므로 함께 명세에 포함했습니다.
+    - 관심 카테고리는 `GET /api/v1/categories` 응답의 `id`를 기준으로 선택합니다.
+    - 회원가입 요청에는 선택한 카테고리 ID 배열인 `interestCategoryIds`만 전달하며, `code`는 전달하지 않습니다.
+    - 카테고리 `id`는 DB 참조용, `code`는 프론트 아이콘·색상·필터 칩 매핑용 고정값, `name`은 화면 표시용입니다.
+    - 로그아웃은 Access Token 없이 Refresh Token만으로 요청합니다.
+    - 로그아웃은 같은 Refresh Token으로 여러 번 요청해도 성공 응답을 반환합니다.
   version: 1.0.0
 
 servers:
@@ -545,7 +555,13 @@ paths:
       tags:
         - Auth
       summary: 로그아웃
-      description: Refresh Token 하나를 폐기합니다. Access Token 인증을 요구하지 않으며, 이미 폐기되었거나 만료된 Refresh Token도 서버에 기록이 존재하면 멱등하게 성공 처리합니다.
+      description: |
+        Refresh Token 하나를 폐기합니다.
+
+        Access Token 인증을 요구하지 않으며 Refresh Token만으로 처리합니다.
+        이는 Access Token이 만료된 상태에서도 사용자가 로그아웃할 수 있도록 하기 위함입니다.
+
+        이미 폐기되었거나 만료된 Refresh Token도 서버에 기록이 존재하면 성공 응답을 반환합니다(멱등 처리).
       operationId: logout
       requestBody:
         required: true
