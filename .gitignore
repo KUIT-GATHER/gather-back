@@ -35,6 +35,12 @@ out/
 
 ### VS Code ###
 .vscode/
+
 application-local.yml
 application-secret.yml
 *.env
+
+### Docs ###
+**/docs/
+
+# 개인 메모용 문서는 docs 공용 문서는 document로
