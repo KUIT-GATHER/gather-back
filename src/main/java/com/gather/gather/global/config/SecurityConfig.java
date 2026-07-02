@@ -34,8 +34,11 @@ public class SecurityConfig {
                                         .requestMatchers(
                                                 "/health",
                                                 "/api/v1/auth/**",
+                                                "/api/v1/regions",
+                                                "/api/v1/categories",
                                                 "/swagger-ui/**",
                                                 "/swagger-ui.html",
+                                                "/v3/api-docs/",
                                                 "/v3/api-docs/**")
                                         .permitAll()
                                         // JWT 인증 필터 도입 전까지 도메인 API 개발과 통합 테스트가 막히지 않도록 임시 허용
