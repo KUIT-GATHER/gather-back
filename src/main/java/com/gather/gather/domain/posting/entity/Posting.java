@@ -90,6 +90,9 @@ public class Posting {
     @Column(name = "act_place")
     private String actPlace;
 
+    @Column(name = "post_address")
+    private String postAddress;
+
     @Column(name = "manager_name")
     private String managerName;
 
@@ -145,6 +148,7 @@ public class Posting {
             Boolean isGroup,
             Boolean isActive,
             String actPlace,
+            String postAddress,
             String managerName,
             String managerTel,
             String managerFax,
@@ -174,6 +178,7 @@ public class Posting {
         this.isGroup = isGroup;
         this.isActive = isActive;
         this.actPlace = actPlace;
+        this.postAddress = postAddress;
         this.managerName = managerName;
         this.managerTel = managerTel;
         this.managerFax = managerFax;

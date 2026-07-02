@@ -155,6 +155,7 @@ public class PostingSyncService {
                         .isGroup(parseYn(detail.grpPosblAt()))
                         .isActive(true)
                         .actPlace(detail.actPlace())
+                        .postAddress(detail.postAdres())
                         .managerName(detail.nanmmbyNmAdmn())
                         .managerTel(detail.telno())
                         .managerFax(detail.fxnum())
