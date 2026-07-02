@@ -19,6 +19,10 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.web.client.RestClient;
 
+/**
+ * 실제 1365 API는 {@code type=json} 파라미터를 무시하고 항상 XML로 응답한다(실 호출로 확인됨,
+ * 2026-07-02). 아래 픽스처는 {@code postiong_api_spec.md}에 기록된 실제 응답 예시를 기반으로 한다.
+ */
 class VolunteerApiClientTest {
 
     private static final String BASE_URL = "http://localhost/openapi";
@@ -35,26 +39,34 @@ class VolunteerApiClientTest {
     }
 
     @Test
-    @DisplayName("getItem parses a single item object (not array) returned for progrmRegistNo")
+    @DisplayName("getItem parses a single <item> element (not an array) returned for progrmRegistNo")
     void getItem_returnsItem_whenApiRespondsSuccessfully() {
         String body =
                 """
-                {
-                  "response": {
-                    "header": {"resultCode": "00", "resultMsg": "NORMAL SERVICE."},
-                    "body": {
-                      "items": {"item": {"progrmRegistNo": "3425935", "progrmSj": "동구하랑 시민옹호인 모집", "srvcClCode": "기타"}},
-                      "numOfRows": 1, "pageNo": 1, "totalCount": 1
-                    }
-                  }
-                }
+                <response>
+                  <header>
+                    <resultCode>00</resultCode>
+                    <resultMsg>NORMAL SERVICE.</resultMsg>
+                  </header>
+                  <body>
+                    <items>
+                      <item>
+                        <progrmRegistNo>3425935</progrmRegistNo>
+                        <progrmSj>동구하랑 시민옹호인 모집</progrmSj>
+                        <srvcClCode>기타</srvcClCode>
+                      </item>
+                    </items>
+                    <numOfRows>1</numOfRows>
+                    <pageNo>1</pageNo>
+                    <totalCount>1</totalCount>
+                  </body>
+                </response>
                 """;
 
         server.expect(requestTo(Matchers.startsWith(BASE_URL + "/getVltrPartcptnItem")))
                 .andExpect(queryParam("serviceKey", "test-service-key"))
-                .andExpect(queryParam("type", "json"))
                 .andExpect(queryParam("progrmRegistNo", "3425935"))
-                .andRespond(withSuccess(body, MediaType.APPLICATION_JSON));
+                .andRespond(withSuccess(body, MediaType.APPLICATION_XML));
 
         VolunteerApiItemDto result = client.getItem("3425935");
 
@@ -68,11 +80,17 @@ class VolunteerApiClientTest {
     void getItem_throwsException_whenResultCodeIndicatesFailure() {
         String body =
                 """
-                {"response": {"header": {"resultCode": "30", "resultMsg": "SERVICE_KEY_IS_NOT_REGISTERED_ERROR"}, "body": {}}}
+                <response>
+                  <header>
+                    <resultCode>30</resultCode>
+                    <resultMsg>SERVICE_KEY_IS_NOT_REGISTERED_ERROR</resultMsg>
+                  </header>
+                  <body></body>
+                </response>
                 """;
 
         server.expect(requestTo(Matchers.startsWith(BASE_URL + "/getVltrPartcptnItem")))
-                .andRespond(withSuccess(body, MediaType.APPLICATION_JSON));
+                .andRespond(withSuccess(body, MediaType.APPLICATION_XML));
 
         assertThatThrownBy(() -> client.getItem("999"))
                 .isInstanceOf(VolunteerApiException.class)
@@ -84,11 +102,21 @@ class VolunteerApiClientTest {
     void getItem_throwsException_whenNoItemsFound() {
         String body =
                 """
-                {"response": {"header": {"resultCode": "00", "resultMsg": "NORMAL SERVICE."}, "body": {"items": null, "numOfRows": 0, "pageNo": 1, "totalCount": 0}}}
+                <response>
+                  <header>
+                    <resultCode>00</resultCode>
+                    <resultMsg>NORMAL SERVICE.</resultMsg>
+                  </header>
+                  <body>
+                    <numOfRows>0</numOfRows>
+                    <pageNo>1</pageNo>
+                    <totalCount>0</totalCount>
+                  </body>
+                </response>
                 """;
 
         server.expect(requestTo(Matchers.startsWith(BASE_URL + "/getVltrPartcptnItem")))
-                .andRespond(withSuccess(body, MediaType.APPLICATION_JSON));
+                .andRespond(withSuccess(body, MediaType.APPLICATION_XML));
 
         assertThatThrownBy(() -> client.getItem("no-such-id"))
                 .isInstanceOf(VolunteerApiException.class)
@@ -105,29 +133,38 @@ class VolunteerApiClientTest {
     }
 
     @Test
-    @DisplayName("searchList sends condition fields as query params and parses multiple items")
+    @DisplayName("searchList sends condition fields as query params and parses multiple <item> siblings")
     void searchList_returnsItems_andSendsConditionQueryParams() {
         String body =
                 """
-                {
-                  "response": {
-                    "header": {"resultCode": "00", "resultMsg": "NORMAL SERVICE."},
-                    "body": {
-                      "items": {"item": [
-                        {"progrmRegistNo": "1", "progrmSj": "a"},
-                        {"progrmRegistNo": "2", "progrmSj": "b"}
-                      ]},
-                      "numOfRows": 10, "pageNo": 1, "totalCount": 2
-                    }
-                  }
-                }
+                <response>
+                  <header>
+                    <resultCode>00</resultCode>
+                    <resultMsg>NORMAL SERVICE.</resultMsg>
+                  </header>
+                  <body>
+                    <items>
+                      <item>
+                        <progrmRegistNo>1</progrmRegistNo>
+                        <progrmSj>a</progrmSj>
+                      </item>
+                      <item>
+                        <progrmRegistNo>2</progrmRegistNo>
+                        <progrmSj>b</progrmSj>
+                      </item>
+                    </items>
+                    <numOfRows>10</numOfRows>
+                    <pageNo>1</pageNo>
+                    <totalCount>2</totalCount>
+                  </body>
+                </response>
                 """;
 
         server.expect(requestTo(Matchers.startsWith(BASE_URL + "/getVltrSearchWordList")))
                 .andExpect(queryParam("pageNo", "1"))
                 .andExpect(queryParam("numOfRows", "10"))
                 .andExpect(queryParam("keyword", "volunteer"))
-                .andRespond(withSuccess(body, MediaType.APPLICATION_JSON));
+                .andRespond(withSuccess(body, MediaType.APPLICATION_XML));
 
         VolunteerApiSearchCondition condition =
                 new VolunteerApiSearchCondition(
@@ -147,11 +184,21 @@ class VolunteerApiClientTest {
     void searchList_returnsEmptyList_whenNoResults() {
         String body =
                 """
-                {"response": {"header": {"resultCode": "00", "resultMsg": "NORMAL SERVICE."}, "body": {"items": null, "numOfRows": 10, "pageNo": 1, "totalCount": 0}}}
+                <response>
+                  <header>
+                    <resultCode>00</resultCode>
+                    <resultMsg>NORMAL SERVICE.</resultMsg>
+                  </header>
+                  <body>
+                    <numOfRows>10</numOfRows>
+                    <pageNo>1</pageNo>
+                    <totalCount>0</totalCount>
+                  </body>
+                </response>
                 """;
 
         server.expect(requestTo(Matchers.startsWith(BASE_URL + "/getVltrSearchWordList")))
-                .andRespond(withSuccess(body, MediaType.APPLICATION_JSON));
+                .andRespond(withSuccess(body, MediaType.APPLICATION_XML));
 
         VolunteerApiSearchCondition condition =
                 new VolunteerApiSearchCondition(

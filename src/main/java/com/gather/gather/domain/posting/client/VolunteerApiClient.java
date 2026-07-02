@@ -76,8 +76,7 @@ public class VolunteerApiClient {
                                             uriFunction.apply(
                                                     uriBuilder
                                                             .path(path)
-                                                            .queryParam("serviceKey", serviceKey)
-                                                            .queryParam("type", "json")))
+                                                            .queryParam("serviceKey", serviceKey)))
                             .retrieve()
                             .body(responseType);
         } catch (RestClientException e) {
@@ -88,10 +87,10 @@ public class VolunteerApiClient {
     }
 
     private <T> void validate(VolunteerApiEnvelope<T> envelope, String path) {
-        if (envelope == null || envelope.response() == null || envelope.response().header() == null) {
+        if (envelope == null || envelope.header() == null) {
             throw new VolunteerApiException("1365 API 응답이 비어 있습니다. path=" + path);
         }
-        VolunteerApiEnvelope.Header header = envelope.response().header();
+        VolunteerApiEnvelope.Header header = envelope.header();
         if (!header.isSuccess()) {
             throw new VolunteerApiException(
                     "1365 API 호출 실패: resultCode=" + header.resultCode() + ", resultMsg=" + header.resultMsg());
@@ -99,7 +98,7 @@ public class VolunteerApiClient {
     }
 
     private <T> List<T> extractItems(VolunteerApiEnvelope<T> envelope) {
-        VolunteerApiEnvelope.Items<T> items = envelope.response().body().items();
+        VolunteerApiEnvelope.Items<T> items = envelope.body().items();
         if (items == null || items.item() == null) {
             return List.of();
         }

@@ -14,4 +14,4 @@ spring:
         format_sql: true
 
 volunteer-api:
-  base-url: https://openapi.1365.go.kr/openapi/service/rest/VolunteerPartcptnService
+  base-url: https://apis.data.go.kr/1741000/volunteerPartcptnService
