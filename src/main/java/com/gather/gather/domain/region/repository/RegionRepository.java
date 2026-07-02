@@ -1,6 +1,6 @@
-package com.gather.gather.domain.posting.repository;
+package com.gather.gather.domain.region.repository;
 
-import com.gather.gather.domain.posting.entity.Region;
+import com.gather.gather.domain.region.entity.Region;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
 
