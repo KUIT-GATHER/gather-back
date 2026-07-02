@@ -41,7 +41,7 @@ public class PostingSyncService {
     private final RegionRepository regionRepository;
 
     @Transactional
-    public void syncRecentPostings() {
+    public PostingSyncResult syncRecentPostings() {
         List<VolunteerApiSearchItemDto> items = fetchRecentItems();
         int inserted = 0;
         int updated = 0;
@@ -60,7 +60,14 @@ public class PostingSyncService {
             }
         }
 
-        log.info("봉사공고 동기화 완료. 대상={}, 신규={}, 갱신={}, 실패={}", items.size(), inserted, updated, failed);
+        PostingSyncResult result = new PostingSyncResult(items.size(), inserted, updated, failed);
+        log.info(
+                "봉사공고 동기화 완료. 대상={}, 신규={}, 갱신={}, 실패={}",
+                result.scanned(),
+                result.inserted(),
+                result.updated(),
+                result.failed());
+        return result;
     }
 
     private List<VolunteerApiSearchItemDto> fetchRecentItems() {
