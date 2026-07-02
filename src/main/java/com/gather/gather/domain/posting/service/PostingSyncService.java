@@ -104,6 +104,7 @@ public class PostingSyncService {
     private void updateExisting(Posting posting, VolunteerApiSearchItemDto item) {
         posting.updateFromSync(
                 item.progrmSj(),
+                mapStatus(item.progrmSttusSe()),
                 item.nanmmbyNm(),
                 parseDate(item.progrmBgnde()),
                 parseDate(item.progrmEndde()),
@@ -128,9 +129,7 @@ public class PostingSyncService {
                 Posting.builder()
                         .extId(detail.progrmRegistNo())
                         .title(detail.progrmSj())
-                        // TODO: progrmSttusSe는 원본 상태코드가 아니라 소스 삭제 여부와 무관한 필드이므로
-                        // 상태 전이 판단에 쓰지 않는다. RECRUITING 고정, 전이 로직은 추후 검토(devplan.md 참고).
-                        .status(PostingStatus.RECRUITING)
+                        .status(mapStatus(detail.progrmSttusSe()))
                         .content(detail.progrmCn())
                         .recruitOrg(detail.mnnstNm())
                         .registerOrg(detail.nanmmbyNm())
@@ -173,6 +172,26 @@ public class PostingSyncService {
             return regionRepository.findByCode(sidoCd).map(region -> region.getId()).orElse(null);
         }
         return null;
+    }
+
+    /**
+     * progrmSttusSe(모집상태코드) → {@link PostingStatus}.
+     *
+     * <p>API 스펙 문서에 코드별 의미가 명시되어 있지 않아 1365 일반 관례(1=모집예정, 2=모집중, 3=모집마감/완료)로
+     * 추정한 값이다. 실제 응답으로 검증 전까지는 근사치 — Day5 수동 검증 때 재확인 필요(devplan.md 참고).
+     */
+    private PostingStatus mapStatus(String progrmSttusSe) {
+        if (progrmSttusSe == null) {
+            return PostingStatus.RECRUITING;
+        }
+        return switch (progrmSttusSe.trim()) {
+            case "1", "2" -> PostingStatus.RECRUITING;
+            case "3" -> PostingStatus.CLOSED;
+            default -> {
+                log.warn("알 수 없는 progrmSttusSe 값. value={}", progrmSttusSe);
+                yield PostingStatus.RECRUITING;
+            }
+        };
     }
 
     private LocalDate parseDate(String yyyyMMdd) {
