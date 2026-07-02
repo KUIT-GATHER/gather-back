@@ -183,5 +183,32 @@ public class Posting {
         this.regionId = regionId;
         this.categoryId = categoryId;
         this.createdAt = LocalDateTime.now();
+        this.updatedAt = this.createdAt;
+    }
+
+    /** 목록조회로 재확인된 기존 공고의 갱신 가능 필드만 반영한다(동기화 배치 update 경로). */
+    public void updateFromSync(
+            String title,
+            String recruitOrg,
+            LocalDate actStartDate,
+            LocalDate actEndDate,
+            LocalDate noticeStartDate,
+            LocalDate noticeEndDate,
+            String actPlace,
+            Boolean isAdult,
+            Boolean isTeen,
+            Long regionId) {
+        this.title = title;
+        this.recruitOrg = recruitOrg;
+        this.actStartDate = actStartDate;
+        this.actEndDate = actEndDate;
+        this.noticeStartDate = noticeStartDate;
+        this.noticeEndDate = noticeEndDate;
+        this.actPlace = actPlace;
+        this.isAdult = isAdult;
+        this.isTeen = isTeen;
+        this.regionId = regionId;
+        this.isActive = true;
+        this.updatedAt = LocalDateTime.now();
     }
 }
