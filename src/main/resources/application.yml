@@ -12,3 +12,6 @@ spring:
     properties:
       hibernate:
         format_sql: true
+
+volunteer-api:
+  base-url: https://openapi.1365.go.kr/openapi/service/rest/VolunteerPartcptnService
