@@ -1,4 +1,4 @@
-package com.gather.gather.domain.posting.entity;
+package com.gather.gather.domain.region.entity;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
