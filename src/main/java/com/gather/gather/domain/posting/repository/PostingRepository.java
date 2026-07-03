@@ -7,6 +7,4 @@ import org.springframework.data.jpa.repository.JpaRepository;
 public interface PostingRepository extends JpaRepository<Posting, Long> {
 
     Optional<Posting> findByExtId(String extId);
-
-    boolean existsByExtId(String extId);
 }

@@ -15,6 +15,6 @@ public class RegionService {
 
     @Transactional(readOnly = true)
     public List<RegionResponse> getRegions() {
-        return regionRepository.findAll().stream().map(RegionResponse::from).toList();
+        return regionRepository.findAllWithParent().stream().map(RegionResponse::from).toList();
     }
 }

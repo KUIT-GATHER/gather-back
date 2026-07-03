@@ -12,3 +12,6 @@ spring:
     properties:
       hibernate:
         format_sql: true
+
+volunteer-api:
+  base-url: https://apis.data.go.kr/1741000/volunteerPartcptnService

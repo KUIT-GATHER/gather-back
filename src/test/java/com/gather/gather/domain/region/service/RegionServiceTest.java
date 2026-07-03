@@ -36,20 +36,20 @@ class RegionServiceTest {
         Region gangnam = Region.create("강남구", 3, "11680", seoul);
         ReflectionTestUtils.setField(gangnam, "id", 2L);
 
-        when(regionRepository.findAll()).thenReturn(List.of(seoul, gangnam));
+        when(regionRepository.findAllWithParent()).thenReturn(List.of(seoul, gangnam));
 
         List<RegionResponse> result = regionService.getRegions();
 
         assertThat(result).hasSize(2);
         assertThat(result.get(0)).isEqualTo(new RegionResponse(1L, "서울특별시", 1, "11", null));
         assertThat(result.get(1)).isEqualTo(new RegionResponse(2L, "강남구", 3, "11680", 1L));
-        verify(regionRepository).findAll();
+        verify(regionRepository).findAllWithParent();
     }
 
     @Test
     @DisplayName("getRegions returns empty list when no regions exist")
     void getRegions_returnsEmptyList_whenNoRegionsExist() {
-        when(regionRepository.findAll()).thenReturn(List.of());
+        when(regionRepository.findAllWithParent()).thenReturn(List.of());
 
         List<RegionResponse> result = regionService.getRegions();
 

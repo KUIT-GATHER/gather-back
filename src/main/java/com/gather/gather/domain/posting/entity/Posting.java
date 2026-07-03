@@ -90,6 +90,9 @@ public class Posting {
     @Column(name = "act_place")
     private String actPlace;
 
+    @Column(name = "post_address")
+    private String postAddress;
+
     @Column(name = "manager_name")
     private String managerName;
 
@@ -145,6 +148,7 @@ public class Posting {
             Boolean isGroup,
             Boolean isActive,
             String actPlace,
+            String postAddress,
             String managerName,
             String managerTel,
             String managerFax,
@@ -174,6 +178,7 @@ public class Posting {
         this.isGroup = isGroup;
         this.isActive = isActive;
         this.actPlace = actPlace;
+        this.postAddress = postAddress;
         this.managerName = managerName;
         this.managerTel = managerTel;
         this.managerFax = managerFax;
@@ -183,5 +188,34 @@ public class Posting {
         this.regionId = regionId;
         this.categoryId = categoryId;
         this.createdAt = LocalDateTime.now();
+        this.updatedAt = this.createdAt;
+    }
+
+    /** 목록조회로 재확인된 기존 공고의 갱신 가능 필드만 반영한다(동기화 배치 update 경로). */
+    public void updateFromSync(
+            String title,
+            PostingStatus status,
+            String recruitOrg,
+            LocalDate actStartDate,
+            LocalDate actEndDate,
+            LocalDate noticeStartDate,
+            LocalDate noticeEndDate,
+            String actPlace,
+            Boolean isAdult,
+            Boolean isTeen,
+            Long regionId) {
+        this.title = title;
+        this.status = status;
+        this.recruitOrg = recruitOrg;
+        this.actStartDate = actStartDate;
+        this.actEndDate = actEndDate;
+        this.noticeStartDate = noticeStartDate;
+        this.noticeEndDate = noticeEndDate;
+        this.actPlace = actPlace;
+        this.isAdult = isAdult;
+        this.isTeen = isTeen;
+        this.regionId = regionId;
+        this.isActive = true;
+        this.updatedAt = LocalDateTime.now();
     }
 }
