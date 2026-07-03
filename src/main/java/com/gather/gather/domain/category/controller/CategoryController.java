@@ -1,7 +1,7 @@
-package com.gather.gather.domain.region.controller;
+package com.gather.gather.domain.category.controller;
 
-import com.gather.gather.domain.region.dto.RegionResponse;
-import com.gather.gather.domain.region.service.RegionService;
+import com.gather.gather.domain.category.dto.CategoryResponse;
+import com.gather.gather.domain.category.service.CategoryService;
 import com.gather.gather.global.common.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -16,23 +16,21 @@ import org.springframework.web.bind.annotation.RestController;
 
 @Tag(name = "Signup Support", description = "회원가입 보조 조회 API")
 @RestController
-@RequestMapping("/api/v1/regions")
+@RequestMapping("/api/v1/categories")
 @RequiredArgsConstructor
-public class RegionController {
+public class CategoryController {
 
     private static final String JSON = "application/json";
 
-    private final RegionService regionService;
+    private final CategoryService categoryService;
 
     @Operation(
-            summary = "활동 지역 목록 조회",
-            description =
-                    "회원가입 프로필 단계에서 선택 가능한 활동 지역 목록을 조회합니다. "
-                            + "활동 지역은 최상위 지역(level = 1)만 선택할 수 있습니다. 인증이 필요 없습니다.")
+            summary = "관심 카테고리 목록 조회",
+            description = "회원가입 프로필 단계에서 선택 가능한 관심 카테고리 목록을 조회합니다. 인증이 필요 없습니다.")
     @ApiResponses({
         @io.swagger.v3.oas.annotations.responses.ApiResponse(
                 responseCode = "200",
-                description = "활동 지역 목록 조회 성공",
+                description = "관심 카테고리 목록 조회 성공",
                 content =
                         @Content(
                                 mediaType = JSON,
@@ -45,10 +43,8 @@ public class RegionController {
                                                           "data": [
                                                             {
                                                               "id": 1,
-                                                              "name": "서울",
-                                                              "level": 1,
-                                                              "code": "11",
-                                                              "parentId": null
+                                                              "code": "ENVIRONMENT",
+                                                              "name": "환경"
                                                             }
                                                           ],
                                                           "error": null
@@ -76,7 +72,7 @@ public class RegionController {
                                                         """)))
     })
     @GetMapping
-    public ApiResponse<List<RegionResponse>> getRegions() {
-        return ApiResponse.success(regionService.getRegions());
+    public ApiResponse<List<CategoryResponse>> getCategories() {
+        return ApiResponse.success(categoryService.getCategories());
     }
 }
