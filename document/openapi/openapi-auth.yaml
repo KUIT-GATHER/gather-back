@@ -626,8 +626,14 @@ paths:
                 data:
                   - id: 1
                     name: 서울
+                    level: 1
+                    code: '11'
+                    parentId: null
                   - id: 2
                     name: 경기
+                    level: 1
+                    code: '41'
+                    parentId: null
                 error: null
 
   /api/v1/categories:
@@ -947,7 +953,7 @@ components:
           minItems: 1
           maxItems: 3
           uniqueItems: true
-          description: 활동 지역 ID 목록. 1개 이상 3개 이하입니다.
+          description: 활동 지역 ID 목록. 회원가입 화면에 노출되는 최상위 지역(level 1)만 중복 없이 1개 이상 3개 이하로 선택합니다.
           items:
             type: integer
             format: int64
@@ -1124,6 +1130,8 @@ components:
       required:
         - id
         - name
+        - level
+        - code
       properties:
         id:
           type: integer
@@ -1134,6 +1142,20 @@ components:
           type: string
           description: 지역 표시명
           example: 서울
+        level:
+          type: integer
+          description: 행정구역 계층. 1=시도, 2=시, 3=구, 4=동
+          example: 1
+        code:
+          type: string
+          description: 지역 식별 코드. 단일 시도는 1365 행정구역 코드(sidoCd)와 매핑되고, 광역권(경상/전라/충청)은 서비스 내부 코드가 사용될 수 있습니다. 프론트 고정 순서 정렬에 활용할 수 있습니다.
+          example: '11'
+        parentId:
+          type: integer
+          format: int64
+          nullable: true
+          description: 상위 지역 ID. 최상위(시도)인 경우 null입니다.
+          example: null
 
     RegionListApiResponse:
       type: object
