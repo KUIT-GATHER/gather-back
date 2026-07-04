@@ -90,7 +90,8 @@ class TokenProviderTest {
     @Test
     @DisplayName("sub가 없는 토큰은 INVALID_TOKEN이다")
     void parse_missingSubject_throwsInvalid() {
-        assertErrorCode(signedToken(builder -> builder.claim("role", "USER")), ErrorCode.INVALID_TOKEN);
+        assertErrorCode(
+                signedToken(builder -> builder.claim("role", "USER")), ErrorCode.INVALID_TOKEN);
     }
 
     @Test

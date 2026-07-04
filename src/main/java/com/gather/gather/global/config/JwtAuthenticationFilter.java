@@ -20,9 +20,9 @@ import org.springframework.web.filter.OncePerRequestFilter;
 /**
  * Authorization 헤더의 Bearer Access Token을 검증해 SecurityContext에 인증 정보를 채우는 필터.
  *
- * <p>인증 실패(무효/만료) 시 예외를 밖으로 던지지 않고, ErrorCode를 request attribute에 심은 뒤 인증 없이 체인을
- * 이어간다. 최종 401 응답 형식은 {@link CustomAuthenticationEntryPoint}가 담당한다. 상태 저장을 피하기 위해
- * 이 필터는 DB를 조회하지 않는다(정지/탈퇴 차단은 login/reissue 시점에서 처리).
+ * <p>인증 실패(무효/만료) 시 예외를 밖으로 던지지 않고, ErrorCode를 request attribute에 심은 뒤 인증 없이 체인을 이어간다. 최종 401 응답
+ * 형식은 {@link CustomAuthenticationEntryPoint}가 담당한다. 상태 저장을 피하기 위해 이 필터는 DB를 조회하지 않는다(정지/탈퇴 차단은
+ * login/reissue 시점에서 처리).
  */
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 

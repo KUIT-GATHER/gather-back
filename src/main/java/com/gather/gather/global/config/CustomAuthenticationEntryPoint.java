@@ -14,8 +14,8 @@ import org.springframework.security.web.AuthenticationEntryPoint;
 /**
  * 인증 실패(401) 응답을 공통 {@link ApiResponse} 포맷의 JSON으로 직접 작성한다.
  *
- * <p>{@link JwtAuthenticationFilter}가 심어둔 ErrorCode가 있으면 그 코드를, 없으면(토큰 자체가 없는 경우 등)
- * {@link ErrorCode#UNAUTHORIZED}를 사용한다.
+ * <p>{@link JwtAuthenticationFilter}가 심어둔 ErrorCode가 있으면 그 코드를, 없으면(토큰 자체가 없는 경우 등) {@link
+ * ErrorCode#UNAUTHORIZED}를 사용한다.
  */
 public class CustomAuthenticationEntryPoint implements AuthenticationEntryPoint {
 
@@ -36,8 +36,7 @@ public class CustomAuthenticationEntryPoint implements AuthenticationEntryPoint 
         response.setContentType(MediaType.APPLICATION_JSON_VALUE);
         response.setCharacterEncoding(StandardCharsets.UTF_8.name());
         objectMapper.writeValue(
-                response.getWriter(),
-                ApiResponse.error(errorCode.name(), errorCode.getMessage()));
+                response.getWriter(), ApiResponse.error(errorCode.name(), errorCode.getMessage()));
     }
 
     private ErrorCode resolveErrorCode(HttpServletRequest request) {

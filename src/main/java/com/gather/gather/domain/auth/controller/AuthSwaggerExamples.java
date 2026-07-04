@@ -1,9 +1,8 @@
 package com.gather.gather.domain.auth.controller;
 
 /**
- * AuthController의 Swagger 응답 예시 JSON 상수 모음. 공통 실패 응답(success/data/error 엔벌롭)의
- * code/message는 ErrorCode 정의와 일치시킨다. annotation value로 사용할 수 있도록 모든 값은
- * compile-time constant(텍스트 블록)로 선언한다.
+ * AuthController의 Swagger 응답 예시 JSON 상수 모음. 공통 실패 응답(success/data/error 엔벌롭)의 code/message는
+ * ErrorCode 정의와 일치시킨다. annotation value로 사용할 수 있도록 모든 값은 compile-time constant(텍스트 블록)로 선언한다.
  */
 final class AuthSwaggerExamples {
 

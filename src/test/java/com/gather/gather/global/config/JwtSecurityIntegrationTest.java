@@ -24,8 +24,8 @@ import org.springframework.test.web.servlet.MockMvc;
 /**
  * SecurityConfig + JwtAuthenticationFilter + CustomAuthenticationEntryPoint 통합 검증.
  *
- * <p>보호 경로로는 posting/sync 대신 테스트 전용 {@code /test/secured}
- * ({@link com.gather.gather.support.TestSecuredController})를 사용한다.
+ * <p>보호 경로로는 posting/sync 대신 테스트 전용 {@code /test/secured} ({@link
+ * com.gather.gather.support.TestSecuredController})를 사용한다.
  */
 @SpringBootTest
 @AutoConfigureMockMvc

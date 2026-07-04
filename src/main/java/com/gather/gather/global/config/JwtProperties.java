@@ -11,7 +11,8 @@ import org.springframework.boot.context.properties.bind.DefaultValue;
  *
  * <ul>
  *   <li>로컬: {@code application-secret.yml}의 {@code jwt.secret} (application-secret.yml.example 참고)
- *   <li>운영(EC2): {@code /etc/gather/gather.env}의 {@code JWT_SECRET} (relaxed binding으로 jwt.secret에 매핑)
+ *   <li>운영(EC2): {@code /etc/gather/gather.env}의 {@code JWT_SECRET} (relaxed binding으로 jwt.secret에
+ *       매핑)
  * </ul>
  *
  * <p>설정이 비어 있거나 취약하면 애플리케이션이 기동되지 않도록 생성 시점에 검증한다.

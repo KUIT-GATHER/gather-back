@@ -20,7 +20,8 @@ public class VolunteerApiClient {
     private final RestClient restClient;
     private final String serviceKey;
 
-    public VolunteerApiClient(RestClient.Builder restClientBuilder, VolunteerApiProperties properties) {
+    public VolunteerApiClient(
+            RestClient.Builder restClientBuilder, VolunteerApiProperties properties) {
         this.restClient = restClientBuilder.baseUrl(properties.baseUrl()).build();
         this.serviceKey = properties.serviceKey();
     }
@@ -52,7 +53,9 @@ public class VolunteerApiClient {
                 fetch(
                         SEARCH_PATH,
                         uriBuilder -> {
-                            uriBuilder.queryParam("pageNo", pageNo).queryParam("numOfRows", numOfRows);
+                            uriBuilder
+                                    .queryParam("pageNo", pageNo)
+                                    .queryParam("numOfRows", numOfRows);
                             condition.toQueryParams().forEach(uriBuilder::queryParam);
                             return uriBuilder.build();
                         },
@@ -93,7 +96,10 @@ public class VolunteerApiClient {
         VolunteerApiEnvelope.Header header = envelope.header();
         if (!header.isSuccess()) {
             throw new VolunteerApiException(
-                    "1365 API 호출 실패: resultCode=" + header.resultCode() + ", resultMsg=" + header.resultMsg());
+                    "1365 API 호출 실패: resultCode="
+                            + header.resultCode()
+                            + ", resultMsg="
+                            + header.resultMsg());
         }
     }
 
