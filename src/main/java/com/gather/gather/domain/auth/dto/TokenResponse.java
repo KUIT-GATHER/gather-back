@@ -4,7 +4,10 @@ import io.swagger.v3.oas.annotations.media.Schema;
 
 @Schema(description = "토큰 응답")
 public record TokenResponse(
-        @Schema(description = "API 인증에 사용할 Access Token", example = "access-token-value")
+        @Schema(
+                        description = "API 인증에 사용할 Access Token (JWT). Authorization: Bearer <token> 형식으로 전송",
+                        example =
+                                "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIiwicm9sZSI6IlVTRVIifQ.signature")
                 String accessToken,
         @Schema(description = "Access Token 재발급에 사용할 Refresh Token", example = "refresh-token-value")
                 String refreshToken,
