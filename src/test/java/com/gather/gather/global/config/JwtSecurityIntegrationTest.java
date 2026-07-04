@@ -100,6 +100,17 @@ class JwtSecurityIntegrationTest {
     }
 
     @Test
+    @DisplayName("유효한 토큰으로 존재하지 않는 경로를 요청하면 404 NOT_FOUND이다")
+    void validTokenUnknownPath_returns404NotFound() throws Exception {
+        String token = tokenProvider.createAccessToken(newUser(100L, UserRole.USER));
+
+        mockMvc.perform(get("/no-such-path").header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.error.code").value("NOT_FOUND"));
+    }
+
+    @Test
     @DisplayName("Bearer가 아닌 Authorization 헤더(Basic)는 JWT 인증 시도로 보지 않아 401 UNAUTHORIZED이다")
     void nonBearerHeader_returns401Unauthorized() throws Exception {
         mockMvc.perform(get(SECURED_PATH).header(HttpHeaders.AUTHORIZATION, "Basic abc"))

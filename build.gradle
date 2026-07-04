@@ -48,3 +48,13 @@ dependencies {
 tasks.named('test') {
 	useJUnitPlatform()
 }
+
+// 로컬 시크릿 파일이 빌드 산출물(jar)에 패키징되는 것을 방지. 운영은 JWT_SECRET 환경변수로 주입됨.
+// processResources에서 제외하면 bootRun 클래스패스에서도 빠져 로컬 실행이 깨지므로 jar 태스크 레벨에서 제외한다.
+tasks.named('bootJar') {
+	exclude '**/application-secret.yml'
+}
+
+tasks.named('jar') {
+	exclude '**/application-secret.yml'
+}
