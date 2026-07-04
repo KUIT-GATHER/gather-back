@@ -14,9 +14,9 @@ develop 최신 기준으로 크게 두 가지가 바뀌었습니다.
 - **`src/main/resources/application-secret.yml`에 `jwt.secret` 추가** — 없으면 서버가 부팅 자체가 안 됩니다 (의도된 안전장치)
   - `application-secret.yml.example` 파일을 참고해 작성
   - 시크릿은 각자 로컬에서 생성합니다 (EC2 접속 불필요, 팀원끼리 같을 필요 없음)
-    - **Git Bash (추천)**: `openssl rand -base64 64`
-    - **PowerShell**: `$b = New-Object byte[] 64; [Security.Cryptography.RandomNumberGenerator]::Fill($b); [Convert]::ToBase64String($b)`
-    - 나온 문자열을 `jwt.secret:`에 붙여넣으면 끝
+    - **Git Bash (추천)**: `openssl rand -base64 48` — ⚠️ 64로 하면 출력이 두 줄로 잘려 복붙 시 부팅 실패하므로 반드시 48
+    - **PowerShell**: `$b = New-Object byte[] 48; [Security.Cryptography.RandomNumberGenerator]::Fill($b); [Convert]::ToBase64String($b)`
+    - 나온 문자열을 `jwt.secret:`에 붙여넣으면 끝 (한 줄이어야 함)
 - 테스트를 돌리려면 **로컬 MySQL(Docker `gather-mysql` 컨테이너) 실행 필수**
   - 안 켜져 있으면 테스트가 무더기로 실패합니다. 코드 문제가 아니라 DB 연결 문제입니다 (Hibernate Dialect 에러가 그 신호)
 
