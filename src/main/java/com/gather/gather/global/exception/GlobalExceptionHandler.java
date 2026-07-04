@@ -38,7 +38,9 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiResponse<Void>> handleNoResourceFoundException(
             NoResourceFoundException exception) {
         return ResponseEntity.status(ErrorCode.NOT_FOUND.getStatus())
-                .body(ApiResponse.error(ErrorCode.NOT_FOUND.name(), ErrorCode.NOT_FOUND.getMessage()));
+                .body(
+                        ApiResponse.error(
+                                ErrorCode.NOT_FOUND.name(), ErrorCode.NOT_FOUND.getMessage()));
     }
 
     @ExceptionHandler(Exception.class)
