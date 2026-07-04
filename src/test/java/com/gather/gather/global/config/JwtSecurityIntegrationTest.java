@@ -69,8 +69,11 @@ class JwtSecurityIntegrationTest {
     @DisplayName("변조된 토큰이면 401 INVALID_TOKEN이다")
     void protectedWithTamperedToken_returns401Invalid() throws Exception {
         String token = tokenProvider.createAccessToken(newUser(100L, UserRole.USER));
-        char lastChar = token.charAt(token.length() - 1);
-        String tampered = token.substring(0, token.length() - 1) + (lastChar == 'A' ? 'B' : 'A');
+        // 서명의 첫 글자를 변조한다. Base64 마지막 글자는 버려지는 비트 때문에 바꿔도 서명이 유효할 수 있음
+        String[] parts = token.split("\\.");
+        char first = parts[2].charAt(0);
+        parts[2] = (first == 'A' ? 'B' : 'A') + parts[2].substring(1);
+        String tampered = String.join(".", parts);
 
         mockMvc.perform(get(SECURED_PATH).header(HttpHeaders.AUTHORIZATION, "Bearer " + tampered))
                 .andExpect(status().isUnauthorized())
