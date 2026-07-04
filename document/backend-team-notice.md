@@ -156,11 +156,23 @@ PR마다 GitHub Actions가 **포맷 검사(Spotless) + 전체 테스트**를 자
   - 공개해야 하는 API만 `SecurityConfig`의 permitAll 목록에 추가하세요 (추가 전 팀 논의)
 - 코드에서 로그인 유저 ID가 필요하면 `SecurityUtil.getCurrentUserId()` 사용
   (이제 실제 로그인 유저의 ID를 반환합니다)
+- posting 담당: `POST /api/v1/postings/sync`(로컬 수동 동기화)도 이제 토큰이 필요합니다
 
 ---
 
-## 📄 더 자세한 내용
+## 🔍 문제 발생 시 빠른 진단표
 
-- 프론트엔드 연동 가이드(Bearer 헤더, 401 분기, 토큰 재발급) 포함 상세 문서:
-  `document/jwt-ci-team-notice.md`
+| 증상 | 원인 | 해결 |
+|---|---|---|
+| 서버 부팅 실패 (JwtProperties 에러) | `jwt.secret` 없음/형식 오류 | 1번 참고 — `application-secret.yml` 확인 |
+| 테스트 무더기 실패 (Dialect/DataSource 에러) | 로컬 MySQL 안 떠 있음 | 2번 참고 — MySQL 시작 |
+| 테이블 없다는 에러 (validate 실패) | 새 DB에 테이블 미생성 | 2-D 참고 — 서버 한 번 실행 |
+| CI에서 spotlessCheck 실패 | 포맷 위반 | `./gradlew spotlessApply` 후 커밋 |
+| API가 전부 401 | 토큰 없음/만료 | Swagger Authorize 또는 헤더 확인 |
+
+---
+
+## 📄 참고
+
+- 프론트엔드 API 연동 가이드(Bearer 헤더, 401 분기, 토큰 재발급): `document/frontend-api-guide.md`
 - 배포는 배포 담당자가 진행합니다. 팀원은 develop 머지까지만 신경 쓰면 됩니다.
