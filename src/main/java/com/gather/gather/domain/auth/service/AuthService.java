@@ -210,7 +210,7 @@ public class AuthService {
     }
 
     private TokenResponse issueTokens(User user) {
-        String accessToken = tokenProvider.generateToken();
+        String accessToken = tokenProvider.createAccessToken(user);
         String refreshToken = tokenProvider.generateToken();
         String refreshTokenHash = tokenProvider.hashToken(refreshToken);
 
