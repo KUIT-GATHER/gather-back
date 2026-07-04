@@ -10,6 +10,14 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
 
+    # 스텝 레벨 env는 이전 스텝에서 시작된 Gradle 데몬에 전달되지 않으므로 job 레벨에 선언한다
+    env:
+      GATHER_DB_URL: jdbc:mysql://127.0.0.1:3306/gather?serverTimezone=Asia/Seoul&characterEncoding=UTF-8
+      GATHER_DB_USERNAME: root
+      GATHER_DB_PASSWORD: ci-password
+      # CI의 MySQL은 빈 DB이므로 테스트 설정(validate) 대신 엔티티 기준으로 스키마를 생성한다
+      SPRING_JPA_HIBERNATE_DDL_AUTO: create-drop
+
     services:
       mysql:
         image: mysql:8.0
@@ -39,12 +47,6 @@ jobs:
         run: chmod +x ./gradlew
 
       - name: Run tests
-        env:
-          GATHER_DB_URL: jdbc:mysql://127.0.0.1:3306/gather?serverTimezone=Asia/Seoul&characterEncoding=UTF-8
-          GATHER_DB_USERNAME: root
-          GATHER_DB_PASSWORD: ci-password
-          # CI의 MySQL은 빈 DB이므로 테스트 설정(validate) 대신 엔티티 기준으로 스키마를 생성한다
-          SPRING_JPA_HIBERNATE_DDL_AUTO: create-drop
         run: ./gradlew clean test
 
       - name: Build Spring Boot jar
