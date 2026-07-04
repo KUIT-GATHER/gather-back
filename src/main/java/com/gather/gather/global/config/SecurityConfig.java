@@ -1,5 +1,7 @@
 package com.gather.gather.global.config;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.gather.gather.domain.auth.service.TokenProvider;
 import java.util.List;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -10,6 +12,7 @@ import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
@@ -17,6 +20,27 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 @Configuration
 @EnableWebSecurity
 public class SecurityConfig {
+
+    // 인증 없이 접근 가능한 경로. 그 외 모든 요청은 Access Token 인증이 필요하다.
+    // 참고: /api/v1/postings/sync는 의도적으로 인증 대상(팀 결정)이라 여기에 넣지 않는다.
+    private static final String[] PERMIT_ALL_PATHS = {
+        "/health",
+        "/api/v1/auth/**",
+        "/api/v1/regions",
+        "/api/v1/categories",
+        "/swagger-ui/**",
+        "/swagger-ui.html",
+        "/v3/api-docs/",
+        "/v3/api-docs/**"
+    };
+
+    private final TokenProvider tokenProvider;
+    private final ObjectMapper objectMapper;
+
+    public SecurityConfig(TokenProvider tokenProvider, ObjectMapper objectMapper) {
+        this.tokenProvider = tokenProvider;
+        this.objectMapper = objectMapper;
+    }
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
@@ -31,19 +55,17 @@ public class SecurityConfig {
                 .authorizeHttpRequests(
                         authorize ->
                                 authorize
-                                        .requestMatchers(
-                                                "/health",
-                                                "/api/v1/auth/**",
-                                                "/api/v1/regions",
-                                                "/api/v1/categories",
-                                                "/swagger-ui/**",
-                                                "/swagger-ui.html",
-                                                "/v3/api-docs/",
-                                                "/v3/api-docs/**")
+                                        .requestMatchers(PERMIT_ALL_PATHS)
                                         .permitAll()
-                                        // JWT 인증 필터 도입 전까지 도메인 API 개발과 통합 테스트가 막히지 않도록 임시 허용
                                         .anyRequest()
-                                        .permitAll())
+                                        .authenticated())
+                .addFilterBefore(
+                        new JwtAuthenticationFilter(tokenProvider),
+                        UsernamePasswordAuthenticationFilter.class)
+                .exceptionHandling(
+                        exception ->
+                                exception.authenticationEntryPoint(
+                                        new CustomAuthenticationEntryPoint(objectMapper)))
                 .build();
     }
 
