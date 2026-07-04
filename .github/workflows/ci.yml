@@ -10,11 +10,12 @@ jobs:
   check:
     runs-on: ubuntu-latest
 
-    # 스텝 레벨 env는 이전 스텝에서 시작된 Gradle 데몬에 전달되지 않으므로 job 레벨에 선언한다
+    # application-local.yml은 gitignore 대상이라 CI에는 존재하지 않으므로,
+    # 파일 없이도 바인딩되는 Spring Boot 표준 환경변수(SPRING_DATASOURCE_*)로 DB를 직접 지정한다
     env:
-      GATHER_DB_URL: jdbc:mysql://127.0.0.1:3306/gather?serverTimezone=Asia/Seoul&characterEncoding=UTF-8
-      GATHER_DB_USERNAME: root
-      GATHER_DB_PASSWORD: ci-password
+      SPRING_DATASOURCE_URL: jdbc:mysql://127.0.0.1:3306/gather?serverTimezone=Asia/Seoul&characterEncoding=UTF-8
+      SPRING_DATASOURCE_USERNAME: root
+      SPRING_DATASOURCE_PASSWORD: ci-password
       # CI의 MySQL은 빈 DB이므로 테스트 설정(validate) 대신 엔티티 기준으로 스키마를 생성한다
       SPRING_JPA_HIBERNATE_DDL_AUTO: create-drop
 
