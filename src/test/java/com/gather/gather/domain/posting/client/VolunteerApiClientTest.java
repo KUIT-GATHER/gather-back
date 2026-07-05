@@ -20,8 +20,8 @@ import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.web.client.RestClient;
 
 /**
- * 실제 1365 API는 {@code type=json} 파라미터를 무시하고 항상 XML로 응답한다(실 호출로 확인됨,
- * 2026-07-02). 아래 픽스처는 {@code postiong_api_spec.md}에 기록된 실제 응답 예시를 기반으로 한다.
+ * 실제 1365 API는 {@code type=json} 파라미터를 무시하고 항상 XML로 응답한다(실 호출로 확인됨, 2026-07-02). 아래 픽스처는 {@code
+ * postiong_api_spec.md}에 기록된 실제 응답 예시를 기반으로 한다.
  */
 class VolunteerApiClientTest {
 
@@ -34,12 +34,14 @@ class VolunteerApiClientTest {
     void setUp() {
         RestClient.Builder builder = RestClient.builder();
         server = MockRestServiceServer.bindTo(builder).build();
-        VolunteerApiProperties properties = new VolunteerApiProperties(BASE_URL, "test-service-key");
+        VolunteerApiProperties properties =
+                new VolunteerApiProperties(BASE_URL, "test-service-key");
         client = new VolunteerApiClient(builder, properties);
     }
 
     @Test
-    @DisplayName("getItem parses a single <item> element (not an array) returned for progrmRegistNo")
+    @DisplayName(
+            "getItem parses a single <item> element (not an array) returned for progrmRegistNo")
     void getItem_returnsItem_whenApiRespondsSuccessfully() {
         String body =
                 """
@@ -129,11 +131,13 @@ class VolunteerApiClientTest {
         server.expect(requestTo(Matchers.startsWith(BASE_URL + "/getVltrPartcptnItem")))
                 .andRespond(withServerError());
 
-        assertThatThrownBy(() -> client.getItem("500err")).isInstanceOf(VolunteerApiException.class);
+        assertThatThrownBy(() -> client.getItem("500err"))
+                .isInstanceOf(VolunteerApiException.class);
     }
 
     @Test
-    @DisplayName("searchList sends condition fields as query params and parses multiple <item> siblings")
+    @DisplayName(
+            "searchList sends condition fields as query params and parses multiple <item> siblings")
     void searchList_returnsItems_andSendsConditionQueryParams() {
         String body =
                 """
@@ -168,8 +172,22 @@ class VolunteerApiClientTest {
 
         VolunteerApiSearchCondition condition =
                 new VolunteerApiSearchCondition(
-                        "volunteer", null, null, null, null, null, null, null, null, null, null,
-                        null, null, null, null, null);
+                        "volunteer",
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null);
 
         List<VolunteerApiSearchItemDto> result = client.searchList(condition, 1, 10);
 

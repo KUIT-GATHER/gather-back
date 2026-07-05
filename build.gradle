@@ -2,6 +2,14 @@ plugins {
 	id 'java'
 	id 'org.springframework.boot' version '3.5.16'
 	id 'io.spring.dependency-management' version '1.1.7'
+	id 'com.diffplug.spotless' version '6.25.0'
+}
+
+spotless {
+	java {
+		googleJavaFormat().aosp()
+		removeUnusedImports()
+	}
 }
 
 group = 'com.gather'
@@ -24,6 +32,9 @@ dependencies {
 	implementation 'org.springframework.boot:spring-boot-starter-web'
 	implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.8.16'
 	implementation 'com.fasterxml.jackson.dataformat:jackson-dataformat-xml'
+	implementation 'io.jsonwebtoken:jjwt-api:0.13.0'
+	runtimeOnly 'io.jsonwebtoken:jjwt-impl:0.13.0'
+	runtimeOnly 'io.jsonwebtoken:jjwt-jackson:0.13.0'
 	compileOnly 'org.projectlombok:lombok'
 	runtimeOnly 'com.mysql:mysql-connector-j'
 	annotationProcessor 'org.projectlombok:lombok'
@@ -36,4 +47,14 @@ dependencies {
 
 tasks.named('test') {
 	useJUnitPlatform()
+}
+
+// 로컬 시크릿 파일이 빌드 산출물(jar)에 패키징되는 것을 방지. 운영은 JWT_SECRET 환경변수로 주입됨.
+// processResources에서 제외하면 bootRun 클래스패스에서도 빠져 로컬 실행이 깨지므로 jar 태스크 레벨에서 제외한다.
+tasks.named('bootJar') {
+	exclude '**/application-secret.yml'
+}
+
+tasks.named('jar') {
+	exclude '**/application-secret.yml'
 }

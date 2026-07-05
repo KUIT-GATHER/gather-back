@@ -29,7 +29,8 @@ class RegionServiceTest {
     }
 
     @Test
-    @DisplayName("getRegions returns all regions mapped to response, with null and non-null parentId")
+    @DisplayName(
+            "getRegions returns all regions mapped to response, with null and non-null parentId")
     void getRegions_returnsAllRegionsMappedToResponse() {
         Region seoul = Region.create("서울특별시", 1, "11", null);
         ReflectionTestUtils.setField(seoul, "id", 1L);

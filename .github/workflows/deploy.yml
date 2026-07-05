@@ -10,6 +10,29 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
 
+    # application-local.yml은 gitignore 대상이라 CI에는 존재하지 않으므로,
+    # 파일 없이도 바인딩되는 Spring Boot 표준 환경변수(SPRING_DATASOURCE_*)로 DB를 직접 지정한다
+    env:
+      SPRING_DATASOURCE_URL: jdbc:mysql://127.0.0.1:3306/gather?serverTimezone=Asia/Seoul&characterEncoding=UTF-8
+      SPRING_DATASOURCE_USERNAME: root
+      SPRING_DATASOURCE_PASSWORD: ci-password
+      # CI의 MySQL은 빈 DB이므로 테스트 설정(validate) 대신 엔티티 기준으로 스키마를 생성한다
+      SPRING_JPA_HIBERNATE_DDL_AUTO: create-drop
+
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_DATABASE: gather
+          MYSQL_ROOT_PASSWORD: ci-password
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd "mysqladmin ping -h localhost -uroot -pci-password"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -24,13 +47,18 @@ jobs:
       - name: Grant execute permission for Gradle
         run: chmod +x ./gradlew
 
+      - name: Run tests
+        run: ./gradlew clean test
+
       - name: Build Spring Boot jar
-        run: ./gradlew clean bootJar -x test
+        run: ./gradlew bootJar
 
       - name: Prepare deploy artifact
         run: |
           mkdir -p deploy
-          cp build/libs/*.jar deploy/gather.jar.new
+          BOOT_JAR=$(find build/libs -maxdepth 1 -type f -name '*.jar' ! -name '*-plain.jar' | head -n 1)
+          test -n "$BOOT_JAR"
+          cp "$BOOT_JAR" deploy/gather.jar.new
 
       - name: Set up SSH
         env:

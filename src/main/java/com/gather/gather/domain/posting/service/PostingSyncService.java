@@ -22,8 +22,8 @@ import org.springframework.transaction.annotation.Transactional;
 /**
  * 1365 자원봉사포털 동기화 배치.
  *
- * <p>알고리즘은 임시안이다({@code noticeBgnde} 최근 N일 윈도우로 검색 → 신규는 상세조회로 insert, 기존은 목록 필드만
- * update). 정확도/쿼터 트레이드오프 재검토가 필요하다 — {@code docs/devplan.md} "추후 검토 필요 항목" 참고.
+ * <p>알고리즘은 임시안이다({@code noticeBgnde} 최근 N일 윈도우로 검색 → 신규는 상세조회로 insert, 기존은 목록 필드만 update). 정확도/쿼터
+ * 트레이드오프 재검토가 필요하다 — {@code docs/devplan.md} "추후 검토 필요 항목" 참고.
  */
 @Slf4j
 @Service
@@ -75,8 +75,22 @@ public class PostingSyncService {
         String noticeEndde = LocalDate.now().format(API_DATE_FORMAT);
         VolunteerApiSearchCondition condition =
                 new VolunteerApiSearchCondition(
-                        null, null, null, null, null, null, null, null, noticeBgnde, noticeEndde,
-                        null, null, null, null, null, null);
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        noticeBgnde,
+                        noticeEndde,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null);
 
         List<VolunteerApiSearchItemDto> result = new ArrayList<>();
         int pageNo = 1;
@@ -92,7 +106,9 @@ public class PostingSyncService {
         return result;
     }
 
-    /** @return 신규 insert면 true, 기존 update면 false */
+    /**
+     * @return 신규 insert면 true, 기존 update면 false
+     */
     private boolean upsert(VolunteerApiSearchItemDto item) {
         return postingRepository
                 .findByExtId(item.progrmRegistNo())
@@ -185,8 +201,8 @@ public class PostingSyncService {
     /**
      * progrmSttusSe(모집상태코드) → {@link PostingStatus}.
      *
-     * <p>API 스펙 문서에 코드별 의미가 명시되어 있지 않아 1365 일반 관례(1=모집예정, 2=모집중, 3=모집마감/완료)로
-     * 추정한 값이다. 실제 응답으로 검증 전까지는 근사치 — Day5 수동 검증 때 재확인 필요(devplan.md 참고).
+     * <p>API 스펙 문서에 코드별 의미가 명시되어 있지 않아 1365 일반 관례(1=모집예정, 2=모집중, 3=모집마감/완료)로 추정한 값이다. 실제 응답으로 검증
+     * 전까지는 근사치 — Day5 수동 검증 때 재확인 필요(devplan.md 참고).
      */
     private PostingStatus mapStatus(String progrmSttusSe) {
         if (progrmSttusSe == null) {

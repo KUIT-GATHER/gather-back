@@ -13,8 +13,22 @@ class VolunteerApiSearchConditionTest {
     void toQueryParams_excludesNullAndBlankFields() {
         VolunteerApiSearchCondition condition =
                 new VolunteerApiSearchCondition(
-                        "봉사", null, "6110000", "", null, null, "20260101", "20260131", null, null,
-                        null, null, null, null, "Y", null);
+                        "봉사",
+                        null,
+                        "6110000",
+                        "",
+                        null,
+                        null,
+                        "20260101",
+                        "20260131",
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        "Y",
+                        null);
 
         Map<String, String> params = condition.toQueryParams();
 
