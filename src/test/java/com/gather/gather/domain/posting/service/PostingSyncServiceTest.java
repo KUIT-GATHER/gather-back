@@ -44,7 +44,8 @@ class PostingSyncServiceTest {
 
     @BeforeEach
     void setUp() {
-        postingSyncService = new PostingSyncService(volunteerApiClient, postingRepository, regionRepository);
+        postingSyncService =
+                new PostingSyncService(volunteerApiClient, postingRepository, regionRepository);
     }
 
     @Test
@@ -72,7 +73,8 @@ class PostingSyncServiceTest {
     }
 
     @Test
-    @DisplayName("existing extId only applies list-response fields and never calls the detail endpoint")
+    @DisplayName(
+            "existing extId only applies list-response fields and never calls the detail endpoint")
     void syncRecentPostings_updatesExisting_withoutCallingDetailEndpoint() {
         Posting existing = existingPosting("200");
         when(volunteerApiClient.searchList(any(), eq(1), eq(100)))
@@ -89,7 +91,8 @@ class PostingSyncServiceTest {
     }
 
     @Test
-    @DisplayName("pagination continues while a page is full and stops once a short page is returned")
+    @DisplayName(
+            "pagination continues while a page is full and stops once a short page is returned")
     void syncRecentPostings_paginatesUntilShortPage() {
         List<VolunteerApiSearchItemDto> fullPage =
                 IntStream.rangeClosed(1, 100)
@@ -105,12 +108,14 @@ class PostingSyncServiceTest {
 
         verify(volunteerApiClient).searchList(any(), eq(1), eq(100));
         verify(volunteerApiClient).searchList(any(), eq(2), eq(100));
-        verify(volunteerApiClient, times(2)).searchList(any(VolunteerApiSearchCondition.class), anyInt(), eq(100));
+        verify(volunteerApiClient, times(2))
+                .searchList(any(VolunteerApiSearchCondition.class), anyInt(), eq(100));
         assertThat(result.scanned()).isEqualTo(101);
     }
 
     @Test
-    @DisplayName("a failure on one item is logged and skipped without aborting the rest of the batch")
+    @DisplayName(
+            "a failure on one item is logged and skipped without aborting the rest of the batch")
     void syncRecentPostings_isolatesPerItemFailure() {
         when(volunteerApiClient.searchList(any(), eq(1), eq(100)))
                 .thenReturn(List.of(searchItem("A", "2"), searchItem("B", "2")));
@@ -126,7 +131,8 @@ class PostingSyncServiceTest {
     }
 
     @Test
-    @DisplayName("a new posting with no parsable activityDate is skipped instead of failing the batch")
+    @DisplayName(
+            "a new posting with no parsable activityDate is skipped instead of failing the batch")
     void syncRecentPostings_skipsNewPosting_whenActivityDateMissing() {
         when(volunteerApiClient.searchList(any(), eq(1), eq(100)))
                 .thenReturn(List.of(searchItem("Z", "2")));
@@ -146,12 +152,14 @@ class PostingSyncServiceTest {
         "3, CLOSED",
         "9, RECRUITING",
     })
-    @DisplayName("mapStatus follows the assumed 1365 status-code convention, defaulting unknown codes to RECRUITING")
+    @DisplayName(
+            "mapStatus follows the assumed 1365 status-code convention, defaulting unknown codes to RECRUITING")
     void syncRecentPostings_mapsStatusCode(String code, PostingStatus expected) {
         when(volunteerApiClient.searchList(any(), eq(1), eq(100)))
                 .thenReturn(List.of(searchItem("S-" + code, code)));
         when(postingRepository.findByExtId(any())).thenReturn(Optional.empty());
-        when(volunteerApiClient.getItem(any())).thenReturn(detailItem("S-" + code, code, "20260601"));
+        when(volunteerApiClient.getItem(any()))
+                .thenReturn(detailItem("S-" + code, code, "20260601"));
 
         postingSyncService.syncRecentPostings();
 
@@ -167,7 +175,8 @@ class PostingSyncServiceTest {
                 .thenReturn(List.of(searchItem("R1", "2")));
         when(postingRepository.findByExtId("R1")).thenReturn(Optional.empty());
         when(volunteerApiClient.getItem("R1")).thenReturn(detailItem("R1", "2", "20260601"));
-        when(regionRepository.findByCode("3020000")).thenReturn(Optional.of(regionWithId(7L, "3020000")));
+        when(regionRepository.findByCode("3020000"))
+                .thenReturn(Optional.of(regionWithId(7L, "3020000")));
 
         postingSyncService.syncRecentPostings();
 
@@ -185,7 +194,8 @@ class PostingSyncServiceTest {
         when(postingRepository.findByExtId("R2")).thenReturn(Optional.empty());
         when(volunteerApiClient.getItem("R2")).thenReturn(detailItem("R2", "2", "20260601"));
         when(regionRepository.findByCode("3020000")).thenReturn(Optional.empty());
-        when(regionRepository.findByCode("6110000")).thenReturn(Optional.of(regionWithId(9L, "6110000")));
+        when(regionRepository.findByCode("6110000"))
+                .thenReturn(Optional.of(regionWithId(9L, "6110000")));
 
         postingSyncService.syncRecentPostings();
 
@@ -251,7 +261,8 @@ class PostingSyncServiceTest {
                 "N");
     }
 
-    private VolunteerApiItemDto detailItem(String progrmRegistNo, String progrmSttusSe, String progrmBgnde) {
+    private VolunteerApiItemDto detailItem(
+            String progrmRegistNo, String progrmSttusSe, String progrmBgnde) {
         return detailItem(progrmRegistNo, progrmSttusSe, progrmBgnde, "6110000", "3020000");
     }
 

@@ -50,8 +50,7 @@ public class TokenProvider {
     public String hashToken(String token) {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            return HexFormat.of()
-                    .formatHex(digest.digest(token.getBytes(StandardCharsets.UTF_8)));
+            return HexFormat.of().formatHex(digest.digest(token.getBytes(StandardCharsets.UTF_8)));
         } catch (NoSuchAlgorithmException exception) {
             throw new IllegalStateException("SHA-256 is not available.", exception);
         }
@@ -79,9 +78,9 @@ public class TokenProvider {
     /**
      * Access Token을 검증하고 userId/role을 추출한다.
      *
-     * <p>만료 토큰은 {@link ErrorCode#EXPIRED_TOKEN}, 그 외 모든 무효 토큰(서명 불일치/변조/형식 오류/sub·role
-     * 누락 및 변환 불가 등)은 {@link ErrorCode#INVALID_TOKEN}으로 {@link JwtAuthenticationException}을 던진다.
-     * JJWT 라이브러리 예외는 이 메서드 밖으로 노출하지 않는다.
+     * <p>만료 토큰은 {@link ErrorCode#EXPIRED_TOKEN}, 그 외 모든 무효 토큰(서명 불일치/변조/형식 오류/sub·role 누락 및 변환 불가
+     * 등)은 {@link ErrorCode#INVALID_TOKEN}으로 {@link JwtAuthenticationException}을 던진다. JJWT 라이브러리 예외는
+     * 이 메서드 밖으로 노출하지 않는다.
      */
     public AccessTokenPayload parseAccessToken(String token) {
         try {

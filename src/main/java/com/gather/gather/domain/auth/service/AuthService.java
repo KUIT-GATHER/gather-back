@@ -215,8 +215,7 @@ public class AuthService {
         String refreshTokenHash = tokenProvider.hashToken(refreshToken);
 
         refreshTokenRepository.save(
-                RefreshToken.create(
-                        refreshTokenHash, user, tokenProvider.refreshTokenExpiresAt()));
+                RefreshToken.create(refreshTokenHash, user, tokenProvider.refreshTokenExpiresAt()));
         return TokenResponse.bearer(accessToken, refreshToken);
     }
 
@@ -344,7 +343,8 @@ public class AuthService {
         // 시군구/읍면동 등 하위 지역 id가 전달된 비정상 요청을 걸러낸다.
         boolean allTopLevel =
                 regions.stream()
-                        .allMatch(region -> Objects.equals(region.getLevel(), ACTIVITY_REGION_LEVEL));
+                        .allMatch(
+                                region -> Objects.equals(region.getLevel(), ACTIVITY_REGION_LEVEL));
         if (!allTopLevel) {
             throw new BusinessException(ErrorCode.REGION_NOT_FOUND);
         }

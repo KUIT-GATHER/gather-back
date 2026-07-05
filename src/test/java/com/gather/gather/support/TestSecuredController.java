@@ -11,8 +11,8 @@ import org.springframework.web.bind.annotation.RestController;
 /**
  * 보호 경로 통합 테스트를 위한 테스트 전용 컨트롤러. production source를 오염시키지 않기 위해 test source에만 둔다.
  *
- * <p>{@code @SpringBootTest} 컴포넌트 스캔(base package com.gather.gather)에 의해 등록되며, 인증된 요청의
- * principal 타입과 권한을 그대로 응답해 SecurityContext 상태를 검증할 수 있게 한다.
+ * <p>{@code @SpringBootTest} 컴포넌트 스캔(base package com.gather.gather)에 의해 등록되며, 인증된 요청의 principal
+ * 타입과 권한을 그대로 응답해 SecurityContext 상태를 검증할 수 있게 한다.
  */
 @RestController
 public class TestSecuredController {

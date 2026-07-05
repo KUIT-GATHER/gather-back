@@ -21,8 +21,7 @@ public record SignupRequest(
                 @PastOrPresent
                 LocalDate birthDate,
         @Schema(description = "성별", example = "MALE") @NotNull Gender gender,
-        @Schema(description = "전화번호. 하이픈과 공백은 서버에서 제거합니다.", example = "01012345678")
-                @NotBlank
+        @Schema(description = "전화번호. 하이픈과 공백은 서버에서 제거합니다.", example = "01012345678") @NotBlank
                 String phoneNumber,
         @Schema(description = "이메일. 서버에서 앞뒤 공백 제거 및 소문자화합니다.", example = "test@example.com")
                 @NotBlank
@@ -41,21 +40,15 @@ public record SignupRequest(
                 @NotBlank
                 @Size(min = 2, max = 8)
                 String nickname,
-        @Schema(description = "소개글. 최대 50자입니다.", example = "함께 봉사하고 싶습니다.")
-                @Size(max = 50)
+        @Schema(description = "소개글. 최대 50자입니다.", example = "함께 봉사하고 싶습니다.") @Size(max = 50)
                 String introduction,
-        @Schema(description = "활동 지역 ID 목록. 중복 없이 1개 이상 3개 이하입니다.", example = "[1, 2]")
-                @NotNull
+        @Schema(description = "활동 지역 ID 목록. 중복 없이 1개 이상 3개 이하입니다.", example = "[1, 2]") @NotNull
                 List<Long> activityRegionIds,
-        @Schema(description = "관심 카테고리 ID 목록. 중복 없이 1개 이상입니다.", example = "[1, 4, 5]")
-                @NotNull
+        @Schema(description = "관심 카테고리 ID 목록. 중복 없이 1개 이상입니다.", example = "[1, 4, 5]") @NotNull
                 List<Long> interestCategoryIds,
-        @Schema(description = "서비스 이용약관 동의 여부. true 필수입니다.", example = "true")
-                @NotNull
+        @Schema(description = "서비스 이용약관 동의 여부. true 필수입니다.", example = "true") @NotNull
                 Boolean serviceTermsAgreed,
-        @Schema(description = "개인정보 처리방침 동의 여부. true 필수입니다.", example = "true")
-                @NotNull
+        @Schema(description = "개인정보 처리방침 동의 여부. true 필수입니다.", example = "true") @NotNull
                 Boolean privacyPolicyAgreed,
-        @Schema(description = "맞춤형 봉사/이벤트 알림 수신 동의 여부", example = "false")
-                @NotNull
+        @Schema(description = "맞춤형 봉사/이벤트 알림 수신 동의 여부", example = "false") @NotNull
                 Boolean marketingAgreed) {}

@@ -75,10 +75,19 @@ class TokenProviderTest {
     @DisplayName("변조된 토큰은 INVALID_TOKEN이다")
     void parse_tamperedToken_throwsInvalid() {
         String token = tokenProvider.createAccessToken(newUser(1L, UserRole.USER));
-        char lastChar = token.charAt(token.length() - 1);
-        String tampered = token.substring(0, token.length() - 1) + (lastChar == 'A' ? 'B' : 'A');
 
-        assertErrorCode(tampered, ErrorCode.INVALID_TOKEN);
+        assertErrorCode(tamperSignature(token), ErrorCode.INVALID_TOKEN);
+    }
+
+    /**
+     * 서명(세 번째 세그먼트)의 첫 글자를 바꿔 변조한다. Base64 마지막 글자는 디코딩 시 버려지는 비트가 있어 바꿔도 동일한 서명이 될 수 있으므로(간헐적 테스트
+     * 실패), 항상 유효 비트인 첫 글자를 바꾼다.
+     */
+    private static String tamperSignature(String token) {
+        String[] parts = token.split("\\.");
+        char first = parts[2].charAt(0);
+        parts[2] = (first == 'A' ? 'B' : 'A') + parts[2].substring(1);
+        return String.join(".", parts);
     }
 
     @Test
@@ -90,7 +99,8 @@ class TokenProviderTest {
     @Test
     @DisplayName("sub가 없는 토큰은 INVALID_TOKEN이다")
     void parse_missingSubject_throwsInvalid() {
-        assertErrorCode(signedToken(builder -> builder.claim("role", "USER")), ErrorCode.INVALID_TOKEN);
+        assertErrorCode(
+                signedToken(builder -> builder.claim("role", "USER")), ErrorCode.INVALID_TOKEN);
     }
 
     @Test

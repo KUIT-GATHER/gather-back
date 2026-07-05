@@ -12,6 +12,4 @@ public record EmailVerificationConfirmRequest(
                 @Email
                 @Size(max = 255)
                 String email,
-        @Schema(description = "사용자가 입력한 인증 코드", example = "123456")
-                @NotBlank
-                String code) {}
+        @Schema(description = "사용자가 입력한 인증 코드", example = "123456") @NotBlank String code) {}

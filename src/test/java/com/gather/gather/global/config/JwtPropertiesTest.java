@@ -7,8 +7,8 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 /**
- * JwtProperties의 기동 시점 검증 계약을 고정한다. 이 생성자가 예외를 던지면 Spring의 바인딩이 실패해 애플리케이션이
- * 기동되지 않으므로, 아래 케이스가 곧 "부팅 실패" 조건이다.
+ * JwtProperties의 기동 시점 검증 계약을 고정한다. 이 생성자가 예외를 던지면 Spring의 바인딩이 실패해 애플리케이션이 기동되지 않으므로, 아래 케이스가 곧
+ * "부팅 실패" 조건이다.
  */
 class JwtPropertiesTest {
 

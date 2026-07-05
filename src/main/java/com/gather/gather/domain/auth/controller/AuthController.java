@@ -157,7 +157,7 @@ public class AuthController {
                                                 name = "EMAIL_VERIFICATION_NOT_FOUND",
                                                 value =
                                                         AuthSwaggerExamples
-                                                        .EMAIL_VERIFICATION_NOT_FOUND_EXAMPLE)))
+                                                                .EMAIL_VERIFICATION_NOT_FOUND_EXAMPLE)))
     })
     @PostMapping("/email-verifications/confirm")
     public ApiResponse<EmailVerificationConfirmResponse> confirmEmailVerificationCode(
@@ -165,7 +165,9 @@ public class AuthController {
         return ApiResponse.success(authService.confirmEmailVerificationCode(request));
     }
 
-    @Operation(summary = "전화번호 중복 확인", description = "회원가입 기본 정보 단계에서 입력한 전화번호가 이미 가입에 사용되었는지 확인합니다.")
+    @Operation(
+            summary = "전화번호 중복 확인",
+            description = "회원가입 기본 정보 단계에서 입력한 전화번호가 이미 가입에 사용되었는지 확인합니다.")
     @ApiResponses({
         @io.swagger.v3.oas.annotations.responses.ApiResponse(
                 responseCode = "200",
@@ -275,7 +277,7 @@ public class AuthController {
                                             name = "INVALID_INTEREST_CATEGORY_COUNT",
                                             value =
                                                     AuthSwaggerExamples
-                                                        .INVALID_INTEREST_CATEGORY_COUNT_EXAMPLE)
+                                                            .INVALID_INTEREST_CATEGORY_COUNT_EXAMPLE)
                                 })),
         @io.swagger.v3.oas.annotations.responses.ApiResponse(
                 responseCode = "404",
@@ -317,7 +319,9 @@ public class AuthController {
         return ApiResponse.success(authService.signup(request));
     }
 
-    @Operation(summary = "로그인", description = "이메일과 비밀번호를 검증한 뒤 Access Token과 Refresh Token을 발급합니다.")
+    @Operation(
+            summary = "로그인",
+            description = "이메일과 비밀번호를 검증한 뒤 Access Token과 Refresh Token을 발급합니다.")
     @ApiResponses({
         @io.swagger.v3.oas.annotations.responses.ApiResponse(
                 responseCode = "200",
@@ -360,7 +364,9 @@ public class AuthController {
                                 examples =
                                         @ExampleObject(
                                                 name = "INVALID_LOGIN",
-                                                value = AuthSwaggerExamples.INVALID_LOGIN_EXAMPLE))),
+                                                value =
+                                                        AuthSwaggerExamples
+                                                                .INVALID_LOGIN_EXAMPLE))),
         @io.swagger.v3.oas.annotations.responses.ApiResponse(
                 responseCode = "403",
                 description = "계정 상태로 인한 로그인 차단",
@@ -381,7 +387,9 @@ public class AuthController {
         return ApiResponse.success(authService.login(request));
     }
 
-    @Operation(summary = "토큰 재발급", description = "Refresh Token을 검증한 뒤 새로운 Access Token과 Refresh Token을 발급합니다.")
+    @Operation(
+            summary = "토큰 재발급",
+            description = "Refresh Token을 검증한 뒤 새로운 Access Token과 Refresh Token을 발급합니다.")
     @ApiResponses({
         @io.swagger.v3.oas.annotations.responses.ApiResponse(
                 responseCode = "200",
@@ -452,9 +460,7 @@ public class AuthController {
         return ApiResponse.success(authService.reissue(request));
     }
 
-    @Operation(
-            summary = "로그아웃",
-            description = "Access Token 인증을 요구하지 않으며 Refresh Token만으로 처리합니다.")
+    @Operation(summary = "로그아웃", description = "Access Token 인증을 요구하지 않으며 Refresh Token만으로 처리합니다.")
     @ApiResponses({
         @io.swagger.v3.oas.annotations.responses.ApiResponse(
                 responseCode = "200",
