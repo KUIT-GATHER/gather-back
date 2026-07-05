@@ -1,4 +1,5 @@
 package com.gather.gather.domain.meeting.repository;
+
 import com.gather.gather.domain.meeting.entity.Meeting;
 import com.gather.gather.domain.meeting.enums.MeetingStatus;
 import java.util.List;
@@ -6,8 +7,10 @@ import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
+
 public interface MeetingRepository extends JpaRepository<Meeting, Long> {
     Optional<Meeting> findByIdAndDeletedAtIsNull(Long id);
+
     @Query(
             """
             SELECT m

@@ -38,7 +38,8 @@ public enum ErrorCode {
     MEETING_ALREADY_JOINED(HttpStatus.CONFLICT, "이미 참여한 모임입니다."),
     MEETING_FULL(HttpStatus.CONFLICT, "모임 인원이 가득 찼습니다."),
     MEETING_CLOSED(HttpStatus.CONFLICT, "마감된 모임입니다."),
-    INVALID_MEETING_TIME(HttpStatus.BAD_REQUEST, "모임 시간이 올바르지 않습니다."),;
+    INVALID_MEETING_TIME(HttpStatus.BAD_REQUEST, "모임 시간이 올바르지 않습니다."),
+    ;
 
     private final HttpStatus status;
     private final String message;

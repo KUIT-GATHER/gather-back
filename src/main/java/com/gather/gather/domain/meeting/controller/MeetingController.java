@@ -46,14 +46,12 @@ public class MeetingController {
     }
 
     @GetMapping("/{meetingId}")
-    public ApiResponse<MeetingDetailResponse> getMeeting(
-            @PathVariable Long meetingId) {
+    public ApiResponse<MeetingDetailResponse> getMeeting(@PathVariable Long meetingId) {
         return ApiResponse.success(meetingService.getMeeting(meetingId));
     }
 
     @PostMapping("/{meetingId}/join")
-    public ApiResponse<MeetingResponse> joinMeeting(
-            @PathVariable Long meetingId) {
+    public ApiResponse<MeetingResponse> joinMeeting(@PathVariable Long meetingId) {
         return ApiResponse.success(meetingService.joinMeeting(meetingId));
     }
 }

@@ -1,4 +1,5 @@
 package com.gather.gather.domain.meeting.entity;
+
 import com.gather.gather.domain.auth.entity.User;
 import com.gather.gather.domain.meeting.enums.MeetingMemberRole;
 import com.gather.gather.domain.meeting.enums.MeetingMemberStatus;
@@ -20,14 +21,15 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
+
 @Entity
 @Getter
 @Table(
         name = "meeting_member",
         uniqueConstraints = {
-                @UniqueConstraint(
-                        name = "uk_meeting_member_user_meeting",
-                        columnNames = {"user_id", "meeting_id"})
+            @UniqueConstraint(
+                    name = "uk_meeting_member_user_meeting",
+                    columnNames = {"user_id", "meeting_id"})
         })
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class MeetingMember {
@@ -62,11 +64,9 @@ public class MeetingMember {
     @UpdateTimestamp
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
+
     private MeetingMember(
-            MeetingMemberRole role,
-            User user,
-            Meeting meeting,
-            MeetingMemberStatus status) {
+            MeetingMemberRole role, User user, Meeting meeting, MeetingMemberStatus status) {
         this.role = role;
         this.user = user;
         this.meeting = meeting;
@@ -76,17 +76,12 @@ public class MeetingMember {
 
     public static MeetingMember createHost(User user, Meeting meeting) {
         return new MeetingMember(
-                MeetingMemberRole.HOST,
-                user,
-                meeting,
-                MeetingMemberStatus.APPROVED);
+                MeetingMemberRole.HOST, user, meeting, MeetingMemberStatus.APPROVED);
     }
+
     public static MeetingMember createMember(User user, Meeting meeting) {
         return new MeetingMember(
-                MeetingMemberRole.MEMBER,
-                user,
-                meeting,
-                MeetingMemberStatus.APPROVED);
+                MeetingMemberRole.MEMBER, user, meeting, MeetingMemberStatus.APPROVED);
     }
 
     public void leave() {

@@ -1,7 +1,9 @@
 package com.gather.gather.domain.meeting.dto;
+
 import com.gather.gather.domain.meeting.entity.Meeting;
 import com.gather.gather.domain.meeting.enums.MeetingStatus;
 import java.time.LocalDateTime;
+
 public record MeetingDetailResponse(
         Long meetingId,
         String name,

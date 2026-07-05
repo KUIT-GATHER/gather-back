@@ -3,14 +3,12 @@ package com.gather.gather.domain.meeting.entity;
 import com.gather.gather.domain.auth.entity.User;
 import com.gather.gather.domain.meeting.enums.MeetingStatus;
 import jakarta.persistence.*;
-import jakarta.validation.constraints.NotNull;
+import java.time.LocalDateTime;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
-
-import java.time.LocalDateTime;
 
 @Entity
 @Getter
@@ -134,6 +132,7 @@ public class Meeting {
                 activityStartAt,
                 activityEndAt);
     }
+
     public boolean isFull() {
         return currentMemberCount >= maxMember;
     }

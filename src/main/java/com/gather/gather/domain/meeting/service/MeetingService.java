@@ -33,19 +33,20 @@ public class MeetingService {
         validateMeetingTime(request.deadline(), request.activityStartAt(), request.activityEndAt());
         Long userId = SecurityUtil.getCurrentUserId();
         User host = getUser(userId);
-        Meeting meeting = Meeting.create(
-                request.name(),
-                request.description(),
-                request.maxMember(),
-                request.deadline(),
-                request.memo(),
-                request.categoryId(),
-                request.regionId(),
-                host,
-                request.participationCondition(),
-                request.volunteerPostingId(),
-                request.activityStartAt(),
-                request.activityEndAt());
+        Meeting meeting =
+                Meeting.create(
+                        request.name(),
+                        request.description(),
+                        request.maxMember(),
+                        request.deadline(),
+                        request.memo(),
+                        request.categoryId(),
+                        request.regionId(),
+                        host,
+                        request.participationCondition(),
+                        request.volunteerPostingId(),
+                        request.activityStartAt(),
+                        request.activityEndAt());
         Meeting savedMeeting = meetingRepository.save(meeting);
         MeetingMember hostMember = MeetingMember.createHost(host, savedMeeting);
         meetingMemberRepository.save(hostMember);
@@ -53,10 +54,7 @@ public class MeetingService {
     }
 
     public List<MeetingResponse> getMeetings(
-            String keyword,
-            Long regionId,
-            Long categoryId,
-            MeetingStatus status) {
+            String keyword, Long regionId, Long categoryId, MeetingStatus status) {
         return meetingRepository.searchMeetings(keyword, regionId, categoryId, status).stream()
                 .map(meeting -> MeetingResponse.from(meeting, resolveDisplayStatus(meeting)))
                 .toList();
@@ -110,17 +108,16 @@ public class MeetingService {
         if (meeting.isFull()) {
             throw new BusinessException(ErrorCode.MEETING_FULL);
         }
-        boolean alreadyJoined = meetingMemberRepository.existsByMeeting_IdAndUser_IdAndStatus(
-                meeting.getId(), userId, MeetingMemberStatus.APPROVED);
+        boolean alreadyJoined =
+                meetingMemberRepository.existsByMeeting_IdAndUser_IdAndStatus(
+                        meeting.getId(), userId, MeetingMemberStatus.APPROVED);
         if (alreadyJoined) {
             throw new BusinessException(ErrorCode.MEETING_ALREADY_JOINED);
         }
     }
 
     private void validateMeetingTime(
-            LocalDateTime deadline,
-            LocalDateTime activityStartAt,
-            LocalDateTime activityEndAt) {
+            LocalDateTime deadline, LocalDateTime activityStartAt, LocalDateTime activityEndAt) {
         if (!activityStartAt.isBefore(activityEndAt)) {
             throw new BusinessException(ErrorCode.INVALID_MEETING_TIME);
         }
@@ -134,7 +131,9 @@ public class MeetingService {
         if (meeting.getStatus() == MeetingStatus.COMPLETED || meeting.isActivityEnded(now)) {
             return MeetingStatus.COMPLETED;
         }
-        if (meeting.getStatus() == MeetingStatus.CLOSED || meeting.isDeadlinePassed(now) || meeting.isFull()) {
+        if (meeting.getStatus() == MeetingStatus.CLOSED
+                || meeting.isDeadlinePassed(now)
+                || meeting.isFull()) {
             return MeetingStatus.CLOSED;
         }
         return MeetingStatus.RECRUITING;
