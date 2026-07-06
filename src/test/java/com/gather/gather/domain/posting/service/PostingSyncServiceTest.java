@@ -69,7 +69,7 @@ class PostingSyncServiceTest {
         assertThat(saved.getPostAddress()).isEqualTo("서울시 어딘가");
         assertThat(saved.getRegionId()).isEqualTo(5L);
         assertThat(saved.getIsActive()).isTrue();
-        assertThat(result).isEqualTo(new PostingSyncResult(1, 1, 0, 0));
+        assertThat(result).isEqualTo(new PostingSyncResult(1, 1, 0, 0, 0));
     }
 
     @Test
@@ -87,7 +87,7 @@ class PostingSyncServiceTest {
         assertThat(existing.getTitle()).isEqualTo("제목-200");
         assertThat(existing.getStatus()).isEqualTo(PostingStatus.CLOSED);
         assertThat(existing.getIsActive()).isTrue();
-        assertThat(result).isEqualTo(new PostingSyncResult(1, 0, 1, 0));
+        assertThat(result).isEqualTo(new PostingSyncResult(1, 0, 1, 0, 0));
     }
 
     @Test
@@ -115,6 +115,48 @@ class PostingSyncServiceTest {
 
     @Test
     @DisplayName(
+            "fetchActivePostings sends no notice-date filter so long-open postings are not"
+                    + " excluded")
+    void syncRecentPostings_sendsNoDateFilter() {
+        when(volunteerApiClient.searchList(any(), eq(1), eq(100))).thenReturn(List.of());
+
+        postingSyncService.syncRecentPostings();
+
+        ArgumentCaptor<VolunteerApiSearchCondition> captor =
+                ArgumentCaptor.forClass(VolunteerApiSearchCondition.class);
+        verify(volunteerApiClient).searchList(captor.capture(), eq(1), eq(100));
+        VolunteerApiSearchCondition condition = captor.getValue();
+        assertThat(condition.noticeBgnde()).isNull();
+        assertThat(condition.noticeEndde()).isNull();
+    }
+
+    @Test
+    @DisplayName(
+            "new postings beyond the per-run detail-lookup budget are skipped instead of"
+                    + " consuming quota")
+    void syncRecentPostings_skipsNewPostings_beyondDetailLookupBudget() {
+        int totalNewItems = 801;
+        List<VolunteerApiSearchItemDto> bigPage =
+                IntStream.rangeClosed(1, totalNewItems)
+                        .mapToObj(i -> searchItem("NEW-" + i, "2"))
+                        .toList();
+
+        when(volunteerApiClient.searchList(any(), anyInt(), eq(100)))
+                .thenReturn(bigPage, List.of());
+        when(postingRepository.findByExtId(any())).thenReturn(Optional.empty());
+        when(volunteerApiClient.getItem(any())).thenReturn(detailItem("FIXED", "2", "20260601"));
+
+        PostingSyncResult result = postingSyncService.syncRecentPostings();
+
+        assertThat(result.scanned()).isEqualTo(totalNewItems);
+        assertThat(result.inserted()).isEqualTo(800);
+        assertThat(result.skipped()).isEqualTo(1);
+        verify(postingRepository, times(800)).save(any());
+        verify(volunteerApiClient, times(800)).getItem(any());
+    }
+
+    @Test
+    @DisplayName(
             "a failure on one item is logged and skipped without aborting the rest of the batch")
     void syncRecentPostings_isolatesPerItemFailure() {
         when(volunteerApiClient.searchList(any(), eq(1), eq(100)))
@@ -127,7 +169,7 @@ class PostingSyncServiceTest {
         PostingSyncResult result = postingSyncService.syncRecentPostings();
 
         verify(postingRepository, times(1)).save(any());
-        assertThat(result).isEqualTo(new PostingSyncResult(2, 1, 0, 1));
+        assertThat(result).isEqualTo(new PostingSyncResult(2, 1, 0, 1, 0));
     }
 
     @Test
@@ -142,7 +184,7 @@ class PostingSyncServiceTest {
         PostingSyncResult result = postingSyncService.syncRecentPostings();
 
         verify(postingRepository, never()).save(any());
-        assertThat(result).isEqualTo(new PostingSyncResult(1, 0, 0, 1));
+        assertThat(result).isEqualTo(new PostingSyncResult(1, 0, 0, 1, 0));
     }
 
     @ParameterizedTest(name = "progrmSttusSe={0} maps to {1}")
