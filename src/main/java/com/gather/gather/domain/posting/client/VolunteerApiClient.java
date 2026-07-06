@@ -5,17 +5,23 @@ import com.gather.gather.domain.posting.client.dto.VolunteerApiItemDto;
 import com.gather.gather.domain.posting.client.dto.VolunteerApiSearchCondition;
 import com.gather.gather.domain.posting.client.dto.VolunteerApiSearchItemDto;
 import java.util.List;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 
 /** 1365 자원봉사포털 OpenAPI({@code VolunteerPartcptnService}) 연동 클라이언트. */
+@Slf4j
 @Component
 public class VolunteerApiClient {
 
     private static final String DETAIL_PATH = "/getVltrPartcptnItem";
     private static final String SEARCH_PATH = "/getVltrSearchWordList";
+
+    // 전송 계층(네트워크/5xx) 실패만 재시도한다. resultCode 기반 실패(인증키 오류 등)는 재시도해도 결과가 같으므로 즉시 던진다.
+    private static final int MAX_ATTEMPTS = 3;
+    private static final long RETRY_BACKOFF_MILLIS = 500;
 
     private final RestClient restClient;
     private final String serviceKey;
@@ -69,24 +75,42 @@ public class VolunteerApiClient {
             java.util.function.Function<org.springframework.web.util.UriBuilder, java.net.URI>
                     uriFunction,
             ParameterizedTypeReference<VolunteerApiEnvelope<T>> responseType) {
-        VolunteerApiEnvelope<T> envelope;
-        try {
-            envelope =
-                    restClient
-                            .get()
-                            .uri(
-                                    uriBuilder ->
-                                            uriFunction.apply(
-                                                    uriBuilder
-                                                            .path(path)
-                                                            .queryParam("serviceKey", serviceKey)))
-                            .retrieve()
-                            .body(responseType);
-        } catch (RestClientException e) {
-            throw new VolunteerApiException("1365 API 호출에 실패했습니다. path=" + path, e);
+        RestClientException lastFailure = null;
+        for (int attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+            try {
+                VolunteerApiEnvelope<T> envelope =
+                        restClient
+                                .get()
+                                .uri(
+                                        uriBuilder ->
+                                                uriFunction.apply(
+                                                        uriBuilder
+                                                                .path(path)
+                                                                .queryParam(
+                                                                        "serviceKey", serviceKey)))
+                                .retrieve()
+                                .body(responseType);
+                validate(envelope, path);
+                return envelope;
+            } catch (RestClientException e) {
+                lastFailure = e;
+                log.warn("1365 API 호출 실패({}/{}), 재시도합니다. path={}", attempt, MAX_ATTEMPTS, path, e);
+                if (attempt < MAX_ATTEMPTS) {
+                    sleepBeforeRetry(attempt);
+                }
+            }
         }
-        validate(envelope, path);
-        return envelope;
+        throw new VolunteerApiException(
+                "1365 API 호출에 " + MAX_ATTEMPTS + "회 재시도 후에도 실패했습니다. path=" + path, lastFailure);
+    }
+
+    private void sleepBeforeRetry(int attempt) {
+        try {
+            Thread.sleep(RETRY_BACKOFF_MILLIS * attempt);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new VolunteerApiException("1365 API 재시도 대기 중 인터럽트가 발생했습니다.", e);
+        }
     }
 
     private <T> void validate(VolunteerApiEnvelope<T> envelope, String path) {
