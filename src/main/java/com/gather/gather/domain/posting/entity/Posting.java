@@ -105,6 +105,9 @@ public class Posting {
     @Column(name = "manager_email")
     private String managerEmail;
 
+    @Column(name = "manager_address")
+    private String managerAddress;
+
     @Column(precision = 10, scale = 7)
     private BigDecimal latitude;
 
@@ -153,6 +156,7 @@ public class Posting {
             String managerTel,
             String managerFax,
             String managerEmail,
+            String managerAddress,
             BigDecimal latitude,
             BigDecimal longitude,
             Long regionId,
@@ -183,6 +187,7 @@ public class Posting {
         this.managerTel = managerTel;
         this.managerFax = managerFax;
         this.managerEmail = managerEmail;
+        this.managerAddress = managerAddress;
         this.latitude = latitude;
         this.longitude = longitude;
         this.regionId = regionId;
