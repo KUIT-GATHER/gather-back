@@ -2,6 +2,7 @@ package com.gather.gather.domain.meeting.service;
 
 import com.gather.gather.domain.auth.entity.User;
 import com.gather.gather.domain.auth.repository.UserRepository;
+import com.gather.gather.domain.category.repository.CategoryRepository;
 import com.gather.gather.domain.meeting.dto.MeetingCreateRequest;
 import com.gather.gather.domain.meeting.dto.MeetingDetailResponse;
 import com.gather.gather.domain.meeting.dto.MeetingResponse;
@@ -10,6 +11,7 @@ import com.gather.gather.domain.meeting.entity.MeetingMember;
 import com.gather.gather.domain.meeting.enums.MeetingStatus;
 import com.gather.gather.domain.meeting.repository.MeetingMemberRepository;
 import com.gather.gather.domain.meeting.repository.MeetingRepository;
+import com.gather.gather.domain.region.repository.RegionRepository;
 import com.gather.gather.global.exception.BusinessException;
 import com.gather.gather.global.exception.ErrorCode;
 import com.gather.gather.global.util.SecurityUtil;
@@ -27,10 +29,14 @@ public class MeetingService {
     private final MeetingRepository meetingRepository;
     private final MeetingMemberRepository meetingMemberRepository;
     private final UserRepository userRepository;
+    private final CategoryRepository categoryRepository;
+    private final RegionRepository regionRepository;
 
     @Transactional
     public MeetingResponse createMeeting(MeetingCreateRequest request) {
         validateMeetingTime(request.deadline(), request.activityStartAt(), request.activityEndAt());
+        validateCategoryExists(request.categoryId());
+        validateRegionExists(request.regionId());
 
         Long userId = SecurityUtil.getCurrentUserId();
         User host = getUser(userId);
@@ -60,8 +66,9 @@ public class MeetingService {
 
     public List<MeetingResponse> getMeetings(
             String keyword, Long regionId, Long categoryId, MeetingStatus status) {
-        return meetingRepository.searchMeetings(keyword, regionId, categoryId, status).stream()
+        return meetingRepository.searchMeetings(keyword, regionId, categoryId, null).stream()
                 .map(meeting -> MeetingResponse.from(meeting, resolveDisplayStatus(meeting)))
+                .filter(response -> status == null || response.status() == status)
                 .toList();
     }
 
@@ -80,6 +87,18 @@ public class MeetingService {
         return meetingRepository
                 .findByIdAndDeletedAtIsNull(meetingId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.MEETING_NOT_FOUND));
+    }
+
+    private void validateCategoryExists(Long categoryId) {
+        if (!categoryRepository.existsById(categoryId)) {
+            throw new BusinessException(ErrorCode.CATEGORY_NOT_FOUND);
+        }
+    }
+
+    private void validateRegionExists(Long regionId) {
+        if (!regionRepository.existsById(regionId)) {
+            throw new BusinessException(ErrorCode.REGION_NOT_FOUND);
+        }
     }
 
     private void validateMeetingTime(
