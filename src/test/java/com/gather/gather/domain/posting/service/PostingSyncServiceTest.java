@@ -66,7 +66,8 @@ class PostingSyncServiceTest {
         assertThat(saved.getExtId()).isEqualTo("100");
         assertThat(saved.getTitle()).isEqualTo("제목-100");
         assertThat(saved.getStatus()).isEqualTo(PostingStatus.RECRUITING);
-        assertThat(saved.getPostAddress()).isEqualTo("서울시 어딘가");
+        assertThat(saved.getPostAddress()).isEqualTo("서울시 어딘가 1");
+        assertThat(saved.getManagerAddress()).isEqualTo("서울시 어딘가");
         assertThat(saved.getRegionId()).isEqualTo(5L);
         assertThat(saved.getIsActive()).isTrue();
         assertThat(result).isEqualTo(new PostingSyncResult(1, 1, 0, 0));
