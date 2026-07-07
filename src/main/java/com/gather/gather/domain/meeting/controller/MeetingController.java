@@ -43,6 +43,16 @@ public class MeetingController {
                 meetingService.getMeetings(keyword, regionId, categoryId, status));
     }
 
+    @GetMapping("/my")
+    public ApiResponse<List<MeetingResponse>> getMyMeetings() {
+        return ApiResponse.success(meetingService.getMyMeetings());
+    }
+
+    @PostMapping("/{meetingId}/join")
+    public ApiResponse<MeetingResponse> joinMeeting(@PathVariable Long meetingId) {
+        return ApiResponse.success(meetingService.joinMeeting(meetingId));
+    }
+
     @GetMapping("/{meetingId}")
     public ApiResponse<MeetingDetailResponse> getMeeting(@PathVariable Long meetingId) {
         return ApiResponse.success(meetingService.getMeeting(meetingId));

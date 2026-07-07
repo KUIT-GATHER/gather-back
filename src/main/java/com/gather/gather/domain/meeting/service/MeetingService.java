@@ -8,6 +8,7 @@ import com.gather.gather.domain.meeting.dto.MeetingDetailResponse;
 import com.gather.gather.domain.meeting.dto.MeetingResponse;
 import com.gather.gather.domain.meeting.entity.Meeting;
 import com.gather.gather.domain.meeting.entity.MeetingMember;
+import com.gather.gather.domain.meeting.enums.MeetingMemberStatus;
 import com.gather.gather.domain.meeting.enums.MeetingStatus;
 import com.gather.gather.domain.meeting.repository.MeetingMemberRepository;
 import com.gather.gather.domain.meeting.repository.MeetingRepository;
@@ -77,6 +78,34 @@ public class MeetingService {
         return MeetingDetailResponse.from(meeting, resolveDisplayStatus(meeting));
     }
 
+    @Transactional
+    public MeetingResponse joinMeeting(Long meetingId) {
+        Long userId = SecurityUtil.getCurrentUserId();
+        User user = getUser(userId);
+        Meeting meeting = getMeetingEntity(meetingId);
+
+        validateJoinableMeeting(meeting, userId);
+
+        MeetingMember meetingMember = MeetingMember.createMember(user, meeting);
+        meetingMemberRepository.save(meetingMember);
+
+        meeting.increaseMemberCount();
+
+        return MeetingResponse.from(meeting, resolveDisplayStatus(meeting));
+    }
+
+    public List<MeetingResponse> getMyMeetings() {
+        Long userId = SecurityUtil.getCurrentUserId();
+
+        return meetingMemberRepository
+                .findAllByUser_IdAndStatus(userId, MeetingMemberStatus.APPROVED)
+                .stream()
+                .map(MeetingMember::getMeeting)
+                .filter(meeting -> meeting.getDeletedAt() == null)
+                .map(meeting -> MeetingResponse.from(meeting, resolveDisplayStatus(meeting)))
+                .toList();
+    }
+
     private User getUser(Long userId) {
         return userRepository
                 .findById(userId)
@@ -87,6 +116,26 @@ public class MeetingService {
         return meetingRepository
                 .findByIdAndDeletedAtIsNull(meetingId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.MEETING_NOT_FOUND));
+    }
+
+    private void validateJoinableMeeting(Meeting meeting, Long userId) {
+        MeetingStatus displayStatus = resolveDisplayStatus(meeting);
+
+        if (displayStatus != MeetingStatus.RECRUITING) {
+            throw new BusinessException(ErrorCode.MEETING_CLOSED);
+        }
+
+        if (meeting.isFull()) {
+            throw new BusinessException(ErrorCode.MEETING_FULL);
+        }
+
+        boolean alreadyJoined =
+                meetingMemberRepository.existsByMeeting_IdAndUser_IdAndStatus(
+                        meeting.getId(), userId, MeetingMemberStatus.APPROVED);
+
+        if (alreadyJoined) {
+            throw new BusinessException(ErrorCode.MEETING_ALREADY_JOINED);
+        }
     }
 
     private void validateCategoryExists(Long categoryId) {
