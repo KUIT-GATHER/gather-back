@@ -126,13 +126,55 @@ class VolunteerApiClientTest {
     }
 
     @Test
-    @DisplayName("getItem wraps transport/HTTP failures in VolunteerApiException")
+    @DisplayName(
+            "getItem retries transport/HTTP failures up to the max attempts, then wraps the last"
+                    + " failure")
     void getItem_throwsException_whenHttpErrorOccurs() {
+        server.expect(requestTo(Matchers.startsWith(BASE_URL + "/getVltrPartcptnItem")))
+                .andRespond(withServerError());
+        server.expect(requestTo(Matchers.startsWith(BASE_URL + "/getVltrPartcptnItem")))
+                .andRespond(withServerError());
         server.expect(requestTo(Matchers.startsWith(BASE_URL + "/getVltrPartcptnItem")))
                 .andRespond(withServerError());
 
         assertThatThrownBy(() -> client.getItem("500err"))
                 .isInstanceOf(VolunteerApiException.class);
+        server.verify();
+    }
+
+    @Test
+    @DisplayName("getItem recovers when a transient transport failure is followed by a success")
+    void getItem_recovers_whenTransientFailureFollowedBySuccess() {
+        String body =
+                """
+                <response>
+                  <header>
+                    <resultCode>00</resultCode>
+                    <resultMsg>NORMAL SERVICE.</resultMsg>
+                  </header>
+                  <body>
+                    <items>
+                      <item>
+                        <progrmRegistNo>3425935</progrmRegistNo>
+                        <progrmSj>동구하랑 시민옹호인 모집</progrmSj>
+                      </item>
+                    </items>
+                    <numOfRows>1</numOfRows>
+                    <pageNo>1</pageNo>
+                    <totalCount>1</totalCount>
+                  </body>
+                </response>
+                """;
+
+        server.expect(requestTo(Matchers.startsWith(BASE_URL + "/getVltrPartcptnItem")))
+                .andRespond(withServerError());
+        server.expect(requestTo(Matchers.startsWith(BASE_URL + "/getVltrPartcptnItem")))
+                .andRespond(withSuccess(body, MediaType.APPLICATION_XML));
+
+        VolunteerApiItemDto result = client.getItem("3425935");
+
+        assertThat(result.progrmRegistNo()).isEqualTo("3425935");
+        server.verify();
     }
 
     @Test
