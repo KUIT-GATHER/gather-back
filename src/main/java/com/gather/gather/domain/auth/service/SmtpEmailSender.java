@@ -8,13 +8,6 @@ import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.stereotype.Component;
 
-/**
- * SMTP로 인증 코드를 실제 발송한다. gather.email.mode=smtp일 때만 활성화된다.
- *
- * <p>발송 실패 시 던져지는 {@link org.springframework.mail.MailException}은 RuntimeException이라 AuthService에서
- * EMAIL_SEND_FAILED로 변환된다. MimeMessagePreparator 람다 안에서 발생하는 체크 예외(MessagingException 등)도 Spring이
- * MailPreparationException으로 감싸므로 동일하게 처리된다.
- */
 @Component
 @RequiredArgsConstructor
 @ConditionalOnProperty(name = "gather.email.mode", havingValue = "smtp")
