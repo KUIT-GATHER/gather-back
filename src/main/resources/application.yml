@@ -12,6 +12,25 @@ spring:
     properties:
       hibernate:
         format_sql: true
+  mail:
+    host: smtp.gmail.com
+    port: 587
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+            required: true
+          connectiontimeout: 5000
+          timeout: 5000
+          writetimeout: 5000
+
+# 이메일 발송 방식. log = 서버 로그로만 인증코드 출력(기본), smtp = 실제 발송.
+# smtp 모드는 spring.mail.username/password 필요 (로컬: application-secret.yml, 운영: 환경변수).
+gather:
+  email:
+    mode: log
 
 volunteer-api:
   base-url: https://apis.data.go.kr/1741000/volunteerPartcptnService
