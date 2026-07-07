@@ -23,11 +23,13 @@ public class SecurityConfig {
 
     // 인증 없이 접근 가능한 경로. 그 외 모든 요청은 Access Token 인증이 필요하다.
     // 참고: /api/v1/postings/sync는 의도적으로 인증 대상(팀 결정)이라 여기에 넣지 않는다.
+    // /api/v1/postings(목록조회)는 회원가입 여부와 무관한 공개 조회라 정확 경로로만 permitAll 등록한다.
     private static final String[] PERMIT_ALL_PATHS = {
         "/health",
         "/api/v1/auth/**",
         "/api/v1/regions",
         "/api/v1/categories",
+        "/api/v1/postings",
         "/swagger-ui/**",
         "/swagger-ui.html",
         "/v3/api-docs/",
