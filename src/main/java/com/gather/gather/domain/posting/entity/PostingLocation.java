@@ -6,6 +6,7 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import lombok.AccessLevel;
@@ -18,7 +19,12 @@ import lombok.NoArgsConstructor;
  */
 @Entity
 @Getter
-@Table(name = "volunteer_posting_location")
+@Table(
+        name = "volunteer_posting_location",
+        uniqueConstraints =
+                @UniqueConstraint(
+                        name = "uk_posting_location_posting_id_seq",
+                        columnNames = {"posting_id", "location_seq"}))
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class PostingLocation {
 
