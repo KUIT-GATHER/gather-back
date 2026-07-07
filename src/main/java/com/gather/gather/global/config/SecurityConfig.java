@@ -5,6 +5,7 @@ import com.gather.gather.domain.auth.service.TokenProvider;
 import java.util.List;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
@@ -23,13 +24,14 @@ public class SecurityConfig {
 
     // 인증 없이 접근 가능한 경로. 그 외 모든 요청은 Access Token 인증이 필요하다.
     // 참고: /api/v1/postings/sync는 의도적으로 인증 대상(팀 결정)이라 여기에 넣지 않는다.
-    // /api/v1/postings(목록조회)는 회원가입 여부와 무관한 공개 조회라 정확 경로로만 permitAll 등록한다.
+    // GET 전용 공개 조회 경로. 문자열 매처는 HTTP 메서드를 구분하지 않으므로, 같은 경로에
+    // 쓰기 요청(POST 등)이 나중에 추가돼도 함께 열리지 않도록 GET으로 한정해 등록한다.
+    private static final String[] PERMIT_ALL_GET_PATHS = {"/api/v1/postings", "/api/v1/regions"};
+
     private static final String[] PERMIT_ALL_PATHS = {
         "/health",
         "/api/v1/auth/**",
-        "/api/v1/regions",
         "/api/v1/categories",
-        "/api/v1/postings",
         "/swagger-ui/**",
         "/swagger-ui.html",
         "/v3/api-docs/",
@@ -56,6 +58,8 @@ public class SecurityConfig {
                 .authorizeHttpRequests(
                         authorize ->
                                 authorize
+                                        .requestMatchers(HttpMethod.GET, PERMIT_ALL_GET_PATHS)
+                                        .permitAll()
                                         .requestMatchers(PERMIT_ALL_PATHS)
                                         .permitAll()
                                         .anyRequest()
