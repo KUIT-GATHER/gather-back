@@ -5,7 +5,9 @@ import com.gather.gather.domain.posting.client.dto.VolunteerApiItemDto;
 import com.gather.gather.domain.posting.client.dto.VolunteerApiSearchCondition;
 import com.gather.gather.domain.posting.client.dto.VolunteerApiSearchItemDto;
 import com.gather.gather.domain.posting.entity.Posting;
+import com.gather.gather.domain.posting.entity.PostingLocation;
 import com.gather.gather.domain.posting.entity.PostingStatus;
+import com.gather.gather.domain.posting.repository.PostingLocationRepository;
 import com.gather.gather.domain.posting.repository.PostingRepository;
 import com.gather.gather.domain.region.repository.RegionRepository;
 import java.math.BigDecimal;
@@ -39,6 +41,7 @@ public class PostingSyncService {
     private final VolunteerApiClient volunteerApiClient;
     private final PostingRepository postingRepository;
     private final RegionRepository regionRepository;
+    private final PostingLocationRepository postingLocationRepository;
 
     @Transactional
     public PostingSyncResult syncRecentPostings() {
@@ -185,7 +188,27 @@ public class PostingSyncService {
                         .categoryId(DEFAULT_CATEGORY_ID)
                         .build();
 
-        postingRepository.save(posting);
+        Posting saved = postingRepository.save(posting);
+        saveAdditionalLocation(saved, 2, detail.areaAddress2(), detail.areaLalo2());
+        saveAdditionalLocation(saved, 3, detail.areaAddress3(), detail.areaLalo3());
+    }
+
+    /**
+     * 2·3번째 활동장소는 areaAddress{n}이 채워진 경우에만 생성한다(devplan.md 섹션 8.2). 목록조회 응답엔 이 필드들이 없어
+     * updateFromSync() 경로는 건드리지 않는다.
+     */
+    private void saveAdditionalLocation(
+            Posting posting, int locationSeq, String address, String areaLalo) {
+        if (address == null || address.isBlank()) {
+            return;
+        }
+        postingLocationRepository.save(
+                PostingLocation.create(
+                        posting.getId(),
+                        locationSeq,
+                        address,
+                        parseCoordinate(areaLalo, 0),
+                        parseCoordinate(areaLalo, 1)));
     }
 
     private Long resolveRegionId(String sidoCd, String gugunCd) {
