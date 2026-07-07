@@ -84,6 +84,7 @@ public class Posting {
     @Column(name = "is_group")
     private Boolean isGroup;
 
+    /** 해당 공고의 봉사 실행 날짜가 지난 공고는 false로 */
     @Column(name = "is_active")
     private Boolean isActive;
 
