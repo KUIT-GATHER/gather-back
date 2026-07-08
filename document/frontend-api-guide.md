@@ -32,6 +32,12 @@ Authorization: Bearer <accessToken>
 
 헤더가 없으면 401이 반환됩니다.
 
+## 1-1️⃣ 회원가입 활동 지역
+
+- 회원가입 요청은 `activityRegionId` 단일 값을 보냅니다.
+- `activityRegionId`는 시군구(`level === 2`) 단위 지역 1개입니다.
+- 이 값은 향후 공고/모임 검색 화면의 기본 지역 필터 초기값으로 사용합니다.
+
 ## 2️⃣ 401 응답 처리 — `error.code`로 분기
 
 401 응답은 공통 에러 포맷 그대로입니다.

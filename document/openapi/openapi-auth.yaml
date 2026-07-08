@@ -242,9 +242,7 @@ paths:
               passwordConfirm: password123!
               nickname: 길동
               introduction: 함께 봉사하고 싶습니다.
-              activityRegionIds:
-                - 1
-                - 2
+              activityRegionId: 123
               interestCategoryIds:
                 - 1
                 - 4
@@ -306,14 +304,14 @@ paths:
                     error:
                       code: REQUIRED_TERMS_NOT_AGREED
                       message: 필수 약관 동의가 필요합니다.
-                invalidActivityRegionCount:
-                  summary: 활동 지역 개수 오류
+                invalidActivityRegion:
+                  summary: 활동 지역 오류
                   value:
                     success: false
                     data: null
                     error:
-                      code: INVALID_ACTIVITY_REGION_COUNT
-                      message: 활동 지역은 1개 이상 3개 이하로 선택해야 합니다.
+                      code: INVALID_ACTIVITY_REGION
+                      message: 활동 지역은 시군구 단위로 1개 선택해야 합니다.
                 invalidInterestCategoryCount:
                   summary: 관심 카테고리 개수 오류
                   value:
@@ -886,7 +884,7 @@ components:
         - password
         - passwordConfirm
         - nickname
-        - activityRegionIds
+        - activityRegionId
         - interestCategoryIds
         - serviceTermsAgreed
         - privacyPolicyAgreed
@@ -939,18 +937,11 @@ components:
           nullable: true
           description: 소개글. 최대 50자입니다.
           example: 함께 봉사하고 싶습니다.
-        activityRegionIds:
-          type: array
-          minItems: 1
-          maxItems: 3
-          uniqueItems: true
-          description: 활동 지역 ID 목록. 회원가입 화면에 노출되는 최상위 지역(level 1)만 중복 없이 1개 이상 3개 이하로 선택합니다.
-          items:
-            type: integer
-            format: int64
-          example:
-            - 1
-            - 2
+        activityRegionId:
+          type: integer
+          format: int64
+          description: 활동 지역 ID. 회원가입 시 선택하는 시군구(level 2) 단위 활동 지역 1개입니다. 향후 공고/모임 검색의 기본 지역 필터 초기값으로 사용합니다.
+          example: 123
         interestCategoryIds:
           type: array
           minItems: 1
@@ -1102,7 +1093,7 @@ components:
         id:
           type: integer
           format: int64
-          description: 지역 ID. 회원가입의 activityRegionIds에 사용합니다.
+          description: 지역 ID. 회원가입의 activityRegionId에 사용합니다.
           example: 1
         name:
           type: string

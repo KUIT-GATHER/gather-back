@@ -18,7 +18,7 @@ public enum ErrorCode {
     PASSWORD_MISMATCH(HttpStatus.BAD_REQUEST, "비밀번호가 일치하지 않습니다."),
     EMAIL_NOT_VERIFIED(HttpStatus.BAD_REQUEST, "이메일 인증이 완료되지 않았습니다."),
     REQUIRED_TERMS_NOT_AGREED(HttpStatus.BAD_REQUEST, "필수 약관 동의가 필요합니다."),
-    INVALID_ACTIVITY_REGION_COUNT(HttpStatus.BAD_REQUEST, "활동 지역은 중복 없이 1개 이상 3개 이하로 선택해야 합니다."),
+    INVALID_ACTIVITY_REGION(HttpStatus.BAD_REQUEST, "활동 지역은 시군구 단위로 1개 선택해야 합니다."),
     INVALID_INTEREST_CATEGORY_COUNT(HttpStatus.BAD_REQUEST, "관심 카테고리는 중복 없이 1개 이상 선택해야 합니다."),
     REGION_NOT_FOUND(HttpStatus.NOT_FOUND, "활동 지역을 찾을 수 없습니다."),
     CATEGORY_NOT_FOUND(HttpStatus.NOT_FOUND, "관심 카테고리를 찾을 수 없습니다."),
