@@ -169,6 +169,21 @@ class PostingSyncServiceTest {
     }
 
     @Test
+    @DisplayName("updateExisting refreshes categoryId from srvcClCode instead of leaving it stale")
+    void syncRecentPostings_refreshesCategoryId_onUpdate() {
+        Posting existing = existingPosting("500");
+        when(volunteerApiClient.searchList(any(), eq(1), eq(100)))
+                .thenReturn(List.of(searchItem("500", "2")));
+        when(postingRepository.findByExtId("500")).thenReturn(Optional.of(existing));
+        Category matchedCategory = categoryWithId(7L);
+        when(categoryRepository.findByName("생활편의")).thenReturn(Optional.of(matchedCategory));
+
+        postingSyncService.syncRecentPostings();
+
+        assertThat(existing.getCategoryId()).isEqualTo(7L);
+    }
+
+    @Test
     @DisplayName(
             "pagination continues while a page is full and stops once a short page is returned")
     void syncRecentPostings_paginatesUntilShortPage() {

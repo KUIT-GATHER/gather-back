@@ -209,7 +209,8 @@ public class Posting {
             String actPlace,
             Boolean isAdult,
             Boolean isTeen,
-            Long regionId) {
+            Long regionId,
+            Long categoryId) {
         this.title = title;
         this.status = status;
         this.recruitOrg = recruitOrg;
@@ -221,6 +222,7 @@ public class Posting {
         this.isAdult = isAdult;
         this.isTeen = isTeen;
         this.regionId = regionId;
+        this.categoryId = categoryId;
         this.isActive = true;
         this.updatedAt = LocalDateTime.now();
     }

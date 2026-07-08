@@ -152,7 +152,8 @@ public class PostingSyncService {
                 item.actPlace(),
                 parseYn(item.adultPosblAt()),
                 parseYn(item.yngbgsPosblAt()),
-                resolveRegionId(item.sidoCd(), item.gugunCd()));
+                resolveRegionId(item.sidoCd(), item.gugunCd()),
+                resolveCategoryId(item.srvcClCode()));
     }
 
     private void insertNew(String progrmRegistNo) {
