@@ -25,6 +25,7 @@ import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpHeaders;
@@ -539,11 +540,10 @@ public class AuthController {
                                                 value = AuthSwaggerExamples.INVALID_TOKEN_EXAMPLE)))
     })
     @PostMapping("/logout")
-    public ResponseEntity<ApiResponse<Void>> logout(HttpServletRequest request) {
+    public ApiResponse<Void> logout(HttpServletRequest request, HttpServletResponse response) {
+        response.addHeader(HttpHeaders.SET_COOKIE, refreshTokenCookieProvider.clear().toString());
         authService.logout(extractRefreshToken(request));
-        return ResponseEntity.ok()
-                .header(HttpHeaders.SET_COOKIE, refreshTokenCookieProvider.clear().toString())
-                .body(ApiResponse.success(null));
+        return ApiResponse.success(null);
     }
 
     private ResponseEntity<ApiResponse<TokenResponse>> tokenResponse(TokenIssueResult tokenResult) {

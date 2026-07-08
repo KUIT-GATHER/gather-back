@@ -16,6 +16,8 @@ import com.gather.gather.domain.auth.dto.LoginRequest;
 import com.gather.gather.domain.auth.service.AuthService;
 import com.gather.gather.domain.auth.service.RefreshTokenCookieProvider;
 import com.gather.gather.domain.auth.service.TokenIssueResult;
+import com.gather.gather.global.exception.BusinessException;
+import com.gather.gather.global.exception.ErrorCode;
 import jakarta.servlet.http.Cookie;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -127,6 +129,26 @@ class AuthControllerTest {
         verify(authService).logout("refresh-token");
     }
 
+    @Test
+    @DisplayName("로그아웃에서 Refresh Token이 유효하지 않아도 삭제 쿠키를 내려준다")
+    void logout_withInvalidRefreshToken_stillClearsCookie() throws Exception {
+        when(refreshTokenCookieProvider.cookieName()).thenReturn(REFRESH_COOKIE_NAME);
+        when(refreshTokenCookieProvider.clear()).thenReturn(clearCookie());
+        org.mockito.Mockito.doThrow(new BusinessException(ErrorCode.INVALID_TOKEN))
+                .when(authService)
+                .logout("invalid-refresh-token");
+
+        mockMvc.perform(
+                        post("/api/v1/auth/logout")
+                                .cookie(new Cookie(REFRESH_COOKIE_NAME, "invalid-refresh-token")))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.error.code").value("INVALID_TOKEN"))
+                .andExpect(header().string(HttpHeaders.SET_COOKIE, clearCookieMatcher()));
+
+        verify(authService).logout("invalid-refresh-token");
+    }
+
     private static ResponseCookie refreshCookie(String value) {
         return ResponseCookie.from(REFRESH_COOKIE_NAME, value)
                 .path("/api/v1/auth")
@@ -153,5 +175,14 @@ class AuthControllerTest {
                 containsString("HttpOnly"),
                 containsString("SameSite=Lax"),
                 not(containsString("Secure")));
+    }
+
+    private static org.hamcrest.Matcher<String> clearCookieMatcher() {
+        return allOf(
+                containsString(REFRESH_COOKIE_NAME + "="),
+                containsString("Path=/api/v1/auth"),
+                containsString("Max-Age=0"),
+                containsString("HttpOnly"),
+                containsString("SameSite=Lax"));
     }
 }
