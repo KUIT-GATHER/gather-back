@@ -3,12 +3,17 @@ package com.gather.gather.domain.posting.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.gather.gather.domain.category.entity.Category;
+import com.gather.gather.domain.category.repository.CategoryRepository;
 import com.gather.gather.domain.posting.client.VolunteerApiClient;
 import com.gather.gather.domain.posting.client.VolunteerApiException;
 import com.gather.gather.domain.posting.client.dto.VolunteerApiItemDto;
@@ -41,6 +46,7 @@ class PostingSyncServiceTest {
     @Mock private PostingRepository postingRepository;
     @Mock private RegionRepository regionRepository;
     @Mock private PostingLocationRepository postingLocationRepository;
+    @Mock private CategoryRepository categoryRepository;
 
     private PostingSyncService postingSyncService;
 
@@ -51,7 +57,15 @@ class PostingSyncServiceTest {
                         volunteerApiClient,
                         postingRepository,
                         regionRepository,
-                        postingLocationRepository);
+                        postingLocationRepository,
+                        categoryRepository);
+        // 대부분의 테스트는 categoryId 매칭 자체가 관심사가 아니므로 기본값으로 항상 매칭되게 lenient 처리.
+        // categoryWithId(...)가 내부적으로 when(...)을 호출하므로, 바깥 when(...).thenReturn(...) 체인이 완료되기 전에
+        // 인자로 인라인하면 Mockito가 미완성 스터빙으로 오인해 UnfinishedStubbingException을 던진다 — 반드시 별도 문장으로 분리.
+        Category defaultCategory = categoryWithId(1L);
+        lenient()
+                .when(categoryRepository.findByName(anyString()))
+                .thenReturn(Optional.of(defaultCategory));
     }
 
     @Test
@@ -152,6 +166,21 @@ class PostingSyncServiceTest {
         assertThat(existing.getStatus()).isEqualTo(PostingStatus.CLOSED);
         assertThat(existing.getIsActive()).isTrue();
         assertThat(result).isEqualTo(new PostingSyncResult(1, 0, 1, 0, 0));
+    }
+
+    @Test
+    @DisplayName("updateExisting refreshes categoryId from srvcClCode instead of leaving it stale")
+    void syncRecentPostings_refreshesCategoryId_onUpdate() {
+        Posting existing = existingPosting("500");
+        when(volunteerApiClient.searchList(any(), eq(1), eq(100)))
+                .thenReturn(List.of(searchItem("500", "2")));
+        when(postingRepository.findByExtId("500")).thenReturn(Optional.of(existing));
+        Category matchedCategory = categoryWithId(7L);
+        when(categoryRepository.findByName("생활편의")).thenReturn(Optional.of(matchedCategory));
+
+        postingSyncService.syncRecentPostings();
+
+        assertThat(existing.getCategoryId()).isEqualTo(7L);
     }
 
     @Test
@@ -323,6 +352,65 @@ class PostingSyncServiceTest {
         ArgumentCaptor<Posting> captor = ArgumentCaptor.forClass(Posting.class);
         verify(postingRepository).save(captor.capture());
         assertThat(captor.getValue().getRegionId()).isNull();
+    }
+
+    @Test
+    @DisplayName("resolveCategoryId matches Category by srvcClCode text (분야명)")
+    void syncRecentPostings_matchesCategoryBySrvcClCodeText() {
+        when(volunteerApiClient.searchList(any(), eq(1), eq(100)))
+                .thenReturn(List.of(searchItem("C1", "2")));
+        when(postingRepository.findByExtId("C1")).thenReturn(Optional.empty());
+        when(volunteerApiClient.getItem("C1")).thenReturn(detailItem("C1", "2", "20260601"));
+        Category matchedCategory = categoryWithId(3L);
+        when(categoryRepository.findByName("생활편의")).thenReturn(Optional.of(matchedCategory));
+
+        postingSyncService.syncRecentPostings();
+
+        ArgumentCaptor<Posting> captor = ArgumentCaptor.forClass(Posting.class);
+        verify(postingRepository).save(captor.capture());
+        assertThat(captor.getValue().getCategoryId()).isEqualTo(3L);
+    }
+
+    @Test
+    @DisplayName("resolveCategoryId falls back to '기타' when srvcClCode has no matching Category")
+    void syncRecentPostings_fallsBackToGitaCategory_whenSrvcClCodeNotMatched() {
+        when(volunteerApiClient.searchList(any(), eq(1), eq(100)))
+                .thenReturn(List.of(searchItem("C2", "2")));
+        when(postingRepository.findByExtId("C2")).thenReturn(Optional.empty());
+        when(volunteerApiClient.getItem("C2")).thenReturn(detailItem("C2", "2", "20260601"));
+        when(categoryRepository.findByName("생활편의")).thenReturn(Optional.empty());
+        Category fallbackCategory = categoryWithId(14L);
+        when(categoryRepository.findByName("기타")).thenReturn(Optional.of(fallbackCategory));
+
+        postingSyncService.syncRecentPostings();
+
+        ArgumentCaptor<Posting> captor = ArgumentCaptor.forClass(Posting.class);
+        verify(postingRepository).save(captor.capture());
+        assertThat(captor.getValue().getCategoryId()).isEqualTo(14L);
+    }
+
+    @Test
+    @DisplayName(
+            "insertNew fails the item (not the whole batch) when the '기타' fallback Category is not"
+                    + " seeded")
+    void syncRecentPostings_marksItemFailed_whenFallbackCategoryNotSeeded() {
+        when(volunteerApiClient.searchList(any(), eq(1), eq(100)))
+                .thenReturn(List.of(searchItem("C3", "2")));
+        when(postingRepository.findByExtId("C3")).thenReturn(Optional.empty());
+        when(volunteerApiClient.getItem("C3")).thenReturn(detailItem("C3", "2", "20260601"));
+        when(categoryRepository.findByName("생활편의")).thenReturn(Optional.empty());
+        when(categoryRepository.findByName("기타")).thenReturn(Optional.empty());
+
+        PostingSyncResult result = postingSyncService.syncRecentPostings();
+
+        verify(postingRepository, never()).save(any());
+        assertThat(result).isEqualTo(new PostingSyncResult(1, 0, 0, 1, 0));
+    }
+
+    private Category categoryWithId(Long id) {
+        Category category = mock(Category.class);
+        lenient().when(category.getId()).thenReturn(id);
+        return category;
     }
 
     private Posting existingPosting(String extId) {

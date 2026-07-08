@@ -43,8 +43,8 @@ public class CategoryController {
                                                           "data": [
                                                             {
                                                               "id": 1,
-                                                              "code": "ENVIRONMENT",
-                                                              "name": "환경"
+                                                              "code": "0100",
+                                                              "name": "생활편의"
                                                             }
                                                           ],
                                                           "error": null
