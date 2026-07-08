@@ -41,6 +41,8 @@ public enum ErrorCode {
     INVALID_MEETING_TIME(HttpStatus.BAD_REQUEST, "모임 시간이 올바르지 않습니다."),
 
     POSTING_NOT_FOUND(HttpStatus.NOT_FOUND, "봉사공고를 찾을 수 없습니다."),
+    BOOKMARK_DUPLICATE(HttpStatus.CONFLICT, "이미 북마크한 공고입니다."),
+    BOOKMARK_NOT_FOUND(HttpStatus.NOT_FOUND, "북마크를 찾을 수 없습니다."),
     ;
 
     private final HttpStatus status;
