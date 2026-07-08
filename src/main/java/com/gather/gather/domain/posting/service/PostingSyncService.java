@@ -1,5 +1,6 @@
 package com.gather.gather.domain.posting.service;
 
+import com.gather.gather.domain.category.repository.CategoryRepository;
 import com.gather.gather.domain.posting.client.VolunteerApiClient;
 import com.gather.gather.domain.posting.client.dto.VolunteerApiItemDto;
 import com.gather.gather.domain.posting.client.dto.VolunteerApiSearchCondition;
@@ -40,8 +41,9 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 public class PostingSyncService {
 
-    // TODO(연석): category 도메인 완성되면 실제 매칭 로직으로 교체. docs/devplan.md 참고.
-    private static final Long DEFAULT_CATEGORY_ID = 1L;
+    /** srvcClCode(봉사분야명 텍스트)가 Category.name 어디에도 매칭되지 않을 때 사용하는 폴백 분야. V5 시드데이터에 존재. */
+    private static final String FALLBACK_CATEGORY_NAME = "기타";
+
     private static final int SEARCH_PAGE_SIZE = 100;
     private static final int MAX_DETAIL_LOOKUPS_PER_RUN = 800;
     private static final DateTimeFormatter API_DATE_FORMAT = DateTimeFormatter.BASIC_ISO_DATE;
@@ -50,6 +52,7 @@ public class PostingSyncService {
     private final PostingRepository postingRepository;
     private final RegionRepository regionRepository;
     private final PostingLocationRepository postingLocationRepository;
+    private final CategoryRepository categoryRepository;
 
     @Transactional
     public PostingSyncResult syncRecentPostings() {
@@ -195,7 +198,7 @@ public class PostingSyncService {
                         .latitude(parseCoordinate(detail.areaLalo1(), 0))
                         .longitude(parseCoordinate(detail.areaLalo1(), 1))
                         .regionId(resolveRegionId(detail.sidoCd(), detail.gugunCd()))
-                        .categoryId(DEFAULT_CATEGORY_ID)
+                        .categoryId(resolveCategoryId(detail.srvcClCode()))
                         .build();
 
         Posting saved = postingRepository.save(posting);
@@ -232,6 +235,33 @@ public class PostingSyncService {
             return regionRepository.findByCode(sidoCd).map(region -> region.getId()).orElse(null);
         }
         return null;
+    }
+
+    /**
+     * srvcClCode는 코드가 아니라 분야명 텍스트로 응답된다(예: "생활편의", devplan.md §6 참고). {@code Category.name}과 텍스트
+     * 매칭하고, 매칭 실패 시 {@link #FALLBACK_CATEGORY_NAME}으로 폴백한다({@code categoryId}가 NOT NULL이라 폴백 없이는 저장
+     * 자체가 불가능).
+     */
+    private Long resolveCategoryId(String srvcClCode) {
+        if (srvcClCode != null && !srvcClCode.isBlank()) {
+            var matched = categoryRepository.findByName(srvcClCode.trim());
+            if (matched.isPresent()) {
+                return matched.get().getId();
+            }
+            log.warn(
+                    "srvcClCode에 매칭되는 Category가 없어 '{}'로 폴백합니다. value={}",
+                    FALLBACK_CATEGORY_NAME,
+                    srvcClCode);
+        }
+        return categoryRepository
+                .findByName(FALLBACK_CATEGORY_NAME)
+                .map(category -> category.getId())
+                .orElseThrow(
+                        () ->
+                                new IllegalStateException(
+                                        "폴백 카테고리('"
+                                                + FALLBACK_CATEGORY_NAME
+                                                + "')가 시드되어 있지 않습니다."));
     }
 
     /**
