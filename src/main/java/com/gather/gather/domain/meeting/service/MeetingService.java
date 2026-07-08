@@ -82,7 +82,7 @@ public class MeetingService {
     public MeetingResponse joinMeeting(Long meetingId) {
         Long userId = SecurityUtil.getCurrentUserId();
         User user = getUser(userId);
-        Meeting meeting = getMeetingEntity(meetingId);
+        Meeting meeting = getMeetingEntityForUpdate(meetingId);
 
         validateJoinableMeeting(meeting, userId);
 
@@ -98,10 +98,9 @@ public class MeetingService {
         Long userId = SecurityUtil.getCurrentUserId();
 
         return meetingMemberRepository
-                .findAllByUser_IdAndStatus(userId, MeetingMemberStatus.APPROVED)
+                .findAllByUserIdAndStatusFetchMeeting(userId, MeetingMemberStatus.APPROVED)
                 .stream()
                 .map(MeetingMember::getMeeting)
-                .filter(meeting -> meeting.getDeletedAt() == null)
                 .map(meeting -> MeetingResponse.from(meeting, resolveDisplayStatus(meeting)))
                 .toList();
     }
@@ -115,6 +114,12 @@ public class MeetingService {
     private Meeting getMeetingEntity(Long meetingId) {
         return meetingRepository
                 .findByIdAndDeletedAtIsNull(meetingId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.MEETING_NOT_FOUND));
+    }
+
+    private Meeting getMeetingEntityForUpdate(Long meetingId) {
+        return meetingRepository
+                .findByIdAndDeletedAtIsNullForUpdate(meetingId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.MEETING_NOT_FOUND));
     }
 
