@@ -19,23 +19,26 @@ class SecurityConfigTest {
 
     private static final String FRONT_ORIGIN = "https://gathernow.kr";
     private static final String LOCAL_ORIGIN = "http://localhost:5173";
+    private static final String DEV_ORIGIN = "https://dev.gathernow.kr";
     private static final String DISALLOWED_ORIGIN = "https://evil.example";
 
     private final SecurityConfig securityConfig =
             new SecurityConfig(
                     mock(TokenProvider.class),
                     new ObjectMapper(),
-                    new CorsProperties(List.of(FRONT_ORIGIN, LOCAL_ORIGIN)));
+                    new CorsProperties(List.of(FRONT_ORIGIN, LOCAL_ORIGIN, DEV_ORIGIN)));
 
     @Test
     @DisplayName("CORS는 설정된 exact origin만 허용하고 credentials를 허용한다")
     void corsConfiguration_allowsExactOriginsAndCredentials() {
         CorsConfiguration configuration = corsConfiguration();
 
-        assertThat(configuration.getAllowedOrigins()).containsExactly(FRONT_ORIGIN, LOCAL_ORIGIN);
+        assertThat(configuration.getAllowedOrigins())
+                .containsExactly(FRONT_ORIGIN, LOCAL_ORIGIN, DEV_ORIGIN);
         assertThat(configuration.getAllowCredentials()).isTrue();
         assertThat(configuration.checkOrigin(FRONT_ORIGIN)).isEqualTo(FRONT_ORIGIN);
         assertThat(configuration.checkOrigin(LOCAL_ORIGIN)).isEqualTo(LOCAL_ORIGIN);
+        assertThat(configuration.checkOrigin(DEV_ORIGIN)).isEqualTo(DEV_ORIGIN);
         assertThat(configuration.checkOrigin(DISALLOWED_ORIGIN)).isNull();
     }
 
