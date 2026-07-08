@@ -42,10 +42,13 @@ public class SecurityConfig {
 
     private final TokenProvider tokenProvider;
     private final ObjectMapper objectMapper;
+    private final CorsProperties corsProperties;
 
-    public SecurityConfig(TokenProvider tokenProvider, ObjectMapper objectMapper) {
+    public SecurityConfig(
+            TokenProvider tokenProvider, ObjectMapper objectMapper, CorsProperties corsProperties) {
         this.tokenProvider = tokenProvider;
         this.objectMapper = objectMapper;
+        this.corsProperties = corsProperties;
     }
 
     @Bean
@@ -85,11 +88,10 @@ public class SecurityConfig {
     public CorsConfigurationSource corsConfigurationSource() {
 
         CorsConfiguration configuration = new CorsConfiguration();
-        // 프론트 배포 주소가 확정되기 전까지 로컬 연동 테스트를 우선하기 위해 임시 허용
-        configuration.setAllowedOriginPatterns(List.of("*"));
+        configuration.setAllowedOrigins(corsProperties.allowedOrigins());
         configuration.setAllowedMethods(List.of("*"));
         configuration.setAllowedHeaders(List.of("*"));
-        configuration.setAllowCredentials(false);
+        configuration.setAllowCredentials(true);
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", configuration);
