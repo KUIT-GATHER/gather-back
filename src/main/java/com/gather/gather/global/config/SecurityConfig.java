@@ -28,7 +28,10 @@ public class SecurityConfig {
     // 쓰기 요청(POST 등)이 나중에 추가돼도 함께 열리지 않도록 GET으로 한정해 등록한다.
     // "/api/v1/postings"는 "/**"로 하위 경로(상세조회 /{id})까지 포함해야 매치된다 —
     // 와일드카드 없는 리터럴 패턴은 그 경로만 매치하고 하위 경로는 매치하지 않는다.
-    private static final String[] PERMIT_ALL_GET_PATHS = {"/api/v1/postings/**", "/api/v1/regions"};
+    private static final String[] PERMIT_ALL_GET_PATHS = {
+            "/api/v1/postings/**",
+            "/api/v1/regions"
+    };
 
     private static final String[] PERMIT_ALL_PATHS = {
         "/health",
@@ -42,10 +45,13 @@ public class SecurityConfig {
 
     private final TokenProvider tokenProvider;
     private final ObjectMapper objectMapper;
+    private final CorsProperties corsProperties;
 
-    public SecurityConfig(TokenProvider tokenProvider, ObjectMapper objectMapper) {
+    public SecurityConfig(
+            TokenProvider tokenProvider, ObjectMapper objectMapper, CorsProperties corsProperties) {
         this.tokenProvider = tokenProvider;
         this.objectMapper = objectMapper;
+        this.corsProperties = corsProperties;
     }
 
     @Bean
@@ -85,11 +91,10 @@ public class SecurityConfig {
     public CorsConfigurationSource corsConfigurationSource() {
 
         CorsConfiguration configuration = new CorsConfiguration();
-        // 프론트 배포 주소가 확정되기 전까지 로컬 연동 테스트를 우선하기 위해 임시 허용
-        configuration.setAllowedOriginPatterns(List.of("*"));
+        configuration.setAllowedOrigins(corsProperties.allowedOrigins());
         configuration.setAllowedMethods(List.of("*"));
         configuration.setAllowedHeaders(List.of("*"));
-        configuration.setAllowCredentials(false);
+        configuration.setAllowCredentials(true);
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", configuration);

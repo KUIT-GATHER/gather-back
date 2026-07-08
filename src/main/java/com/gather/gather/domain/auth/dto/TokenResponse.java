@@ -10,13 +10,9 @@ public record TokenResponse(
                         example =
                                 "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIiwicm9sZSI6IlVTRVIifQ.signature")
                 String accessToken,
-        @Schema(
-                        description = "Access Token 재발급에 사용할 Refresh Token",
-                        example = "refresh-token-value")
-                String refreshToken,
         @Schema(description = "토큰 타입", example = "Bearer") String tokenType) {
 
-    public static TokenResponse bearer(String accessToken, String refreshToken) {
-        return new TokenResponse(accessToken, refreshToken, "Bearer");
+    public static TokenResponse bearer(String accessToken) {
+        return new TokenResponse(accessToken, "Bearer");
     }
 }

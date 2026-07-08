@@ -5,13 +5,10 @@ import com.gather.gather.domain.auth.dto.EmailVerificationConfirmResponse;
 import com.gather.gather.domain.auth.dto.EmailVerificationSendRequest;
 import com.gather.gather.domain.auth.dto.EmailVerificationSendResponse;
 import com.gather.gather.domain.auth.dto.LoginRequest;
-import com.gather.gather.domain.auth.dto.LogoutRequest;
 import com.gather.gather.domain.auth.dto.PhoneNumberAvailabilityRequest;
 import com.gather.gather.domain.auth.dto.PhoneNumberAvailabilityResponse;
 import com.gather.gather.domain.auth.dto.SignupRequest;
 import com.gather.gather.domain.auth.dto.SignupResponse;
-import com.gather.gather.domain.auth.dto.TokenReissueRequest;
-import com.gather.gather.domain.auth.dto.TokenResponse;
 import com.gather.gather.domain.auth.entity.EmailVerification;
 import com.gather.gather.domain.auth.entity.RefreshToken;
 import com.gather.gather.domain.auth.entity.User;
@@ -168,7 +165,7 @@ public class AuthService {
     }
 
     @Transactional
-    public TokenResponse login(LoginRequest request) {
+    public TokenIssueResult login(LoginRequest request) {
         String email = normalizeEmail(request.email());
         User user =
                 userRepository
@@ -184,8 +181,8 @@ public class AuthService {
     }
 
     @Transactional
-    public TokenResponse reissue(TokenReissueRequest request) {
-        RefreshToken refreshToken = findRefreshToken(request.refreshToken());
+    public TokenIssueResult reissue(String rawRefreshToken) {
+        RefreshToken refreshToken = findRefreshToken(rawRefreshToken);
         LocalDateTime now = LocalDateTime.now();
 
         if (refreshToken.isRevoked()) {
@@ -201,25 +198,28 @@ public class AuthService {
     }
 
     @Transactional
-    public void logout(LogoutRequest request) {
-        RefreshToken refreshToken = findRefreshToken(request.refreshToken());
+    public void logout(String rawRefreshToken) {
+        RefreshToken refreshToken = findRefreshToken(rawRefreshToken);
         if (refreshToken.isRevoked() || refreshToken.isExpired(LocalDateTime.now())) {
             return;
         }
         refreshToken.revoke(LocalDateTime.now());
     }
 
-    private TokenResponse issueTokens(User user) {
+    private TokenIssueResult issueTokens(User user) {
         String accessToken = tokenProvider.createAccessToken(user);
         String refreshToken = tokenProvider.generateToken();
         String refreshTokenHash = tokenProvider.hashToken(refreshToken);
 
         refreshTokenRepository.save(
                 RefreshToken.create(refreshTokenHash, user, tokenProvider.refreshTokenExpiresAt()));
-        return TokenResponse.bearer(accessToken, refreshToken);
+        return new TokenIssueResult(accessToken, refreshToken);
     }
 
     private RefreshToken findRefreshToken(String rawRefreshToken) {
+        if (rawRefreshToken == null || rawRefreshToken.isBlank()) {
+            throw new BusinessException(ErrorCode.INVALID_TOKEN);
+        }
         String tokenHash = tokenProvider.hashToken(rawRefreshToken);
         return refreshTokenRepository
                 .findByTokenHash(tokenHash)

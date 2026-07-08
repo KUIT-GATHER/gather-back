@@ -17,6 +17,21 @@ spring:
 volunteer-api:
   base-url: https://apis.data.go.kr/1741000/volunteerPartcptnService
 
+gather:
+  auth:
+    refresh-cookie:
+      name: gather_refresh_token
+      secure: false
+      same-site: Lax
+      path: /api/v1/auth
+      max-age-seconds: 1209600
+  cors:
+    allowed-origins:
+      - https://gathernow.kr
+      - http://localhost:5173
+  email:
+    mode: log
+
 # 테스트 전용 더미 시크릿(운영 값 아님). Base64 디코딩 시 64바이트.
 jwt:
   secret: XZWyFEbfHyT37TkUd6Z63CN9wJbT8vlWdmQSzoIZqqGOnAj4ezamA4BO/tChr4bmeE0bbSExFfD8lN/BLitbuQ==

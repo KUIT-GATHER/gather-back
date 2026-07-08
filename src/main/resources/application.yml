@@ -29,6 +29,17 @@ spring:
 # 이메일 발송 방식. log = 서버 로그로만 인증코드 출력(기본), smtp = 실제 발송.
 # smtp 모드는 spring.mail.username/password 필요 (로컬: application-secret.yml, 운영: 환경변수).
 gather:
+  auth:
+    refresh-cookie:
+      name: gather_refresh_token
+      secure: ${GATHER_REFRESH_COOKIE_SECURE:false}
+      same-site: ${GATHER_REFRESH_COOKIE_SAME_SITE:Lax}
+      path: /api/v1/auth
+      max-age-seconds: 1209600
+  cors:
+    allowed-origins:
+      - https://gathernow.kr
+      - http://localhost:5173
   email:
     mode: log
 

@@ -103,11 +103,13 @@
 
 - 이메일 없음 / 비밀번호 틀림을 구분하지 않고 **동일하게 `401 INVALID_LOGIN`** (보안상 의도).
 - `403 SUSPENDED_USER`(정지) / `403 WITHDRAWN_USER`(탈퇴)는 별도 안내 필요.
-- 성공 시 `{ accessToken, refreshToken, tokenType: "Bearer" }`.
+- 성공 시 응답 body는 `{ accessToken, tokenType: "Bearer" }`.
+- Refresh Token은 `Set-Cookie: gather_refresh_token=...; HttpOnly; Path=/api/v1/auth; SameSite=Lax`로만 전달됩니다.
 
 ### 3-6. 토큰 재발급 — `POST /api/v1/auth/reissue`
 
-- **재발급 성공 시 기존 Refresh Token은 즉시 폐기**(rotation)됩니다. 응답 받으면 **access/refresh 둘 다 교체 저장**하세요. 기존 refresh를 다시 쓰면 `401 REVOKED_TOKEN`.
+- 요청 body는 없습니다. 브라우저가 `gather_refresh_token` 쿠키를 자동 전송해야 하므로 프론트 API client에 credentials 옵션을 켜야 합니다.
+- **재발급 성공 시 기존 Refresh Token은 즉시 폐기**(rotation)됩니다. 응답 body의 Access Token을 교체하고, 새 Refresh Token은 `Set-Cookie`로 갱신됩니다. 기존 refresh를 다시 쓰면 `401 REVOKED_TOKEN`.
 - 401 세부
   - `INVALID_TOKEN`(서버에 없음)
   - `EXPIRED_TOKEN`(만료)
@@ -116,9 +118,10 @@
 
 ### 3-7. 로그아웃 — `POST /api/v1/auth/logout`
 
-- **Access Token 불필요**, Refresh Token만 body로 전송 (Access 만료 상태에서도 로그아웃 가능하게 하기 위함).
+- **Access Token 불필요**, 요청 body 없음. Refresh Token은 `gather_refresh_token` 쿠키로 전송됩니다.
 - 이미 만료/폐기된 토큰이어도 서버에 기록이 있으면 **200 성공(멱등)** — 여러 번 눌러도 안전.
-- 서버가 모르는 토큰이면 `401 INVALID_TOKEN`. 이 경우에도 프론트는 로컬 토큰 삭제하고 로그아웃 완료 처리하면 됩니다.
+- 성공 시 서버가 `Max-Age=0` 삭제 쿠키를 내려 브라우저의 Refresh Token 쿠키를 제거합니다.
+- 서버가 모르는 토큰이면 `401 INVALID_TOKEN`. 이 경우에도 프론트는 로컬 Access Token을 삭제하고 로그아웃 완료 처리하면 됩니다.
 
 ### 3-8. 지역 조회 — `GET /api/v1/regions`
 
