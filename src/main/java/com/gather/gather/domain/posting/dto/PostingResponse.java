@@ -1,0 +1,80 @@
+package com.gather.gather.domain.posting.dto;
+
+import com.gather.gather.domain.posting.entity.Posting;
+import com.gather.gather.domain.posting.entity.PostingStatus;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.List;
+
+public record PostingResponse(
+        Long id,
+        String title,
+        PostingStatus status,
+        String content,
+        String recruitOrg,
+        String registerOrg,
+        LocalDate actStartDate,
+        LocalDate actEndDate,
+        String actStartTime,
+        String actEndTime,
+        LocalDate noticeStartDate,
+        LocalDate noticeEndDate,
+        String actWkdy,
+        Integer recruitCount,
+        Integer applicantCount,
+        Boolean isAdult,
+        Boolean isTeen,
+        Boolean isGroup,
+        String actPlace,
+        String managerName,
+        String managerTel,
+        String managerFax,
+        String managerEmail,
+        String managerAddress,
+        Long regionId,
+        String regionName,
+        Long categoryId,
+        String categoryName,
+        List<PostingLocationResponse> locations,
+        LocalDateTime createdAt,
+        LocalDateTime updatedAt) {
+
+    public static PostingResponse from(
+            Posting posting,
+            String regionName,
+            String categoryName,
+            List<PostingLocationResponse> locations) {
+        return new PostingResponse(
+                posting.getId(),
+                posting.getTitle(),
+                posting.getStatus(),
+                posting.getContent(),
+                posting.getRecruitOrg(),
+                posting.getRegisterOrg(),
+                posting.getActStartDate(),
+                posting.getActEndDate(),
+                posting.getActStartTime(),
+                posting.getActEndTime(),
+                posting.getNoticeStartDate(),
+                posting.getNoticeEndDate(),
+                posting.getActWkdy(),
+                posting.getRecruitCount(),
+                posting.getApplicantCount(),
+                posting.getIsAdult(),
+                posting.getIsTeen(),
+                posting.getIsGroup(),
+                posting.getActPlace(),
+                posting.getManagerName(),
+                posting.getManagerTel(),
+                posting.getManagerFax(),
+                posting.getManagerEmail(),
+                posting.getManagerAddress(),
+                posting.getRegionId(),
+                regionName,
+                posting.getCategoryId(),
+                categoryName,
+                locations,
+                posting.getCreatedAt(),
+                posting.getUpdatedAt());
+    }
+}

@@ -16,6 +16,7 @@ import com.gather.gather.domain.posting.client.dto.VolunteerApiSearchCondition;
 import com.gather.gather.domain.posting.client.dto.VolunteerApiSearchItemDto;
 import com.gather.gather.domain.posting.entity.Posting;
 import com.gather.gather.domain.posting.entity.PostingStatus;
+import com.gather.gather.domain.posting.repository.PostingLocationRepository;
 import com.gather.gather.domain.posting.repository.PostingRepository;
 import com.gather.gather.domain.region.entity.Region;
 import com.gather.gather.domain.region.repository.RegionRepository;
@@ -39,13 +40,18 @@ class PostingSyncServiceTest {
     @Mock private VolunteerApiClient volunteerApiClient;
     @Mock private PostingRepository postingRepository;
     @Mock private RegionRepository regionRepository;
+    @Mock private PostingLocationRepository postingLocationRepository;
 
     private PostingSyncService postingSyncService;
 
     @BeforeEach
     void setUp() {
         postingSyncService =
-                new PostingSyncService(volunteerApiClient, postingRepository, regionRepository);
+                new PostingSyncService(
+                        volunteerApiClient,
+                        postingRepository,
+                        regionRepository,
+                        postingLocationRepository);
     }
 
     @Test
@@ -71,6 +77,63 @@ class PostingSyncServiceTest {
         assertThat(saved.getRegionId()).isEqualTo(5L);
         assertThat(saved.getIsActive()).isTrue();
         assertThat(result).isEqualTo(new PostingSyncResult(1, 1, 0, 0, 0));
+    }
+
+    @Test
+    @DisplayName("insertNew saves additional PostingLocation rows when areaAddress2/3 are present")
+    void syncRecentPostings_savesAdditionalLocations_whenAreaAddress2And3Present() {
+        when(volunteerApiClient.searchList(any(), eq(1), eq(100)))
+                .thenReturn(List.of(searchItem("300", "2")));
+        when(postingRepository.findByExtId("300")).thenReturn(Optional.empty());
+        when(volunteerApiClient.getItem("300"))
+                .thenReturn(
+                        detailItemWithLocations(
+                                "300",
+                                "2",
+                                "20260601",
+                                "부산시 어딘가 2",
+                                "35.10,129.05",
+                                "부산시 어딘가 3",
+                                "35.20,129.15"));
+        when(regionRepository.findByCode("3020000"))
+                .thenReturn(Optional.of(regionWithId(5L, "3020000")));
+        when(postingRepository.save(any(Posting.class)))
+                .thenAnswer(
+                        invocation -> {
+                            Posting posting = invocation.getArgument(0);
+                            org.springframework.test.util.ReflectionTestUtils.setField(
+                                    posting, "id", 42L);
+                            return posting;
+                        });
+
+        postingSyncService.syncRecentPostings();
+
+        ArgumentCaptor<com.gather.gather.domain.posting.entity.PostingLocation> captor =
+                ArgumentCaptor.forClass(
+                        com.gather.gather.domain.posting.entity.PostingLocation.class);
+        verify(postingLocationRepository, times(2)).save(captor.capture());
+        List<com.gather.gather.domain.posting.entity.PostingLocation> savedLocations =
+                captor.getAllValues();
+        assertThat(savedLocations.get(0).getPostingId()).isEqualTo(42L);
+        assertThat(savedLocations.get(0).getLocationSeq()).isEqualTo(2);
+        assertThat(savedLocations.get(0).getAddress()).isEqualTo("부산시 어딘가 2");
+        assertThat(savedLocations.get(1).getLocationSeq()).isEqualTo(3);
+        assertThat(savedLocations.get(1).getAddress()).isEqualTo("부산시 어딘가 3");
+    }
+
+    @Test
+    @DisplayName("insertNew does not save any PostingLocation when areaAddress2/3 are blank")
+    void syncRecentPostings_doesNotSaveLocations_whenAreaAddress2And3Blank() {
+        when(volunteerApiClient.searchList(any(), eq(1), eq(100)))
+                .thenReturn(List.of(searchItem("400", "2")));
+        when(postingRepository.findByExtId("400")).thenReturn(Optional.empty());
+        when(volunteerApiClient.getItem("400")).thenReturn(detailItem("400", "2", "20260601"));
+        when(regionRepository.findByCode("3020000"))
+                .thenReturn(Optional.of(regionWithId(5L, "3020000")));
+
+        postingSyncService.syncRecentPostings();
+
+        verify(postingLocationRepository, never()).save(any());
     }
 
     @Test
@@ -307,6 +370,52 @@ class PostingSyncServiceTest {
     private VolunteerApiItemDto detailItem(
             String progrmRegistNo, String progrmSttusSe, String progrmBgnde) {
         return detailItem(progrmRegistNo, progrmSttusSe, progrmBgnde, "6110000", "3020000");
+    }
+
+    private VolunteerApiItemDto detailItemWithLocations(
+            String progrmRegistNo,
+            String progrmSttusSe,
+            String progrmBgnde,
+            String areaAddress2,
+            String areaLalo2,
+            String areaAddress3,
+            String areaLalo3) {
+        return new VolunteerApiItemDto(
+                "09",
+                "18",
+                "행복복지관",
+                "0010000",
+                "Y",
+                "3",
+                "서울시 어딘가 1",
+                areaAddress2,
+                areaAddress3,
+                "35.53,129.41",
+                areaLalo2,
+                areaLalo3,
+                "test@example.com",
+                "N",
+                "02-000-0000",
+                "N",
+                "3020000",
+                "행복모집기관",
+                "행복재단",
+                "홍길동",
+                "20260101",
+                "20260901",
+                "N",
+                "서울시 어딘가",
+                progrmBgnde,
+                "내용입니다",
+                "20260901",
+                progrmRegistNo,
+                "제목-" + progrmRegistNo,
+                progrmSttusSe,
+                "5",
+                "6110000",
+                "생활편의",
+                "02-111-1111",
+                "N");
     }
 
     private VolunteerApiItemDto detailItem(

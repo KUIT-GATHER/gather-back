@@ -2,13 +2,21 @@ package com.gather.gather.domain.posting.service;
 
 import com.gather.gather.domain.category.entity.Category;
 import com.gather.gather.domain.category.repository.CategoryRepository;
+import com.gather.gather.domain.posting.dto.PostingLocationResponse;
+import com.gather.gather.domain.posting.dto.PostingResponse;
 import com.gather.gather.domain.posting.dto.PostingSummaryResponse;
 import com.gather.gather.domain.posting.entity.Posting;
 import com.gather.gather.domain.posting.entity.PostingStatus;
+import com.gather.gather.domain.posting.repository.PostingLocationRepository;
 import com.gather.gather.domain.posting.repository.PostingRepository;
 import com.gather.gather.domain.region.entity.Region;
 import com.gather.gather.domain.region.repository.RegionRepository;
 import com.gather.gather.global.common.PageResponse;
+import com.gather.gather.global.exception.BusinessException;
+import com.gather.gather.global.exception.ErrorCode;
+import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
@@ -24,12 +32,24 @@ import org.springframework.transaction.annotation.Transactional;
 public class PostingService {
 
     private final PostingRepository postingRepository;
+    private final PostingLocationRepository postingLocationRepository;
     private final RegionRepository regionRepository;
     private final CategoryRepository categoryRepository;
 
     @Transactional(readOnly = true)
-    public PageResponse<PostingSummaryResponse> getPostings(Pageable pageable) {
-        Page<Posting> postings = postingRepository.findByStatus(PostingStatus.RECRUITING, pageable);
+    public PageResponse<PostingSummaryResponse> getPostings(
+            Pageable pageable,
+            Long regionId,
+            PostingStatus status,
+            LocalDate noticeStartDate,
+            LocalDate noticeEndDate) {
+        PostingStatus effectiveStatus = status != null ? status : PostingStatus.RECRUITING;
+        List<Long> regionIds =
+                regionId != null ? regionRepository.findIdsIncludingChildren(regionId) : null;
+
+        Page<Posting> postings =
+                postingRepository.search(
+                        effectiveStatus, regionIds, noticeStartDate, noticeEndDate, pageable);
 
         Map<Long, String> regionNames = findRegionNames(postings);
         Map<Long, String> categoryNames = findCategoryNames(postings);
@@ -43,6 +63,38 @@ public class PostingService {
                                         categoryNames.get(posting.getCategoryId())));
 
         return PageResponse.from(responses);
+    }
+
+    @Transactional(readOnly = true)
+    public PostingResponse getPosting(Long id) {
+        Posting posting =
+                postingRepository
+                        .findById(id)
+                        .orElseThrow(() -> new BusinessException(ErrorCode.POSTING_NOT_FOUND));
+
+        String regionName =
+                posting.getRegionId() != null
+                        ? regionRepository
+                                .findById(posting.getRegionId())
+                                .map(Region::getName)
+                                .orElse(null)
+                        : null;
+        String categoryName =
+                categoryRepository
+                        .findById(posting.getCategoryId())
+                        .map(Category::getName)
+                        .orElse(null);
+
+        return PostingResponse.from(posting, regionName, categoryName, buildLocations(posting));
+    }
+
+    private List<PostingLocationResponse> buildLocations(Posting posting) {
+        List<PostingLocationResponse> locations = new ArrayList<>();
+        locations.add(PostingLocationResponse.first(posting));
+        postingLocationRepository
+                .findAllByPostingIdOrderByLocationSeq(posting.getId())
+                .forEach(location -> locations.add(PostingLocationResponse.from(location)));
+        return locations;
     }
 
     private Map<Long, String> findRegionNames(Page<Posting> postings) {
