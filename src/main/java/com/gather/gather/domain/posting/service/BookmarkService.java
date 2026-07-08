@@ -8,6 +8,7 @@ import com.gather.gather.global.exception.BusinessException;
 import com.gather.gather.global.exception.ErrorCode;
 import com.gather.gather.global.util.SecurityUtil;
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -29,7 +30,11 @@ public class BookmarkService {
             throw new BusinessException(ErrorCode.BOOKMARK_DUPLICATE);
         }
 
-        bookmarkRepository.save(Bookmark.create(userId, postingId));
+        try {
+            bookmarkRepository.saveAndFlush(Bookmark.create(userId, postingId));
+        } catch (DataIntegrityViolationException exception) {
+            throw new BusinessException(ErrorCode.BOOKMARK_DUPLICATE);
+        }
         return BookmarkResponse.of(postingId, true);
     }
 

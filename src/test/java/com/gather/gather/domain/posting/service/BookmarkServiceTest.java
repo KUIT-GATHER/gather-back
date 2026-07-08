@@ -23,6 +23,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.MockedStatic;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DataIntegrityViolationException;
 
 @ExtendWith(MockitoExtension.class)
 class BookmarkServiceTest {
@@ -54,7 +55,7 @@ class BookmarkServiceTest {
 
             assertThat(response.postingId()).isEqualTo(POSTING_ID);
             assertThat(response.bookmarked()).isTrue();
-            verify(bookmarkRepository).save(any(Bookmark.class));
+            verify(bookmarkRepository).saveAndFlush(any(Bookmark.class));
         }
     }
 
@@ -87,6 +88,25 @@ class BookmarkServiceTest {
                     .hasFieldOrPropertyWithValue("errorCode", ErrorCode.BOOKMARK_DUPLICATE);
 
             verify(bookmarkRepository, never()).save(any());
+        }
+    }
+
+    @Test
+    @DisplayName(
+            "addBookmark throws BOOKMARK_DUPLICATE when a concurrent request wins the unique"
+                    + " constraint race")
+    void addBookmark_throwsBookmarkDuplicate_whenConcurrentInsertViolatesUniqueConstraint() {
+        try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
+            securityUtil.when(SecurityUtil::getCurrentUserId).thenReturn(USER_ID);
+            when(postingRepository.existsById(POSTING_ID)).thenReturn(true);
+            when(bookmarkRepository.existsByUserIdAndPostingId(USER_ID, POSTING_ID))
+                    .thenReturn(false);
+            when(bookmarkRepository.saveAndFlush(any(Bookmark.class)))
+                    .thenThrow(new DataIntegrityViolationException("duplicate entry"));
+
+            assertThatThrownBy(() -> bookmarkService.addBookmark(POSTING_ID))
+                    .isInstanceOf(BusinessException.class)
+                    .hasFieldOrPropertyWithValue("errorCode", ErrorCode.BOOKMARK_DUPLICATE);
         }
     }
 
