@@ -6,7 +6,7 @@ import org.springframework.boot.context.properties.bind.DefaultValue;
 
 @ConfigurationProperties(prefix = "gather.cors")
 public record CorsProperties(
-        @DefaultValue({"https://gathernow.kr", "http://localhost:5173"})
+        @DefaultValue({"https://gathernow.kr", "http://localhost:5173", "https://dev.gathernow.kr"})
                 List<String> allowedOrigins) {
 
     public CorsProperties {
