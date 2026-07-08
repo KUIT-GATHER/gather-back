@@ -30,7 +30,9 @@ class PostingRepositoryTest {
         postingRepository.save(posting(PostingStatus.RECRUITING, 1L, LocalDate.of(2026, 7, 1)));
         postingRepository.save(posting(PostingStatus.CLOSED, 1L, LocalDate.of(2026, 7, 1)));
 
-        var result = postingRepository.search(PostingStatus.RECRUITING, null, null, null, PAGEABLE);
+        var result =
+                postingRepository.search(
+                        PostingStatus.RECRUITING, null, null, null, null, PAGEABLE);
 
         assertThat(result.getContent()).allMatch(p -> p.getStatus() == PostingStatus.RECRUITING);
     }
@@ -40,7 +42,8 @@ class PostingRepositoryTest {
         postingRepository.save(posting(PostingStatus.RECRUITING, 1L, LocalDate.of(2026, 7, 1)));
 
         var result =
-                postingRepository.search(PostingStatus.RECRUITING, List.of(), null, null, PAGEABLE);
+                postingRepository.search(
+                        PostingStatus.RECRUITING, List.of(), null, null, null, PAGEABLE);
 
         assertThat(result.getContent()).isEmpty();
     }
@@ -54,7 +57,7 @@ class PostingRepositoryTest {
 
         var result =
                 postingRepository.search(
-                        PostingStatus.RECRUITING, List.of(42L), null, null, PAGEABLE);
+                        PostingStatus.RECRUITING, List.of(42L), null, null, null, PAGEABLE);
 
         assertThat(result.getContent())
                 .extracting(Posting::getId)
@@ -76,9 +79,49 @@ class PostingRepositoryTest {
                         null,
                         LocalDate.of(2026, 7, 1),
                         LocalDate.of(2026, 7, 31),
+                        null,
                         PAGEABLE);
 
         assertThat(result.getContent()).extracting(Posting::getId).containsExactly(inRange.getId());
+    }
+
+    @Test
+    void search_matchesKeyword_whenTitleContainsKeyword() {
+        Posting matching = postingWithTitleAndOrg("동구 환경정화 봉사", "울산 동구청");
+        postingWithTitleAndOrg("무관한 공고", "다른 기관");
+
+        var result =
+                postingRepository.search(
+                        PostingStatus.RECRUITING, null, null, null, "환경", PAGEABLE);
+
+        assertThat(result.getContent())
+                .extracting(Posting::getId)
+                .containsExactly(matching.getId());
+    }
+
+    @Test
+    void search_matchesKeyword_whenRecruitOrgContainsKeyword() {
+        Posting matching = postingWithTitleAndOrg("봉사 공고", "울산 동구청");
+        postingWithTitleAndOrg("다른 공고", "부산 진구청");
+
+        var result =
+                postingRepository.search(
+                        PostingStatus.RECRUITING, null, null, null, "동구청", PAGEABLE);
+
+        assertThat(result.getContent())
+                .extracting(Posting::getId)
+                .containsExactly(matching.getId());
+    }
+
+    @Test
+    void search_returnsEmpty_whenKeywordMatchesNothing() {
+        postingWithTitleAndOrg("봉사 공고", "울산 동구청");
+
+        var result =
+                postingRepository.search(
+                        PostingStatus.RECRUITING, null, null, null, "존재하지않는키워드", PAGEABLE);
+
+        assertThat(result.getContent()).isEmpty();
     }
 
     private Posting save(PostingStatus status, LocalDate noticeStart, LocalDate noticeEnd) {
@@ -101,5 +144,16 @@ class PostingRepositoryTest {
                 .regionId(regionId)
                 .categoryId(1L)
                 .build();
+    }
+
+    private Posting postingWithTitleAndOrg(String title, String recruitOrg) {
+        return postingRepository.save(
+                Posting.builder()
+                        .title(title)
+                        .recruitOrg(recruitOrg)
+                        .status(PostingStatus.RECRUITING)
+                        .activityDate(LocalDate.of(2026, 7, 15))
+                        .categoryId(1L)
+                        .build());
     }
 }

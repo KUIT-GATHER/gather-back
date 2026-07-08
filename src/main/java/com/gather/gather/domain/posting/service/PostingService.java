@@ -42,14 +42,20 @@ public class PostingService {
             Long regionId,
             PostingStatus status,
             LocalDate noticeStartDate,
-            LocalDate noticeEndDate) {
+            LocalDate noticeEndDate,
+            String keyword) {
         PostingStatus effectiveStatus = status != null ? status : PostingStatus.RECRUITING;
         List<Long> regionIds =
                 regionId != null ? regionRepository.findIdsIncludingChildren(regionId) : null;
 
         Page<Posting> postings =
                 postingRepository.search(
-                        effectiveStatus, regionIds, noticeStartDate, noticeEndDate, pageable);
+                        effectiveStatus,
+                        regionIds,
+                        noticeStartDate,
+                        noticeEndDate,
+                        keyword,
+                        pageable);
 
         Map<Long, String> regionNames = findRegionNames(postings);
         Map<Long, String> categoryNames = findCategoryNames(postings);
