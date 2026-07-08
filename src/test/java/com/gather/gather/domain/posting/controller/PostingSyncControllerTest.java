@@ -29,7 +29,7 @@ class PostingSyncControllerTest {
     @DisplayName("POST /api/v1/postings/sync returns 200 with the sync result counts")
     void sync_returns200WithResultCounts() throws Exception {
         when(postingSyncService.syncRecentPostings())
-                .thenReturn(new PostingSyncResult(10, 3, 6, 1));
+                .thenReturn(new PostingSyncResult(10, 3, 6, 1, 0));
 
         mockMvc.perform(post("/api/v1/postings/sync"))
                 .andExpect(status().isOk())
