@@ -39,7 +39,8 @@ public class PostingController {
                     "봉사공고를 페이지 단위로 조회합니다. 인증이 필요 없습니다. "
                             + "status를 지정하지 않으면 모집중(RECRUITING)만 반환합니다. "
                             + "regionId는 상위 지역(시/도) 선택 시 하위 지역(구/군) 공고까지 포함합니다. "
-                            + "noticeStartDate/noticeEndDate는 각각 모집시작일 하한/모집종료일 상한 필터입니다.")
+                            + "noticeStartDate/noticeEndDate는 각각 모집시작일 하한/모집종료일 상한 필터입니다. "
+                            + "keyword는 제목/모집기관명 부분일치 검색입니다.")
     @ApiResponses({
         @io.swagger.v3.oas.annotations.responses.ApiResponse(
                 responseCode = "200",
@@ -112,10 +113,12 @@ public class PostingController {
             @Parameter(description = "모집시작일 하한 (yyyy-MM-dd)") @RequestParam(required = false)
                     LocalDate noticeStartDate,
             @Parameter(description = "모집종료일 상한 (yyyy-MM-dd)") @RequestParam(required = false)
-                    LocalDate noticeEndDate) {
+                    LocalDate noticeEndDate,
+            @Parameter(description = "검색 키워드 (제목/모집기관명 부분일치)") @RequestParam(required = false)
+                    String keyword) {
         return ApiResponse.success(
                 postingService.getPostings(
-                        pageable, regionId, status, noticeStartDate, noticeEndDate));
+                        pageable, regionId, status, noticeStartDate, noticeEndDate, keyword));
     }
 
     @Operation(summary = "봉사공고 상세 조회", description = "봉사공고 상세 정보를 조회합니다. 인증이 필요 없습니다.")

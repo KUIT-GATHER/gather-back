@@ -35,11 +35,15 @@ public interface PostingRepository extends JpaRepository<Posting, Long> {
               and (:regionIds is null or p.regionId in :regionIds)
               and (:noticeStartFrom is null or p.noticeStartDate >= :noticeStartFrom)
               and (:noticeEndTo is null or p.noticeEndDate <= :noticeEndTo)
+              and (:keyword is null
+                   or p.title like concat('%', :keyword, '%')
+                   or p.recruitOrg like concat('%', :keyword, '%'))
             """)
     Page<Posting> search(
             @Param("status") PostingStatus status,
             @Param("regionIds") List<Long> regionIds,
             @Param("noticeStartFrom") LocalDate noticeStartFrom,
             @Param("noticeEndTo") LocalDate noticeEndTo,
+            @Param("keyword") String keyword,
             Pageable pageable);
 }
