@@ -206,4 +206,13 @@ class PostingControllerTest {
                 .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.error.code").value("POSTING_NOT_FOUND"));
     }
+
+    @Test
+    @DisplayName("GET /api/v1/postings/{id} returns 400 when id is not numeric")
+    void getPosting_returns400_whenIdNotNumeric() throws Exception {
+        mockMvc.perform(get("/api/v1/postings/abc"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.error.code").value("VALIDATION_ERROR"));
+    }
 }
