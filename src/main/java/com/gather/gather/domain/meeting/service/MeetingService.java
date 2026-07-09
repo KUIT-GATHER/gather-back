@@ -19,6 +19,7 @@ import com.gather.gather.global.util.SecurityUtil;
 import java.time.LocalDateTime;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -86,8 +87,11 @@ public class MeetingService {
 
         validateJoinableMeeting(meeting, userId);
 
-        MeetingMember meetingMember = MeetingMember.createMember(user, meeting);
-        meetingMemberRepository.save(meetingMember);
+        try {
+            meetingMemberRepository.saveAndFlush(MeetingMember.createMember(user, meeting));
+        } catch (DataIntegrityViolationException exception) {
+            throw new BusinessException(ErrorCode.MEETING_ALREADY_JOINED);
+        }
 
         meeting.increaseMemberCount();
 
