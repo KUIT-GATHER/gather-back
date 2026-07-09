@@ -44,4 +44,29 @@ class RegionRepositoryTest {
 
         assertThat(ids).isEmpty();
     }
+
+    @Test
+    void findByParentId_returnsOnlyDirectChildren_notGrandchildrenOrSiblings() {
+        Region sido = regionRepository.save(Region.create("테스트도3", 1, "9990004", null));
+        Region gu = regionRepository.save(Region.create("테스트구3", 2, "9990005", sido));
+        Region otherGu = regionRepository.save(Region.create("테스트구4", 2, "9990006", sido));
+        Region dong1 = regionRepository.save(Region.create("테스트동1", 4, "9990007", gu));
+        Region dong2 = regionRepository.save(Region.create("테스트동2", 4, "9990008", gu));
+        regionRepository.save(Region.create("테스트동3", 4, "9990009", otherGu));
+
+        var children = regionRepository.findByParentId(gu.getId());
+
+        assertThat(children)
+                .extracting(Region::getId)
+                .containsExactlyInAnyOrder(dong1.getId(), dong2.getId());
+    }
+
+    @Test
+    void findByParentId_returnsEmptyList_whenRegionHasNoChildren() {
+        Region leaf = regionRepository.save(Region.create("테스트동4", 4, "9990010", null));
+
+        var children = regionRepository.findByParentId(leaf.getId());
+
+        assertThat(children).isEmpty();
+    }
 }

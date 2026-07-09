@@ -53,6 +53,7 @@ public class PostingSyncService {
     private final RegionRepository regionRepository;
     private final PostingLocationRepository postingLocationRepository;
     private final CategoryRepository categoryRepository;
+    private final DongResolver dongResolver;
 
     @Transactional
     public PostingSyncResult syncRecentPostings() {
@@ -152,8 +153,24 @@ public class PostingSyncService {
                 item.actPlace(),
                 parseYn(item.adultPosblAt()),
                 parseYn(item.yngbgsPosblAt()),
-                resolveRegionId(item.sidoCd(), item.gugunCd()),
+                resolveRegionIdForUpdate(posting.getRegionId(), item.sidoCd(), item.gugunCd()),
                 resolveCategoryId(item.srvcClCode()));
+    }
+
+    /**
+     * 목록조회 응답에는 areaAddress/postAdres가 없어 actPlace만으로는 동 재추정 성공률이 낮다(실측 1% 수준). 매 동기화마다 모든 기존 공고에
+     * 대해 비용만 크고 효과는 적은 재추정을 시도하는 대신, insertNew에서 이미 확정된 동 단위 regionId를 구 단위로 되돌리지만 않는다(폴백: 기존 동 유지
+     * > 구 매칭).
+     */
+    private Long resolveRegionIdForUpdate(Long currentRegionId, String sidoCd, String gugunCd) {
+        Long guId = resolveRegionId(sidoCd, gugunCd);
+        if (guId == null) {
+            return currentRegionId;
+        }
+        if (dongResolver.isDongOf(currentRegionId, guId)) {
+            return currentRegionId;
+        }
+        return guId;
     }
 
     private void insertNew(String progrmRegistNo) {
@@ -198,7 +215,12 @@ public class PostingSyncService {
                         .managerAddress(detail.postAdres())
                         .latitude(parseCoordinate(detail.areaLalo1(), 0))
                         .longitude(parseCoordinate(detail.areaLalo1(), 1))
-                        .regionId(resolveRegionId(detail.sidoCd(), detail.gugunCd()))
+                        .regionId(
+                                resolveRegionIdWithDong(
+                                        resolveRegionId(detail.sidoCd(), detail.gugunCd()),
+                                        detail.areaAddress1(),
+                                        detail.postAdres(),
+                                        detail.actPlace()))
                         .categoryId(resolveCategoryId(detail.srvcClCode()))
                         .build();
 
@@ -236,6 +258,16 @@ public class PostingSyncService {
             return regionRepository.findByCode(sidoCd).map(region -> region.getId()).orElse(null);
         }
         return null;
+    }
+
+    /** 구/시 단위 regionId를 확정한 뒤, 주소 텍스트에서 동까지 찾아지면 더 구체적인 동 단위로 승격한다. */
+    private Long resolveRegionIdWithDong(
+            Long guRegionId, String areaAddress1, String postAdres, String actPlace) {
+        if (guRegionId == null) {
+            return null;
+        }
+        Long dongId = dongResolver.resolve(guRegionId, areaAddress1, postAdres, actPlace);
+        return dongId != null ? dongId : guRegionId;
     }
 
     /**
