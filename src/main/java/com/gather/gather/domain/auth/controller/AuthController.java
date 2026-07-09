@@ -5,28 +5,38 @@ import com.gather.gather.domain.auth.dto.EmailVerificationConfirmResponse;
 import com.gather.gather.domain.auth.dto.EmailVerificationSendRequest;
 import com.gather.gather.domain.auth.dto.EmailVerificationSendResponse;
 import com.gather.gather.domain.auth.dto.LoginRequest;
-import com.gather.gather.domain.auth.dto.LogoutRequest;
 import com.gather.gather.domain.auth.dto.PhoneNumberAvailabilityRequest;
 import com.gather.gather.domain.auth.dto.PhoneNumberAvailabilityResponse;
 import com.gather.gather.domain.auth.dto.SignupRequest;
 import com.gather.gather.domain.auth.dto.SignupResponse;
-import com.gather.gather.domain.auth.dto.TokenReissueRequest;
 import com.gather.gather.domain.auth.dto.TokenResponse;
 import com.gather.gather.domain.auth.service.AuthService;
+import com.gather.gather.domain.auth.service.RefreshTokenCookieProvider;
+import com.gather.gather.domain.auth.service.TokenIssueResult;
 import com.gather.gather.global.common.ApiResponse;
+import com.gather.gather.global.exception.BusinessException;
+import com.gather.gather.global.exception.ErrorCode;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.headers.Header;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.ExampleObject;
+import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.servlet.http.Cookie;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.util.WebUtils;
 
 @Tag(name = "Auth", description = "인증, 회원가입, 토큰 관련 API")
 @RestController
@@ -37,6 +47,7 @@ public class AuthController {
     private static final String JSON = "application/json";
 
     private final AuthService authService;
+    private final RefreshTokenCookieProvider refreshTokenCookieProvider;
 
     @Operation(summary = "이메일 인증 코드 발송", description = "회원가입에 사용할 이메일로 인증 코드를 발송합니다.")
     @ApiResponses({
@@ -269,10 +280,10 @@ public class AuthController {
                                                     AuthSwaggerExamples
                                                             .REQUIRED_TERMS_NOT_AGREED_EXAMPLE),
                                     @ExampleObject(
-                                            name = "INVALID_ACTIVITY_REGION_COUNT",
+                                            name = "INVALID_ACTIVITY_REGION",
                                             value =
                                                     AuthSwaggerExamples
-                                                            .INVALID_ACTIVITY_REGION_COUNT_EXAMPLE),
+                                                            .INVALID_ACTIVITY_REGION_EXAMPLE),
                                     @ExampleObject(
                                             name = "INVALID_INTEREST_CATEGORY_COUNT",
                                             value =
@@ -321,11 +332,21 @@ public class AuthController {
 
     @Operation(
             summary = "로그인",
-            description = "이메일과 비밀번호를 검증한 뒤 Access Token과 Refresh Token을 발급합니다.")
+            description =
+                    "이메일과 비밀번호를 검증한 뒤 Access Token은 응답 본문으로, Refresh Token은 HttpOnly 쿠키로 발급합니다.")
     @ApiResponses({
         @io.swagger.v3.oas.annotations.responses.ApiResponse(
                 responseCode = "200",
                 description = "로그인 성공",
+                headers =
+                        @Header(
+                                name = "Set-Cookie",
+                                description = "HttpOnly Refresh Token 쿠키",
+                                schema =
+                                        @Schema(
+                                                type = "string",
+                                                example =
+                                                        "gather_refresh_token=refresh-token-value; Path=/api/v1/auth; Max-Age=1209600; HttpOnly; SameSite=Lax")),
                 content =
                         @Content(
                                 mediaType = JSON,
@@ -337,7 +358,6 @@ public class AuthController {
                                                           "success": true,
                                                           "data": {
                                                             "accessToken": "access-token-value",
-                                                            "refreshToken": "refresh-token-value",
                                                             "tokenType": "Bearer"
                                                           },
                                                           "error": null
@@ -383,17 +403,27 @@ public class AuthController {
                                 }))
     })
     @PostMapping("/login")
-    public ApiResponse<TokenResponse> login(@RequestBody @Valid LoginRequest request) {
-        return ApiResponse.success(authService.login(request));
+    public ResponseEntity<ApiResponse<TokenResponse>> login(
+            @RequestBody @Valid LoginRequest request) {
+        return tokenResponse(authService.login(request));
     }
 
     @Operation(
             summary = "토큰 재발급",
-            description = "Refresh Token을 검증한 뒤 새로운 Access Token과 Refresh Token을 발급합니다.")
+            description = "Refresh Token 쿠키를 검증한 뒤 새로운 Access Token과 Refresh Token 쿠키를 발급합니다.")
     @ApiResponses({
         @io.swagger.v3.oas.annotations.responses.ApiResponse(
                 responseCode = "200",
                 description = "토큰 재발급 성공",
+                headers =
+                        @Header(
+                                name = "Set-Cookie",
+                                description = "rotation으로 새로 발급되는 HttpOnly Refresh Token 쿠키",
+                                schema =
+                                        @Schema(
+                                                type = "string",
+                                                example =
+                                                        "gather_refresh_token=new-refresh-token-value; Path=/api/v1/auth; Max-Age=1209600; HttpOnly; SameSite=Lax")),
                 content =
                         @Content(
                                 mediaType = JSON,
@@ -405,7 +435,6 @@ public class AuthController {
                                                           "success": true,
                                                           "data": {
                                                             "accessToken": "new-access-token-value",
-                                                            "refreshToken": "new-refresh-token-value",
                                                             "tokenType": "Bearer"
                                                           },
                                                           "error": null
@@ -456,8 +485,8 @@ public class AuthController {
                                 }))
     })
     @PostMapping("/reissue")
-    public ApiResponse<TokenResponse> reissue(@RequestBody @Valid TokenReissueRequest request) {
-        return ApiResponse.success(authService.reissue(request));
+    public ResponseEntity<ApiResponse<TokenResponse>> reissue(HttpServletRequest request) {
+        return tokenResponse(authService.reissue(extractRefreshToken(request)));
     }
 
     @Operation(summary = "로그아웃", description = "Access Token 인증을 요구하지 않으며 Refresh Token만으로 처리합니다.")
@@ -465,6 +494,15 @@ public class AuthController {
         @io.swagger.v3.oas.annotations.responses.ApiResponse(
                 responseCode = "200",
                 description = "로그아웃 성공",
+                headers =
+                        @Header(
+                                name = "Set-Cookie",
+                                description = "Refresh Token 삭제 쿠키",
+                                schema =
+                                        @Schema(
+                                                type = "string",
+                                                example =
+                                                        "gather_refresh_token=; Path=/api/v1/auth; Max-Age=0; HttpOnly; SameSite=Lax")),
                 content =
                         @Content(
                                 mediaType = JSON,
@@ -502,8 +540,25 @@ public class AuthController {
                                                 value = AuthSwaggerExamples.INVALID_TOKEN_EXAMPLE)))
     })
     @PostMapping("/logout")
-    public ApiResponse<Void> logout(@RequestBody @Valid LogoutRequest request) {
-        authService.logout(request);
+    public ApiResponse<Void> logout(HttpServletRequest request, HttpServletResponse response) {
+        response.addHeader(HttpHeaders.SET_COOKIE, refreshTokenCookieProvider.clear().toString());
+        authService.logout(extractRefreshToken(request));
         return ApiResponse.success(null);
+    }
+
+    private ResponseEntity<ApiResponse<TokenResponse>> tokenResponse(TokenIssueResult tokenResult) {
+        return ResponseEntity.ok()
+                .header(
+                        HttpHeaders.SET_COOKIE,
+                        refreshTokenCookieProvider.create(tokenResult.refreshToken()).toString())
+                .body(ApiResponse.success(TokenResponse.bearer(tokenResult.accessToken())));
+    }
+
+    private String extractRefreshToken(HttpServletRequest request) {
+        Cookie cookie = WebUtils.getCookie(request, refreshTokenCookieProvider.cookieName());
+        if (cookie == null) {
+            throw new BusinessException(ErrorCode.INVALID_TOKEN);
+        }
+        return cookie.getValue();
     }
 }

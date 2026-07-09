@@ -44,3 +44,6 @@ application-secret.yml
 **/docs/
 
 # 개인 메모용 문서는 docs 공용 문서는 document로
+
+### 개인 Claude 설정 ###
+.claude

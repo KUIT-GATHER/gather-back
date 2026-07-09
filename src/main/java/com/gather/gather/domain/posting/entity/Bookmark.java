@@ -6,6 +6,7 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 import java.time.LocalDateTime;
 import lombok.AccessLevel;
 import lombok.Getter;
@@ -13,7 +14,13 @@ import lombok.NoArgsConstructor;
 
 @Entity
 @Getter
-@Table(name = "bookmark")
+@Table(
+        name = "bookmark",
+        uniqueConstraints = {
+            @UniqueConstraint(
+                    name = "uk_bookmark_user_posting",
+                    columnNames = {"user_id", "posting_id"})
+        })
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class Bookmark {
 

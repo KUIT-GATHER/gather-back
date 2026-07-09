@@ -1,5 +1,6 @@
 package com.gather.gather.global.config;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -87,6 +88,14 @@ class JwtSecurityIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data").value("ok"));
+    }
+
+    @Test
+    @DisplayName("봉사공고 상세조회(/api/v1/postings/{id})는 토큰 없이 통과한다(401이 아니다)")
+    void permitAllPath_postingDetail_passesWithoutToken() throws Exception {
+        mockMvc.perform(get("/api/v1/postings/999999999"))
+                .andExpect(
+                        result -> assertThat(result.getResponse().getStatus()).isNotEqualTo(401));
     }
 
     @Test

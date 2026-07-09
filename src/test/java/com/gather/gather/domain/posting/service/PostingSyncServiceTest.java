@@ -3,12 +3,17 @@ package com.gather.gather.domain.posting.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.gather.gather.domain.category.entity.Category;
+import com.gather.gather.domain.category.repository.CategoryRepository;
 import com.gather.gather.domain.posting.client.VolunteerApiClient;
 import com.gather.gather.domain.posting.client.VolunteerApiException;
 import com.gather.gather.domain.posting.client.dto.VolunteerApiItemDto;
@@ -16,6 +21,7 @@ import com.gather.gather.domain.posting.client.dto.VolunteerApiSearchCondition;
 import com.gather.gather.domain.posting.client.dto.VolunteerApiSearchItemDto;
 import com.gather.gather.domain.posting.entity.Posting;
 import com.gather.gather.domain.posting.entity.PostingStatus;
+import com.gather.gather.domain.posting.repository.PostingLocationRepository;
 import com.gather.gather.domain.posting.repository.PostingRepository;
 import com.gather.gather.domain.region.entity.Region;
 import com.gather.gather.domain.region.repository.RegionRepository;
@@ -39,13 +45,27 @@ class PostingSyncServiceTest {
     @Mock private VolunteerApiClient volunteerApiClient;
     @Mock private PostingRepository postingRepository;
     @Mock private RegionRepository regionRepository;
+    @Mock private PostingLocationRepository postingLocationRepository;
+    @Mock private CategoryRepository categoryRepository;
 
     private PostingSyncService postingSyncService;
 
     @BeforeEach
     void setUp() {
         postingSyncService =
-                new PostingSyncService(volunteerApiClient, postingRepository, regionRepository);
+                new PostingSyncService(
+                        volunteerApiClient,
+                        postingRepository,
+                        regionRepository,
+                        postingLocationRepository,
+                        categoryRepository);
+        // 대부분의 테스트는 categoryId 매칭 자체가 관심사가 아니므로 기본값으로 항상 매칭되게 lenient 처리.
+        // categoryWithId(...)가 내부적으로 when(...)을 호출하므로, 바깥 when(...).thenReturn(...) 체인이 완료되기 전에
+        // 인자로 인라인하면 Mockito가 미완성 스터빙으로 오인해 UnfinishedStubbingException을 던진다 — 반드시 별도 문장으로 분리.
+        Category defaultCategory = categoryWithId(1L);
+        lenient()
+                .when(categoryRepository.findByName(anyString()))
+                .thenReturn(Optional.of(defaultCategory));
     }
 
     @Test
@@ -66,10 +86,68 @@ class PostingSyncServiceTest {
         assertThat(saved.getExtId()).isEqualTo("100");
         assertThat(saved.getTitle()).isEqualTo("제목-100");
         assertThat(saved.getStatus()).isEqualTo(PostingStatus.RECRUITING);
-        assertThat(saved.getPostAddress()).isEqualTo("서울시 어딘가");
+        assertThat(saved.getPostAddress()).isEqualTo("서울시 어딘가 1");
+        assertThat(saved.getManagerAddress()).isEqualTo("서울시 어딘가");
         assertThat(saved.getRegionId()).isEqualTo(5L);
         assertThat(saved.getIsActive()).isTrue();
-        assertThat(result).isEqualTo(new PostingSyncResult(1, 1, 0, 0));
+        assertThat(result).isEqualTo(new PostingSyncResult(1, 1, 0, 0, 0));
+    }
+
+    @Test
+    @DisplayName("insertNew saves additional PostingLocation rows when areaAddress2/3 are present")
+    void syncRecentPostings_savesAdditionalLocations_whenAreaAddress2And3Present() {
+        when(volunteerApiClient.searchList(any(), eq(1), eq(100)))
+                .thenReturn(List.of(searchItem("300", "2")));
+        when(postingRepository.findByExtId("300")).thenReturn(Optional.empty());
+        when(volunteerApiClient.getItem("300"))
+                .thenReturn(
+                        detailItemWithLocations(
+                                "300",
+                                "2",
+                                "20260601",
+                                "부산시 어딘가 2",
+                                "35.10,129.05",
+                                "부산시 어딘가 3",
+                                "35.20,129.15"));
+        when(regionRepository.findByCode("3020000"))
+                .thenReturn(Optional.of(regionWithId(5L, "3020000")));
+        when(postingRepository.save(any(Posting.class)))
+                .thenAnswer(
+                        invocation -> {
+                            Posting posting = invocation.getArgument(0);
+                            org.springframework.test.util.ReflectionTestUtils.setField(
+                                    posting, "id", 42L);
+                            return posting;
+                        });
+
+        postingSyncService.syncRecentPostings();
+
+        ArgumentCaptor<com.gather.gather.domain.posting.entity.PostingLocation> captor =
+                ArgumentCaptor.forClass(
+                        com.gather.gather.domain.posting.entity.PostingLocation.class);
+        verify(postingLocationRepository, times(2)).save(captor.capture());
+        List<com.gather.gather.domain.posting.entity.PostingLocation> savedLocations =
+                captor.getAllValues();
+        assertThat(savedLocations.get(0).getPostingId()).isEqualTo(42L);
+        assertThat(savedLocations.get(0).getLocationSeq()).isEqualTo(2);
+        assertThat(savedLocations.get(0).getAddress()).isEqualTo("부산시 어딘가 2");
+        assertThat(savedLocations.get(1).getLocationSeq()).isEqualTo(3);
+        assertThat(savedLocations.get(1).getAddress()).isEqualTo("부산시 어딘가 3");
+    }
+
+    @Test
+    @DisplayName("insertNew does not save any PostingLocation when areaAddress2/3 are blank")
+    void syncRecentPostings_doesNotSaveLocations_whenAreaAddress2And3Blank() {
+        when(volunteerApiClient.searchList(any(), eq(1), eq(100)))
+                .thenReturn(List.of(searchItem("400", "2")));
+        when(postingRepository.findByExtId("400")).thenReturn(Optional.empty());
+        when(volunteerApiClient.getItem("400")).thenReturn(detailItem("400", "2", "20260601"));
+        when(regionRepository.findByCode("3020000"))
+                .thenReturn(Optional.of(regionWithId(5L, "3020000")));
+
+        postingSyncService.syncRecentPostings();
+
+        verify(postingLocationRepository, never()).save(any());
     }
 
     @Test
@@ -87,7 +165,22 @@ class PostingSyncServiceTest {
         assertThat(existing.getTitle()).isEqualTo("제목-200");
         assertThat(existing.getStatus()).isEqualTo(PostingStatus.CLOSED);
         assertThat(existing.getIsActive()).isTrue();
-        assertThat(result).isEqualTo(new PostingSyncResult(1, 0, 1, 0));
+        assertThat(result).isEqualTo(new PostingSyncResult(1, 0, 1, 0, 0));
+    }
+
+    @Test
+    @DisplayName("updateExisting refreshes categoryId from srvcClCode instead of leaving it stale")
+    void syncRecentPostings_refreshesCategoryId_onUpdate() {
+        Posting existing = existingPosting("500");
+        when(volunteerApiClient.searchList(any(), eq(1), eq(100)))
+                .thenReturn(List.of(searchItem("500", "2")));
+        when(postingRepository.findByExtId("500")).thenReturn(Optional.of(existing));
+        Category matchedCategory = categoryWithId(7L);
+        when(categoryRepository.findByName("생활편의")).thenReturn(Optional.of(matchedCategory));
+
+        postingSyncService.syncRecentPostings();
+
+        assertThat(existing.getCategoryId()).isEqualTo(7L);
     }
 
     @Test
@@ -115,6 +208,48 @@ class PostingSyncServiceTest {
 
     @Test
     @DisplayName(
+            "fetchActivePostings sends no notice-date filter so long-open postings are not"
+                    + " excluded")
+    void syncRecentPostings_sendsNoDateFilter() {
+        when(volunteerApiClient.searchList(any(), eq(1), eq(100))).thenReturn(List.of());
+
+        postingSyncService.syncRecentPostings();
+
+        ArgumentCaptor<VolunteerApiSearchCondition> captor =
+                ArgumentCaptor.forClass(VolunteerApiSearchCondition.class);
+        verify(volunteerApiClient).searchList(captor.capture(), eq(1), eq(100));
+        VolunteerApiSearchCondition condition = captor.getValue();
+        assertThat(condition.noticeBgnde()).isNull();
+        assertThat(condition.noticeEndde()).isNull();
+    }
+
+    @Test
+    @DisplayName(
+            "new postings beyond the per-run detail-lookup budget are skipped instead of"
+                    + " consuming quota")
+    void syncRecentPostings_skipsNewPostings_beyondDetailLookupBudget() {
+        int totalNewItems = 801;
+        List<VolunteerApiSearchItemDto> bigPage =
+                IntStream.rangeClosed(1, totalNewItems)
+                        .mapToObj(i -> searchItem("NEW-" + i, "2"))
+                        .toList();
+
+        when(volunteerApiClient.searchList(any(), anyInt(), eq(100)))
+                .thenReturn(bigPage, List.of());
+        when(postingRepository.findByExtId(any())).thenReturn(Optional.empty());
+        when(volunteerApiClient.getItem(any())).thenReturn(detailItem("FIXED", "2", "20260601"));
+
+        PostingSyncResult result = postingSyncService.syncRecentPostings();
+
+        assertThat(result.scanned()).isEqualTo(totalNewItems);
+        assertThat(result.inserted()).isEqualTo(800);
+        assertThat(result.skipped()).isEqualTo(1);
+        verify(postingRepository, times(800)).save(any());
+        verify(volunteerApiClient, times(800)).getItem(any());
+    }
+
+    @Test
+    @DisplayName(
             "a failure on one item is logged and skipped without aborting the rest of the batch")
     void syncRecentPostings_isolatesPerItemFailure() {
         when(volunteerApiClient.searchList(any(), eq(1), eq(100)))
@@ -127,7 +262,7 @@ class PostingSyncServiceTest {
         PostingSyncResult result = postingSyncService.syncRecentPostings();
 
         verify(postingRepository, times(1)).save(any());
-        assertThat(result).isEqualTo(new PostingSyncResult(2, 1, 0, 1));
+        assertThat(result).isEqualTo(new PostingSyncResult(2, 1, 0, 1, 0));
     }
 
     @Test
@@ -142,7 +277,7 @@ class PostingSyncServiceTest {
         PostingSyncResult result = postingSyncService.syncRecentPostings();
 
         verify(postingRepository, never()).save(any());
-        assertThat(result).isEqualTo(new PostingSyncResult(1, 0, 0, 1));
+        assertThat(result).isEqualTo(new PostingSyncResult(1, 0, 0, 1, 0));
     }
 
     @ParameterizedTest(name = "progrmSttusSe={0} maps to {1}")
@@ -219,6 +354,65 @@ class PostingSyncServiceTest {
         assertThat(captor.getValue().getRegionId()).isNull();
     }
 
+    @Test
+    @DisplayName("resolveCategoryId matches Category by srvcClCode text (분야명)")
+    void syncRecentPostings_matchesCategoryBySrvcClCodeText() {
+        when(volunteerApiClient.searchList(any(), eq(1), eq(100)))
+                .thenReturn(List.of(searchItem("C1", "2")));
+        when(postingRepository.findByExtId("C1")).thenReturn(Optional.empty());
+        when(volunteerApiClient.getItem("C1")).thenReturn(detailItem("C1", "2", "20260601"));
+        Category matchedCategory = categoryWithId(3L);
+        when(categoryRepository.findByName("생활편의")).thenReturn(Optional.of(matchedCategory));
+
+        postingSyncService.syncRecentPostings();
+
+        ArgumentCaptor<Posting> captor = ArgumentCaptor.forClass(Posting.class);
+        verify(postingRepository).save(captor.capture());
+        assertThat(captor.getValue().getCategoryId()).isEqualTo(3L);
+    }
+
+    @Test
+    @DisplayName("resolveCategoryId falls back to '기타' when srvcClCode has no matching Category")
+    void syncRecentPostings_fallsBackToGitaCategory_whenSrvcClCodeNotMatched() {
+        when(volunteerApiClient.searchList(any(), eq(1), eq(100)))
+                .thenReturn(List.of(searchItem("C2", "2")));
+        when(postingRepository.findByExtId("C2")).thenReturn(Optional.empty());
+        when(volunteerApiClient.getItem("C2")).thenReturn(detailItem("C2", "2", "20260601"));
+        when(categoryRepository.findByName("생활편의")).thenReturn(Optional.empty());
+        Category fallbackCategory = categoryWithId(14L);
+        when(categoryRepository.findByName("기타")).thenReturn(Optional.of(fallbackCategory));
+
+        postingSyncService.syncRecentPostings();
+
+        ArgumentCaptor<Posting> captor = ArgumentCaptor.forClass(Posting.class);
+        verify(postingRepository).save(captor.capture());
+        assertThat(captor.getValue().getCategoryId()).isEqualTo(14L);
+    }
+
+    @Test
+    @DisplayName(
+            "insertNew fails the item (not the whole batch) when the '기타' fallback Category is not"
+                    + " seeded")
+    void syncRecentPostings_marksItemFailed_whenFallbackCategoryNotSeeded() {
+        when(volunteerApiClient.searchList(any(), eq(1), eq(100)))
+                .thenReturn(List.of(searchItem("C3", "2")));
+        when(postingRepository.findByExtId("C3")).thenReturn(Optional.empty());
+        when(volunteerApiClient.getItem("C3")).thenReturn(detailItem("C3", "2", "20260601"));
+        when(categoryRepository.findByName("생활편의")).thenReturn(Optional.empty());
+        when(categoryRepository.findByName("기타")).thenReturn(Optional.empty());
+
+        PostingSyncResult result = postingSyncService.syncRecentPostings();
+
+        verify(postingRepository, never()).save(any());
+        assertThat(result).isEqualTo(new PostingSyncResult(1, 0, 0, 1, 0));
+    }
+
+    private Category categoryWithId(Long id) {
+        Category category = mock(Category.class);
+        lenient().when(category.getId()).thenReturn(id);
+        return category;
+    }
+
     private Posting existingPosting(String extId) {
         return Posting.builder()
                 .extId(extId)
@@ -264,6 +458,52 @@ class PostingSyncServiceTest {
     private VolunteerApiItemDto detailItem(
             String progrmRegistNo, String progrmSttusSe, String progrmBgnde) {
         return detailItem(progrmRegistNo, progrmSttusSe, progrmBgnde, "6110000", "3020000");
+    }
+
+    private VolunteerApiItemDto detailItemWithLocations(
+            String progrmRegistNo,
+            String progrmSttusSe,
+            String progrmBgnde,
+            String areaAddress2,
+            String areaLalo2,
+            String areaAddress3,
+            String areaLalo3) {
+        return new VolunteerApiItemDto(
+                "09",
+                "18",
+                "행복복지관",
+                "0010000",
+                "Y",
+                "3",
+                "서울시 어딘가 1",
+                areaAddress2,
+                areaAddress3,
+                "35.53,129.41",
+                areaLalo2,
+                areaLalo3,
+                "test@example.com",
+                "N",
+                "02-000-0000",
+                "N",
+                "3020000",
+                "행복모집기관",
+                "행복재단",
+                "홍길동",
+                "20260101",
+                "20260901",
+                "N",
+                "서울시 어딘가",
+                progrmBgnde,
+                "내용입니다",
+                "20260901",
+                progrmRegistNo,
+                "제목-" + progrmRegistNo,
+                progrmSttusSe,
+                "5",
+                "6110000",
+                "생활편의",
+                "02-111-1111",
+                "N");
     }
 
     private VolunteerApiItemDto detailItem(

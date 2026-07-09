@@ -11,8 +11,9 @@ info:
     - 관심 카테고리는 `GET /api/v1/categories` 응답의 `id`를 기준으로 선택합니다.
     - 회원가입 요청에는 선택한 카테고리 ID 배열인 `interestCategoryIds`만 전달하며, `code`는 전달하지 않습니다.
     - 카테고리 `id`는 DB 참조용, `code`는 프론트 아이콘·색상·필터 칩 매핑용 고정값, `name`은 화면 표시용입니다.
-    - 로그아웃은 Access Token 없이 Refresh Token만으로 요청합니다.
-    - 로그아웃은 같은 Refresh Token으로 여러 번 요청해도 성공 응답을 반환합니다.
+    - Refresh Token은 응답 body가 아니라 `gather_refresh_token` HttpOnly 쿠키로 전달합니다.
+    - 재발급과 로그아웃은 Access Token 없이 Refresh Token 쿠키만으로 요청합니다.
+    - 로그아웃은 같은 Refresh Token 쿠키로 여러 번 요청해도 성공 응답을 반환합니다.
   version: 1.0.0
 
 servers:
@@ -241,9 +242,7 @@ paths:
               passwordConfirm: password123!
               nickname: 길동
               introduction: 함께 봉사하고 싶습니다.
-              activityRegionIds:
-                - 1
-                - 2
+              activityRegionId: 123
               interestCategoryIds:
                 - 1
                 - 4
@@ -305,14 +304,14 @@ paths:
                     error:
                       code: REQUIRED_TERMS_NOT_AGREED
                       message: 필수 약관 동의가 필요합니다.
-                invalidActivityRegionCount:
-                  summary: 활동 지역 개수 오류
+                invalidActivityRegion:
+                  summary: 활동 지역 오류
                   value:
                     success: false
                     data: null
                     error:
-                      code: INVALID_ACTIVITY_REGION_COUNT
-                      message: 활동 지역은 1개 이상 3개 이하로 선택해야 합니다.
+                      code: INVALID_ACTIVITY_REGION
+                      message: 활동 지역은 시군구 단위로 1개 선택해야 합니다.
                 invalidInterestCategoryCount:
                   summary: 관심 카테고리 개수 오류
                   value:
@@ -381,7 +380,7 @@ paths:
       tags:
         - Auth
       summary: 로그인
-      description: 이메일과 비밀번호를 검증한 뒤 Access Token과 Refresh Token을 발급합니다.
+      description: 이메일과 비밀번호를 검증한 뒤 Access Token은 응답 본문으로, Refresh Token은 HttpOnly 쿠키로 발급합니다.
       operationId: login
       requestBody:
         required: true
@@ -395,6 +394,12 @@ paths:
       responses:
         '200':
           description: 로그인 성공
+          headers:
+            Set-Cookie:
+              description: HttpOnly Refresh Token 쿠키. Domain은 설정하지 않으며 Path는 `/api/v1/auth`입니다.
+              schema:
+                type: string
+              example: gather_refresh_token=refresh-token-value; Path=/api/v1/auth; Max-Age=1209600; HttpOnly; SameSite=Lax
           content:
             application/json:
               schema:
@@ -403,7 +408,6 @@ paths:
                 success: true
                 data:
                   accessToken: access-token-value
-                  refreshToken: refresh-token-value
                   tokenType: Bearer
                 error: null
         '400':
@@ -459,19 +463,24 @@ paths:
       tags:
         - Auth
       summary: 토큰 재발급
-      description: Refresh Token을 검증한 뒤 새로운 Access Token과 Refresh Token을 발급합니다.
+      description: Refresh Token 쿠키를 검증한 뒤 새로운 Access Token과 Refresh Token 쿠키를 발급합니다.
       operationId: reissueToken
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/TokenReissueRequest'
-            example:
-              refreshToken: refresh-token-value
+      parameters:
+        - name: gather_refresh_token
+          in: cookie
+          required: true
+          description: 로그인 또는 직전 재발급에서 받은 HttpOnly Refresh Token 쿠키
+          schema:
+            type: string
       responses:
         '200':
           description: 토큰 재발급 성공
+          headers:
+            Set-Cookie:
+              description: rotation으로 새로 발급되는 HttpOnly Refresh Token 쿠키
+              schema:
+                type: string
+              example: gather_refresh_token=new-refresh-token-value; Path=/api/v1/auth; Max-Age=1209600; HttpOnly; SameSite=Lax
           content:
             application/json:
               schema:
@@ -480,21 +489,8 @@ paths:
                 success: true
                 data:
                   accessToken: new-access-token-value
-                  refreshToken: new-refresh-token-value
                   tokenType: Bearer
                 error: null
-        '400':
-          description: 요청 값 검증 실패
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorApiResponse'
-              example:
-                success: false
-                data: null
-                error:
-                  code: VALIDATION_ERROR
-                  message: 요청 값이 올바르지 않습니다.
         '401':
           description: Refresh Token 오류
           content:
@@ -558,22 +554,27 @@ paths:
       description: |
         Refresh Token 하나를 폐기합니다.
 
-        Access Token 인증을 요구하지 않으며 Refresh Token만으로 처리합니다.
+        Access Token 인증을 요구하지 않으며 Refresh Token 쿠키만으로 처리합니다.
         이는 Access Token이 만료된 상태에서도 사용자가 로그아웃할 수 있도록 하기 위함입니다.
 
         이미 폐기되었거나 만료된 Refresh Token도 서버에 기록이 존재하면 성공 응답을 반환합니다(멱등 처리).
       operationId: logout
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/LogoutRequest'
-            example:
-              refreshToken: refresh-token-value
+      parameters:
+        - name: gather_refresh_token
+          in: cookie
+          required: true
+          description: 폐기할 HttpOnly Refresh Token 쿠키
+          schema:
+            type: string
       responses:
         '200':
           description: 로그아웃 성공
+          headers:
+            Set-Cookie:
+              description: Refresh Token 삭제 쿠키
+              schema:
+                type: string
+              example: gather_refresh_token=; Path=/api/v1/auth; Max-Age=0; HttpOnly; SameSite=Lax
           content:
             application/json:
               schema:
@@ -582,18 +583,6 @@ paths:
                 success: true
                 data: null
                 error: null
-        '400':
-          description: 요청 값 검증 실패
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorApiResponse'
-              example:
-                success: false
-                data: null
-                error:
-                  code: VALIDATION_ERROR
-                  message: 요청 값이 올바르지 않습니다.
         '401':
           description: 유효하지 않은 Refresh Token
           content:
@@ -654,10 +643,10 @@ paths:
                 success: true
                 data:
                   - id: 1
-                    code: ENVIRONMENT
-                    name: 환경
-                  - id: 2
-                    code: EDUCATION
+                    code: '0100'
+                    name: 생활편의
+                  - id: 4
+                    code: '0400'
                     name: 교육
                 error: null
 
@@ -693,18 +682,6 @@ components:
         - SUSPENDED
         - WITHDRAWN
       example: ACTIVE
-
-    CategoryCode:
-      type: string
-      description: 카테고리 의미 고정값
-      enum:
-        - ENVIRONMENT
-        - EDUCATION
-        - CULTURE
-        - COMMUNITY
-        - WELFARE
-        - OVERSEAS
-      example: ENVIRONMENT
 
     ApiError:
       type: object
@@ -895,7 +872,7 @@ components:
         - password
         - passwordConfirm
         - nickname
-        - activityRegionIds
+        - activityRegionId
         - interestCategoryIds
         - serviceTermsAgreed
         - privacyPolicyAgreed
@@ -948,18 +925,11 @@ components:
           nullable: true
           description: 소개글. 최대 50자입니다.
           example: 함께 봉사하고 싶습니다.
-        activityRegionIds:
-          type: array
-          minItems: 1
-          maxItems: 3
-          uniqueItems: true
-          description: 활동 지역 ID 목록. 회원가입 화면에 노출되는 최상위 지역(level 1)만 중복 없이 1개 이상 3개 이하로 선택합니다.
-          items:
-            type: integer
-            format: int64
-          example:
-            - 1
-            - 2
+        activityRegionId:
+          type: integer
+          format: int64
+          description: 활동 지역 ID. 회원가입 시 선택하는 시군구(level 2) 단위 활동 지역 1개입니다. 향후 공고/모임 검색의 기본 지역 필터 초기값으로 사용합니다.
+          example: 123
         interestCategoryIds:
           type: array
           minItems: 1
@@ -1047,41 +1017,16 @@ components:
           description: 비밀번호
           example: password123!
 
-    TokenReissueRequest:
-      type: object
-      required:
-        - refreshToken
-      properties:
-        refreshToken:
-          type: string
-          description: 로그인 시 발급받은 Refresh Token
-          example: refresh-token-value
-
-    LogoutRequest:
-      type: object
-      required:
-        - refreshToken
-      properties:
-        refreshToken:
-          type: string
-          description: 폐기할 Refresh Token
-          example: refresh-token-value
-
     TokenData:
       type: object
       required:
         - accessToken
-        - refreshToken
         - tokenType
       properties:
         accessToken:
           type: string
           description: API 인증에 사용할 Access Token
           example: access-token-value
-        refreshToken:
-          type: string
-          description: Access Token 재발급에 사용할 Refresh Token
-          example: refresh-token-value
         tokenType:
           type: string
           description: 토큰 타입
@@ -1136,7 +1081,7 @@ components:
         id:
           type: integer
           format: int64
-          description: 지역 ID. 회원가입의 activityRegionIds에 사용합니다.
+          description: 지역 ID. 회원가입의 activityRegionId에 사용합니다.
           example: 1
         name:
           type: string
@@ -1190,11 +1135,13 @@ components:
           description: 카테고리 ID. 회원가입의 interestCategoryIds에 사용합니다.
           example: 1
         code:
-          $ref: '#/components/schemas/CategoryCode'
+          type: string
+          description: 1365 기준 봉사분야 숫자 문자열 코드입니다. 현재 seed 기준 값은 0100 생활편의, 0200 주거환경, 0300 상담·멘토링, 0400 교육, 0500 보건·의료, 0600 농어촌 봉사, 0700 문화·체육·예술·관광, 0800 환경·생태계보호, 0900 사무행정, 1000 지역안전·보호, 1100 인권·공익, 1200 재난·재해, 1300 국제협력·해외봉사, 1500 기타, 1700 자원봉사 기본교육, 1900 온라인자원봉사입니다.
+          example: '0100'
         name:
           type: string
           description: 카테고리 표시명
-          example: 환경
+          example: 생활편의
 
     CategoryListApiResponse:
       type: object

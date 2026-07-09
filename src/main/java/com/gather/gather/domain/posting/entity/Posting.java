@@ -84,6 +84,7 @@ public class Posting {
     @Column(name = "is_group")
     private Boolean isGroup;
 
+    /** 해당 공고의 봉사 실행 날짜가 지난 공고는 false로 */
     @Column(name = "is_active")
     private Boolean isActive;
 
@@ -104,6 +105,9 @@ public class Posting {
 
     @Column(name = "manager_email")
     private String managerEmail;
+
+    @Column(name = "manager_address")
+    private String managerAddress;
 
     @Column(precision = 10, scale = 7)
     private BigDecimal latitude;
@@ -153,6 +157,7 @@ public class Posting {
             String managerTel,
             String managerFax,
             String managerEmail,
+            String managerAddress,
             BigDecimal latitude,
             BigDecimal longitude,
             Long regionId,
@@ -183,6 +188,7 @@ public class Posting {
         this.managerTel = managerTel;
         this.managerFax = managerFax;
         this.managerEmail = managerEmail;
+        this.managerAddress = managerAddress;
         this.latitude = latitude;
         this.longitude = longitude;
         this.regionId = regionId;
@@ -203,7 +209,8 @@ public class Posting {
             String actPlace,
             Boolean isAdult,
             Boolean isTeen,
-            Long regionId) {
+            Long regionId,
+            Long categoryId) {
         this.title = title;
         this.status = status;
         this.recruitOrg = recruitOrg;
@@ -215,6 +222,7 @@ public class Posting {
         this.isAdult = isAdult;
         this.isTeen = isTeen;
         this.regionId = regionId;
+        this.categoryId = categoryId;
         this.isActive = true;
         this.updatedAt = LocalDateTime.now();
     }

@@ -1,5 +1,6 @@
 package com.gather.gather.domain.posting.scheduler;
 
+import com.gather.gather.domain.posting.service.PostingSyncResult;
 import com.gather.gather.domain.posting.service.PostingSyncService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -23,9 +24,13 @@ public class PostingSyncScheduler {
     @Scheduled(cron = "0 0 3 * * *", zone = "Asia/Seoul")
     public void syncPostings() {
         try {
-            postingSyncService.syncRecentPostings();
+            PostingSyncResult result = postingSyncService.syncRecentPostings();
+            log.info("봉사공고 동기화 배치 성공. {}", result);
         } catch (RuntimeException e) {
-            log.error("봉사공고 동기화 배치 실행 중 예외 발생", e);
+            log.error(
+                    "봉사공고 동기화 배치 전체 실패. 오늘 마감되는 공고는 API에서 다음날부터 완전히 사라져 재수집이 불가능하므로,"
+                            + " 이번 실패로 인한 데이터 유실 여부를 수동으로 확인해야 합니다.",
+                    e);
         }
     }
 }
