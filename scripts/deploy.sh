@@ -7,7 +7,7 @@ DEPLOY_DIR="/opt/gather"
 CURRENT_JAR="$DEPLOY_DIR/gather.jar"
 NEW_JAR="$DEPLOY_DIR/gather.jar.new"
 BACKUP_JAR="$DEPLOY_DIR/gather-$(date +%Y%m%d-%H%M%S).jar.bak"
-HEALTH_URL="http://localhost/health"
+HEALTH_URL="http://localhost:8080/health"
 
 echo "===== Gather Backend Deploy Start ====="
 
