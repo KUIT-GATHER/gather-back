@@ -50,6 +50,10 @@
 - 로그인 가능한 계정 (이메일/비밀번호) — JWT 발급용
 - **(PR51 머지 이후) 그 계정이 ADMIN role이어야 함** — 아래 3번 참고
 
+> **1365 키 취급 주의**: 팀원의 1365 서비스키도 개인 발급 API 키인 만큼 민감정보입니다.
+> 팀 채널 등으로 전달받을 때 가능하면 비공개 DM으로 받고, 전달받은 메시지/메모는 작업이
+> 끝나면 삭제하세요. env 파일에도 필요한 키 외에 과거 키를 남겨두지 마세요.
+
 ---
 
 ## 2. 최초 1회: 서버 접속 & 현재 설정 확인
@@ -61,8 +65,14 @@ ssh <EC2_USER>@<EC2_HOST>
 sudo cp /etc/gather/gather.env /etc/gather/gather.env.bak.$(date +%Y%m%d-%H%M%S)
 
 # 현재 설정 확인 (기존에 뭐가 들어있는지 먼저 보세요)
-sudo cat /etc/gather/gather.env
+# ⚠️ gather.env에는 JWT secret, DB 비밀번호, API 키 등 민감정보가 모두 들어있습니다.
+# cat으로 전체를 열람하지 말고, 필요한 키만 grep으로 확인하세요.
+sudo grep -E '^(VOLUNTEER_API_SERVICE_KEY|POSTING_SYNC_MANUAL_ENDPOINT_ENABLED)=' /etc/gather/gather.env
 ```
+
+> **터미널 출력 공유 금지**: 위 명령 결과(특히 실수로 `cat` 전체를 열람한 경우)는 스크린샷,
+> 채팅, 로그 등 어디에도 공유하지 마세요. JWT secret이나 DB 비밀번호가 노출되면 즉시
+> 팀에 알리고 값을 교체해야 합니다.
 
 ---
 
@@ -92,7 +102,12 @@ Authorization: Bearer <accessToken>
 >
 > 위 작업이 끝나고 나서 로그인해야 JWT의 role 클레임에 ADMIN이 담깁니다 (이미 발급받은
 > 토큰은 role 변경 전 것이므로 다시 로그인해서 새 토큰을 받으세요). 작업이 끝나면 이
-> role을 계속 ADMIN으로 둘지 다시 USER로 되돌릴지 팀과 상의하세요.
+> role을 계속 ADMIN으로 둘지 다시 USER로 되돌릴지 팀과 상의하세요. 되돌리기로 했다면
+> 아래 원복 SQL을 실행하세요 (작업 시작 시 UPDATE한 계정과 동일한 이메일이어야 합니다):
+>
+> ```sql
+> UPDATE users SET role = 'USER' WHERE email = '본인계정이메일';
+> ```
 
 ---
 
