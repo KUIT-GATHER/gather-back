@@ -280,10 +280,10 @@ public class AuthController {
                                                     AuthSwaggerExamples
                                                             .REQUIRED_TERMS_NOT_AGREED_EXAMPLE),
                                     @ExampleObject(
-                                            name = "INVALID_ACTIVITY_REGION_COUNT",
+                                            name = "INVALID_ACTIVITY_REGION",
                                             value =
                                                     AuthSwaggerExamples
-                                                            .INVALID_ACTIVITY_REGION_COUNT_EXAMPLE),
+                                                            .INVALID_ACTIVITY_REGION_EXAMPLE),
                                     @ExampleObject(
                                             name = "INVALID_INTEREST_CATEGORY_COUNT",
                                             value =

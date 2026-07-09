@@ -81,7 +81,7 @@
 | `password` / `passwordConfirm` | 6~12자, 두 값 일치 필수 |
 | `nickname` | 2~8자 |
 | `introduction` | 최대 50자, **선택**(생략/빈문자열 가능 — 빈문자열은 null 처리됨) |
-| `activityRegionIds` | **1~3개, 중복 불가, 최상위 지역(level 1)만** |
+| `activityRegionId` | **시군구(level 2) 단위 활동 지역 1개**. 향후 공고/모임 검색의 기본 지역 필터 초기값으로 사용 |
 | `interestCategoryIds` | 1개 이상, 중복 불가 |
 | `serviceTermsAgreed` / `privacyPolicyAgreed` | **반드시 `true`** |
 | `marketingAgreed` | `true`/`false` 모두 가능(선택 동의), 필드 자체는 필수 |
@@ -93,7 +93,7 @@
 | 400 | `PASSWORD_MISMATCH` | 비밀번호 확인 필드 |
 | 400 | `EMAIL_NOT_VERIFIED` | 이메일 인증 단계로 유도 |
 | 400 | `REQUIRED_TERMS_NOT_AGREED` | 약관 동의 |
-| 400 | `INVALID_ACTIVITY_REGION_COUNT` / `INVALID_INTEREST_CATEGORY_COUNT` | 지역/카테고리 선택 |
+| 400 | `INVALID_ACTIVITY_REGION` / `INVALID_INTEREST_CATEGORY_COUNT` | 지역/카테고리 선택 |
 | 404 | `REGION_NOT_FOUND` / `CATEGORY_NOT_FOUND` | 잘못된 id (정상 UI에선 미발생) |
 | 409 | `DUPLICATE_EMAIL` / `DUPLICATE_PHONE_NUMBER` / `DUPLICATE_NICKNAME` | 각 필드 |
 
@@ -126,7 +126,7 @@
 ### 3-8. 지역 조회 — `GET /api/v1/regions`
 
 - 응답 필드: `id, name, level, code, parentId`.
-- **회원가입 화면에서는 `id`, `name`만 사용**하면 됩니다. 활동 지역 후보는 `level === 1`인 항목만 필터링하세요.
+- **회원가입 화면에서는 `id`, `name`만 사용**하면 됩니다. 활동 지역 후보는 `level === 2`인 시군구만 필터링하세요.
 - `code`는 지역 식별 코드입니다. 단일 시도는 1365 행정구역 코드와 매핑될 수 있고, 광역권은 서비스 내부 코드가 사용될 수 있습니다. 예: 서울=`"11"`, 경기=`"41"` — 문자열임에 주의.
 - ⚠️ **응답 순서 보장 없음.** 3x3 버튼 고정 순서는 프론트에서 고정 배열로 매핑하세요.
 
@@ -135,9 +135,29 @@
 - 응답: `{ id, code, name }`, `id` 오름차순 정렬 보장.
 - 용도 구분
   - **`id`** : 회원가입 요청에 보내는 값
-  - **`code`**(`ENVIRONMENT` 등 6종 고정) : 아이콘 · 색상 · 필터 칩 매핑 키
+  - **`code`** : 1365 기준 숫자 문자열 코드. 현재 16개 값이 seed되어 있으며 아이콘 · 색상 · 필터 칩 매핑 키로 사용할 수 있음
   - **`name`** : 화면 표시용.
-- `id = 1은 환경` 식의 **id 하드코딩 금지** — 반드시 조회 결과의 id 사용.
+- `id = 1은 생활편의` 식의 **id 하드코딩 금지** — 반드시 조회 결과의 id 사용.
+- 현재 seed 기준 카테고리 코드 체계:
+
+| code | name |
+|---|---|
+| `0100` | 생활편의 |
+| `0200` | 주거환경 |
+| `0300` | 상담·멘토링 |
+| `0400` | 교육 |
+| `0500` | 보건·의료 |
+| `0600` | 농어촌 봉사 |
+| `0700` | 문화·체육·예술·관광 |
+| `0800` | 환경·생태계보호 |
+| `0900` | 사무행정 |
+| `1000` | 지역안전·보호 |
+| `1100` | 인권·공익 |
+| `1200` | 재난·재해 |
+| `1300` | 국제협력·해외봉사 |
+| `1500` | 기타 |
+| `1700` | 자원봉사 기본교육 |
+| `1900` | 온라인자원봉사 |
 
 ## 4. 논의 중 / 미확정 사항
 

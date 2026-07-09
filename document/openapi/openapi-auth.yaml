@@ -242,9 +242,7 @@ paths:
               passwordConfirm: password123!
               nickname: 길동
               introduction: 함께 봉사하고 싶습니다.
-              activityRegionIds:
-                - 1
-                - 2
+              activityRegionId: 123
               interestCategoryIds:
                 - 1
                 - 4
@@ -306,14 +304,14 @@ paths:
                     error:
                       code: REQUIRED_TERMS_NOT_AGREED
                       message: 필수 약관 동의가 필요합니다.
-                invalidActivityRegionCount:
-                  summary: 활동 지역 개수 오류
+                invalidActivityRegion:
+                  summary: 활동 지역 오류
                   value:
                     success: false
                     data: null
                     error:
-                      code: INVALID_ACTIVITY_REGION_COUNT
-                      message: 활동 지역은 1개 이상 3개 이하로 선택해야 합니다.
+                      code: INVALID_ACTIVITY_REGION
+                      message: 활동 지역은 시군구 단위로 1개 선택해야 합니다.
                 invalidInterestCategoryCount:
                   summary: 관심 카테고리 개수 오류
                   value:
@@ -645,10 +643,10 @@ paths:
                 success: true
                 data:
                   - id: 1
-                    code: ENVIRONMENT
-                    name: 환경
-                  - id: 2
-                    code: EDUCATION
+                    code: '0100'
+                    name: 생활편의
+                  - id: 4
+                    code: '0400'
                     name: 교육
                 error: null
 
@@ -684,18 +682,6 @@ components:
         - SUSPENDED
         - WITHDRAWN
       example: ACTIVE
-
-    CategoryCode:
-      type: string
-      description: 카테고리 의미 고정값
-      enum:
-        - ENVIRONMENT
-        - EDUCATION
-        - CULTURE
-        - COMMUNITY
-        - WELFARE
-        - OVERSEAS
-      example: ENVIRONMENT
 
     ApiError:
       type: object
@@ -886,7 +872,7 @@ components:
         - password
         - passwordConfirm
         - nickname
-        - activityRegionIds
+        - activityRegionId
         - interestCategoryIds
         - serviceTermsAgreed
         - privacyPolicyAgreed
@@ -939,18 +925,11 @@ components:
           nullable: true
           description: 소개글. 최대 50자입니다.
           example: 함께 봉사하고 싶습니다.
-        activityRegionIds:
-          type: array
-          minItems: 1
-          maxItems: 3
-          uniqueItems: true
-          description: 활동 지역 ID 목록. 회원가입 화면에 노출되는 최상위 지역(level 1)만 중복 없이 1개 이상 3개 이하로 선택합니다.
-          items:
-            type: integer
-            format: int64
-          example:
-            - 1
-            - 2
+        activityRegionId:
+          type: integer
+          format: int64
+          description: 활동 지역 ID. 회원가입 시 선택하는 시군구(level 2) 단위 활동 지역 1개입니다. 향후 공고/모임 검색의 기본 지역 필터 초기값으로 사용합니다.
+          example: 123
         interestCategoryIds:
           type: array
           minItems: 1
@@ -1102,7 +1081,7 @@ components:
         id:
           type: integer
           format: int64
-          description: 지역 ID. 회원가입의 activityRegionIds에 사용합니다.
+          description: 지역 ID. 회원가입의 activityRegionId에 사용합니다.
           example: 1
         name:
           type: string
@@ -1156,11 +1135,13 @@ components:
           description: 카테고리 ID. 회원가입의 interestCategoryIds에 사용합니다.
           example: 1
         code:
-          $ref: '#/components/schemas/CategoryCode'
+          type: string
+          description: 1365 기준 봉사분야 숫자 문자열 코드입니다. 현재 seed 기준 값은 0100 생활편의, 0200 주거환경, 0300 상담·멘토링, 0400 교육, 0500 보건·의료, 0600 농어촌 봉사, 0700 문화·체육·예술·관광, 0800 환경·생태계보호, 0900 사무행정, 1000 지역안전·보호, 1100 인권·공익, 1200 재난·재해, 1300 국제협력·해외봉사, 1500 기타, 1700 자원봉사 기본교육, 1900 온라인자원봉사입니다.
+          example: '0100'
         name:
           type: string
           description: 카테고리 표시명
-          example: 환경
+          example: 생활편의
 
     CategoryListApiResponse:
       type: object

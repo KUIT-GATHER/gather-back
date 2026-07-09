@@ -47,10 +47,8 @@ public class AuthService {
     private static final int EMAIL_VERIFICATION_EXPIRATION_MINUTES = 10;
     private static final int MAX_KOREAN_NAME_LENGTH = 7;
     private static final int MAX_NAME_LENGTH = 12;
-    private static final int MIN_ACTIVITY_REGION_COUNT = 1;
-    private static final int MAX_ACTIVITY_REGION_COUNT = 3;
-    // 활동 지역은 시도(최상위) 단위만 선택할 수 있다. Region.level 1 = 시도.
-    private static final int ACTIVITY_REGION_LEVEL = 1;
+    // 활동 지역은 시군구 단위만 선택할 수 있다. Region.level 2 = 시군구.
+    private static final int ACTIVITY_REGION_LEVEL = 2;
     private static final int MIN_INTEREST_CATEGORY_COUNT = 1;
 
     // MySQL unique 제약 위반 메시지 예: "Duplicate entry 'test@example.com' for key 'users.UK_xxx'"
@@ -138,7 +136,7 @@ public class AuthService {
         validateEmailVerified(email);
         validateDuplicates(email, phoneNumber, nickname);
 
-        List<Region> activityRegions = findActivityRegions(request.activityRegionIds());
+        Region activityRegion = findActivityRegion(request.activityRegionId());
         List<Category> interestCategories = findInterestCategories(request.interestCategoryIds());
 
         User user =
@@ -154,7 +152,7 @@ public class AuthService {
                         request.serviceTermsAgreed(),
                         request.privacyPolicyAgreed(),
                         request.marketingAgreed(),
-                        activityRegions,
+                        activityRegion,
                         interestCategories);
 
         try {
@@ -235,7 +233,7 @@ public class AuthService {
                 || !Boolean.TRUE.equals(request.privacyPolicyAgreed())) {
             throw new BusinessException(ErrorCode.REQUIRED_TERMS_NOT_AGREED);
         }
-        validateActivityRegionIds(request.activityRegionIds());
+        validateActivityRegionId(request.activityRegionId());
         validateInterestCategoryIds(request.interestCategoryIds());
     }
 
@@ -249,13 +247,9 @@ public class AuthService {
         }
     }
 
-    private void validateActivityRegionIds(List<Long> activityRegionIds) {
-        if (activityRegionIds == null
-                || activityRegionIds.size() < MIN_ACTIVITY_REGION_COUNT
-                || activityRegionIds.size() > MAX_ACTIVITY_REGION_COUNT
-                || hasNullId(activityRegionIds)
-                || hasDuplicateIds(activityRegionIds)) {
-            throw new BusinessException(ErrorCode.INVALID_ACTIVITY_REGION_COUNT);
+    private void validateActivityRegionId(Long activityRegionId) {
+        if (activityRegionId == null) {
+            throw new BusinessException(ErrorCode.INVALID_ACTIVITY_REGION);
         }
     }
 
@@ -333,22 +327,15 @@ public class AuthService {
         return null;
     }
 
-    private List<Region> findActivityRegions(List<Long> activityRegionIds) {
-        Set<Long> requestedIds = new LinkedHashSet<>(activityRegionIds);
-        List<Region> regions = regionRepository.findAllById(requestedIds);
-        if (regions.size() != requestedIds.size()) {
+    private Region findActivityRegion(Long activityRegionId) {
+        Region region =
+                regionRepository
+                        .findById(activityRegionId)
+                        .orElseThrow(() -> new BusinessException(ErrorCode.REGION_NOT_FOUND));
+        if (!Objects.equals(region.getLevel(), ACTIVITY_REGION_LEVEL)) {
             throw new BusinessException(ErrorCode.REGION_NOT_FOUND);
         }
-        // 활동 지역은 시도 단위만 허용한다. 프론트는 시도 목록만 노출하므로 정상 흐름에서는 발생하지 않고,
-        // 시군구/읍면동 등 하위 지역 id가 전달된 비정상 요청을 걸러낸다.
-        boolean allTopLevel =
-                regions.stream()
-                        .allMatch(
-                                region -> Objects.equals(region.getLevel(), ACTIVITY_REGION_LEVEL));
-        if (!allTopLevel) {
-            throw new BusinessException(ErrorCode.REGION_NOT_FOUND);
-        }
-        return new ArrayList<>(regions);
+        return region;
     }
 
     private List<Category> findInterestCategories(List<Long> interestCategoryIds) {

@@ -129,14 +129,14 @@ final class AuthSwaggerExamples {
               }
             }
             """;
-    static final String INVALID_ACTIVITY_REGION_COUNT_EXAMPLE =
+    static final String INVALID_ACTIVITY_REGION_EXAMPLE =
             """
             {
               "success": false,
               "data": null,
               "error": {
-                "code": "INVALID_ACTIVITY_REGION_COUNT",
-                "message": "활동 지역은 중복 없이 1개 이상 3개 이하로 선택해야 합니다."
+                "code": "INVALID_ACTIVITY_REGION",
+                "message": "활동 지역은 시군구 단위로 1개 선택해야 합니다."
               }
             }
             """;

@@ -2,17 +2,24 @@ package com.gather.gather.domain.auth.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyIterable;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.gather.gather.domain.auth.dto.SignupRequest;
+import com.gather.gather.domain.auth.entity.EmailVerification;
 import com.gather.gather.domain.auth.entity.Gender;
 import com.gather.gather.domain.auth.entity.RefreshToken;
 import com.gather.gather.domain.auth.entity.User;
 import com.gather.gather.domain.auth.repository.EmailVerificationRepository;
 import com.gather.gather.domain.auth.repository.RefreshTokenRepository;
 import com.gather.gather.domain.auth.repository.UserRepository;
+import com.gather.gather.domain.category.entity.Category;
 import com.gather.gather.domain.category.repository.CategoryRepository;
+import com.gather.gather.domain.region.entity.Region;
 import com.gather.gather.domain.region.repository.RegionRepository;
 import com.gather.gather.global.exception.BusinessException;
 import com.gather.gather.global.exception.ErrorCode;
@@ -55,6 +62,66 @@ class AuthServiceTest {
                         passwordEncoder,
                         emailSender,
                         tokenProvider);
+    }
+
+    @Test
+    @DisplayName("회원가입은 level=2 시군구 활동 지역 1개를 User에 저장한다")
+    void signup_withLevel2ActivityRegion_savesUserActivityRegion() {
+        Region activityRegion = Region.create("강남구", 2, "11680", null);
+        Category interestCategory = mock(Category.class);
+        prepareVerifiedEmail();
+        when(regionRepository.findById(123L)).thenReturn(Optional.of(activityRegion));
+        when(categoryRepository.findAllById(anyIterable())).thenReturn(List.of(interestCategory));
+        when(passwordEncoder.encode("password123!")).thenReturn("encoded-password");
+        when(userRepository.saveAndFlush(any(User.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        authService.signup(signupRequest(123L));
+
+        ArgumentCaptor<User> captor = ArgumentCaptor.forClass(User.class);
+        verify(userRepository).saveAndFlush(captor.capture());
+        assertThat(captor.getValue().getActivityRegion()).isSameAs(activityRegion);
+        assertThat(captor.getValue().getInterestCategories()).containsExactly(interestCategory);
+    }
+
+    @Test
+    @DisplayName("회원가입에서 level=1 시도를 활동 지역으로 선택하면 실패한다")
+    void signup_withLevel1ActivityRegion_throwsRegionNotFound() {
+        prepareVerifiedEmail();
+        when(regionRepository.findById(1L))
+                .thenReturn(Optional.of(Region.create("서울", 1, "11", null)));
+
+        assertThatThrownBy(() -> authService.signup(signupRequest(1L)))
+                .isInstanceOfSatisfying(
+                        BusinessException.class,
+                        exception ->
+                                assertThat(exception.getErrorCode())
+                                        .isEqualTo(ErrorCode.REGION_NOT_FOUND));
+    }
+
+    @Test
+    @DisplayName("회원가입에서 존재하지 않는 활동 지역 ID를 선택하면 실패한다")
+    void signup_withUnknownActivityRegion_throwsRegionNotFound() {
+        prepareVerifiedEmail();
+        when(regionRepository.findById(999L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> authService.signup(signupRequest(999L)))
+                .isInstanceOfSatisfying(
+                        BusinessException.class,
+                        exception ->
+                                assertThat(exception.getErrorCode())
+                                        .isEqualTo(ErrorCode.REGION_NOT_FOUND));
+    }
+
+    @Test
+    @DisplayName("회원가입에서 활동 지역 ID가 null이면 실패한다")
+    void signup_withNullActivityRegion_throwsInvalidActivityRegion() {
+        assertThatThrownBy(() -> authService.signup(signupRequest(null)))
+                .isInstanceOfSatisfying(
+                        BusinessException.class,
+                        exception ->
+                                assertThat(exception.getErrorCode())
+                                        .isEqualTo(ErrorCode.INVALID_ACTIVITY_REGION));
     }
 
     @Test
@@ -135,6 +202,7 @@ class AuthServiceTest {
     }
 
     private static User activeUser() {
+        Region activityRegion = Region.create("강남구", 2, "11680", null);
         return User.create(
                 "홍길동",
                 LocalDate.of(2000, 1, 1),
@@ -147,7 +215,34 @@ class AuthServiceTest {
                 true,
                 true,
                 false,
-                List.of(),
+                activityRegion,
                 List.of());
+    }
+
+    private void prepareVerifiedEmail() {
+        EmailVerification emailVerification =
+                EmailVerification.create(
+                        "test@example.com", "123456", LocalDateTime.now().plusMinutes(10));
+        emailVerification.verify(LocalDateTime.now());
+        when(emailVerificationRepository.findByEmail("test@example.com"))
+                .thenReturn(Optional.of(emailVerification));
+    }
+
+    private static SignupRequest signupRequest(Long activityRegionId) {
+        return new SignupRequest(
+                "홍길동",
+                LocalDate.of(2000, 1, 1),
+                Gender.MALE,
+                "01012345678",
+                "test@example.com",
+                "password123!",
+                "password123!",
+                "길동",
+                null,
+                activityRegionId,
+                List.of(1L),
+                true,
+                true,
+                false);
     }
 }
