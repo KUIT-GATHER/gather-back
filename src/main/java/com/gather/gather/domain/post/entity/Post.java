@@ -100,7 +100,13 @@ public class Post {
             String content,
             PostType type,
             Integer recruitCapacity) {
-        return new Post(meeting, user, title, content, type, type == PostType.RECRUIT ? recruitCapacity : null);
+        return new Post(
+                meeting,
+                user,
+                title,
+                content,
+                type,
+                type == PostType.RECRUIT ? recruitCapacity : null);
     }
 
     public void update(String title, String content) {

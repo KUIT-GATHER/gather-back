@@ -128,7 +128,9 @@ public class PostService {
 
     private List<PostType> resolveVisibleTypes(boolean member, PostType typeFilter) {
         EnumSet<PostType> allowed =
-                member ? EnumSet.allOf(PostType.class) : EnumSet.copyOf(PostType.visibleToNonMember());
+                member
+                        ? EnumSet.allOf(PostType.class)
+                        : EnumSet.copyOf(PostType.visibleToNonMember());
         if (typeFilter == null) {
             return List.copyOf(allowed);
         }

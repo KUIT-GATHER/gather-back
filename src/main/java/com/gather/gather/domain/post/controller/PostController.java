@@ -58,8 +58,7 @@ public class PostController {
     }
 
     @DeleteMapping("/{postId}")
-    public ApiResponse<Void> deletePost(
-            @PathVariable Long meetingId, @PathVariable Long postId) {
+    public ApiResponse<Void> deletePost(@PathVariable Long meetingId, @PathVariable Long postId) {
         postService.deletePost(meetingId, postId);
         return ApiResponse.success(null);
     }
