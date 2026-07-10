@@ -60,14 +60,14 @@ public class PostingService {
     public PageResponse<PostingSummaryResponse> getPostings(
             Pageable pageable,
             Long regionId,
+            Long regionGroupId,
             PostingStatus status,
             LocalDate noticeStartDate,
             LocalDate noticeEndDate,
             String keyword) {
         validateSort(pageable.getSort());
         PostingStatus effectiveStatus = status != null ? status : PostingStatus.RECRUITING;
-        List<Long> regionIds =
-                regionId != null ? regionRepository.findIdsIncludingChildren(regionId) : null;
+        List<Long> regionIds = resolveRegionIds(regionId, regionGroupId);
 
         Page<Posting> postings =
                 postingRepository.search(
@@ -121,6 +121,20 @@ public class PostingService {
                 throw new BusinessException(ErrorCode.VALIDATION_ERROR);
             }
         }
+    }
+
+    /** regionId(단일 시도/시군구)와 regionGroupId(9버튼 권역)는 동시에 줄 수 없다 — 필터 기준이 서로 다른 축이라 모호하다. */
+    private List<Long> resolveRegionIds(Long regionId, Long regionGroupId) {
+        if (regionId != null && regionGroupId != null) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR);
+        }
+        if (regionGroupId != null) {
+            return regionRepository.findIdsIncludingChildrenByGroupId(regionGroupId);
+        }
+        if (regionId != null) {
+            return regionRepository.findIdsIncludingChildren(regionId);
+        }
+        return null;
     }
 
     private List<PostingLocationResponse> buildLocations(Posting posting) {
