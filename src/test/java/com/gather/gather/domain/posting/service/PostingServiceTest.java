@@ -37,6 +37,7 @@ import org.springframework.beans.BeanUtils;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.test.util.ReflectionTestUtils;
 
 @ExtendWith(MockitoExtension.class)
@@ -198,6 +199,33 @@ class PostingServiceTest {
 
         verify(regionRepository, times(1)).findAllById(any());
         verify(categoryRepository, times(1)).findAllById(any());
+    }
+
+    @Test
+    @DisplayName("getPostings throws VALIDATION_ERROR when sort property does not exist on Posting")
+    void getPostings_throwsValidationError_whenSortPropertyUnknown() {
+        Pageable pageable = PageRequest.of(0, 20, Sort.by("string"));
+
+        assertThatThrownBy(() -> postingService.getPostings(pageable, null, null, null, null, null))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(
+                        ex ->
+                                assertThat(((BusinessException) ex).getErrorCode())
+                                        .isEqualTo(ErrorCode.VALIDATION_ERROR));
+        verify(postingRepository, never()).search(any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("getPostings allows sorting by a known Posting property")
+    void getPostings_allowsSort_whenPropertyKnown() {
+        Pageable pageable = PageRequest.of(0, 20, Sort.by("title").ascending());
+        when(postingRepository.search(PostingStatus.RECRUITING, null, null, null, null, pageable))
+                .thenReturn(new PageImpl<>(List.of()));
+
+        postingService.getPostings(pageable, null, null, null, null, null);
+
+        verify(postingRepository)
+                .search(PostingStatus.RECRUITING, null, null, null, null, pageable);
     }
 
     @Test
