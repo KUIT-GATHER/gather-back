@@ -31,6 +31,9 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.NullAndEmptySource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -122,6 +125,72 @@ class AuthServiceTest {
                         exception ->
                                 assertThat(exception.getErrorCode())
                                         .isEqualTo(ErrorCode.INVALID_ACTIVITY_REGION));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"가나", "가나다라마바사아자차", "Ab", "abcdefghijklmnopqrst"})
+    @DisplayName("회원가입은 정책에 맞는 이름을 허용한다")
+    void signup_withValidName_savesName(String name) {
+        prepareSuccessfulSignup();
+
+        authService.signup(signupRequest(123L, name, "길동"));
+
+        ArgumentCaptor<User> captor = ArgumentCaptor.forClass(User.class);
+        verify(userRepository).saveAndFlush(captor.capture());
+        assertThat(captor.getValue().getName()).isEqualTo(name);
+    }
+
+    @ParameterizedTest
+    @NullAndEmptySource
+    @ValueSource(
+            strings = {
+                "가",
+                "가나다라마바사아자차카",
+                "A",
+                "abcdefghijklmnopqrstu",
+                "홍John",
+                "John1",
+                "John!",
+                " John",
+                "John Smith",
+                "ㅎㄱ"
+            })
+    @DisplayName("회원가입은 정책에 맞지 않는 이름을 거부한다")
+    void signup_withInvalidName_throwsValidationError(String name) {
+        assertValidationError(signupRequest(123L, name, "길동"));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"가나", "가나다라마바사아자차", "Ab", "abcdefghijklmnopqrst"})
+    @DisplayName("회원가입은 정책에 맞는 닉네임을 허용한다")
+    void signup_withValidNickname_savesNickname(String nickname) {
+        prepareSuccessfulSignup();
+
+        authService.signup(signupRequest(123L, "홍길동", nickname));
+
+        ArgumentCaptor<User> captor = ArgumentCaptor.forClass(User.class);
+        verify(userRepository).saveAndFlush(captor.capture());
+        assertThat(captor.getValue().getNickname()).isEqualTo(nickname);
+    }
+
+    @ParameterizedTest
+    @NullAndEmptySource
+    @ValueSource(
+            strings = {
+                "가",
+                "가나다라마바사아자차카",
+                "A",
+                "abcdefghijklmnopqrstu",
+                "홍John",
+                "John1",
+                "John!",
+                " John",
+                "John Smith",
+                "ㅎㄱ"
+            })
+    @DisplayName("회원가입은 정책에 맞지 않는 닉네임을 거부한다")
+    void signup_withInvalidNickname_throwsValidationError(String nickname) {
+        assertValidationError(signupRequest(123L, "홍길동", nickname));
     }
 
     @Test
@@ -228,16 +297,42 @@ class AuthServiceTest {
                 .thenReturn(Optional.of(emailVerification));
     }
 
+    private void prepareSuccessfulSignup() {
+        Region activityRegion = Region.create("강남구", 2, "11680", null);
+        Category interestCategory = mock(Category.class);
+        prepareVerifiedEmail();
+        when(regionRepository.findById(123L)).thenReturn(Optional.of(activityRegion));
+        when(categoryRepository.findAllById(anyIterable())).thenReturn(List.of(interestCategory));
+        when(passwordEncoder.encode("password123!")).thenReturn("encoded-password");
+        when(userRepository.saveAndFlush(any(User.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+    }
+
+    private void assertValidationError(SignupRequest request) {
+        assertThatThrownBy(() -> authService.signup(request))
+                .isInstanceOfSatisfying(
+                        BusinessException.class,
+                        exception ->
+                                assertThat(exception.getErrorCode())
+                                        .isEqualTo(ErrorCode.VALIDATION_ERROR));
+        verify(userRepository, never()).saveAndFlush(any(User.class));
+    }
+
     private static SignupRequest signupRequest(Long activityRegionId) {
+        return signupRequest(activityRegionId, "홍길동", "길동");
+    }
+
+    private static SignupRequest signupRequest(
+            Long activityRegionId, String name, String nickname) {
         return new SignupRequest(
-                "홍길동",
+                name,
                 LocalDate.of(2000, 1, 1),
                 Gender.MALE,
                 "01012345678",
                 "test@example.com",
                 "password123!",
                 "password123!",
-                "길동",
+                nickname,
                 null,
                 activityRegionId,
                 List.of(1L),

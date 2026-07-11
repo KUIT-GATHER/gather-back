@@ -32,7 +32,7 @@ public class User {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(nullable = false, length = 12)
+    @Column(nullable = false, length = 20)
     private String name;
 
     @Column(nullable = false)
@@ -51,7 +51,7 @@ public class User {
     @Column(nullable = false, length = 255)
     private String password;
 
-    @Column(nullable = false, unique = true, length = 8)
+    @Column(nullable = false, unique = true, length = 20)
     private String nickname;
 
     @Column(length = 50)

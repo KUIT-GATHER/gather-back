@@ -12,9 +12,9 @@ import java.util.List;
 
 @Schema(description = "회원가입 요청")
 public record SignupRequest(
-        @Schema(description = "이름. 한글은 최대 7자, 영문/혼합은 최대 12자까지 허용합니다.", example = "홍길동")
+        @Schema(description = "이름. 완성형 한글 2~10자 또는 영문 2~20자만 허용합니다.", example = "홍길동")
                 @NotBlank
-                @Size(max = 12)
+                @Size(min = 2, max = 20)
                 String name,
         @Schema(description = "생년월일. 미래 날짜는 허용하지 않습니다.", example = "2002-03-15")
                 @NotNull
@@ -36,9 +36,9 @@ public record SignupRequest(
                 @NotBlank
                 @Size(min = 6, max = 12)
                 String passwordConfirm,
-        @Schema(description = "닉네임. 2자 이상 8자 이하입니다.", example = "길동")
+        @Schema(description = "닉네임. 완성형 한글 2~10자 또는 영문 2~20자만 허용합니다.", example = "길동")
                 @NotBlank
-                @Size(min = 2, max = 8)
+                @Size(min = 2, max = 20)
                 String nickname,
         @Schema(description = "소개글. 최대 50자입니다.", example = "함께 봉사하고 싶습니다.") @Size(max = 50)
                 String introduction,

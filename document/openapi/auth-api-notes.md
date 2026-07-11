@@ -73,13 +73,13 @@
 
 | 필드 | 규칙 |
 |---|---|
-| `name` | 한글만이면 최대 7자, 영문/혼합은 최대 12자 |
+| `name` | 완성형 한글 2~10자 또는 영문 2~20자. 혼합·공백·숫자·특수문자 불가 |
 | `birthDate` | `yyyy-MM-dd`, 미래 날짜 불가 |
 | `gender` | `MALE` / `FEMALE` (그 외 값은 400) |
 | `phoneNumber` | 숫자만 권장(하이픈은 서버가 제거) |
 | `email` | **인증 완료된 이메일**이어야 함, 최대 255자 |
 | `password` / `passwordConfirm` | 6~12자, 두 값 일치 필수 |
-| `nickname` | 2~8자 |
+| `nickname` | 완성형 한글 2~10자 또는 영문 2~20자. 혼합·공백·숫자·특수문자 불가 |
 | `introduction` | 최대 50자, **선택**(생략/빈문자열 가능 — 빈문자열은 null 처리됨) |
 | `activityRegionId` | **시군구(level 2) 단위 활동 지역 1개**. 향후 공고/모임 검색의 기본 지역 필터 초기값으로 사용 |
 | `interestCategoryIds` | 1개 이상, 중복 불가 |
