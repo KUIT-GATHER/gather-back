@@ -16,10 +16,14 @@ public interface RegionRepository extends JpaRepository<Region, Long> {
     List<Region> findAllWithParent();
 
     /**
-     * regionId 자신과 그 직계 자식의 id를 모두 반환한다. 시군구(level 2)로 조회하면 그 소속 읍/면/동(level 4)까지, 시도(level 1)로
-     * 조회하면 그 소속 시군구까지 포함된다(level 4는 level 2의 직계 자식이라 level 3을 거치지 않는다).
+     * regionId 자신과 그 하위 지역 id를 모두 반환한다. 시도(level 1) → 시군구(level 2) → 읍/면/동(level 4) 3단계 구조이므로(level
+     * 3은 사용하지 않음), 2-hop(자식+손자)까지 조회하면 시도로 조회해도 그 소속 읍/면/동까지 모두 포함된다.
      */
-    @Query("select r.id from Region r where r.id = :regionId or r.parent.id = :regionId")
+    @Query(
+            "select r.id from Region r "
+                    + "left join r.parent p "
+                    + "left join p.parent gp "
+                    + "where r.id = :regionId or p.id = :regionId or gp.id = :regionId")
     List<Long> findIdsIncludingChildren(@Param("regionId") Long regionId);
 
     /** 특정 지역의 직계 자식 목록(예: 시군구의 읍/면/동)을 반환한다. */

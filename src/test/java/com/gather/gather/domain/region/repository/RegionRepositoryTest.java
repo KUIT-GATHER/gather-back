@@ -29,6 +29,21 @@ class RegionRepositoryTest {
     }
 
     @Test
+    void findIdsIncludingChildren_returnsSidoGuAndDongIds_whenSidoIdGiven() {
+        Region sido = regionRepository.save(Region.create("테스트도5", 1, "9990011", null));
+        Region gu = regionRepository.save(Region.create("테스트구5", 2, "9990012", sido));
+        Region otherGu = regionRepository.save(Region.create("테스트구6", 2, "9990013", sido));
+        Region dong1 = regionRepository.save(Region.create("테스트동5", 4, "9990014", gu));
+        Region dong2 = regionRepository.save(Region.create("테스트동6", 4, "9990015", otherGu));
+
+        var ids = regionRepository.findIdsIncludingChildren(sido.getId());
+
+        assertThat(ids)
+                .containsExactlyInAnyOrder(
+                        sido.getId(), gu.getId(), otherGu.getId(), dong1.getId(), dong2.getId());
+    }
+
+    @Test
     void findIdsIncludingChildren_returnsOnlyItself_whenLeafIdGiven() {
         Region parent = regionRepository.save(Region.create("테스트도2", 1, "9990002", null));
         Region child = regionRepository.save(Region.create("테스트구2", 3, "9990003", parent));

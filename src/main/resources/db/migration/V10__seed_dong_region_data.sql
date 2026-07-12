@@ -5215,4 +5215,3 @@ INSERT INTO region (name, level, code, parent_id) SELECT '남원읍', 4, '501302
 INSERT INTO region (name, level, code, parent_id) SELECT '성산읍', 4, '5013025900', id FROM region WHERE code = '6520000';
 INSERT INTO region (name, level, code, parent_id) SELECT '안덕면', 4, '5013031000', id FROM region WHERE code = '6520000';
 INSERT INTO region (name, level, code, parent_id) SELECT '표선면', 4, '5013032000', id FROM region WHERE code = '6520000';
-
