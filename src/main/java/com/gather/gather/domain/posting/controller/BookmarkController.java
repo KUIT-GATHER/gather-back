@@ -23,6 +23,18 @@ public class BookmarkController {
 
     private static final String JSON = "application/json";
 
+    private static final String UNAUTHORIZED_EXAMPLE =
+            """
+            {
+              "success": false,
+              "data": null,
+              "error": {
+                "code": "UNAUTHORIZED",
+                "message": "인증이 필요합니다."
+              }
+            }
+            """;
+
     private final BookmarkService bookmarkService;
 
     @Operation(summary = "봉사공고 북마크 추가", description = "로그인한 사용자가 봉사공고를 북마크에 추가합니다.")
@@ -43,6 +55,16 @@ public class BookmarkController {
                                                           "error": null
                                                         }
                                                         """))),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                responseCode = "401",
+                description = "인증되지 않은 요청",
+                content =
+                        @Content(
+                                mediaType = JSON,
+                                examples =
+                                        @ExampleObject(
+                                                name = "UNAUTHORIZED",
+                                                value = UNAUTHORIZED_EXAMPLE))),
         @io.swagger.v3.oas.annotations.responses.ApiResponse(
                 responseCode = "404",
                 description = "봉사공고를 찾을 수 없음",
@@ -107,6 +129,16 @@ public class BookmarkController {
                                                           "error": null
                                                         }
                                                         """))),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                responseCode = "401",
+                description = "인증되지 않은 요청",
+                content =
+                        @Content(
+                                mediaType = JSON,
+                                examples =
+                                        @ExampleObject(
+                                                name = "UNAUTHORIZED",
+                                                value = UNAUTHORIZED_EXAMPLE))),
         @io.swagger.v3.oas.annotations.responses.ApiResponse(
                 responseCode = "404",
                 description = "북마크한 적 없는 공고",
