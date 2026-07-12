@@ -162,6 +162,19 @@ class PostingControllerTest {
     }
 
     @Test
+    @DisplayName(
+            "GET /api/v1/postings?sort=invalidProp returns 400 when sort property is not whitelisted")
+    void getPostings_returns400_whenSortPropertyInvalid() throws Exception {
+        when(postingService.getPostings(any(), any(), any(), any(), any(), any()))
+                .thenThrow(new BusinessException(ErrorCode.VALIDATION_ERROR));
+
+        mockMvc.perform(get("/api/v1/postings").param("sort", "invalidProp"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.error.code").value("VALIDATION_ERROR"));
+    }
+
+    @Test
     @DisplayName("GET /api/v1/postings/{id} returns 200 with detail including locations")
     void getPosting_returns200WithDetail() throws Exception {
         PostingResponse response =
