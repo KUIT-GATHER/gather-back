@@ -78,11 +78,18 @@ sudo grep -E '^(VOLUNTEER_API_SERVICE_KEY|POSTING_SYNC_MANUAL_ENDPOINT_ENABLED)=
 
 ## 3. 로그인해서 JWT 발급 (1회만 하면 됨, 토큰 만료 전까지 재사용)
 
+SSH로 서버에 접속한 상태이므로, 외부 도메인이 아닌 로컬 포트로 호출합니다
+(HTTPS 적용 후 http 요청은 301 리다이렉트되는데 curl이 POST 리다이렉트를 따라가지
+않아 실패할 수 있고, EC2 보안그룹에서 8080 외부 접근도 막혀 있습니다):
+
 ```bash
-curl -X POST http://<EC2_HOST>/api/v1/auth/login \
+curl -X POST http://localhost:8080/api/v1/auth/login \
   -H "Content-Type: application/json" \
   -d '{"email":"본인계정이메일","password":"본인비밀번호"}'
 ```
+
+> 서버 밖에서 호출해야 한다면 `https://api.gathernow.kr/api/v1/auth/login`(도메인 +
+> https)을 사용하세요.
 
 응답의 `accessToken` 값을 복사해두세요. 이후 모든 동기화 호출에 아래처럼 씁니다:
 
@@ -137,17 +144,27 @@ POSTING_SYNC_MANUAL_ENDPOINT_ENABLED=true
 ```bash
 sudo systemctl restart gather
 sleep 20
-curl --fail http://localhost/health
+curl --fail http://localhost:8080/health
 ```
+
+> `/health`는 Nginx가 아니라 Spring Boot가 직접 듣는 8080 포트로 확인해야 합니다.
+> `http://localhost/health`(Nginx 경유)는 404가 반환되어, 정상 기동한 경우에도
+> 헬스체크 실패로 오판할 수 있습니다 (`scripts/deploy.sh`도 동일한 이유로 8080을
+> 사용하도록 수정된 바 있습니다, #60).
 
 헬스체크가 실패하면 아래 트러블슈팅으로 이동하세요.
 
 ### 4-3. 수동 동기화 트리거
 
+SSH로 서버에 접속한 상태이므로 로컬 포트로 호출합니다:
+
 ```bash
-curl -X POST http://<EC2_HOST>/api/v1/postings/sync \
+curl -X POST http://localhost:8080/api/v1/postings/sync \
   -H "Authorization: Bearer <accessToken>"
 ```
+
+> 서버 밖에서 호출해야 한다면 `https://api.gathernow.kr/api/v1/postings/sync`를
+> 사용하세요.
 
 ### 4-4. 결과 확인
 
@@ -185,7 +202,7 @@ sudo journalctl -u gather -n 100 --no-pager
 ```bash
 sudo systemctl restart gather
 sleep 20
-curl --fail http://localhost/health
+curl --fail http://localhost:8080/health
 ```
 
 4. `/etc/gather/gather.env.bak.*` 백업 파일은 문제없으면 그대로 두거나 정리하세요.
