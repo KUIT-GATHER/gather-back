@@ -37,6 +37,7 @@ import org.springframework.beans.BeanUtils;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.test.util.ReflectionTestUtils;
 
 @ExtendWith(MockitoExtension.class)
@@ -72,11 +73,12 @@ class PostingServiceTest {
                         eq(pageable)))
                 .thenReturn(new PageImpl<>(List.of()));
 
-        postingService.getPostings(pageable, null, null, null, null, null);
+        postingService.getPostings(pageable, null, null, null, null, null, null);
 
         verify(postingRepository)
                 .search(PostingStatus.RECRUITING, null, null, null, null, pageable);
         verify(regionRepository, never()).findIdsIncludingChildren(any());
+        verify(regionRepository, never()).findIdsIncludingChildrenByGroupId(any());
     }
 
     @Test
@@ -92,7 +94,7 @@ class PostingServiceTest {
                         eq(pageable)))
                 .thenReturn(new PageImpl<>(List.of()));
 
-        postingService.getPostings(pageable, null, PostingStatus.CLOSED, null, null, null);
+        postingService.getPostings(pageable, null, null, PostingStatus.CLOSED, null, null, null);
 
         verify(postingRepository).search(PostingStatus.CLOSED, null, null, null, null, pageable);
     }
@@ -111,11 +113,57 @@ class PostingServiceTest {
                         eq(pageable)))
                 .thenReturn(new PageImpl<>(List.of()));
 
-        postingService.getPostings(pageable, 1L, null, null, null, null);
+        postingService.getPostings(pageable, 1L, null, null, null, null, null);
 
         verify(regionRepository).findIdsIncludingChildren(1L);
         verify(postingRepository)
                 .search(PostingStatus.RECRUITING, List.of(1L, 2L, 3L), null, null, null, pageable);
+    }
+
+    @Test
+    @DisplayName(
+            "getPostings resolves regionGroupId to every sido/gungu in that group before"
+                    + " querying")
+    void getPostings_resolvesRegionGroupHierarchy_whenRegionGroupIdProvided() {
+        Pageable pageable = PageRequest.of(0, 20);
+        when(regionRepository.findIdsIncludingChildrenByGroupId(7L))
+                .thenReturn(List.of(10L, 11L, 12L, 13L));
+        when(postingRepository.search(
+                        eq(PostingStatus.RECRUITING),
+                        eq(List.of(10L, 11L, 12L, 13L)),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        eq(pageable)))
+                .thenReturn(new PageImpl<>(List.of()));
+
+        postingService.getPostings(pageable, null, 7L, null, null, null, null);
+
+        verify(regionRepository).findIdsIncludingChildrenByGroupId(7L);
+        verify(regionRepository, never()).findIdsIncludingChildren(any());
+        verify(postingRepository)
+                .search(
+                        PostingStatus.RECRUITING,
+                        List.of(10L, 11L, 12L, 13L),
+                        null,
+                        null,
+                        null,
+                        pageable);
+    }
+
+    @Test
+    @DisplayName("getPostings throws VALIDATION_ERROR when both regionId and regionGroupId given")
+    void getPostings_throwsValidationError_whenBothRegionIdAndRegionGroupIdProvided() {
+        Pageable pageable = PageRequest.of(0, 20);
+
+        assertThatThrownBy(
+                        () -> postingService.getPostings(pageable, 1L, 7L, null, null, null, null))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(
+                        ex ->
+                                assertThat(((BusinessException) ex).getErrorCode())
+                                        .isEqualTo(ErrorCode.VALIDATION_ERROR));
+        verify(postingRepository, never()).search(any(), any(), any(), any(), any(), any());
     }
 
     @Test
@@ -127,7 +175,7 @@ class PostingServiceTest {
         when(postingRepository.search(PostingStatus.RECRUITING, null, from, to, null, pageable))
                 .thenReturn(new PageImpl<>(List.of()));
 
-        postingService.getPostings(pageable, null, null, from, to, null);
+        postingService.getPostings(pageable, null, null, null, from, to, null);
 
         verify(postingRepository).search(PostingStatus.RECRUITING, null, from, to, null, pageable);
     }
@@ -139,7 +187,7 @@ class PostingServiceTest {
         when(postingRepository.search(PostingStatus.RECRUITING, null, null, null, "환경", pageable))
                 .thenReturn(new PageImpl<>(List.of()));
 
-        postingService.getPostings(pageable, null, null, null, null, "환경");
+        postingService.getPostings(pageable, null, null, null, null, null, "환경");
 
         verify(postingRepository)
                 .search(PostingStatus.RECRUITING, null, null, null, "환경", pageable);
@@ -156,7 +204,7 @@ class PostingServiceTest {
         when(categoryRepository.findAllById(any())).thenReturn(List.of(categoryWithId(10L, "환경")));
 
         PageResponse<PostingSummaryResponse> result =
-                postingService.getPostings(pageable, null, null, null, null, null);
+                postingService.getPostings(pageable, null, null, null, null, null, null);
 
         assertThat(result.content()).hasSize(1);
         PostingSummaryResponse response = result.content().get(0);
@@ -176,7 +224,7 @@ class PostingServiceTest {
         when(categoryRepository.findAllById(any())).thenReturn(List.of(categoryWithId(10L, "환경")));
 
         PageResponse<PostingSummaryResponse> result =
-                postingService.getPostings(pageable, null, null, null, null, null);
+                postingService.getPostings(pageable, null, null, null, null, null, null);
 
         assertThat(result.content().get(0).regionName()).isNull();
         assertThat(result.content().get(0).categoryName()).isEqualTo("환경");
@@ -194,10 +242,40 @@ class PostingServiceTest {
         when(regionRepository.findAllById(any())).thenReturn(List.of(regionWithId(2L, "동구")));
         when(categoryRepository.findAllById(any())).thenReturn(List.of(categoryWithId(10L, "환경")));
 
-        postingService.getPostings(pageable, null, null, null, null, null);
+        postingService.getPostings(pageable, null, null, null, null, null, null);
 
         verify(regionRepository, times(1)).findAllById(any());
         verify(categoryRepository, times(1)).findAllById(any());
+    }
+
+    @Test
+    @DisplayName("getPostings throws VALIDATION_ERROR when sort property does not exist on Posting")
+    void getPostings_throwsValidationError_whenSortPropertyUnknown() {
+        Pageable pageable = PageRequest.of(0, 20, Sort.by("string"));
+
+        assertThatThrownBy(
+                        () ->
+                                postingService.getPostings(
+                                        pageable, null, null, null, null, null, null))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(
+                        ex ->
+                                assertThat(((BusinessException) ex).getErrorCode())
+                                        .isEqualTo(ErrorCode.VALIDATION_ERROR));
+        verify(postingRepository, never()).search(any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("getPostings allows sorting by a known Posting property")
+    void getPostings_allowsSort_whenPropertyKnown() {
+        Pageable pageable = PageRequest.of(0, 20, Sort.by("title").ascending());
+        when(postingRepository.search(PostingStatus.RECRUITING, null, null, null, null, pageable))
+                .thenReturn(new PageImpl<>(List.of()));
+
+        postingService.getPostings(pageable, null, null, null, null, null, null);
+
+        verify(postingRepository)
+                .search(PostingStatus.RECRUITING, null, null, null, null, pageable);
     }
 
     @Test
@@ -208,7 +286,7 @@ class PostingServiceTest {
                 .thenReturn(new PageImpl<>(List.of()));
 
         PageResponse<PostingSummaryResponse> result =
-                postingService.getPostings(pageable, null, null, null, null, null);
+                postingService.getPostings(pageable, null, null, null, null, null, null);
 
         assertThat(result.content()).isEmpty();
         assertThat(result.totalElements()).isZero();

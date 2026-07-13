@@ -26,9 +26,11 @@ public class SecurityConfig {
     // 참고: /api/v1/postings/sync는 의도적으로 인증 대상(팀 결정)이라 여기에 넣지 않는다.
     // GET 전용 공개 조회 경로. 문자열 매처는 HTTP 메서드를 구분하지 않으므로, 같은 경로에
     // 쓰기 요청(POST 등)이 나중에 추가돼도 함께 열리지 않도록 GET으로 한정해 등록한다.
-    // "/api/v1/postings"는 "/**"로 하위 경로(상세조회 /{id})까지 포함해야 매치된다 —
-    // 와일드카드 없는 리터럴 패턴은 그 경로만 매치하고 하위 경로는 매치하지 않는다.
-    private static final String[] PERMIT_ALL_GET_PATHS = {"/api/v1/postings/**", "/api/v1/regions"};
+    // "/api/v1/postings", "/api/v1/regions"는 "/**"로 하위 경로(상세조회 /{id}, 권역 목록 /groups)까지
+    // 포함해야 매치된다 — 와일드카드 없는 리터럴 패턴은 그 경로만 매치하고 하위 경로는 매치하지 않는다.
+    private static final String[] PERMIT_ALL_GET_PATHS = {
+        "/api/v1/postings/**", "/api/v1/regions/**"
+    };
 
     private static final String[] PERMIT_ALL_PATHS = {
         "/health",

@@ -43,6 +43,12 @@ public enum ErrorCode {
     POSTING_NOT_FOUND(HttpStatus.NOT_FOUND, "봉사공고를 찾을 수 없습니다."),
     BOOKMARK_DUPLICATE(HttpStatus.CONFLICT, "이미 북마크한 공고입니다."),
     BOOKMARK_NOT_FOUND(HttpStatus.NOT_FOUND, "북마크를 찾을 수 없습니다."),
+
+    MEETING_MEMBER_REQUIRED(HttpStatus.FORBIDDEN, "모임에 가입해야 이용할 수 있습니다."),
+    POST_NOT_FOUND(HttpStatus.NOT_FOUND, "게시글을 찾을 수 없습니다."),
+    POST_FORBIDDEN(HttpStatus.FORBIDDEN, "게시글에 대한 권한이 없습니다."),
+    POST_ACCESS_DENIED(HttpStatus.FORBIDDEN, "가입하지 않은 모임의 게시글은 열람할 수 없습니다."),
+    NOTICE_HOST_ONLY(HttpStatus.FORBIDDEN, "공지는 모임장만 작성할 수 있습니다."),
     ;
 
     private final HttpStatus status;
