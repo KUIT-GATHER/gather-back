@@ -7,7 +7,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
 public record RegionResponse(
         @Schema(description = "지역 ID", example = "1") Long id,
         @Schema(description = "지역 표시명", example = "서울") String name,
-        @Schema(description = "지역 단계 (1=도, 2=시, 3=구, 4=동)", example = "1") Integer level,
+        @Schema(description = "지역 단계 (1=도, 2=시/군/구, 4=읍/면/동)", example = "1") Integer level,
         @Schema(
                         description =
                                 "지역 식별 코드입니다. 단일 시도는 1365 행정구역 코드와 매핑될 수 있으며, "
