@@ -39,6 +39,8 @@ public class PostingController {
                     "봉사공고를 페이지 단위로 조회합니다. 인증이 필요 없습니다. "
                             + "status를 지정하지 않으면 모집중(RECRUITING)만 반환합니다. "
                             + "regionId는 상위 지역(시/도) 선택 시 하위 지역(구/군) 공고까지 포함합니다. "
+                            + "regionGroupId는 활동 지역 9버튼(서울/부산/.../경상/전라/충청) 선택 시 그 권역에 속한 "
+                            + "모든 시도와 시군구 공고를 포함합니다. regionId와 regionGroupId는 동시에 지정할 수 없습니다. "
                             + "noticeStartDate/noticeEndDate는 각각 모집시작일 하한/모집종료일 상한 필터입니다. "
                             + "keyword는 제목/모집기관명 부분일치 검색입니다.",
             parameters = {
@@ -93,7 +95,7 @@ public class PostingController {
                                                         """))),
         @io.swagger.v3.oas.annotations.responses.ApiResponse(
                 responseCode = "400",
-                description = "허용되지 않은 sort 프로퍼티 등 잘못된 요청 값",
+                description = "요청 값이 올바르지 않음 (예: regionId와 regionGroupId 동시 지정, 존재하지 않는 sort 프로퍼티)",
                 content =
                         @Content(
                                 mediaType = JSON,
@@ -136,9 +138,12 @@ public class PostingController {
     public ApiResponse<PageResponse<PostingSummaryResponse>> getPostings(
             @PageableDefault(size = 20, sort = "id", direction = Sort.Direction.DESC)
                     Pageable pageable,
-            @Parameter(description = "지역 ID (상위 지역 선택 시 하위 지역까지 포함)")
+            @Parameter(description = "지역 ID (상위 지역 선택 시 하위 지역까지 포함, regionGroupId와 동시 지정 불가)")
                     @RequestParam(required = false)
                     Long regionId,
+            @Parameter(description = "활동 지역 권역 ID (9버튼, regionId와 동시 지정 불가)")
+                    @RequestParam(required = false)
+                    Long regionGroupId,
             @Parameter(description = "모집상태 (미지정 시 RECRUITING)") @RequestParam(required = false)
                     PostingStatus status,
             @Parameter(description = "모집시작일 하한 (yyyy-MM-dd)") @RequestParam(required = false)
@@ -149,7 +154,13 @@ public class PostingController {
                     String keyword) {
         return ApiResponse.success(
                 postingService.getPostings(
-                        pageable, regionId, status, noticeStartDate, noticeEndDate, keyword));
+                        pageable,
+                        regionId,
+                        regionGroupId,
+                        status,
+                        noticeStartDate,
+                        noticeEndDate,
+                        keyword));
     }
 
     @Operation(summary = "봉사공고 상세 조회", description = "봉사공고 상세 정보를 조회합니다. 인증이 필요 없습니다.")

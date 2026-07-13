@@ -6,6 +6,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.gather.gather.domain.region.dto.RegionGroupResponse;
 import com.gather.gather.domain.region.dto.RegionResponse;
 import com.gather.gather.domain.region.service.RegionService;
 import java.util.List;
@@ -31,8 +32,8 @@ class RegionControllerTest {
         when(regionService.getRegions())
                 .thenReturn(
                         List.of(
-                                new RegionResponse(1L, "서울특별시", 1, "11", null),
-                                new RegionResponse(2L, "강남구", 3, "11680", 1L)));
+                                new RegionResponse(1L, "서울특별시", 1, "6110000", null, 1L),
+                                new RegionResponse(2L, "강남구", 2, "3220000", 1L, null)));
 
         mockMvc.perform(get("/api/v1/regions"))
                 .andExpect(status().isOk())
@@ -41,7 +42,9 @@ class RegionControllerTest {
                 .andExpect(jsonPath("$.data.length()").value(2))
                 .andExpect(jsonPath("$.data[0].id").value(1))
                 .andExpect(jsonPath("$.data[0].parentId").value(nullValue()))
-                .andExpect(jsonPath("$.data[1].parentId").value(1));
+                .andExpect(jsonPath("$.data[0].regionGroupId").value(1))
+                .andExpect(jsonPath("$.data[1].parentId").value(1))
+                .andExpect(jsonPath("$.data[1].regionGroupId").value(nullValue()));
     }
 
     @Test
@@ -50,6 +53,36 @@ class RegionControllerTest {
         when(regionService.getRegions()).thenReturn(List.of());
 
         mockMvc.perform(get("/api/v1/regions"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data").isArray())
+                .andExpect(jsonPath("$.data.length()").value(0));
+    }
+
+    @Test
+    @DisplayName("GET /api/v1/regions/groups returns 200 with fixed-order group list")
+    void getRegionGroups_returns200WithGroupList() throws Exception {
+        when(regionService.getRegionGroups())
+                .thenReturn(
+                        List.of(
+                                new RegionGroupResponse(1L, "GRP_SEOUL", "서울"),
+                                new RegionGroupResponse(7L, "GRP_GYEONGSANG", "경상")));
+
+        mockMvc.perform(get("/api/v1/regions/groups"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data").isArray())
+                .andExpect(jsonPath("$.data.length()").value(2))
+                .andExpect(jsonPath("$.data[0].code").value("GRP_SEOUL"))
+                .andExpect(jsonPath("$.data[1].name").value("경상"));
+    }
+
+    @Test
+    @DisplayName("GET /api/v1/regions/groups returns 200 with empty list when no groups")
+    void getRegionGroups_returns200WithEmptyList_whenNoGroups() throws Exception {
+        when(regionService.getRegionGroups()).thenReturn(List.of());
+
+        mockMvc.perform(get("/api/v1/regions/groups"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data").isArray())

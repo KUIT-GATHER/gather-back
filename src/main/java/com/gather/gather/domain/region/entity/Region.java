@@ -37,6 +37,11 @@ public class Region {
     @JoinColumn(name = "parent_id")
     private Region parent;
 
+    /** 소속 권역(9버튼). 시도(level=1) 행에만 설정되며, 시군구(level=2) 행은 항상 null이다. */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "region_group_id")
+    private RegionGroup regionGroup;
+
     private Region(String name, Integer level, String code, Region parent) {
         this.name = name;
         this.level = level;
