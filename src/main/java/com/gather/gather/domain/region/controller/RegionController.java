@@ -28,7 +28,8 @@ public class RegionController {
             summary = "활동 지역 목록 조회",
             description =
                     "회원가입 프로필 단계에서 선택 가능한 활동 지역 목록을 조회합니다. "
-                            + "활동 지역은 최상위 지역(level = 1)만 선택할 수 있습니다. 인증이 필요 없습니다.")
+                            + "이 API는 시/도, 시/군/구, 읍/면/동 전체 지역을 평면 리스트로 반환하며, "
+                            + "활동 지역으로는 이 중 시/군/구(level = 2)만 선택할 수 있습니다. 인증이 필요 없습니다.")
     @ApiResponses({
         @io.swagger.v3.oas.annotations.responses.ApiResponse(
                 responseCode = "200",
@@ -49,6 +50,13 @@ public class RegionController {
                                                               "level": 1,
                                                               "code": "11",
                                                               "parentId": null
+                                                            },
+                                                            {
+                                                              "id": 2,
+                                                              "name": "강남구",
+                                                              "level": 2,
+                                                              "code": "11680",
+                                                              "parentId": 1
                                                             }
                                                           ],
                                                           "error": null
