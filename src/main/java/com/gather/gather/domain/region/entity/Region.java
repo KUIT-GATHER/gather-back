@@ -26,7 +26,7 @@ public class Region {
     @Column(nullable = false)
     private String name;
 
-    /** 1=도, 2=시, 3=구, 4=동 */
+    /** 1=도, 2=시/군/구, 4=읍/면/동 (3은 1365 gugunCd가 시/군/구를 구분하지 않아 사용하지 않음) */
     private Integer level;
 
     /** 1365 API의 sidoCd/gugunCd와 매핑되는 행정구역 코드 */

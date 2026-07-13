@@ -16,8 +16,9 @@ public interface RegionRepository extends JpaRepository<Region, Long> {
     List<Region> findAllWithParent();
 
     /**
-     * regionId 자신과 그 자식(1단계) + 손자(2단계)의 id를 모두 반환한다. 시도(level 1)로 조회하면 시군구(1단계)뿐 아니라 그 소속
-     * 읍/면/동(2단계)까지 포함되고, 시군구로 조회하면 읍/면/동(1단계)까지 포함된다.
+     * regionId 자신과 그 자식(1단계) + 손자(2단계)의 id를 모두 반환한다. 시도(level 1) → 시군구(level 2) → 읍/면/동(level 4)
+     * 3단계 구조이므로(level 3은 사용하지 않음), 시도로 조회하면 시군구(1단계)뿐 아니라 그 소속 읍/면/동(2단계)까지 포함되고, 시군구로 조회하면
+     * 읍/면/동(1단계)까지 포함된다.
      *
      * <p>parent를 반드시 명시적 left join으로 조인해야 한다 — r.parent.parent.id처럼 체이닝된 암묵적 경로 탐색은 JPQL에서 기본적으로
      * inner join으로 컴파일되므로, 조상 체인 중간에 parent가 null인 행(예: 최상위 시도, 부모가 없는 시군구)이 있으면 그 행 전체가 WHERE 절 평가
@@ -45,4 +46,8 @@ public interface RegionRepository extends JpaRepository<Region, Long> {
                     + "or p.regionGroup.id = :groupId "
                     + "or gp.regionGroup.id = :groupId")
     List<Long> findIdsIncludingChildrenByGroupId(@Param("groupId") Long groupId);
+
+    /** 특정 지역의 직계 자식 목록(예: 시군구의 읍/면/동)을 반환한다. */
+    @Query("select r from Region r where r.parent.id = :parentId")
+    List<Region> findByParentId(@Param("parentId") Long parentId);
 }

@@ -47,6 +47,7 @@ class PostingSyncServiceTest {
     @Mock private RegionRepository regionRepository;
     @Mock private PostingLocationRepository postingLocationRepository;
     @Mock private CategoryRepository categoryRepository;
+    @Mock private DongResolver dongResolver;
 
     private PostingSyncService postingSyncService;
 
@@ -58,7 +59,8 @@ class PostingSyncServiceTest {
                         postingRepository,
                         regionRepository,
                         postingLocationRepository,
-                        categoryRepository);
+                        categoryRepository,
+                        dongResolver);
         // 대부분의 테스트는 categoryId 매칭 자체가 관심사가 아니므로 기본값으로 항상 매칭되게 lenient 처리.
         // categoryWithId(...)가 내부적으로 when(...)을 호출하므로, 바깥 when(...).thenReturn(...) 체인이 완료되기 전에
         // 인자로 인라인하면 Mockito가 미완성 스터빙으로 오인해 UnfinishedStubbingException을 던진다 — 반드시 별도 문장으로 분리.
@@ -66,6 +68,10 @@ class PostingSyncServiceTest {
         lenient()
                 .when(categoryRepository.findByName(anyString()))
                 .thenReturn(Optional.of(defaultCategory));
+        // Mockito는 unstubbed Long 반환 메서드의 기본값을 null이 아닌 0L로 준다. 동 매칭을 시도하지 않는
+        // 대부분의 테스트가 구 단위 regionId를 그대로 쓰도록, 기본은 "동 매칭 없음"으로 고정한다.
+        lenient().when(dongResolver.resolve(any(), any(), any(), any())).thenReturn(null);
+        lenient().when(dongResolver.isDongOf(any(), any())).thenReturn(false);
     }
 
     @Test
@@ -352,6 +358,43 @@ class PostingSyncServiceTest {
         ArgumentCaptor<Posting> captor = ArgumentCaptor.forClass(Posting.class);
         verify(postingRepository).save(captor.capture());
         assertThat(captor.getValue().getRegionId()).isNull();
+    }
+
+    @Test
+    @DisplayName("insertNew upgrades regionId to dong level when DongResolver finds a match")
+    void syncRecentPostings_upgradesToDongLevel_whenDongResolverMatches() {
+        when(volunteerApiClient.searchList(any(), eq(1), eq(100)))
+                .thenReturn(List.of(searchItem("R4", "2")));
+        when(postingRepository.findByExtId("R4")).thenReturn(Optional.empty());
+        when(volunteerApiClient.getItem("R4")).thenReturn(detailItem("R4", "2", "20260601"));
+        when(regionRepository.findByCode("3020000"))
+                .thenReturn(Optional.of(regionWithId(5L, "3020000")));
+        when(dongResolver.resolve(eq(5L), any(), any(), any())).thenReturn(50L);
+
+        postingSyncService.syncRecentPostings();
+
+        ArgumentCaptor<Posting> captor = ArgumentCaptor.forClass(Posting.class);
+        verify(postingRepository).save(captor.capture());
+        assertThat(captor.getValue().getRegionId()).isEqualTo(50L);
+    }
+
+    @Test
+    @DisplayName(
+            "updateExisting keeps an already-resolved dong-level regionId instead of downgrading"
+                    + " it to gu level, without attempting a fresh dong re-resolution")
+    void syncRecentPostings_keepsExistingDongLevelRegion_onListSyncUpdate() {
+        Posting existing = existingPosting("R5");
+        org.springframework.test.util.ReflectionTestUtils.setField(existing, "regionId", 50L);
+        when(volunteerApiClient.searchList(any(), eq(1), eq(100)))
+                .thenReturn(List.of(searchItem("R5", "2")));
+        when(postingRepository.findByExtId("R5")).thenReturn(Optional.of(existing));
+        when(regionRepository.findByCode("3020000"))
+                .thenReturn(Optional.of(regionWithId(5L, "3020000")));
+        when(dongResolver.isDongOf(50L, 5L)).thenReturn(true);
+
+        postingSyncService.syncRecentPostings();
+
+        assertThat(existing.getRegionId()).isEqualTo(50L);
     }
 
     @Test

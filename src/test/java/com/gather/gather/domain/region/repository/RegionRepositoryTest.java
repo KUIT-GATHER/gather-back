@@ -12,8 +12,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 /**
  * {@link RegionRepository#findIdsIncludingChildren(Long)}, {@link
- * RegionRepository#findIdsIncludingChildrenByGroupId(Long)}의 실제 DB 동작 검증. 테스트 전용 code로 실제 region 시드
- * 데이터와 충돌을 피한다.
+ * RegionRepository#findIdsIncludingChildrenByGroupId(Long)}, {@link
+ * RegionRepository#findByParentId(Long)}의 실제 DB 동작 검증. 테스트 전용 code로 실제 region 시드 데이터와 충돌을 피한다.
  */
 @SpringBootTest
 @Transactional
@@ -30,6 +30,21 @@ class RegionRepositoryTest {
         var ids = regionRepository.findIdsIncludingChildren(parent.getId());
 
         assertThat(ids).containsExactlyInAnyOrder(parent.getId(), child.getId());
+    }
+
+    @Test
+    void findIdsIncludingChildren_returnsSidoGuAndDongIds_whenSidoIdGiven() {
+        Region sido = regionRepository.save(Region.create("테스트도5", 1, "9990011", null));
+        Region gu = regionRepository.save(Region.create("테스트구5", 2, "9990012", sido));
+        Region otherGu = regionRepository.save(Region.create("테스트구6", 2, "9990013", sido));
+        Region dong1 = regionRepository.save(Region.create("테스트동5", 4, "9990014", gu));
+        Region dong2 = regionRepository.save(Region.create("테스트동6", 4, "9990015", otherGu));
+
+        var ids = regionRepository.findIdsIncludingChildren(sido.getId());
+
+        assertThat(ids)
+                .containsExactlyInAnyOrder(
+                        sido.getId(), gu.getId(), otherGu.getId(), dong1.getId(), dong2.getId());
     }
 
     @Test
@@ -104,5 +119,30 @@ class RegionRepositoryTest {
         var ids = regionRepository.findIdsIncludingChildrenByGroupId(group.getId());
 
         assertThat(ids).containsExactlyInAnyOrder(sido.getId(), gungu.getId(), dong.getId());
+    }
+
+    @Test
+    void findByParentId_returnsOnlyDirectChildren_notGrandchildrenOrSiblings() {
+        Region sido = regionRepository.save(Region.create("테스트도7", 1, "9990016", null));
+        Region gu = regionRepository.save(Region.create("테스트구7", 2, "9990017", sido));
+        Region otherGu = regionRepository.save(Region.create("테스트구8", 2, "9990018", sido));
+        Region dong1 = regionRepository.save(Region.create("테스트동7", 4, "9990019", gu));
+        Region dong2 = regionRepository.save(Region.create("테스트동8", 4, "9990020", gu));
+        regionRepository.save(Region.create("테스트동9", 4, "9990021", otherGu));
+
+        var children = regionRepository.findByParentId(gu.getId());
+
+        assertThat(children)
+                .extracting(Region::getId)
+                .containsExactlyInAnyOrder(dong1.getId(), dong2.getId());
+    }
+
+    @Test
+    void findByParentId_returnsEmptyList_whenRegionHasNoChildren() {
+        Region leaf = regionRepository.save(Region.create("테스트동10", 4, "9990022", null));
+
+        var children = regionRepository.findByParentId(leaf.getId());
+
+        assertThat(children).isEmpty();
     }
 }

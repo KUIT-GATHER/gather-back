@@ -28,8 +28,8 @@ public class RegionController {
     @Operation(
             summary = "지역 목록 조회",
             description =
-                    "시도(level = 1)와 시군구(level = 2)를 포함한 전체 지역 목록을 평면 리스트로 조회합니다. "
-                            + "회원가입 시 activityRegionId로 선택 가능한 값은 시군구(level = 2)만 해당합니다. 인증이 필요 없습니다.")
+                    "시/도(level = 1), 시/군/구(level = 2), 읍/면/동(level = 4)을 포함한 전체 지역 목록을 평면 리스트로 조회합니다. "
+                            + "회원가입 시 activityRegionId로 선택 가능한 값은 시/군/구(level = 2)만 해당합니다. 인증이 필요 없습니다.")
     @ApiResponses({
         @io.swagger.v3.oas.annotations.responses.ApiResponse(
                 responseCode = "200",

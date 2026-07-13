@@ -41,7 +41,20 @@ public class BookmarkController {
     @ApiResponses({
         @io.swagger.v3.oas.annotations.responses.ApiResponse(
                 responseCode = "200",
-                description = "북마크 추가 성공"),
+                description = "북마크 추가 성공",
+                content =
+                        @Content(
+                                mediaType = JSON,
+                                examples =
+                                        @ExampleObject(
+                                                value =
+                                                        """
+                                                        {
+                                                          "success": true,
+                                                          "data": { "postingId": 1, "bookmarked": true },
+                                                          "error": null
+                                                        }
+                                                        """))),
         @io.swagger.v3.oas.annotations.responses.ApiResponse(
                 responseCode = "401",
                 description = "인증되지 않은 요청",
@@ -51,7 +64,47 @@ public class BookmarkController {
                                 examples =
                                         @ExampleObject(
                                                 name = "UNAUTHORIZED",
-                                                value = UNAUTHORIZED_EXAMPLE)))
+                                                value = UNAUTHORIZED_EXAMPLE))),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                responseCode = "404",
+                description = "봉사공고를 찾을 수 없음",
+                content =
+                        @Content(
+                                mediaType = JSON,
+                                examples =
+                                        @ExampleObject(
+                                                name = "POSTING_NOT_FOUND",
+                                                value =
+                                                        """
+                                                        {
+                                                          "success": false,
+                                                          "data": null,
+                                                          "error": {
+                                                            "code": "POSTING_NOT_FOUND",
+                                                            "message": "봉사공고를 찾을 수 없습니다."
+                                                          }
+                                                        }
+                                                        """))),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                responseCode = "409",
+                description = "이미 북마크한 공고",
+                content =
+                        @Content(
+                                mediaType = JSON,
+                                examples =
+                                        @ExampleObject(
+                                                name = "BOOKMARK_DUPLICATE",
+                                                value =
+                                                        """
+                                                        {
+                                                          "success": false,
+                                                          "data": null,
+                                                          "error": {
+                                                            "code": "BOOKMARK_DUPLICATE",
+                                                            "message": "이미 북마크한 공고입니다."
+                                                          }
+                                                        }
+                                                        """)))
     })
     @PostMapping
     public ApiResponse<BookmarkResponse> addBookmark(@PathVariable Long postingId) {
@@ -62,7 +115,20 @@ public class BookmarkController {
     @ApiResponses({
         @io.swagger.v3.oas.annotations.responses.ApiResponse(
                 responseCode = "200",
-                description = "북마크 삭제 성공"),
+                description = "북마크 삭제 성공",
+                content =
+                        @Content(
+                                mediaType = JSON,
+                                examples =
+                                        @ExampleObject(
+                                                value =
+                                                        """
+                                                        {
+                                                          "success": true,
+                                                          "data": { "postingId": 1, "bookmarked": false },
+                                                          "error": null
+                                                        }
+                                                        """))),
         @io.swagger.v3.oas.annotations.responses.ApiResponse(
                 responseCode = "401",
                 description = "인증되지 않은 요청",
@@ -72,7 +138,27 @@ public class BookmarkController {
                                 examples =
                                         @ExampleObject(
                                                 name = "UNAUTHORIZED",
-                                                value = UNAUTHORIZED_EXAMPLE)))
+                                                value = UNAUTHORIZED_EXAMPLE))),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                responseCode = "404",
+                description = "북마크한 적 없는 공고",
+                content =
+                        @Content(
+                                mediaType = JSON,
+                                examples =
+                                        @ExampleObject(
+                                                name = "BOOKMARK_NOT_FOUND",
+                                                value =
+                                                        """
+                                                        {
+                                                          "success": false,
+                                                          "data": null,
+                                                          "error": {
+                                                            "code": "BOOKMARK_NOT_FOUND",
+                                                            "message": "북마크를 찾을 수 없습니다."
+                                                          }
+                                                        }
+                                                        """)))
     })
     @DeleteMapping
     public ApiResponse<BookmarkResponse> removeBookmark(@PathVariable Long postingId) {

@@ -42,7 +42,18 @@ public class PostingController {
                             + "regionGroupId는 활동 지역 9버튼(서울/부산/.../경상/전라/충청) 선택 시 그 권역에 속한 "
                             + "모든 시도와 시군구 공고를 포함합니다. regionId와 regionGroupId는 동시에 지정할 수 없습니다. "
                             + "noticeStartDate/noticeEndDate는 각각 모집시작일 하한/모집종료일 상한 필터입니다. "
-                            + "keyword는 제목/모집기관명 부분일치 검색입니다.")
+                            + "keyword는 제목/모집기관명 부분일치 검색입니다.",
+            parameters = {
+                @Parameter(
+                        name = "sort",
+                        description =
+                                "정렬 기준 (property,direction). 예: id,desc. "
+                                        + "허용 필드: id, title, status, actStartDate, actEndDate, "
+                                        + "noticeStartDate, noticeEndDate, recruitCount, applicantCount, "
+                                        + "createdAt, updatedAt. 허용되지 않은 필드로 정렬을 요청하면 400 "
+                                        + "VALIDATION_ERROR가 반환됩니다.",
+                        example = "id,desc")
+            })
     @ApiResponses({
         @io.swagger.v3.oas.annotations.responses.ApiResponse(
                 responseCode = "200",
