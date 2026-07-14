@@ -45,8 +45,8 @@ public class AuthService {
     private static final int EMAIL_VERIFICATION_CODE_BOUND = 1_000_000;
     private static final int EMAIL_VERIFICATION_CODE_MIN_DIGITS = 6;
     private static final int EMAIL_VERIFICATION_EXPIRATION_MINUTES = 10;
-    private static final int MAX_KOREAN_NAME_LENGTH = 7;
-    private static final int MAX_NAME_LENGTH = 12;
+    private static final Pattern KOREAN_OR_ENGLISH_PATTERN =
+            Pattern.compile("^(?:[가-힣]{2,10}|[A-Za-z]{2,20})$");
     // 활동 지역은 시군구 단위만 선택할 수 있다. Region.level 2 = 시군구.
     private static final int ACTIVITY_REGION_LEVEL = 2;
     private static final int MIN_INTEREST_CATEGORY_COUNT = 1;
@@ -130,7 +130,7 @@ public class AuthService {
 
         String email = normalizeEmail(request.email());
         String phoneNumber = normalizePhoneNumber(request.phoneNumber());
-        String nickname = request.nickname().trim();
+        String nickname = request.nickname();
         String introduction = normalizeNullableText(request.introduction());
 
         validateEmailVerified(email);
@@ -141,7 +141,7 @@ public class AuthService {
 
         User user =
                 User.create(
-                        request.name().trim(),
+                        request.name(),
                         request.birthDate(),
                         request.gender(),
                         phoneNumber,
@@ -226,6 +226,7 @@ public class AuthService {
 
     private void validateSignupRequest(SignupRequest request) {
         validateName(request.name());
+        validateNickname(request.nickname());
         if (!request.password().equals(request.passwordConfirm())) {
             throw new BusinessException(ErrorCode.PASSWORD_MISMATCH);
         }
@@ -238,11 +239,15 @@ public class AuthService {
     }
 
     private void validateName(String name) {
-        String trimmedName = name.trim();
-        if (trimmedName.length() > MAX_NAME_LENGTH) {
-            throw new BusinessException(ErrorCode.VALIDATION_ERROR);
-        }
-        if (trimmedName.matches("^[가-힣]+$") && trimmedName.length() > MAX_KOREAN_NAME_LENGTH) {
+        validateKoreanOrEnglish(name);
+    }
+
+    private void validateNickname(String nickname) {
+        validateKoreanOrEnglish(nickname);
+    }
+
+    private void validateKoreanOrEnglish(String value) {
+        if (value == null || !KOREAN_OR_ENGLISH_PATTERN.matcher(value).matches()) {
             throw new BusinessException(ErrorCode.VALIDATION_ERROR);
         }
     }

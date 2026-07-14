@@ -880,8 +880,10 @@ components:
       properties:
         name:
           type: string
-          maxLength: 12
-          description: 이름. 한글은 최대 7자, 영문은 최대 12자, 한글/영문 혼합 입력은 최대 12자까지 허용합니다.
+          minLength: 2
+          maxLength: 20
+          pattern: '^(?:[가-힣]{2,10}|[A-Za-z]{2,20})$'
+          description: 이름. 완성형 한글 2~10자 또는 영문 2~20자만 허용하며, 혼합·공백·숫자·특수문자는 허용하지 않습니다.
           example: 홍길동
         birthDate:
           type: string
@@ -916,8 +918,9 @@ components:
         nickname:
           type: string
           minLength: 2
-          maxLength: 8
-          description: 닉네임. 2자 이상 8자 이하입니다.
+          maxLength: 20
+          pattern: '^(?:[가-힣]{2,10}|[A-Za-z]{2,20})$'
+          description: 닉네임. 완성형 한글 2~10자 또는 영문 2~20자만 허용하며, 혼합·공백·숫자·특수문자는 허용하지 않습니다.
           example: 길동
         introduction:
           type: string
