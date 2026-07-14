@@ -81,8 +81,7 @@ public class PostingController {
                                                                 "applicantCount": 1,
                                                                 "regionId": 2,
                                                                 "regionName": "동구",
-                                                                "categoryId": 1,
-                                                                "categoryName": "환경"
+                                                                "category": "ENVIRONMENT"
                                                               }
                                                             ],
                                                             "totalElements": 1,

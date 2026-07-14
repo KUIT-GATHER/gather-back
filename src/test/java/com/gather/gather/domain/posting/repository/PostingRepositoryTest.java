@@ -3,6 +3,7 @@ package com.gather.gather.domain.posting.repository;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.gather.gather.domain.posting.entity.Posting;
+import com.gather.gather.domain.posting.entity.PostingCategory;
 import com.gather.gather.domain.posting.entity.PostingStatus;
 import java.time.LocalDate;
 import java.util.List;
@@ -132,7 +133,7 @@ class PostingRepositoryTest {
                         .activityDate(LocalDate.of(2026, 7, 15))
                         .noticeStartDate(noticeStart)
                         .noticeEndDate(noticeEnd)
-                        .categoryId(1L)
+                        .category(PostingCategory.ENVIRONMENT)
                         .build());
     }
 
@@ -142,7 +143,7 @@ class PostingRepositoryTest {
                 .status(status)
                 .activityDate(activityDate)
                 .regionId(regionId)
-                .categoryId(1L)
+                .category(PostingCategory.ENVIRONMENT)
                 .build();
     }
 
@@ -153,7 +154,7 @@ class PostingRepositoryTest {
                         .recruitOrg(recruitOrg)
                         .status(PostingStatus.RECRUITING)
                         .activityDate(LocalDate.of(2026, 7, 15))
-                        .categoryId(1L)
+                        .category(PostingCategory.ENVIRONMENT)
                         .build());
     }
 }

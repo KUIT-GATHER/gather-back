@@ -10,11 +10,10 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.gather.gather.domain.category.entity.Category;
-import com.gather.gather.domain.category.repository.CategoryRepository;
 import com.gather.gather.domain.posting.dto.PostingResponse;
 import com.gather.gather.domain.posting.dto.PostingSummaryResponse;
 import com.gather.gather.domain.posting.entity.Posting;
+import com.gather.gather.domain.posting.entity.PostingCategory;
 import com.gather.gather.domain.posting.entity.PostingLocation;
 import com.gather.gather.domain.posting.entity.PostingStatus;
 import com.gather.gather.domain.posting.repository.PostingLocationRepository;
@@ -33,7 +32,6 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.beans.BeanUtils;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -46,18 +44,13 @@ class PostingServiceTest {
     @Mock private PostingRepository postingRepository;
     @Mock private PostingLocationRepository postingLocationRepository;
     @Mock private RegionRepository regionRepository;
-    @Mock private CategoryRepository categoryRepository;
 
     private PostingService postingService;
 
     @BeforeEach
     void setUp() {
         postingService =
-                new PostingService(
-                        postingRepository,
-                        postingLocationRepository,
-                        regionRepository,
-                        categoryRepository);
+                new PostingService(postingRepository, postingLocationRepository, regionRepository);
     }
 
     @Test
@@ -194,14 +187,13 @@ class PostingServiceTest {
     }
 
     @Test
-    @DisplayName("getPostings fills regionName/categoryName when matches exist")
-    void getPostings_mapsRegionAndCategoryNames_whenMatched() {
-        Posting posting = postingWithId(1L, "동구 환경정화 봉사", 2L, 10L);
+    @DisplayName("getPostings fills regionName and passes through category when matches exist")
+    void getPostings_mapsRegionNameAndCategory_whenMatched() {
+        Posting posting = postingWithId(1L, "동구 환경정화 봉사", 2L, PostingCategory.ENVIRONMENT);
         Pageable pageable = PageRequest.of(0, 20);
         when(postingRepository.search(PostingStatus.RECRUITING, null, null, null, null, pageable))
                 .thenReturn(new PageImpl<>(List.of(posting)));
         when(regionRepository.findAllById(any())).thenReturn(List.of(regionWithId(2L, "동구")));
-        when(categoryRepository.findAllById(any())).thenReturn(List.of(categoryWithId(10L, "환경")));
 
         PageResponse<PostingSummaryResponse> result =
                 postingService.getPostings(pageable, null, null, null, null, null, null);
@@ -209,43 +201,39 @@ class PostingServiceTest {
         assertThat(result.content()).hasSize(1);
         PostingSummaryResponse response = result.content().get(0);
         assertThat(response.regionName()).isEqualTo("동구");
-        assertThat(response.categoryName()).isEqualTo("환경");
+        assertThat(response.category()).isEqualTo(PostingCategory.ENVIRONMENT);
         assertThat(result.totalElements()).isEqualTo(1);
     }
 
     @Test
     @DisplayName("getPostings leaves regionName null when regionId is null or unmatched")
     void getPostings_regionNameNull_whenRegionIdNullOrUnmatched() {
-        Posting posting = postingWithId(1L, "무지역 공고", null, 10L);
+        Posting posting = postingWithId(1L, "무지역 공고", null, PostingCategory.ENVIRONMENT);
         Pageable pageable = PageRequest.of(0, 20);
         when(postingRepository.search(PostingStatus.RECRUITING, null, null, null, null, pageable))
                 .thenReturn(new PageImpl<>(List.of(posting)));
         when(regionRepository.findAllById(any())).thenReturn(List.of());
-        when(categoryRepository.findAllById(any())).thenReturn(List.of(categoryWithId(10L, "환경")));
 
         PageResponse<PostingSummaryResponse> result =
                 postingService.getPostings(pageable, null, null, null, null, null, null);
 
         assertThat(result.content().get(0).regionName()).isNull();
-        assertThat(result.content().get(0).categoryName()).isEqualTo("환경");
+        assertThat(result.content().get(0).category()).isEqualTo(PostingCategory.ENVIRONMENT);
     }
 
     @Test
-    @DisplayName(
-            "getPostings batches region/category lookups exactly once regardless of item count")
-    void getPostings_batchesLookups_exactlyOncePerCall() {
-        Posting first = postingWithId(1L, "공고1", 2L, 10L);
-        Posting second = postingWithId(2L, "공고2", 2L, 10L);
+    @DisplayName("getPostings batches region lookups exactly once regardless of item count")
+    void getPostings_batchesRegionLookup_exactlyOncePerCall() {
+        Posting first = postingWithId(1L, "공고1", 2L, PostingCategory.ENVIRONMENT);
+        Posting second = postingWithId(2L, "공고2", 2L, PostingCategory.ENVIRONMENT);
         Pageable pageable = PageRequest.of(0, 20);
         when(postingRepository.search(PostingStatus.RECRUITING, null, null, null, null, pageable))
                 .thenReturn(new PageImpl<>(List.of(first, second)));
         when(regionRepository.findAllById(any())).thenReturn(List.of(regionWithId(2L, "동구")));
-        when(categoryRepository.findAllById(any())).thenReturn(List.of(categoryWithId(10L, "환경")));
 
         postingService.getPostings(pageable, null, null, null, null, null, null);
 
         verify(regionRepository, times(1)).findAllById(any());
-        verify(categoryRepository, times(1)).findAllById(any());
     }
 
     @Test
@@ -295,10 +283,9 @@ class PostingServiceTest {
     @Test
     @DisplayName("getPosting returns detail with locations when posting exists")
     void getPosting_returnsDetailWithLocations_whenExists() {
-        Posting posting = postingWithId(1L, "동구 환경정화 봉사", 2L, 10L);
+        Posting posting = postingWithId(1L, "동구 환경정화 봉사", 2L, PostingCategory.ENVIRONMENT);
         when(postingRepository.findById(1L)).thenReturn(Optional.of(posting));
         when(regionRepository.findById(2L)).thenReturn(Optional.of(regionWithId(2L, "동구")));
-        when(categoryRepository.findById(10L)).thenReturn(Optional.of(categoryWithId(10L, "환경")));
         when(postingLocationRepository.findAllByPostingIdOrderByLocationSeq(1L))
                 .thenReturn(
                         List.of(locationWithId(2, "부산시 어딘가 2"), locationWithId(3, "부산시 어딘가 3")));
@@ -307,7 +294,7 @@ class PostingServiceTest {
 
         assertThat(response.id()).isEqualTo(1L);
         assertThat(response.regionName()).isEqualTo("동구");
-        assertThat(response.categoryName()).isEqualTo("환경");
+        assertThat(response.category()).isEqualTo(PostingCategory.ENVIRONMENT);
         assertThat(response.locations()).hasSize(3);
         assertThat(response.locations().get(0).locationSeq()).isEqualTo(1);
         assertThat(response.locations().get(1).locationSeq()).isEqualTo(2);
@@ -330,9 +317,8 @@ class PostingServiceTest {
     @Test
     @DisplayName("getPosting leaves regionName null when regionId is null")
     void getPosting_regionNameNull_whenRegionIdNull() {
-        Posting posting = postingWithId(1L, "무지역 공고", null, 10L);
+        Posting posting = postingWithId(1L, "무지역 공고", null, PostingCategory.ENVIRONMENT);
         when(postingRepository.findById(1L)).thenReturn(Optional.of(posting));
-        when(categoryRepository.findById(10L)).thenReturn(Optional.of(categoryWithId(10L, "환경")));
         when(postingLocationRepository.findAllByPostingIdOrderByLocationSeq(1L))
                 .thenReturn(List.of());
 
@@ -342,14 +328,14 @@ class PostingServiceTest {
         assertThat(response.locations()).hasSize(1);
     }
 
-    private Posting postingWithId(Long id, String title, Long regionId, Long categoryId) {
+    private Posting postingWithId(Long id, String title, Long regionId, PostingCategory category) {
         Posting posting =
                 Posting.builder()
                         .extId("ext-" + id)
                         .title(title)
                         .status(PostingStatus.RECRUITING)
                         .regionId(regionId)
-                        .categoryId(categoryId)
+                        .category(category)
                         .build();
         ReflectionTestUtils.setField(posting, "id", id);
         return posting;
@@ -359,13 +345,6 @@ class PostingServiceTest {
         Region region = Region.create(name, 3, "code-" + id, null);
         ReflectionTestUtils.setField(region, "id", id);
         return region;
-    }
-
-    private Category categoryWithId(Long id, String name) {
-        Category category = BeanUtils.instantiateClass(Category.class);
-        ReflectionTestUtils.setField(category, "id", id);
-        ReflectionTestUtils.setField(category, "name", name);
-        return category;
     }
 
     private PostingLocation locationWithId(int locationSeq, String address) {

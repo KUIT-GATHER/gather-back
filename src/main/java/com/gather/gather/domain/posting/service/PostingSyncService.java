@@ -1,11 +1,11 @@
 package com.gather.gather.domain.posting.service;
 
-import com.gather.gather.domain.category.repository.CategoryRepository;
 import com.gather.gather.domain.posting.client.VolunteerApiClient;
 import com.gather.gather.domain.posting.client.dto.VolunteerApiItemDto;
 import com.gather.gather.domain.posting.client.dto.VolunteerApiSearchCondition;
 import com.gather.gather.domain.posting.client.dto.VolunteerApiSearchItemDto;
 import com.gather.gather.domain.posting.entity.Posting;
+import com.gather.gather.domain.posting.entity.PostingCategory;
 import com.gather.gather.domain.posting.entity.PostingLocation;
 import com.gather.gather.domain.posting.entity.PostingStatus;
 import com.gather.gather.domain.posting.repository.PostingLocationRepository;
@@ -17,6 +17,7 @@ import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -41,8 +42,34 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 public class PostingSyncService {
 
-    /** srvcClCode(봉사분야명 텍스트)가 Category.name 어디에도 매칭되지 않을 때 사용하는 폴백 분야. V5 시드데이터에 존재. */
-    private static final String FALLBACK_CATEGORY_NAME = "기타";
+    /**
+     * srvcClCode(1365 봉사분야명 텍스트, 16종)를 프론트엔드가 쓰는 6개 카테고리로 축소 매핑한다. 매핑표에 없는 값(신규 분야 추가 등)은 {@link
+     * #FALLBACK_CATEGORY}로 처리한다.
+     *
+     * <p><b>주의:</b> 이 매핑은 {@code V14__replace_posting_category_with_enum.sql}의 백필 CASE문과 값이 동일해야
+     * 한다(과거 데이터 백필 vs 신규 동기화가 서로 다르게 분류되는 것을 방지). 이 맵을 수정하면 그 마이그레이션도 함께 수정할 것.
+     */
+    private static final Map<String, PostingCategory> CATEGORY_MAPPING =
+            Map.ofEntries(
+                    Map.entry("생활편의", PostingCategory.WELFARE),
+                    Map.entry("주거환경", PostingCategory.ENVIRONMENT),
+                    Map.entry("상담·멘토링", PostingCategory.WELFARE),
+                    Map.entry("교육", PostingCategory.EDUCATION),
+                    Map.entry("보건·의료", PostingCategory.WELFARE),
+                    Map.entry("농어촌 봉사", PostingCategory.COMMUNITY),
+                    Map.entry("문화·체육·예술·관광", PostingCategory.CULTURE),
+                    Map.entry("환경·생태계보호", PostingCategory.ENVIRONMENT),
+                    Map.entry("사무행정", PostingCategory.WELFARE),
+                    Map.entry("지역안전·보호", PostingCategory.COMMUNITY),
+                    Map.entry("인권·공익", PostingCategory.WELFARE),
+                    Map.entry("재난·재해", PostingCategory.COMMUNITY),
+                    Map.entry("국제협력·해외봉사", PostingCategory.OVERSEAS),
+                    Map.entry("기타", PostingCategory.COMMUNITY),
+                    Map.entry("자원봉사 기본교육", PostingCategory.EDUCATION),
+                    Map.entry("온라인자원봉사", PostingCategory.COMMUNITY));
+
+    /** srvcClCode가 없거나 매핑표에 없는 값일 때 사용하는 폴백 카테고리. */
+    private static final PostingCategory FALLBACK_CATEGORY = PostingCategory.COMMUNITY;
 
     private static final int SEARCH_PAGE_SIZE = 100;
     private static final int MAX_DETAIL_LOOKUPS_PER_RUN = 800;
@@ -52,7 +79,6 @@ public class PostingSyncService {
     private final PostingRepository postingRepository;
     private final RegionRepository regionRepository;
     private final PostingLocationRepository postingLocationRepository;
-    private final CategoryRepository categoryRepository;
     private final DongResolver dongResolver;
 
     @Transactional
@@ -154,7 +180,7 @@ public class PostingSyncService {
                 parseYn(item.adultPosblAt()),
                 parseYn(item.yngbgsPosblAt()),
                 resolveRegionIdForUpdate(posting.getRegionId(), item.sidoCd(), item.gugunCd()),
-                resolveCategoryId(item.srvcClCode()));
+                resolveCategory(item.srvcClCode()));
     }
 
     /**
@@ -221,7 +247,7 @@ public class PostingSyncService {
                                         detail.areaAddress1(),
                                         detail.postAdres(),
                                         detail.actPlace()))
-                        .categoryId(resolveCategoryId(detail.srvcClCode()))
+                        .category(resolveCategory(detail.srvcClCode()))
                         .build();
 
         Posting saved = postingRepository.save(posting);
@@ -271,30 +297,21 @@ public class PostingSyncService {
     }
 
     /**
-     * srvcClCode는 코드가 아니라 분야명 텍스트로 응답된다(예: "생활편의", devplan.md §6 참고). {@code Category.name}과 텍스트
-     * 매칭하고, 매칭 실패 시 {@link #FALLBACK_CATEGORY_NAME}으로 폴백한다({@code categoryId}가 NOT NULL이라 폴백 없이는 저장
-     * 자체가 불가능).
+     * srvcClCode는 코드가 아니라 분야명 텍스트로 응답된다(예: "생활편의", devplan.md §6 참고). {@link #CATEGORY_MAPPING}으로
+     * 6개 카테고리 중 하나로 축소 매핑하고, 매칭 실패 시 {@link #FALLBACK_CATEGORY}로 폴백한다.
      */
-    private Long resolveCategoryId(String srvcClCode) {
+    private PostingCategory resolveCategory(String srvcClCode) {
         if (srvcClCode != null && !srvcClCode.isBlank()) {
-            var matched = categoryRepository.findByName(srvcClCode.trim());
-            if (matched.isPresent()) {
-                return matched.get().getId();
+            PostingCategory matched = CATEGORY_MAPPING.get(srvcClCode.trim());
+            if (matched != null) {
+                return matched;
             }
             log.warn(
-                    "srvcClCode에 매칭되는 Category가 없어 '{}'로 폴백합니다. value={}",
-                    FALLBACK_CATEGORY_NAME,
+                    "srvcClCode에 매칭되는 카테고리가 없어 '{}'로 폴백합니다. value={}",
+                    FALLBACK_CATEGORY,
                     srvcClCode);
         }
-        return categoryRepository
-                .findByName(FALLBACK_CATEGORY_NAME)
-                .map(category -> category.getId())
-                .orElseThrow(
-                        () ->
-                                new IllegalStateException(
-                                        "폴백 카테고리('"
-                                                + FALLBACK_CATEGORY_NAME
-                                                + "')가 시드되어 있지 않습니다."));
+        return FALLBACK_CATEGORY;
     }
 
     /**
