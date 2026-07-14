@@ -1,6 +1,7 @@
 package com.gather.gather.domain.posting.dto;
 
 import com.gather.gather.domain.posting.entity.Posting;
+import com.gather.gather.domain.posting.entity.PostingCategory;
 import com.gather.gather.domain.posting.entity.PostingStatus;
 import java.time.LocalDate;
 
@@ -16,11 +17,9 @@ public record PostingSummaryResponse(
         Integer applicantCount,
         Long regionId,
         String regionName,
-        Long categoryId,
-        String categoryName) {
+        PostingCategory category) {
 
-    public static PostingSummaryResponse from(
-            Posting posting, String regionName, String categoryName) {
+    public static PostingSummaryResponse from(Posting posting, String regionName) {
         return new PostingSummaryResponse(
                 posting.getId(),
                 posting.getTitle(),
@@ -33,7 +32,6 @@ public record PostingSummaryResponse(
                 posting.getApplicantCount(),
                 posting.getRegionId(),
                 regionName,
-                posting.getCategoryId(),
-                categoryName);
+                posting.getCategory());
     }
 }

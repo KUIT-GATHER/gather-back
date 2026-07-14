@@ -1,7 +1,5 @@
 package com.gather.gather.domain.posting.service;
 
-import com.gather.gather.domain.category.entity.Category;
-import com.gather.gather.domain.category.repository.CategoryRepository;
 import com.gather.gather.domain.posting.dto.PostingLocationResponse;
 import com.gather.gather.domain.posting.dto.PostingResponse;
 import com.gather.gather.domain.posting.dto.PostingSummaryResponse;
@@ -54,7 +52,6 @@ public class PostingService {
     private final PostingRepository postingRepository;
     private final PostingLocationRepository postingLocationRepository;
     private final RegionRepository regionRepository;
-    private final CategoryRepository categoryRepository;
 
     @Transactional(readOnly = true)
     public PageResponse<PostingSummaryResponse> getPostings(
@@ -79,15 +76,12 @@ public class PostingService {
                         pageable);
 
         Map<Long, String> regionNames = findRegionNames(postings);
-        Map<Long, String> categoryNames = findCategoryNames(postings);
 
         Page<PostingSummaryResponse> responses =
                 postings.map(
                         posting ->
                                 PostingSummaryResponse.from(
-                                        posting,
-                                        regionNames.get(posting.getRegionId()),
-                                        categoryNames.get(posting.getCategoryId())));
+                                        posting, regionNames.get(posting.getRegionId())));
 
         return PageResponse.from(responses);
     }
@@ -106,13 +100,7 @@ public class PostingService {
                                 .map(Region::getName)
                                 .orElse(null)
                         : null;
-        String categoryName =
-                categoryRepository
-                        .findById(posting.getCategoryId())
-                        .map(Category::getName)
-                        .orElse(null);
-
-        return PostingResponse.from(posting, regionName, categoryName, buildLocations(posting));
+        return PostingResponse.from(posting, regionName, buildLocations(posting));
     }
 
     private void validateSort(Sort sort) {
@@ -154,14 +142,5 @@ public class PostingService {
                         .collect(Collectors.toSet());
         return regionRepository.findAllById(regionIds).stream()
                 .collect(Collectors.toMap(Region::getId, Region::getName));
-    }
-
-    private Map<Long, String> findCategoryNames(Page<Posting> postings) {
-        Set<Long> categoryIds =
-                postings.getContent().stream()
-                        .map(Posting::getCategoryId)
-                        .collect(Collectors.toSet());
-        return categoryRepository.findAllById(categoryIds).stream()
-                .collect(Collectors.toMap(Category::getId, Category::getName));
     }
 }

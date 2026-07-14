@@ -12,6 +12,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.gather.gather.domain.posting.dto.PostingLocationResponse;
 import com.gather.gather.domain.posting.dto.PostingResponse;
 import com.gather.gather.domain.posting.dto.PostingSummaryResponse;
+import com.gather.gather.domain.posting.entity.PostingCategory;
 import com.gather.gather.domain.posting.entity.PostingStatus;
 import com.gather.gather.domain.posting.service.PostingService;
 import com.gather.gather.global.common.PageResponse;
@@ -53,8 +54,7 @@ class PostingControllerTest {
                         1,
                         2L,
                         "동구",
-                        10L,
-                        "환경");
+                        PostingCategory.ENVIRONMENT);
         when(postingService.getPostings(any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(new PageResponse<>(List.of(summary), 1, 1, 0, 20));
 
@@ -64,7 +64,7 @@ class PostingControllerTest {
                 .andExpect(jsonPath("$.data.content").isArray())
                 .andExpect(jsonPath("$.data.content.length()").value(1))
                 .andExpect(jsonPath("$.data.content[0].regionName").value("동구"))
-                .andExpect(jsonPath("$.data.content[0].categoryName").value("환경"))
+                .andExpect(jsonPath("$.data.content[0].category").value("ENVIRONMENT"))
                 .andExpect(jsonPath("$.data.totalElements").value(1))
                 .andExpect(jsonPath("$.data.totalPages").value(1))
                 .andExpect(jsonPath("$.data.page").value(0))
@@ -100,8 +100,7 @@ class PostingControllerTest {
                         null,
                         null,
                         null,
-                        10L,
-                        "환경");
+                        PostingCategory.ENVIRONMENT);
         when(postingService.getPostings(any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(new PageResponse<>(List.of(summary), 1, 1, 0, 20));
 
@@ -233,8 +232,7 @@ class PostingControllerTest {
                         "울산 동구 어딘가",
                         2L,
                         "동구",
-                        10L,
-                        "환경",
+                        PostingCategory.ENVIRONMENT,
                         List.of(new PostingLocationResponse(1, "동구 일대", null, null)),
                         null,
                         null);

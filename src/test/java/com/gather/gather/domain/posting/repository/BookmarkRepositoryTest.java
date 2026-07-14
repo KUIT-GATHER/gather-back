@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.gather.gather.domain.posting.entity.Bookmark;
 import com.gather.gather.domain.posting.entity.Posting;
+import com.gather.gather.domain.posting.entity.PostingCategory;
 import com.gather.gather.domain.posting.entity.PostingStatus;
 import java.time.LocalDate;
 import org.junit.jupiter.api.Test;
@@ -95,7 +96,7 @@ class BookmarkRepositoryTest {
                 .title("테스트 공고")
                 .status(PostingStatus.RECRUITING)
                 .activityDate(LocalDate.of(2026, 7, 15))
-                .categoryId(1L)
+                .category(PostingCategory.ENVIRONMENT)
                 .build();
     }
 }
