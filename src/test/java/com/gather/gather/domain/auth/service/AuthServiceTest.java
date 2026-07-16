@@ -107,6 +107,35 @@ class AuthServiceTest {
     }
 
     @Test
+    @DisplayName("회원가입은 서로 다른 관심 카테고리 여러 개를 모두 User에 저장한다")
+    void signup_withMultipleInterestCategories_savesAllInterestCategories() {
+        prepareVerifiedEmail();
+        when(regionRepository.findById(123L))
+                .thenReturn(Optional.of(Region.create("강남구", 2, "11680", null)));
+        when(passwordEncoder.encode("password123!")).thenReturn("encoded-password");
+        when(userRepository.saveAndFlush(any(User.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        authService.signup(
+                signupRequest(
+                        123L,
+                        "홍길동",
+                        "길동",
+                        List.of(
+                                PostingCategory.WELFARE,
+                                PostingCategory.EDUCATION,
+                                PostingCategory.OVERSEAS)));
+
+        ArgumentCaptor<User> captor = ArgumentCaptor.forClass(User.class);
+        verify(userRepository).saveAndFlush(captor.capture());
+        assertThat(captor.getValue().getInterestCategories())
+                .containsExactly(
+                        PostingCategory.WELFARE,
+                        PostingCategory.EDUCATION,
+                        PostingCategory.OVERSEAS);
+    }
+
+    @Test
     @DisplayName("회원가입에서 level=1 시도를 활동 지역으로 선택하면 실패한다")
     void signup_withLevel1ActivityRegion_throwsRegionNotFound() {
         prepareVerifiedEmail();
