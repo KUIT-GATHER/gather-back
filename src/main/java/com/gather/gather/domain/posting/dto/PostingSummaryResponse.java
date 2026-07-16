@@ -17,7 +17,8 @@ public record PostingSummaryResponse(
         Integer applicantCount,
         Long regionId,
         String regionName,
-        PostingCategory category) {
+        PostingCategory category,
+        LocalDate noticeEndDate) {
 
     public static PostingSummaryResponse from(Posting posting, String regionName) {
         return new PostingSummaryResponse(
@@ -32,6 +33,7 @@ public record PostingSummaryResponse(
                 posting.getApplicantCount(),
                 posting.getRegionId(),
                 regionName,
-                posting.getCategory());
+                posting.getCategory(),
+                posting.getNoticeEndDate());
     }
 }

@@ -54,7 +54,8 @@ class PostingControllerTest {
                         1,
                         2L,
                         "동구",
-                        PostingCategory.ENVIRONMENT);
+                        PostingCategory.ENVIRONMENT,
+                        LocalDate.of(2026, 7, 5));
         when(postingService.getPostings(any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(new PageResponse<>(List.of(summary), 1, 1, 0, 20));
 
@@ -100,7 +101,8 @@ class PostingControllerTest {
                         null,
                         null,
                         null,
-                        PostingCategory.ENVIRONMENT);
+                        PostingCategory.ENVIRONMENT,
+                        null);
         when(postingService.getPostings(any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(new PageResponse<>(List.of(summary), 1, 1, 0, 20));
 
