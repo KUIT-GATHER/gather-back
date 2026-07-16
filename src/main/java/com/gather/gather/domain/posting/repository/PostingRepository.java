@@ -1,6 +1,7 @@
 package com.gather.gather.domain.posting.repository;
 
 import com.gather.gather.domain.posting.entity.Posting;
+import com.gather.gather.domain.posting.entity.PostingCategory;
 import com.gather.gather.domain.posting.entity.PostingStatus;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -38,6 +39,7 @@ public interface PostingRepository extends JpaRepository<Posting, Long> {
               and (:keyword is null
                    or p.title like concat('%', :keyword, '%')
                    or p.recruitOrg like concat('%', :keyword, '%'))
+              and (:category is null or p.category = :category)
             """)
     Page<Posting> search(
             @Param("status") PostingStatus status,
@@ -45,5 +47,6 @@ public interface PostingRepository extends JpaRepository<Posting, Long> {
             @Param("noticeStartFrom") LocalDate noticeStartFrom,
             @Param("noticeEndTo") LocalDate noticeEndTo,
             @Param("keyword") String keyword,
+            @Param("category") PostingCategory category,
             Pageable pageable);
 }
