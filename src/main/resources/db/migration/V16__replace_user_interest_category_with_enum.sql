@@ -25,6 +25,9 @@ UPDATE user_interest_category uic
         ELSE 'COMMUNITY'
     END;
 
+-- V14에 있는 NULL 방어 백필이 여기엔 없다: posting(V6)은 FK 없이 category_id만 보관해 orphan이
+-- 가능했지만, user_interest_category는 category_id가 NOT NULL이고 categories FK가 걸려 있어(V9)
+-- 위 JOIN이 항상 매칭된다.
 DELETE uic_duplicate
 FROM user_interest_category uic_duplicate
     JOIN user_interest_category uic_retained
