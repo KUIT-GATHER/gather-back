@@ -162,17 +162,6 @@ final class AuthSwaggerExamples {
               }
             }
             """;
-    static final String CATEGORY_NOT_FOUND_EXAMPLE =
-            """
-            {
-              "success": false,
-              "data": null,
-              "error": {
-                "code": "CATEGORY_NOT_FOUND",
-                "message": "관심 카테고리를 찾을 수 없습니다."
-              }
-            }
-            """;
     static final String INVALID_LOGIN_EXAMPLE =
             """
             {

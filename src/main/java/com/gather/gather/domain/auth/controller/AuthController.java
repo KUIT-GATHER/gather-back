@@ -292,18 +292,16 @@ public class AuthController {
                                 })),
         @io.swagger.v3.oas.annotations.responses.ApiResponse(
                 responseCode = "404",
-                description = "활동 지역 또는 관심 카테고리 없음",
+                description = "활동 지역 없음",
                 content =
                         @Content(
                                 mediaType = JSON,
-                                examples = {
-                                    @ExampleObject(
-                                            name = "REGION_NOT_FOUND",
-                                            value = AuthSwaggerExamples.REGION_NOT_FOUND_EXAMPLE),
-                                    @ExampleObject(
-                                            name = "CATEGORY_NOT_FOUND",
-                                            value = AuthSwaggerExamples.CATEGORY_NOT_FOUND_EXAMPLE)
-                                })),
+                                examples =
+                                        @ExampleObject(
+                                                name = "REGION_NOT_FOUND",
+                                                value =
+                                                        AuthSwaggerExamples
+                                                                .REGION_NOT_FOUND_EXAMPLE))),
         @io.swagger.v3.oas.annotations.responses.ApiResponse(
                 responseCode = "409",
                 description = "중복 데이터 존재",
