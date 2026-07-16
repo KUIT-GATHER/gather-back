@@ -8,9 +8,8 @@ info:
     프론트 연동 참고사항:
     - `signup`, `login`, `logout`, `reissue`는 인증 행위 API이므로 동사형 경로를 사용합니다.
     - `regions`, `categories` 조회 API는 auth 도메인 소유는 아니지만 회원가입 화면에서 필요하므로 함께 명세에 포함했습니다.
-    - 관심 카테고리는 `GET /api/v1/categories` 응답의 `id`를 기준으로 선택합니다.
-    - 회원가입 요청에는 선택한 카테고리 ID 배열인 `interestCategoryIds`만 전달하며, `code`는 전달하지 않습니다.
-    - 카테고리 `id`는 DB 참조용, `code`는 프론트 아이콘·색상·필터 칩 매핑용 고정값, `name`은 화면 표시용입니다.
+    - 회원가입 요청에는 관심 카테고리 enum 값 배열인 `interestCategories`를 전달합니다. 값은 `PostingCategory`(ENVIRONMENT, EDUCATION, CULTURE, COMMUNITY, WELFARE, OVERSEAS) 중 중복 없이 1개 이상이며, 정의되지 않은 값은 400(`VALIDATION_ERROR`)입니다.
+    - `GET /api/v1/categories`는 아직 기존 16종 분류(`id`/`code`/`name`)를 반환합니다. 6종 enum 전환은 별도 작업으로 진행 중이므로, 전환 완료 전까지 회원가입 카테고리 선택지는 프론트에서 6종 enum 기준으로 처리합니다.
     - Refresh Token은 응답 body가 아니라 `gather_refresh_token` HttpOnly 쿠키로 전달합니다.
     - 재발급과 로그아웃은 Access Token 없이 Refresh Token 쿠키만으로 요청합니다.
     - 로그아웃은 같은 Refresh Token 쿠키로 여러 번 요청해도 성공 응답을 반환합니다.
@@ -243,10 +242,9 @@ paths:
               nickname: 길동
               introduction: 함께 봉사하고 싶습니다.
               activityRegionId: 123
-              interestCategoryIds:
-                - 1
-                - 4
-                - 5
+              interestCategories:
+                - WELFARE
+                - EDUCATION
               serviceTermsAgreed: true
               privacyPolicyAgreed: true
               marketingAgreed: false
@@ -321,7 +319,7 @@ paths:
                       code: INVALID_INTEREST_CATEGORY_COUNT
                       message: 관심 카테고리는 1개 이상 선택해야 합니다.
         '404':
-          description: 활동 지역 또는 관심 카테고리 없음
+          description: 활동 지역 없음
           content:
             application/json:
               schema:
@@ -335,14 +333,6 @@ paths:
                     error:
                       code: REGION_NOT_FOUND
                       message: 활동 지역을 찾을 수 없습니다.
-                categoryNotFound:
-                  summary: 관심 카테고리 없음
-                  value:
-                    success: false
-                    data: null
-                    error:
-                      code: CATEGORY_NOT_FOUND
-                      message: 관심 카테고리를 찾을 수 없습니다.
         '409':
           description: 중복 데이터 존재
           content:
@@ -683,6 +673,18 @@ components:
         - WITHDRAWN
       example: ACTIVE
 
+    PostingCategory:
+      type: string
+      description: 관심 카테고리 enum. 공고·모임·회원 관심 카테고리에서 공통으로 사용하는 6종 분류입니다.
+      enum:
+        - ENVIRONMENT
+        - EDUCATION
+        - CULTURE
+        - COMMUNITY
+        - WELFARE
+        - OVERSEAS
+      example: WELFARE
+
     ApiError:
       type: object
       required:
@@ -873,7 +875,7 @@ components:
         - passwordConfirm
         - nickname
         - activityRegionId
-        - interestCategoryIds
+        - interestCategories
         - serviceTermsAgreed
         - privacyPolicyAgreed
         - marketingAgreed
@@ -933,18 +935,16 @@ components:
           format: int64
           description: 활동 지역 ID. 회원가입 시 선택하는 시군구(level 2) 단위 활동 지역 1개입니다. 향후 공고/모임 검색의 기본 지역 필터 초기값으로 사용합니다.
           example: 123
-        interestCategoryIds:
+        interestCategories:
           type: array
           minItems: 1
           uniqueItems: true
-          description: 관심 카테고리 ID 목록. 1개 이상입니다.
+          description: 관심 카테고리 목록. 중복 없이 1개 이상입니다.
           items:
-            type: integer
-            format: int64
+            $ref: '#/components/schemas/PostingCategory'
           example:
-            - 1
-            - 4
-            - 5
+            - WELFARE
+            - EDUCATION
         serviceTermsAgreed:
           type: boolean
           description: 서비스 이용약관 동의 여부. true 필수입니다.
@@ -1135,7 +1135,7 @@ components:
         id:
           type: integer
           format: int64
-          description: 카테고리 ID. 회원가입의 interestCategoryIds에 사용합니다.
+          description: 카테고리 ID. 기존 16종 분류의 DB 참조용 식별자입니다.
           example: 1
         code:
           type: string
