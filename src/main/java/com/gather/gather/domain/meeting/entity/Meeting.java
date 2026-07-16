@@ -2,6 +2,7 @@ package com.gather.gather.domain.meeting.entity;
 
 import com.gather.gather.domain.auth.entity.User;
 import com.gather.gather.domain.meeting.enums.MeetingStatus;
+import com.gather.gather.domain.posting.entity.PostingCategory;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -46,8 +47,9 @@ public class Meeting {
     @Column(columnDefinition = "TEXT")
     private String memo;
 
-    @Column(name = "category_id", nullable = false)
-    private Long categoryId;
+    @Enumerated(EnumType.STRING)
+    @Column(name = "category", nullable = false, length = 20)
+    private PostingCategory category;
 
     @Column(name = "region_id", nullable = false)
     private Long regionId;
@@ -92,7 +94,7 @@ public class Meeting {
             Integer maxMember,
             LocalDateTime deadline,
             String memo,
-            Long categoryId,
+            PostingCategory category,
             Long regionId,
             User host,
             String participationCondition,
@@ -104,7 +106,7 @@ public class Meeting {
         this.maxMember = maxMember;
         this.deadline = deadline;
         this.memo = memo;
-        this.categoryId = categoryId;
+        this.category = category;
         this.regionId = regionId;
         this.host = host;
         this.currentMemberCount = INITIAL_MEMBER_COUNT;
@@ -121,7 +123,7 @@ public class Meeting {
             Integer maxMember,
             LocalDateTime deadline,
             String memo,
-            Long categoryId,
+            PostingCategory category,
             Long regionId,
             User host,
             String participationCondition,
@@ -134,7 +136,7 @@ public class Meeting {
                 maxMember,
                 deadline,
                 memo,
-                categoryId,
+                category,
                 regionId,
                 host,
                 participationCondition,

@@ -5,8 +5,10 @@ import com.gather.gather.domain.meeting.dto.MeetingDetailResponse;
 import com.gather.gather.domain.meeting.dto.MeetingResponse;
 import com.gather.gather.domain.meeting.enums.MeetingStatus;
 import com.gather.gather.domain.meeting.service.MeetingService;
+import com.gather.gather.domain.posting.entity.PostingCategory;
 import com.gather.gather.global.common.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import java.util.List;
@@ -42,10 +44,10 @@ public class MeetingController {
     public ApiResponse<List<MeetingResponse>> getMeetings(
             @RequestParam(required = false) String keyword,
             @RequestParam(required = false) Long regionId,
-            @RequestParam(required = false) Long categoryId,
+            @Parameter(description = "카테고리", example = "WELFARE") @RequestParam(required = false)
+                    PostingCategory category,
             @RequestParam(required = false) MeetingStatus status) {
-        return ApiResponse.success(
-                meetingService.getMeetings(keyword, regionId, categoryId, status));
+        return ApiResponse.success(meetingService.getMeetings(keyword, regionId, category, status));
     }
 
     @Operation(summary = "내 모임 조회", description = "로그인한 사용자가 참여한 모임 목록을 조회합니다.")
