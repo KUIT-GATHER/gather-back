@@ -2,6 +2,7 @@ package com.gather.gather.domain.meeting.repository;
 
 import com.gather.gather.domain.meeting.entity.Meeting;
 import com.gather.gather.domain.meeting.enums.MeetingStatus;
+import com.gather.gather.domain.posting.entity.PostingCategory;
 import jakarta.persistence.LockModeType;
 import java.util.List;
 import java.util.Optional;
@@ -32,13 +33,13 @@ public interface MeetingRepository extends JpaRepository<Meeting, Long> {
                    OR m.name LIKE CONCAT('%', :keyword, '%')
                    OR m.description LIKE CONCAT('%', :keyword, '%'))
               AND (:regionId IS NULL OR m.regionId = :regionId)
-              AND (:categoryId IS NULL OR m.categoryId = :categoryId)
+              AND (:category IS NULL OR m.category = :category)
               AND (:status IS NULL OR m.status = :status)
             ORDER BY m.createdAt DESC
             """)
     List<Meeting> searchMeetings(
             @Param("keyword") String keyword,
             @Param("regionId") Long regionId,
-            @Param("categoryId") Long categoryId,
+            @Param("category") PostingCategory category,
             @Param("status") MeetingStatus status);
 }
