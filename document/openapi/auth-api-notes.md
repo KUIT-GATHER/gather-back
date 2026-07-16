@@ -82,7 +82,7 @@
 | `nickname` | 완성형 한글 2~10자 또는 영문 2~20자. 혼합·공백·숫자·특수문자 불가 |
 | `introduction` | 최대 50자, **선택**(생략/빈문자열 가능 — 빈문자열은 null 처리됨) |
 | `activityRegionId` | **시군구(level 2) 단위 활동 지역 1개**. 향후 공고/모임 검색의 기본 지역 필터 초기값으로 사용 |
-| `interestCategoryIds` | 1개 이상, 중복 불가 |
+| `interestCategories` | `PostingCategory` enum(ENVIRONMENT/EDUCATION/CULTURE/COMMUNITY/WELFARE/OVERSEAS) 값 배열, 1개 이상·중복 불가. 정의되지 않은 값은 400(`VALIDATION_ERROR`) |
 | `serviceTermsAgreed` / `privacyPolicyAgreed` | **반드시 `true`** |
 | `marketingAgreed` | `true`/`false` 모두 가능(선택 동의), 필드 자체는 필수 |
 
@@ -94,7 +94,8 @@
 | 400 | `EMAIL_NOT_VERIFIED` | 이메일 인증 단계로 유도 |
 | 400 | `REQUIRED_TERMS_NOT_AGREED` | 약관 동의 |
 | 400 | `INVALID_ACTIVITY_REGION` / `INVALID_INTEREST_CATEGORY_COUNT` | 지역/카테고리 선택 |
-| 404 | `REGION_NOT_FOUND` / `CATEGORY_NOT_FOUND` | 잘못된 id (정상 UI에선 미발생) |
+| 400 | `VALIDATION_ERROR` | 정의되지 않은 카테고리 enum 값 (정상 UI에선 미발생) |
+| 404 | `REGION_NOT_FOUND` | 잘못된 지역 id (정상 UI에선 미발생) |
 | 409 | `DUPLICATE_EMAIL` / `DUPLICATE_PHONE_NUMBER` / `DUPLICATE_NICKNAME` | 각 필드 |
 
 - 사전 중복확인을 통과했어도 가입 시점에 `409`가 다시 날 수 있습니다(그 사이 다른 가입). **409 재처리 로직 필수.**

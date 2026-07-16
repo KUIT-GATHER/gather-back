@@ -42,6 +42,39 @@ class AuthControllerTest {
     @MockitoBean private RefreshTokenCookieProvider refreshTokenCookieProvider;
 
     @Test
+    @DisplayName("회원가입에서 잘못된 관심 카테고리 enum 문자열은 400으로 변환한다")
+    void signup_withInvalidInterestCategory_returnsBadRequest() throws Exception {
+        mockMvc.perform(
+                        post("/api/v1/auth/signup")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(
+                                        """
+                                        {
+                                          "name": "홍길동",
+                                          "birthDate": "2000-01-01",
+                                          "gender": "MALE",
+                                          "phoneNumber": "01012345678",
+                                          "email": "test@example.com",
+                                          "password": "password123!",
+                                          "passwordConfirm": "password123!",
+                                          "nickname": "길동",
+                                          "introduction": null,
+                                          "activityRegionId": 123,
+                                          "interestCategories": ["INVALID"],
+                                          "serviceTermsAgreed": true,
+                                          "privacyPolicyAgreed": true,
+                                          "marketingAgreed": false
+                                        }
+                                        """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.data").doesNotExist())
+                .andExpect(jsonPath("$.error.code").value("VALIDATION_ERROR"));
+
+        verifyNoInteractions(authService);
+    }
+
+    @Test
     @DisplayName("로그인 성공 시 Refresh Token은 HttpOnly 쿠키로 내려가고 응답 본문에는 포함되지 않는다")
     void login_setsRefreshTokenCookieAndOmitsRefreshTokenBody() throws Exception {
         when(authService.login(any(LoginRequest.class)))

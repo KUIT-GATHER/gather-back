@@ -1,8 +1,10 @@
 package com.gather.gather.domain.auth.entity;
 
-import com.gather.gather.domain.category.entity.Category;
+import com.gather.gather.domain.posting.entity.PostingCategory;
 import com.gather.gather.domain.region.entity.Region;
+import jakarta.persistence.CollectionTable;
 import jakarta.persistence.Column;
+import jakarta.persistence.ElementCollection;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
@@ -11,8 +13,6 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
-import jakarta.persistence.JoinTable;
-import jakarta.persistence.ManyToMany;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import java.time.LocalDate;
@@ -81,12 +81,11 @@ public class User {
     @JoinColumn(name = "activity_region_id", nullable = false)
     private Region activityRegion;
 
-    @ManyToMany
-    @JoinTable(
-            name = "user_interest_category",
-            joinColumns = @JoinColumn(name = "user_id"),
-            inverseJoinColumns = @JoinColumn(name = "category_id"))
-    private List<Category> interestCategories = new ArrayList<>();
+    @ElementCollection
+    @CollectionTable(name = "user_interest_category", joinColumns = @JoinColumn(name = "user_id"))
+    @Enumerated(EnumType.STRING)
+    @Column(name = "category", nullable = false, length = 20)
+    private List<PostingCategory> interestCategories = new ArrayList<>();
 
     private User(
             String name,
@@ -101,7 +100,7 @@ public class User {
             boolean privacyPolicyAgreed,
             boolean marketingAgreed,
             Region activityRegion,
-            List<Category> interestCategories) {
+            List<PostingCategory> interestCategories) {
         this.name = name;
         this.birthDate = birthDate;
         this.gender = gender;
@@ -133,7 +132,7 @@ public class User {
             boolean privacyPolicyAgreed,
             boolean marketingAgreed,
             Region activityRegion,
-            List<Category> interestCategories) {
+            List<PostingCategory> interestCategories) {
         return new User(
                 name,
                 birthDate,

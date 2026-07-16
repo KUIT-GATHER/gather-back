@@ -16,20 +16,17 @@ import com.gather.gather.domain.auth.entity.UserStatus;
 import com.gather.gather.domain.auth.repository.EmailVerificationRepository;
 import com.gather.gather.domain.auth.repository.RefreshTokenRepository;
 import com.gather.gather.domain.auth.repository.UserRepository;
-import com.gather.gather.domain.category.entity.Category;
-import com.gather.gather.domain.category.repository.CategoryRepository;
+import com.gather.gather.domain.posting.entity.PostingCategory;
 import com.gather.gather.domain.region.entity.Region;
 import com.gather.gather.domain.region.repository.RegionRepository;
 import com.gather.gather.global.exception.BusinessException;
 import com.gather.gather.global.exception.ErrorCode;
 import java.security.SecureRandom;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
-import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import lombok.RequiredArgsConstructor;
@@ -59,7 +56,6 @@ public class AuthService {
     private final EmailVerificationRepository emailVerificationRepository;
     private final RefreshTokenRepository refreshTokenRepository;
     private final RegionRepository regionRepository;
-    private final CategoryRepository categoryRepository;
     private final PasswordEncoder passwordEncoder;
     private final EmailSender emailSender;
     private final TokenProvider tokenProvider;
@@ -137,7 +133,6 @@ public class AuthService {
         validateDuplicates(email, phoneNumber, nickname);
 
         Region activityRegion = findActivityRegion(request.activityRegionId());
-        List<Category> interestCategories = findInterestCategories(request.interestCategoryIds());
 
         User user =
                 User.create(
@@ -153,7 +148,7 @@ public class AuthService {
                         request.privacyPolicyAgreed(),
                         request.marketingAgreed(),
                         activityRegion,
-                        interestCategories);
+                        request.interestCategories());
 
         try {
             return SignupResponse.from(userRepository.saveAndFlush(user));
@@ -235,7 +230,7 @@ public class AuthService {
             throw new BusinessException(ErrorCode.REQUIRED_TERMS_NOT_AGREED);
         }
         validateActivityRegionId(request.activityRegionId());
-        validateInterestCategoryIds(request.interestCategoryIds());
+        validateInterestCategories(request.interestCategories());
     }
 
     private void validateName(String name) {
@@ -258,21 +253,21 @@ public class AuthService {
         }
     }
 
-    private void validateInterestCategoryIds(List<Long> interestCategoryIds) {
-        if (interestCategoryIds == null
-                || interestCategoryIds.size() < MIN_INTEREST_CATEGORY_COUNT
-                || hasNullId(interestCategoryIds)
-                || hasDuplicateIds(interestCategoryIds)) {
+    private void validateInterestCategories(List<PostingCategory> interestCategories) {
+        if (interestCategories == null
+                || interestCategories.size() < MIN_INTEREST_CATEGORY_COUNT
+                || hasNullCategory(interestCategories)
+                || hasDuplicateCategories(interestCategories)) {
             throw new BusinessException(ErrorCode.INVALID_INTEREST_CATEGORY_COUNT);
         }
     }
 
-    private boolean hasNullId(List<Long> ids) {
-        return ids.stream().anyMatch(Objects::isNull);
+    private boolean hasNullCategory(List<PostingCategory> categories) {
+        return categories.stream().anyMatch(Objects::isNull);
     }
 
-    private boolean hasDuplicateIds(List<Long> ids) {
-        return new LinkedHashSet<>(ids).size() != ids.size();
+    private boolean hasDuplicateCategories(List<PostingCategory> categories) {
+        return new LinkedHashSet<>(categories).size() != categories.size();
     }
 
     private void validateEmailVerified(String email) {
@@ -341,15 +336,6 @@ public class AuthService {
             throw new BusinessException(ErrorCode.REGION_NOT_FOUND);
         }
         return region;
-    }
-
-    private List<Category> findInterestCategories(List<Long> interestCategoryIds) {
-        Set<Long> requestedIds = new LinkedHashSet<>(interestCategoryIds);
-        List<Category> categories = categoryRepository.findAllById(requestedIds);
-        if (categories.size() != requestedIds.size()) {
-            throw new BusinessException(ErrorCode.CATEGORY_NOT_FOUND);
-        }
-        return new ArrayList<>(categories);
     }
 
     private void validateLoginAllowed(User user) {

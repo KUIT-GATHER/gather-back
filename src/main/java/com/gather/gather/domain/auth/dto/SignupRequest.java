@@ -1,6 +1,7 @@
 package com.gather.gather.domain.auth.dto;
 
 import com.gather.gather.domain.auth.entity.Gender;
+import com.gather.gather.domain.posting.entity.PostingCategory;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
@@ -44,8 +45,11 @@ public record SignupRequest(
                 String introduction,
         @Schema(description = "활동 지역 ID. 시군구(level 2) 단위 1개만 선택합니다.", example = "123") @NotNull
                 Long activityRegionId,
-        @Schema(description = "관심 카테고리 ID 목록. 중복 없이 1개 이상입니다.", example = "[1, 4, 5]") @NotNull
-                List<Long> interestCategoryIds,
+        @Schema(
+                        description = "관심 카테고리 목록. 중복 없이 1개 이상입니다.",
+                        example = "[\"WELFARE\", \"EDUCATION\"]")
+                @NotNull
+                List<PostingCategory> interestCategories,
         @Schema(description = "서비스 이용약관 동의 여부. true 필수입니다.", example = "true") @NotNull
                 Boolean serviceTermsAgreed,
         @Schema(description = "개인정보 처리방침 동의 여부. true 필수입니다.", example = "true") @NotNull

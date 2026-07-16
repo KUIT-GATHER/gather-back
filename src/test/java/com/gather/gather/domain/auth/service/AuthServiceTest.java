@@ -3,8 +3,6 @@ package com.gather.gather.domain.auth.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyIterable;
-import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -17,14 +15,14 @@ import com.gather.gather.domain.auth.entity.User;
 import com.gather.gather.domain.auth.repository.EmailVerificationRepository;
 import com.gather.gather.domain.auth.repository.RefreshTokenRepository;
 import com.gather.gather.domain.auth.repository.UserRepository;
-import com.gather.gather.domain.category.entity.Category;
-import com.gather.gather.domain.category.repository.CategoryRepository;
+import com.gather.gather.domain.posting.entity.PostingCategory;
 import com.gather.gather.domain.region.entity.Region;
 import com.gather.gather.domain.region.repository.RegionRepository;
 import com.gather.gather.global.exception.BusinessException;
 import com.gather.gather.global.exception.ErrorCode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
@@ -46,7 +44,6 @@ class AuthServiceTest {
     @Mock private EmailVerificationRepository emailVerificationRepository;
     @Mock private RefreshTokenRepository refreshTokenRepository;
     @Mock private RegionRepository regionRepository;
-    @Mock private CategoryRepository categoryRepository;
     @Mock private PasswordEncoder passwordEncoder;
     @Mock private EmailSender emailSender;
     @Mock private TokenProvider tokenProvider;
@@ -61,7 +58,6 @@ class AuthServiceTest {
                         emailVerificationRepository,
                         refreshTokenRepository,
                         regionRepository,
-                        categoryRepository,
                         passwordEncoder,
                         emailSender,
                         tokenProvider);
@@ -71,10 +67,8 @@ class AuthServiceTest {
     @DisplayName("회원가입은 level=2 시군구 활동 지역 1개를 User에 저장한다")
     void signup_withLevel2ActivityRegion_savesUserActivityRegion() {
         Region activityRegion = Region.create("강남구", 2, "11680", null);
-        Category interestCategory = mock(Category.class);
         prepareVerifiedEmail();
         when(regionRepository.findById(123L)).thenReturn(Optional.of(activityRegion));
-        when(categoryRepository.findAllById(anyIterable())).thenReturn(List.of(interestCategory));
         when(passwordEncoder.encode("password123!")).thenReturn("encoded-password");
         when(userRepository.saveAndFlush(any(User.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
@@ -84,7 +78,32 @@ class AuthServiceTest {
         ArgumentCaptor<User> captor = ArgumentCaptor.forClass(User.class);
         verify(userRepository).saveAndFlush(captor.capture());
         assertThat(captor.getValue().getActivityRegion()).isSameAs(activityRegion);
-        assertThat(captor.getValue().getInterestCategories()).containsExactly(interestCategory);
+        assertThat(captor.getValue().getInterestCategories())
+                .containsExactly(PostingCategory.WELFARE);
+    }
+
+    @Test
+    @DisplayName("회원가입에서 관심 카테고리가 null이면 실패한다")
+    void signup_withNullInterestCategories_throwsInvalidInterestCategoryCount() {
+        assertInvalidInterestCategories(null);
+    }
+
+    @Test
+    @DisplayName("회원가입에서 null 관심 카테고리가 포함되면 실패한다")
+    void signup_withNullInterestCategory_throwsInvalidInterestCategoryCount() {
+        assertInvalidInterestCategories(Collections.singletonList(null));
+    }
+
+    @Test
+    @DisplayName("회원가입에서 관심 카테고리가 비어 있으면 실패한다")
+    void signup_withEmptyInterestCategories_throwsInvalidInterestCategoryCount() {
+        assertInvalidInterestCategories(List.of());
+    }
+
+    @Test
+    @DisplayName("회원가입에서 관심 카테고리가 중복되면 실패한다")
+    void signup_withDuplicateInterestCategories_throwsInvalidInterestCategoryCount() {
+        assertInvalidInterestCategories(List.of(PostingCategory.WELFARE, PostingCategory.WELFARE));
     }
 
     @Test
@@ -299,10 +318,8 @@ class AuthServiceTest {
 
     private void prepareSuccessfulSignup() {
         Region activityRegion = Region.create("강남구", 2, "11680", null);
-        Category interestCategory = mock(Category.class);
         prepareVerifiedEmail();
         when(regionRepository.findById(123L)).thenReturn(Optional.of(activityRegion));
-        when(categoryRepository.findAllById(anyIterable())).thenReturn(List.of(interestCategory));
         when(passwordEncoder.encode("password123!")).thenReturn("encoded-password");
         when(userRepository.saveAndFlush(any(User.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
@@ -318,12 +335,33 @@ class AuthServiceTest {
         verify(userRepository, never()).saveAndFlush(any(User.class));
     }
 
+    private void assertInvalidInterestCategories(List<PostingCategory> interestCategories) {
+        assertThatThrownBy(
+                        () ->
+                                authService.signup(
+                                        signupRequest(123L, "홍길동", "길동", interestCategories)))
+                .isInstanceOfSatisfying(
+                        BusinessException.class,
+                        exception ->
+                                assertThat(exception.getErrorCode())
+                                        .isEqualTo(ErrorCode.INVALID_INTEREST_CATEGORY_COUNT));
+        verify(userRepository, never()).saveAndFlush(any(User.class));
+    }
+
     private static SignupRequest signupRequest(Long activityRegionId) {
         return signupRequest(activityRegionId, "홍길동", "길동");
     }
 
     private static SignupRequest signupRequest(
             Long activityRegionId, String name, String nickname) {
+        return signupRequest(activityRegionId, name, nickname, List.of(PostingCategory.WELFARE));
+    }
+
+    private static SignupRequest signupRequest(
+            Long activityRegionId,
+            String name,
+            String nickname,
+            List<PostingCategory> interestCategories) {
         return new SignupRequest(
                 name,
                 LocalDate.of(2000, 1, 1),
@@ -335,7 +373,7 @@ class AuthServiceTest {
                 nickname,
                 null,
                 activityRegionId,
-                List.of(1L),
+                interestCategories,
                 true,
                 true,
                 false);
