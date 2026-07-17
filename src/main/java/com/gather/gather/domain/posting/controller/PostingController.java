@@ -2,6 +2,7 @@ package com.gather.gather.domain.posting.controller;
 
 import com.gather.gather.domain.posting.dto.PostingResponse;
 import com.gather.gather.domain.posting.dto.PostingSummaryResponse;
+import com.gather.gather.domain.posting.entity.PostingCategory;
 import com.gather.gather.domain.posting.entity.PostingStatus;
 import com.gather.gather.domain.posting.service.PostingService;
 import com.gather.gather.global.common.ApiResponse;
@@ -42,7 +43,8 @@ public class PostingController {
                             + "regionGroupId는 활동 지역 9버튼(서울/부산/.../경상/전라/충청) 선택 시 그 권역에 속한 "
                             + "모든 시도와 시군구 공고를 포함합니다. regionId와 regionGroupId는 동시에 지정할 수 없습니다. "
                             + "noticeStartDate/noticeEndDate는 각각 모집시작일 하한/모집종료일 상한 필터입니다. "
-                            + "keyword는 제목/모집기관명 부분일치 검색입니다.",
+                            + "keyword는 제목/모집기관명 부분일치 검색입니다. "
+                            + "category를 지정하면 해당 봉사분야 공고만 반환합니다(미지정 시 전체).",
             parameters = {
                 @Parameter(
                         name = "sort",
@@ -150,7 +152,13 @@ public class PostingController {
             @Parameter(description = "모집종료일 상한 (yyyy-MM-dd)") @RequestParam(required = false)
                     LocalDate noticeEndDate,
             @Parameter(description = "검색 키워드 (제목/모집기관명 부분일치)") @RequestParam(required = false)
-                    String keyword) {
+                    String keyword,
+            @Parameter(
+                            description =
+                                    "봉사분야 카테고리 (ENVIRONMENT/EDUCATION/CULTURE/COMMUNITY/WELFARE/OVERSEAS,"
+                                            + " 미지정 시 전체)")
+                    @RequestParam(required = false)
+                    PostingCategory category) {
         return ApiResponse.success(
                 postingService.getPostings(
                         pageable,
@@ -159,7 +167,8 @@ public class PostingController {
                         status,
                         noticeStartDate,
                         noticeEndDate,
-                        keyword));
+                        keyword,
+                        category));
     }
 
     @Operation(summary = "봉사공고 상세 조회", description = "봉사공고 상세 정보를 조회합니다. 인증이 필요 없습니다.")

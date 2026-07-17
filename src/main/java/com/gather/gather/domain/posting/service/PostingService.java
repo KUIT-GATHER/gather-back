@@ -4,6 +4,7 @@ import com.gather.gather.domain.posting.dto.PostingLocationResponse;
 import com.gather.gather.domain.posting.dto.PostingResponse;
 import com.gather.gather.domain.posting.dto.PostingSummaryResponse;
 import com.gather.gather.domain.posting.entity.Posting;
+import com.gather.gather.domain.posting.entity.PostingCategory;
 import com.gather.gather.domain.posting.entity.PostingStatus;
 import com.gather.gather.domain.posting.repository.PostingLocationRepository;
 import com.gather.gather.domain.posting.repository.PostingRepository;
@@ -61,7 +62,8 @@ public class PostingService {
             PostingStatus status,
             LocalDate noticeStartDate,
             LocalDate noticeEndDate,
-            String keyword) {
+            String keyword,
+            PostingCategory category) {
         validateSort(pageable.getSort());
         PostingStatus effectiveStatus = status != null ? status : PostingStatus.RECRUITING;
         List<Long> regionIds = resolveRegionIds(regionId, regionGroupId);
@@ -73,6 +75,7 @@ public class PostingService {
                         noticeStartDate,
                         noticeEndDate,
                         keyword,
+                        category,
                         pageable);
 
         Map<Long, String> regionNames = findRegionNames(postings);

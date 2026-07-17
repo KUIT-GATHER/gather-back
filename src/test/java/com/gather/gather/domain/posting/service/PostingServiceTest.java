@@ -63,13 +63,14 @@ class PostingServiceTest {
                         isNull(),
                         isNull(),
                         isNull(),
+                        isNull(),
                         eq(pageable)))
                 .thenReturn(new PageImpl<>(List.of()));
 
-        postingService.getPostings(pageable, null, null, null, null, null, null);
+        postingService.getPostings(pageable, null, null, null, null, null, null, null);
 
         verify(postingRepository)
-                .search(PostingStatus.RECRUITING, null, null, null, null, pageable);
+                .search(PostingStatus.RECRUITING, null, null, null, null, null, pageable);
         verify(regionRepository, never()).findIdsIncludingChildren(any());
         verify(regionRepository, never()).findIdsIncludingChildrenByGroupId(any());
     }
@@ -84,12 +85,15 @@ class PostingServiceTest {
                         isNull(),
                         isNull(),
                         isNull(),
+                        isNull(),
                         eq(pageable)))
                 .thenReturn(new PageImpl<>(List.of()));
 
-        postingService.getPostings(pageable, null, null, PostingStatus.CLOSED, null, null, null);
+        postingService.getPostings(
+                pageable, null, null, PostingStatus.CLOSED, null, null, null, null);
 
-        verify(postingRepository).search(PostingStatus.CLOSED, null, null, null, null, pageable);
+        verify(postingRepository)
+                .search(PostingStatus.CLOSED, null, null, null, null, null, pageable);
     }
 
     @Test
@@ -103,14 +107,22 @@ class PostingServiceTest {
                         isNull(),
                         isNull(),
                         isNull(),
+                        isNull(),
                         eq(pageable)))
                 .thenReturn(new PageImpl<>(List.of()));
 
-        postingService.getPostings(pageable, 1L, null, null, null, null, null);
+        postingService.getPostings(pageable, 1L, null, null, null, null, null, null);
 
         verify(regionRepository).findIdsIncludingChildren(1L);
         verify(postingRepository)
-                .search(PostingStatus.RECRUITING, List.of(1L, 2L, 3L), null, null, null, pageable);
+                .search(
+                        PostingStatus.RECRUITING,
+                        List.of(1L, 2L, 3L),
+                        null,
+                        null,
+                        null,
+                        null,
+                        pageable);
     }
 
     @Test
@@ -127,10 +139,11 @@ class PostingServiceTest {
                         isNull(),
                         isNull(),
                         isNull(),
+                        isNull(),
                         eq(pageable)))
                 .thenReturn(new PageImpl<>(List.of()));
 
-        postingService.getPostings(pageable, null, 7L, null, null, null, null);
+        postingService.getPostings(pageable, null, 7L, null, null, null, null, null);
 
         verify(regionRepository).findIdsIncludingChildrenByGroupId(7L);
         verify(regionRepository, never()).findIdsIncludingChildren(any());
@@ -138,6 +151,7 @@ class PostingServiceTest {
                 .search(
                         PostingStatus.RECRUITING,
                         List.of(10L, 11L, 12L, 13L),
+                        null,
                         null,
                         null,
                         null,
@@ -150,13 +164,15 @@ class PostingServiceTest {
         Pageable pageable = PageRequest.of(0, 20);
 
         assertThatThrownBy(
-                        () -> postingService.getPostings(pageable, 1L, 7L, null, null, null, null))
+                        () ->
+                                postingService.getPostings(
+                                        pageable, 1L, 7L, null, null, null, null, null))
                 .isInstanceOf(BusinessException.class)
                 .satisfies(
                         ex ->
                                 assertThat(((BusinessException) ex).getErrorCode())
                                         .isEqualTo(ErrorCode.VALIDATION_ERROR));
-        verify(postingRepository, never()).search(any(), any(), any(), any(), any(), any());
+        verify(postingRepository, never()).search(any(), any(), any(), any(), any(), any(), any());
     }
 
     @Test
@@ -165,25 +181,56 @@ class PostingServiceTest {
         Pageable pageable = PageRequest.of(0, 20);
         LocalDate from = LocalDate.of(2026, 7, 1);
         LocalDate to = LocalDate.of(2026, 7, 31);
-        when(postingRepository.search(PostingStatus.RECRUITING, null, from, to, null, pageable))
+        when(postingRepository.search(
+                        PostingStatus.RECRUITING, null, from, to, null, null, pageable))
                 .thenReturn(new PageImpl<>(List.of()));
 
-        postingService.getPostings(pageable, null, null, null, from, to, null);
+        postingService.getPostings(pageable, null, null, null, from, to, null, null);
 
-        verify(postingRepository).search(PostingStatus.RECRUITING, null, from, to, null, pageable);
+        verify(postingRepository)
+                .search(PostingStatus.RECRUITING, null, from, to, null, null, pageable);
     }
 
     @Test
     @DisplayName("getPostings passes the keyword through to the repository")
     void getPostings_passesKeyword_whenProvided() {
         Pageable pageable = PageRequest.of(0, 20);
-        when(postingRepository.search(PostingStatus.RECRUITING, null, null, null, "환경", pageable))
+        when(postingRepository.search(
+                        PostingStatus.RECRUITING, null, null, null, "환경", null, pageable))
                 .thenReturn(new PageImpl<>(List.of()));
 
-        postingService.getPostings(pageable, null, null, null, null, null, "환경");
+        postingService.getPostings(pageable, null, null, null, null, null, "환경", null);
 
         verify(postingRepository)
-                .search(PostingStatus.RECRUITING, null, null, null, "환경", pageable);
+                .search(PostingStatus.RECRUITING, null, null, null, "환경", null, pageable);
+    }
+
+    @Test
+    @DisplayName("getPostings passes the category through to the repository")
+    void getPostings_passesCategory_whenProvided() {
+        Pageable pageable = PageRequest.of(0, 20);
+        when(postingRepository.search(
+                        PostingStatus.RECRUITING,
+                        null,
+                        null,
+                        null,
+                        null,
+                        PostingCategory.WELFARE,
+                        pageable))
+                .thenReturn(new PageImpl<>(List.of()));
+
+        postingService.getPostings(
+                pageable, null, null, null, null, null, null, PostingCategory.WELFARE);
+
+        verify(postingRepository)
+                .search(
+                        PostingStatus.RECRUITING,
+                        null,
+                        null,
+                        null,
+                        null,
+                        PostingCategory.WELFARE,
+                        pageable);
     }
 
     @Test
@@ -191,12 +238,13 @@ class PostingServiceTest {
     void getPostings_mapsRegionNameAndCategory_whenMatched() {
         Posting posting = postingWithId(1L, "동구 환경정화 봉사", 2L, PostingCategory.ENVIRONMENT);
         Pageable pageable = PageRequest.of(0, 20);
-        when(postingRepository.search(PostingStatus.RECRUITING, null, null, null, null, pageable))
+        when(postingRepository.search(
+                        PostingStatus.RECRUITING, null, null, null, null, null, pageable))
                 .thenReturn(new PageImpl<>(List.of(posting)));
         when(regionRepository.findAllById(any())).thenReturn(List.of(regionWithId(2L, "동구")));
 
         PageResponse<PostingSummaryResponse> result =
-                postingService.getPostings(pageable, null, null, null, null, null, null);
+                postingService.getPostings(pageable, null, null, null, null, null, null, null);
 
         assertThat(result.content()).hasSize(1);
         PostingSummaryResponse response = result.content().get(0);
@@ -210,12 +258,13 @@ class PostingServiceTest {
     void getPostings_regionNameNull_whenRegionIdNullOrUnmatched() {
         Posting posting = postingWithId(1L, "무지역 공고", null, PostingCategory.ENVIRONMENT);
         Pageable pageable = PageRequest.of(0, 20);
-        when(postingRepository.search(PostingStatus.RECRUITING, null, null, null, null, pageable))
+        when(postingRepository.search(
+                        PostingStatus.RECRUITING, null, null, null, null, null, pageable))
                 .thenReturn(new PageImpl<>(List.of(posting)));
         when(regionRepository.findAllById(any())).thenReturn(List.of());
 
         PageResponse<PostingSummaryResponse> result =
-                postingService.getPostings(pageable, null, null, null, null, null, null);
+                postingService.getPostings(pageable, null, null, null, null, null, null, null);
 
         assertThat(result.content().get(0).regionName()).isNull();
         assertThat(result.content().get(0).category()).isEqualTo(PostingCategory.ENVIRONMENT);
@@ -227,11 +276,12 @@ class PostingServiceTest {
         Posting first = postingWithId(1L, "공고1", 2L, PostingCategory.ENVIRONMENT);
         Posting second = postingWithId(2L, "공고2", 2L, PostingCategory.ENVIRONMENT);
         Pageable pageable = PageRequest.of(0, 20);
-        when(postingRepository.search(PostingStatus.RECRUITING, null, null, null, null, pageable))
+        when(postingRepository.search(
+                        PostingStatus.RECRUITING, null, null, null, null, null, pageable))
                 .thenReturn(new PageImpl<>(List.of(first, second)));
         when(regionRepository.findAllById(any())).thenReturn(List.of(regionWithId(2L, "동구")));
 
-        postingService.getPostings(pageable, null, null, null, null, null, null);
+        postingService.getPostings(pageable, null, null, null, null, null, null, null);
 
         verify(regionRepository, times(1)).findAllById(any());
     }
@@ -244,37 +294,39 @@ class PostingServiceTest {
         assertThatThrownBy(
                         () ->
                                 postingService.getPostings(
-                                        pageable, null, null, null, null, null, null))
+                                        pageable, null, null, null, null, null, null, null))
                 .isInstanceOf(BusinessException.class)
                 .satisfies(
                         ex ->
                                 assertThat(((BusinessException) ex).getErrorCode())
                                         .isEqualTo(ErrorCode.VALIDATION_ERROR));
-        verify(postingRepository, never()).search(any(), any(), any(), any(), any(), any());
+        verify(postingRepository, never()).search(any(), any(), any(), any(), any(), any(), any());
     }
 
     @Test
     @DisplayName("getPostings allows sorting by a known Posting property")
     void getPostings_allowsSort_whenPropertyKnown() {
         Pageable pageable = PageRequest.of(0, 20, Sort.by("title").ascending());
-        when(postingRepository.search(PostingStatus.RECRUITING, null, null, null, null, pageable))
+        when(postingRepository.search(
+                        PostingStatus.RECRUITING, null, null, null, null, null, pageable))
                 .thenReturn(new PageImpl<>(List.of()));
 
-        postingService.getPostings(pageable, null, null, null, null, null, null);
+        postingService.getPostings(pageable, null, null, null, null, null, null, null);
 
         verify(postingRepository)
-                .search(PostingStatus.RECRUITING, null, null, null, null, pageable);
+                .search(PostingStatus.RECRUITING, null, null, null, null, null, pageable);
     }
 
     @Test
     @DisplayName("getPostings returns empty PageResponse when no postings exist")
     void getPostings_returnsEmptyPageResponse_whenNoPostingsExist() {
         Pageable pageable = PageRequest.of(0, 20);
-        when(postingRepository.search(PostingStatus.RECRUITING, null, null, null, null, pageable))
+        when(postingRepository.search(
+                        PostingStatus.RECRUITING, null, null, null, null, null, pageable))
                 .thenReturn(new PageImpl<>(List.of()));
 
         PageResponse<PostingSummaryResponse> result =
-                postingService.getPostings(pageable, null, null, null, null, null, null);
+                postingService.getPostings(pageable, null, null, null, null, null, null, null);
 
         assertThat(result.content()).isEmpty();
         assertThat(result.totalElements()).isZero();

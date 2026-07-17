@@ -75,7 +75,7 @@ class PostingControllerTest {
     @Test
     @DisplayName("GET /api/v1/postings returns 200 with empty content when no postings match")
     void getPostings_returns200WithEmptyContent_whenNoPostings() throws Exception {
-        when(postingService.getPostings(any(), any(), any(), any(), any(), any(), any()))
+        when(postingService.getPostings(any(), any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(new PageResponse<>(List.of(), 0, 0, 0, 20));
 
         mockMvc.perform(get("/api/v1/postings"))
@@ -114,7 +114,7 @@ class PostingControllerTest {
     @Test
     @DisplayName("GET /api/v1/postings?page=1&size=5 binds Pageable from query params")
     void getPostings_bindsPageableFromQueryParams() throws Exception {
-        when(postingService.getPostings(any(), any(), any(), any(), any(), any(), any()))
+        when(postingService.getPostings(any(), any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(new PageResponse<>(List.of(), 0, 0, 1, 5));
 
         mockMvc.perform(get("/api/v1/postings").param("page", "1").param("size", "5"))
@@ -122,7 +122,7 @@ class PostingControllerTest {
 
         ArgumentCaptor<Pageable> captor = ArgumentCaptor.forClass(Pageable.class);
         verify(postingService)
-                .getPostings(captor.capture(), any(), any(), any(), any(), any(), any());
+                .getPostings(captor.capture(), any(), any(), any(), any(), any(), any(), any());
         org.assertj.core.api.Assertions.assertThat(captor.getValue().getPageNumber()).isEqualTo(1);
         org.assertj.core.api.Assertions.assertThat(captor.getValue().getPageSize()).isEqualTo(5);
     }
@@ -131,7 +131,7 @@ class PostingControllerTest {
     @DisplayName("GET /api/v1/postings?regionId=1&status=CLOSED binds filter query params")
     void getPostings_bindsFilterQueryParams() throws Exception {
         when(postingService.getPostings(
-                        any(), eq(1L), any(), eq(PostingStatus.CLOSED), any(), any(), any()))
+                        any(), eq(1L), any(), eq(PostingStatus.CLOSED), any(), any(), any(), any()))
                 .thenReturn(new PageResponse<>(List.of(), 0, 0, 0, 20));
 
         mockMvc.perform(
@@ -150,19 +150,20 @@ class PostingControllerTest {
                         eq(PostingStatus.CLOSED),
                         eq(LocalDate.of(2026, 7, 1)),
                         eq(LocalDate.of(2026, 7, 31)),
+                        any(),
                         any());
     }
 
     @Test
     @DisplayName("GET /api/v1/postings?regionGroupId=7 binds region group query param")
     void getPostings_bindsRegionGroupIdQueryParam() throws Exception {
-        when(postingService.getPostings(any(), any(), eq(7L), any(), any(), any(), any()))
+        when(postingService.getPostings(any(), any(), eq(7L), any(), any(), any(), any(), any()))
                 .thenReturn(new PageResponse<>(List.of(), 0, 0, 0, 20));
 
         mockMvc.perform(get("/api/v1/postings").param("regionGroupId", "7"))
                 .andExpect(status().isOk());
 
-        verify(postingService).getPostings(any(), any(), eq(7L), any(), any(), any(), any());
+        verify(postingService).getPostings(any(), any(), eq(7L), any(), any(), any(), any(), any());
     }
 
     @Test
@@ -170,7 +171,7 @@ class PostingControllerTest {
             "GET /api/v1/postings?regionId=1&regionGroupId=7 returns 400 when service rejects the"
                     + " combination")
     void getPostings_returns400_whenRegionIdAndRegionGroupIdBothProvided() throws Exception {
-        when(postingService.getPostings(any(), eq(1L), eq(7L), any(), any(), any(), any()))
+        when(postingService.getPostings(any(), eq(1L), eq(7L), any(), any(), any(), any(), any()))
                 .thenThrow(new BusinessException(ErrorCode.VALIDATION_ERROR));
 
         mockMvc.perform(get("/api/v1/postings").param("regionId", "1").param("regionGroupId", "7"))
@@ -182,19 +183,49 @@ class PostingControllerTest {
     @Test
     @DisplayName("GET /api/v1/postings?keyword=환경 binds keyword query param")
     void getPostings_bindsKeywordQueryParam() throws Exception {
-        when(postingService.getPostings(any(), any(), any(), any(), any(), any(), eq("환경")))
+        when(postingService.getPostings(any(), any(), any(), any(), any(), any(), eq("환경"), any()))
                 .thenReturn(new PageResponse<>(List.of(), 0, 0, 0, 20));
 
         mockMvc.perform(get("/api/v1/postings").param("keyword", "환경")).andExpect(status().isOk());
 
-        verify(postingService).getPostings(any(), any(), any(), any(), any(), any(), eq("환경"));
+        verify(postingService)
+                .getPostings(any(), any(), any(), any(), any(), any(), eq("환경"), any());
+    }
+
+    @Test
+    @DisplayName("GET /api/v1/postings?category=WELFARE binds category query param")
+    void getPostings_bindsCategoryQueryParam() throws Exception {
+        when(postingService.getPostings(
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        eq(PostingCategory.WELFARE)))
+                .thenReturn(new PageResponse<>(List.of(), 0, 0, 0, 20));
+
+        mockMvc.perform(get("/api/v1/postings").param("category", "WELFARE"))
+                .andExpect(status().isOk());
+
+        verify(postingService)
+                .getPostings(
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        eq(PostingCategory.WELFARE));
     }
 
     @Test
     @DisplayName(
             "GET /api/v1/postings?sort=invalidProp returns 400 when sort property is not whitelisted")
     void getPostings_returns400_whenSortPropertyInvalid() throws Exception {
-        when(postingService.getPostings(any(), any(), any(), any(), any(), any(), any()))
+        when(postingService.getPostings(any(), any(), any(), any(), any(), any(), any(), any()))
                 .thenThrow(new BusinessException(ErrorCode.VALIDATION_ERROR));
 
         mockMvc.perform(get("/api/v1/postings").param("sort", "invalidProp"))
