@@ -54,8 +54,9 @@ class PostingControllerTest {
                         1,
                         2L,
                         "동구",
-                        PostingCategory.ENVIRONMENT);
-        when(postingService.getPostings(any(), any(), any(), any(), any(), any(), any(), any()))
+                        PostingCategory.ENVIRONMENT,
+                        LocalDate.of(2026, 7, 5));
+        when(postingService.getPostings(any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(new PageResponse<>(List.of(summary), 1, 1, 0, 20));
 
         mockMvc.perform(get("/api/v1/postings"))
@@ -100,8 +101,9 @@ class PostingControllerTest {
                         null,
                         null,
                         null,
-                        PostingCategory.ENVIRONMENT);
-        when(postingService.getPostings(any(), any(), any(), any(), any(), any(), any(), any()))
+                        PostingCategory.ENVIRONMENT,
+                        null);
+        when(postingService.getPostings(any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(new PageResponse<>(List.of(summary), 1, 1, 0, 20));
 
         mockMvc.perform(get("/api/v1/postings"))
