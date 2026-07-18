@@ -14,6 +14,7 @@ import com.gather.gather.domain.posting.dto.PostingResponse;
 import com.gather.gather.domain.posting.dto.PostingSummaryResponse;
 import com.gather.gather.domain.posting.entity.PostingCategory;
 import com.gather.gather.domain.posting.entity.PostingStatus;
+import com.gather.gather.domain.posting.service.PostingKeywordRecommendationService;
 import com.gather.gather.domain.posting.service.PostingService;
 import com.gather.gather.global.common.PageResponse;
 import com.gather.gather.global.exception.BusinessException;
@@ -38,6 +39,8 @@ class PostingControllerTest {
 
     @MockitoBean private PostingService postingService;
 
+    @MockitoBean private PostingKeywordRecommendationService postingKeywordRecommendationService;
+
     @Test
     @DisplayName("GET /api/v1/postings returns 200 with a page of postings")
     void getPostings_returns200WithPage() throws Exception {
@@ -56,7 +59,7 @@ class PostingControllerTest {
                         "동구",
                         PostingCategory.ENVIRONMENT,
                         LocalDate.of(2026, 7, 5));
-        when(postingService.getPostings(any(), any(), any(), any(), any(), any(), any()))
+        when(postingService.getPostings(any(), any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(new PageResponse<>(List.of(summary), 1, 1, 0, 20));
 
         mockMvc.perform(get("/api/v1/postings"))
@@ -103,7 +106,7 @@ class PostingControllerTest {
                         null,
                         PostingCategory.ENVIRONMENT,
                         null);
-        when(postingService.getPostings(any(), any(), any(), any(), any(), any(), any()))
+        when(postingService.getPostings(any(), any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(new PageResponse<>(List.of(summary), 1, 1, 0, 20));
 
         mockMvc.perform(get("/api/v1/postings"))
@@ -299,5 +302,32 @@ class PostingControllerTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.error.code").value("VALIDATION_ERROR"));
+    }
+
+    @Test
+    @DisplayName("GET /api/v1/postings/keywords/recommended returns 200 with top keywords")
+    void getRecommendedKeywords_returns200WithKeywords() throws Exception {
+        when(postingKeywordRecommendationService.getRecommendedKeywords())
+                .thenReturn(List.of("유기견", "봉사", "환경정화"));
+
+        mockMvc.perform(get("/api/v1/postings/keywords/recommended"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data").isArray())
+                .andExpect(jsonPath("$.data.length()").value(3))
+                .andExpect(jsonPath("$.data[0]").value("유기견"));
+    }
+
+    @Test
+    @DisplayName(
+            "GET /api/v1/postings/keywords/recommended returns 200 with empty list when no data")
+    void getRecommendedKeywords_returns200WithEmptyList_whenNoData() throws Exception {
+        when(postingKeywordRecommendationService.getRecommendedKeywords()).thenReturn(List.of());
+
+        mockMvc.perform(get("/api/v1/postings/keywords/recommended"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data").isArray())
+                .andExpect(jsonPath("$.data.length()").value(0));
     }
 }

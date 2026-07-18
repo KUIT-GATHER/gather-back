@@ -44,13 +44,18 @@ class PostingServiceTest {
     @Mock private PostingRepository postingRepository;
     @Mock private PostingLocationRepository postingLocationRepository;
     @Mock private RegionRepository regionRepository;
+    @Mock private PostingSearchLogService postingSearchLogService;
 
     private PostingService postingService;
 
     @BeforeEach
     void setUp() {
         postingService =
-                new PostingService(postingRepository, postingLocationRepository, regionRepository);
+                new PostingService(
+                        postingRepository,
+                        postingLocationRepository,
+                        regionRepository,
+                        postingSearchLogService);
     }
 
     @Test

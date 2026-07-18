@@ -1,0 +1,71 @@
+package com.gather.gather.domain.posting.service;
+
+import com.gather.gather.domain.posting.entity.PostingRecommendedKeyword;
+import com.gather.gather.domain.posting.entity.PostingSearchLog;
+import com.gather.gather.domain.posting.repository.PostingRecommendedKeywordRepository;
+import com.gather.gather.domain.posting.repository.PostingSearchLogRepository;
+import com.gather.gather.domain.posting.service.support.NoriKeywordTokenizer;
+import java.time.LocalDateTime;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+@Service
+@RequiredArgsConstructor
+public class PostingKeywordRecommendationService {
+
+    private static final int AGGREGATION_WINDOW_DAYS = 60;
+    private static final int LOG_RETENTION_DAYS = 60;
+    private static final int TOP_KEYWORD_COUNT = 10;
+
+    private final PostingSearchLogRepository postingSearchLogRepository;
+    private final PostingRecommendedKeywordRepository postingRecommendedKeywordRepository;
+    private final NoriKeywordTokenizer noriKeywordTokenizer;
+
+    /** 최근 60일 검색 로그를 형태소 분석해 명사 토큰 빈도 상위 10개로 추천검색어 테이블을 재구성한다. */
+    @Transactional
+    public int aggregate() {
+        LocalDateTime since = LocalDateTime.now().minusDays(AGGREGATION_WINDOW_DAYS);
+        List<PostingSearchLog> logs = postingSearchLogRepository.findAllBySearchedAtAfter(since);
+
+        Map<String, Integer> tokenCounts = new HashMap<>();
+        for (PostingSearchLog searchLog : logs) {
+            for (String token : noriKeywordTokenizer.tokenize(searchLog.getKeyword())) {
+                tokenCounts.merge(token, 1, Integer::sum);
+            }
+        }
+
+        List<PostingRecommendedKeyword> topKeywords =
+                tokenCounts.entrySet().stream()
+                        .sorted(Map.Entry.<String, Integer>comparingByValue().reversed())
+                        .limit(TOP_KEYWORD_COUNT)
+                        .map(
+                                entry ->
+                                        PostingRecommendedKeyword.builder()
+                                                .keyword(entry.getKey())
+                                                .score(entry.getValue())
+                                                .build())
+                        .toList();
+
+        postingRecommendedKeywordRepository.deleteAllInBatch();
+        postingRecommendedKeywordRepository.saveAll(topKeywords);
+        return topKeywords.size();
+    }
+
+    /** 60일 초과 검색 로그를 정리해 posting_search_log가 무한히 커지지 않게 한다. */
+    @Transactional
+    public void cleanupOldLogs() {
+        LocalDateTime before = LocalDateTime.now().minusDays(LOG_RETENTION_DAYS);
+        postingSearchLogRepository.deleteBySearchedAtBefore(before);
+    }
+
+    @Transactional(readOnly = true)
+    public List<String> getRecommendedKeywords() {
+        return postingRecommendedKeywordRepository.findAllByOrderByScoreDesc().stream()
+                .map(PostingRecommendedKeyword::getKeyword)
+                .toList();
+    }
+}

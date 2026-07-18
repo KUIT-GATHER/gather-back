@@ -53,6 +53,7 @@ public class PostingService {
     private final PostingRepository postingRepository;
     private final PostingLocationRepository postingLocationRepository;
     private final RegionRepository regionRepository;
+    private final PostingSearchLogService postingSearchLogService;
 
     @Transactional(readOnly = true)
     public PageResponse<PostingSummaryResponse> getPostings(
@@ -65,6 +66,9 @@ public class PostingService {
             String keyword,
             PostingCategory category) {
         validateSort(pageable.getSort());
+        if (keyword != null && !keyword.isBlank()) {
+            postingSearchLogService.log(keyword);
+        }
         PostingStatus effectiveStatus = status != null ? status : PostingStatus.RECRUITING;
         List<Long> regionIds = resolveRegionIds(regionId, regionGroupId);
 
