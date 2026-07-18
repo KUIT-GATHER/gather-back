@@ -52,15 +52,19 @@ class AuthServiceTest {
 
     @BeforeEach
     void setUp() {
+        // SignupValidator·TokenIssuer·LoginPolicy는 mock이 아니라 실물을 쓴다. 검증·토큰 발급 로직이 AuthService에서
+        // 분리됐을 뿐 동작은 그대로여야 하므로, mock으로 대체하면 이 테스트들의 검출력이 사라진다.
         authService =
                 new AuthService(
                         userRepository,
                         emailVerificationRepository,
                         refreshTokenRepository,
-                        regionRepository,
                         passwordEncoder,
                         emailSender,
-                        tokenProvider);
+                        tokenProvider,
+                        new TokenIssuer(tokenProvider, refreshTokenRepository),
+                        new SignupValidator(userRepository, regionRepository),
+                        new LoginPolicy());
     }
 
     @Test

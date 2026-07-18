@@ -12,23 +12,15 @@ import com.gather.gather.domain.auth.dto.SignupResponse;
 import com.gather.gather.domain.auth.entity.EmailVerification;
 import com.gather.gather.domain.auth.entity.RefreshToken;
 import com.gather.gather.domain.auth.entity.User;
-import com.gather.gather.domain.auth.entity.UserStatus;
 import com.gather.gather.domain.auth.repository.EmailVerificationRepository;
 import com.gather.gather.domain.auth.repository.RefreshTokenRepository;
 import com.gather.gather.domain.auth.repository.UserRepository;
-import com.gather.gather.domain.posting.entity.PostingCategory;
 import com.gather.gather.domain.region.entity.Region;
-import com.gather.gather.domain.region.repository.RegionRepository;
 import com.gather.gather.global.exception.BusinessException;
 import com.gather.gather.global.exception.ErrorCode;
 import java.security.SecureRandom;
 import java.time.LocalDateTime;
-import java.util.LinkedHashSet;
-import java.util.List;
 import java.util.Locale;
-import java.util.Objects;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -42,23 +34,16 @@ public class AuthService {
     private static final int EMAIL_VERIFICATION_CODE_BOUND = 1_000_000;
     private static final int EMAIL_VERIFICATION_CODE_MIN_DIGITS = 6;
     private static final int EMAIL_VERIFICATION_EXPIRATION_MINUTES = 10;
-    private static final Pattern KOREAN_OR_ENGLISH_PATTERN =
-            Pattern.compile("^(?:[가-힣]{2,10}|[A-Za-z]{2,20})$");
-    // 활동 지역은 시군구 단위만 선택할 수 있다. Region.level 2 = 시군구.
-    private static final int ACTIVITY_REGION_LEVEL = 2;
-    private static final int MIN_INTEREST_CATEGORY_COUNT = 1;
-
-    // MySQL unique 제약 위반 메시지 예: "Duplicate entry 'test@example.com' for key 'users.UK_xxx'"
-    private static final Pattern DUPLICATE_ENTRY_PATTERN =
-            Pattern.compile("Duplicate entry '(.+?)' for key");
 
     private final UserRepository userRepository;
     private final EmailVerificationRepository emailVerificationRepository;
     private final RefreshTokenRepository refreshTokenRepository;
-    private final RegionRepository regionRepository;
     private final PasswordEncoder passwordEncoder;
     private final EmailSender emailSender;
     private final TokenProvider tokenProvider;
+    private final TokenIssuer tokenIssuer;
+    private final SignupValidator signupValidator;
+    private final LoginPolicy loginPolicy;
     private final SecureRandom secureRandom = new SecureRandom();
 
     @Transactional
@@ -115,7 +100,7 @@ public class AuthService {
     @Transactional(readOnly = true)
     public PhoneNumberAvailabilityResponse checkPhoneNumberAvailability(
             PhoneNumberAvailabilityRequest request) {
-        String phoneNumber = normalizePhoneNumber(request.phoneNumber());
+        String phoneNumber = signupValidator.normalizePhoneNumber(request.phoneNumber());
         return new PhoneNumberAvailabilityResponse(
                 phoneNumber, !userRepository.existsByPhoneNumber(phoneNumber));
     }
@@ -125,14 +110,14 @@ public class AuthService {
         validateSignupRequest(request);
 
         String email = normalizeEmail(request.email());
-        String phoneNumber = normalizePhoneNumber(request.phoneNumber());
+        String phoneNumber = signupValidator.normalizePhoneNumber(request.phoneNumber());
         String nickname = request.nickname();
-        String introduction = normalizeNullableText(request.introduction());
+        String introduction = signupValidator.normalizeNullableText(request.introduction());
 
         validateEmailVerified(email);
         validateDuplicates(email, phoneNumber, nickname);
 
-        Region activityRegion = findActivityRegion(request.activityRegionId());
+        Region activityRegion = signupValidator.findActivityRegion(request.activityRegionId());
 
         User user =
                 User.create(
@@ -153,7 +138,8 @@ public class AuthService {
         try {
             return SignupResponse.from(userRepository.saveAndFlush(user));
         } catch (DataIntegrityViolationException exception) {
-            throw resolveDuplicateException(exception, email, phoneNumber, nickname);
+            throw signupValidator.resolveDuplicateException(
+                    exception, email, phoneNumber, nickname);
         }
     }
 
@@ -169,8 +155,8 @@ public class AuthService {
             throw new BusinessException(ErrorCode.INVALID_LOGIN);
         }
 
-        validateLoginAllowed(user);
-        return issueTokens(user);
+        loginPolicy.validateLoginAllowed(user);
+        return tokenIssuer.issue(user);
     }
 
     @Transactional
@@ -185,9 +171,9 @@ public class AuthService {
             throw new BusinessException(ErrorCode.EXPIRED_TOKEN);
         }
 
-        validateLoginAllowed(refreshToken.getUser());
+        loginPolicy.validateLoginAllowed(refreshToken.getUser());
         refreshToken.revoke(now);
-        return issueTokens(refreshToken.getUser());
+        return tokenIssuer.issue(refreshToken.getUser());
     }
 
     @Transactional
@@ -197,16 +183,6 @@ public class AuthService {
             return;
         }
         refreshToken.revoke(LocalDateTime.now());
-    }
-
-    private TokenIssueResult issueTokens(User user) {
-        String accessToken = tokenProvider.createAccessToken(user);
-        String refreshToken = tokenProvider.generateToken();
-        String refreshTokenHash = tokenProvider.hashToken(refreshToken);
-
-        refreshTokenRepository.save(
-                RefreshToken.create(refreshTokenHash, user, tokenProvider.refreshTokenExpiresAt()));
-        return new TokenIssueResult(accessToken, refreshToken);
     }
 
     private RefreshToken findRefreshToken(String rawRefreshToken) {
@@ -220,54 +196,15 @@ public class AuthService {
     }
 
     private void validateSignupRequest(SignupRequest request) {
-        validateName(request.name());
-        validateNickname(request.nickname());
+        signupValidator.validateName(request.name());
+        signupValidator.validateNickname(request.nickname());
         if (!request.password().equals(request.passwordConfirm())) {
             throw new BusinessException(ErrorCode.PASSWORD_MISMATCH);
         }
-        if (!Boolean.TRUE.equals(request.serviceTermsAgreed())
-                || !Boolean.TRUE.equals(request.privacyPolicyAgreed())) {
-            throw new BusinessException(ErrorCode.REQUIRED_TERMS_NOT_AGREED);
-        }
-        validateActivityRegionId(request.activityRegionId());
-        validateInterestCategories(request.interestCategories());
-    }
-
-    private void validateName(String name) {
-        validateKoreanOrEnglish(name);
-    }
-
-    private void validateNickname(String nickname) {
-        validateKoreanOrEnglish(nickname);
-    }
-
-    private void validateKoreanOrEnglish(String value) {
-        if (value == null || !KOREAN_OR_ENGLISH_PATTERN.matcher(value).matches()) {
-            throw new BusinessException(ErrorCode.VALIDATION_ERROR);
-        }
-    }
-
-    private void validateActivityRegionId(Long activityRegionId) {
-        if (activityRegionId == null) {
-            throw new BusinessException(ErrorCode.INVALID_ACTIVITY_REGION);
-        }
-    }
-
-    private void validateInterestCategories(List<PostingCategory> interestCategories) {
-        if (interestCategories == null
-                || interestCategories.size() < MIN_INTEREST_CATEGORY_COUNT
-                || hasNullCategory(interestCategories)
-                || hasDuplicateCategories(interestCategories)) {
-            throw new BusinessException(ErrorCode.INVALID_INTEREST_CATEGORY_COUNT);
-        }
-    }
-
-    private boolean hasNullCategory(List<PostingCategory> categories) {
-        return categories.stream().anyMatch(Objects::isNull);
-    }
-
-    private boolean hasDuplicateCategories(List<PostingCategory> categories) {
-        return new LinkedHashSet<>(categories).size() != categories.size();
+        signupValidator.validateRequiredTermsAgreed(
+                request.serviceTermsAgreed(), request.privacyPolicyAgreed());
+        signupValidator.validateActivityRegionId(request.activityRegionId());
+        signupValidator.validateInterestCategories(request.interestCategories());
     }
 
     private void validateEmailVerified(String email) {
@@ -284,89 +221,12 @@ public class AuthService {
         if (userRepository.existsByEmail(email)) {
             throw new BusinessException(ErrorCode.DUPLICATE_EMAIL);
         }
-        if (userRepository.existsByPhoneNumber(phoneNumber)) {
-            throw new BusinessException(ErrorCode.DUPLICATE_PHONE_NUMBER);
-        }
-        if (userRepository.existsByNickname(nickname)) {
-            throw new BusinessException(ErrorCode.DUPLICATE_NICKNAME);
-        }
-    }
-
-    // 사전 중복 검사를 통과한 동시 요청이 DB unique 제약에서 충돌한 경우, 위반된 컬럼을 식별해 409 계열
-    // 에러로 변환한다. 식별할 수 없는 무결성 위반은 원본 예외를 그대로 반환해 공통 서버 오류 흐름을 유지한다.
-    private RuntimeException resolveDuplicateException(
-            DataIntegrityViolationException exception,
-            String email,
-            String phoneNumber,
-            String nickname) {
-        String duplicateValue = extractDuplicateValue(exception);
-        if (duplicateValue == null) {
-            return exception;
-        }
-        if (duplicateValue.equalsIgnoreCase(email)) {
-            return new BusinessException(ErrorCode.DUPLICATE_EMAIL);
-        }
-        if (duplicateValue.equalsIgnoreCase(phoneNumber)) {
-            return new BusinessException(ErrorCode.DUPLICATE_PHONE_NUMBER);
-        }
-        if (duplicateValue.equalsIgnoreCase(nickname)) {
-            return new BusinessException(ErrorCode.DUPLICATE_NICKNAME);
-        }
-        return exception;
-    }
-
-    private String extractDuplicateValue(DataIntegrityViolationException exception) {
-        String message = exception.getMostSpecificCause().getMessage();
-        if (message == null) {
-            return null;
-        }
-        Matcher matcher = DUPLICATE_ENTRY_PATTERN.matcher(message);
-        if (matcher.find()) {
-            return matcher.group(1);
-        }
-        return null;
-    }
-
-    private Region findActivityRegion(Long activityRegionId) {
-        Region region =
-                regionRepository
-                        .findById(activityRegionId)
-                        .orElseThrow(() -> new BusinessException(ErrorCode.REGION_NOT_FOUND));
-        if (!Objects.equals(region.getLevel(), ACTIVITY_REGION_LEVEL)) {
-            throw new BusinessException(ErrorCode.REGION_NOT_FOUND);
-        }
-        return region;
-    }
-
-    private void validateLoginAllowed(User user) {
-        if (user.getStatus() == UserStatus.SUSPENDED) {
-            throw new BusinessException(ErrorCode.SUSPENDED_USER);
-        }
-        if (user.getStatus() == UserStatus.WITHDRAWN) {
-            throw new BusinessException(ErrorCode.WITHDRAWN_USER);
-        }
+        signupValidator.validatePhoneNumberNotDuplicated(phoneNumber);
+        signupValidator.validateNicknameNotDuplicated(nickname);
     }
 
     private String normalizeEmail(String email) {
         return email.trim().toLowerCase(Locale.ROOT);
-    }
-
-    private String normalizePhoneNumber(String phoneNumber) {
-        if (phoneNumber == null || phoneNumber.isBlank()) {
-            throw new BusinessException(ErrorCode.VALIDATION_ERROR);
-        }
-        String normalized = phoneNumber.replaceAll("[\\s-]", "");
-        if (!normalized.matches("^[0-9]+$")) {
-            throw new BusinessException(ErrorCode.VALIDATION_ERROR);
-        }
-        return normalized;
-    }
-
-    private String normalizeNullableText(String text) {
-        if (text == null || text.isBlank()) {
-            return null;
-        }
-        return text.trim();
     }
 
     private String generateVerificationCode() {
