@@ -8,6 +8,7 @@ import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -23,6 +24,9 @@ public class PostingKeywordRecommendationService {
     /** {@code posting_recommended_keyword.keyword} 컬럼 길이(VARCHAR(50))와 맞춘다. */
     private static final int MAX_RECOMMENDED_KEYWORD_LENGTH = 50;
 
+    /** 봉사공고 검색 사이트에서는 당연히 등장하는 도메인 공통어라, 추천검색어로서 변별력이 없어 집계에서 제외한다. */
+    private static final Set<String> STOPWORDS = Set.of("봉사", "활동", "모집", "신청", "참여", "공고");
+
     private final PostingSearchLogRepository postingSearchLogRepository;
     private final PostingRecommendedKeywordRepository postingRecommendedKeywordRepository;
     private final NoriKeywordTokenizer noriKeywordTokenizer;
@@ -36,7 +40,7 @@ public class PostingKeywordRecommendationService {
         Map<String, Integer> tokenCounts = new HashMap<>();
         for (String keyword : keywords) {
             for (String token : noriKeywordTokenizer.tokenize(keyword)) {
-                if (token.length() > MAX_RECOMMENDED_KEYWORD_LENGTH) {
+                if (token.length() > MAX_RECOMMENDED_KEYWORD_LENGTH || STOPWORDS.contains(token)) {
                     continue;
                 }
                 tokenCounts.merge(token, 1, Integer::sum);
