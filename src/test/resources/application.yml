@@ -37,3 +37,15 @@ gather:
 jwt:
   secret: XZWyFEbfHyT37TkUd6Z63CN9wJbT8vlWdmQSzoIZqqGOnAj4ezamA4BO/tChr4bmeE0bbSExFfD8lN/BLitbuQ==
   access-token-validity-minutes: 30
+
+# 테스트 전용 더미 값(운영 값 아님). KakaoProperties가 기동 시점에 검증하므로 값이 없으면 컨텍스트가 뜨지 않는다.
+# signup-token-secret은 jwt.secret과 다른 값이어야 키 분리가 실제로 검증된다.
+kakao:
+  rest-api-key: test-kakao-rest-api-key
+  client-secret: test-kakao-client-secret
+  signup-token-secret: z9tOf6reUdkTRI0KFFiydLKdxpayBBxVWSAm7EJTgKXolFCFvnQ4qViBrdh6y7yP
+  signup-token-expiration-seconds: 900
+  redirect-uris:
+    - http://localhost:5173/login/kakao/callback
+    - https://dev.gathernow.kr/login/kakao/callback
+    - https://gathernow.kr/login/kakao/callback

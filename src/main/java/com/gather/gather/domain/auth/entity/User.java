@@ -45,10 +45,11 @@ public class User {
     @Column(nullable = false, unique = true, length = 20)
     private String phoneNumber;
 
-    @Column(nullable = false, unique = true, length = 255)
+    // 소셜 가입 회원은 이메일·비밀번호를 보유하지 않는다.
+    @Column(unique = true, length = 255)
     private String email;
 
-    @Column(nullable = false, length = 255)
+    @Column(length = 255)
     private String password;
 
     @Column(nullable = false, unique = true, length = 20)
@@ -96,6 +97,7 @@ public class User {
             String password,
             String nickname,
             String introduction,
+            boolean emailVerified,
             boolean serviceTermsAgreed,
             boolean privacyPolicyAgreed,
             boolean marketingAgreed,
@@ -111,7 +113,7 @@ public class User {
         this.introduction = introduction;
         this.role = UserRole.USER;
         this.status = UserStatus.ACTIVE;
-        this.emailVerified = true;
+        this.emailVerified = emailVerified;
         this.serviceTermsAgreed = serviceTermsAgreed;
         this.privacyPolicyAgreed = privacyPolicyAgreed;
         this.marketingAgreed = marketingAgreed;
@@ -142,6 +144,37 @@ public class User {
                 password,
                 nickname,
                 introduction,
+                true,
+                serviceTermsAgreed,
+                privacyPolicyAgreed,
+                marketingAgreed,
+                activityRegion,
+                interestCategories);
+    }
+
+    /** 인증할 이메일 자체가 존재하지 않으므로 emailVerified는 false다. 이메일 등록·인증 기능이 생기면 그때 true로 전환한다. */
+    public static User createSocial(
+            String name,
+            LocalDate birthDate,
+            Gender gender,
+            String phoneNumber,
+            String nickname,
+            String introduction,
+            boolean serviceTermsAgreed,
+            boolean privacyPolicyAgreed,
+            boolean marketingAgreed,
+            Region activityRegion,
+            List<PostingCategory> interestCategories) {
+        return new User(
+                name,
+                birthDate,
+                gender,
+                phoneNumber,
+                null,
+                null,
+                nickname,
+                introduction,
+                false,
                 serviceTermsAgreed,
                 privacyPolicyAgreed,
                 marketingAgreed,
