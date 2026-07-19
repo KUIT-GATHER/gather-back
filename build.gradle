@@ -33,6 +33,8 @@ dependencies {
 	implementation 'org.springframework.boot:spring-boot-starter-web'
 	implementation 'org.flywaydb:flyway-core'
 	implementation 'org.flywaydb:flyway-mysql'
+	// Lucene 10.x는 Java 21을 요구하므로 사용 금지. 9.x 라인만 사용한다.
+	implementation 'org.apache.lucene:lucene-analysis-nori:9.12.3'
 	implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.8.16'
 	implementation 'com.fasterxml.jackson.dataformat:jackson-dataformat-xml'
 	implementation 'io.jsonwebtoken:jjwt-api:0.13.0'
