@@ -3,6 +3,7 @@ package com.gather.gather.domain.posting.service;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
 import com.gather.gather.domain.posting.repository.PostingSearchLogRepository;
@@ -39,5 +40,25 @@ class PostingSearchLogServiceTest {
         doThrow(new RuntimeException("db down")).when(postingSearchLogRepository).save(any());
 
         assertThatCode(() -> postingSearchLogService.log("유기견봉사")).doesNotThrowAnyException();
+    }
+
+    @Test
+    @DisplayName("log skips the save attempt when the keyword exceeds the column length")
+    void log_skipsSave_whenKeywordExceedsColumnLength() {
+        String longKeyword = "가".repeat(101);
+
+        assertThatCode(() -> postingSearchLogService.log(longKeyword)).doesNotThrowAnyException();
+
+        verify(postingSearchLogRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("log still saves a keyword exactly at the column length limit")
+    void log_savesKeyword_atExactColumnLengthLimit() {
+        String keywordAtLimit = "가".repeat(100);
+
+        postingSearchLogService.log(keywordAtLimit);
+
+        verify(postingSearchLogRepository).save(any());
     }
 }

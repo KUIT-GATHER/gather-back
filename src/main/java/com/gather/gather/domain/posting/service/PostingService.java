@@ -123,7 +123,7 @@ public class PostingService {
         try {
             postingSearchLogService.log(keyword);
         } catch (RuntimeException e) {
-            log.warn("검색어 로깅 실패. keyword={}", keyword, e);
+            log.warn("검색어 로깅 실패. keyword 길이={}", keyword.length(), e);
         }
     }
 

@@ -225,6 +225,24 @@ class PostingServiceTest {
     }
 
     @Test
+    @DisplayName(
+            "getPostings returns results unaffected when the keyword exceeds the search-log column length")
+    void getPostings_returnsResults_whenKeywordExceedsSearchLogColumnLength() {
+        String longKeyword = "가".repeat(101);
+        Pageable pageable = PageRequest.of(0, 20);
+        when(postingRepository.search(
+                        PostingStatus.RECRUITING, null, null, null, longKeyword, null, pageable))
+                .thenReturn(new PageImpl<>(List.of()));
+
+        PageResponse<PostingSummaryResponse> result =
+                postingService.getPostings(
+                        pageable, null, null, null, null, null, longKeyword, null);
+
+        assertThat(result.content()).isEmpty();
+        verify(postingSearchLogService).log(longKeyword);
+    }
+
+    @Test
     @DisplayName("getPostings passes the notice date range through to the repository")
     void getPostings_passesNoticeDateRange() {
         Pageable pageable = PageRequest.of(0, 20);
