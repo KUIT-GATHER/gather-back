@@ -4,6 +4,7 @@ import com.gather.gather.domain.posting.dto.PostingResponse;
 import com.gather.gather.domain.posting.dto.PostingSummaryResponse;
 import com.gather.gather.domain.posting.entity.PostingCategory;
 import com.gather.gather.domain.posting.entity.PostingStatus;
+import com.gather.gather.domain.posting.service.PostingKeywordRecommendationService;
 import com.gather.gather.domain.posting.service.PostingService;
 import com.gather.gather.global.common.ApiResponse;
 import com.gather.gather.global.common.PageResponse;
@@ -14,6 +15,7 @@ import io.swagger.v3.oas.annotations.media.ExampleObject;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import java.time.LocalDate;
+import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
@@ -33,6 +35,7 @@ public class PostingController {
     private static final String JSON = "application/json";
 
     private final PostingService postingService;
+    private final PostingKeywordRecommendationService postingKeywordRecommendationService;
 
     @Operation(
             summary = "봉사공고 목록 조회",
@@ -200,5 +203,15 @@ public class PostingController {
     @GetMapping("/{id}")
     public ApiResponse<PostingResponse> getPosting(@PathVariable Long id) {
         return ApiResponse.success(postingService.getPosting(id));
+    }
+
+    @Operation(
+            summary = "추천검색어 목록 조회",
+            description =
+                    "최근 60일간 봉사공고 검색어를 형태소 분석해 집계한 인기 검색어 상위 10개를 반환합니다. "
+                            + "매일 새벽 5시 배치로 갱신되며, 실시간 반영은 아닙니다. 인증이 필요 없습니다.")
+    @GetMapping("/keywords/recommended")
+    public ApiResponse<List<String>> getRecommendedKeywords() {
+        return ApiResponse.success(postingKeywordRecommendationService.getRecommendedKeywords());
     }
 }
