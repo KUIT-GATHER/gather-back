@@ -24,10 +24,18 @@ class PostingKeywordRecommendationServiceIntegrationTest {
     @Autowired private PostingRecommendedKeywordRepository postingRecommendedKeywordRepository;
     @Autowired private PostingKeywordRecommendationService postingKeywordRecommendationService;
 
+    /**
+     * V18 마이그레이션이 posting_search_log에 키워드당 5건씩 상시 시드를 넣어두므로, 이 테스트가 로그를 적게 남기면 시드 키워드들에 밀려 top10에 못
+     * 들 수 있다. 시드 최대 점수(5)를 확실히 웃돌도록 충분히 반복 저장해 top10 진입을 보장한다.
+     */
+    private static final int LOG_REPEAT_COUNT = 20;
+
     @Test
     void aggregate_replacesExistingTopKeywords_withoutUniqueConstraintViolation() {
-        postingSearchLogRepository.save(PostingSearchLog.builder().keyword("환경정화봉사").build());
-        postingSearchLogRepository.save(PostingSearchLog.builder().keyword("환경정화").build());
+        for (int i = 0; i < LOG_REPEAT_COUNT; i++) {
+            postingSearchLogRepository.save(PostingSearchLog.builder().keyword("환경정화봉사").build());
+            postingSearchLogRepository.save(PostingSearchLog.builder().keyword("환경정화").build());
+        }
         postingKeywordRecommendationService.aggregate();
 
         postingSearchLogRepository.save(PostingSearchLog.builder().keyword("환경정화봉사").build());
