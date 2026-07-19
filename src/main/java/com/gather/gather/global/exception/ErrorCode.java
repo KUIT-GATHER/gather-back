@@ -32,6 +32,7 @@ public enum ErrorCode {
     SIGNUP_TOKEN_EXPIRED(HttpStatus.UNAUTHORIZED, "가입 인증이 만료되었습니다. 카카오 로그인부터 다시 진행해주세요."),
     SIGNUP_TOKEN_INVALID(HttpStatus.UNAUTHORIZED, "유효하지 않은 가입 인증입니다. 카카오 로그인부터 다시 진행해주세요."),
     ALREADY_REGISTERED(HttpStatus.CONFLICT, "이미 가입된 계정입니다."),
+    KAKAO_API_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "카카오 로그인 서비스를 일시적으로 사용할 수 없습니다."),
     UNAUTHORIZED(HttpStatus.UNAUTHORIZED, "인증이 필요합니다."),
     FORBIDDEN(HttpStatus.FORBIDDEN, "접근 권한이 없습니다."),
     NOT_FOUND(HttpStatus.NOT_FOUND, "요청한 리소스를 찾을 수 없습니다."),

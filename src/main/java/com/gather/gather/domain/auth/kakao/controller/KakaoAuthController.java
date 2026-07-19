@@ -47,9 +47,9 @@ public class KakaoAuthController {
                     카카오 인가 코드를 검증한 뒤 기존 회원이면 로그인시키고, 신규 회원이면 가입용 임시 토큰을 발급합니다.
                     두 경우 모두 HTTP 200이며 signupStatus로 구분합니다. ADDITIONAL_INFO_REQUIRED는 에러가 아닙니다.
 
-                    400(인가 코드 무효·재사용, redirectUri 불일치)과 500(카카오 장애)은 코드값을 보지 말고 모두
-                    '카카오 로그인 다시 시작'으로 처리하세요. 단 403(정지·탈퇴)은 기존 로그인과 동일하게 계정 상태를
-                    안내해야 하며 재시작으로 처리하지 않습니다.
+                    400(인가 코드 무효·재사용, redirectUri 불일치), 500(카카오 장애), 503(카카오 요청 제한)은
+                    모두 '카카오 로그인 다시 시작'으로 처리하세요. 단 403(정지·탈퇴)은 기존 로그인과 동일하게
+                    계정 상태를 안내해야 하며 재시작으로 처리하지 않습니다.
                     """)
     @ApiResponses({
         @io.swagger.v3.oas.annotations.responses.ApiResponse(
@@ -157,7 +157,19 @@ public class KakaoAuthController {
                                                 name = "INTERNAL_SERVER_ERROR",
                                                 value =
                                                         KakaoAuthSwaggerExamples
-                                                                .INTERNAL_SERVER_ERROR_EXAMPLE)))
+                                                                .INTERNAL_SERVER_ERROR_EXAMPLE))),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                responseCode = "503",
+                description = "카카오 API 요청 제한",
+                content =
+                        @Content(
+                                mediaType = JSON,
+                                examples =
+                                        @ExampleObject(
+                                                name = "KAKAO_API_UNAVAILABLE",
+                                                value =
+                                                        KakaoAuthSwaggerExamples
+                                                                .KAKAO_API_UNAVAILABLE_EXAMPLE)))
     })
     @PostMapping("/login")
     public ResponseEntity<ApiResponse<KakaoLoginResponse>> login(
