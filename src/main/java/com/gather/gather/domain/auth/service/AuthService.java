@@ -19,14 +19,20 @@ import com.gather.gather.domain.region.entity.Region;
 import com.gather.gather.global.exception.BusinessException;
 import com.gather.gather.global.exception.ErrorCode;
 import java.security.SecureRandom;
+import java.sql.SQLException;
 import java.time.LocalDateTime;
 import java.util.Locale;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.hibernate.exception.ConstraintViolationException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class AuthService {
@@ -34,6 +40,12 @@ public class AuthService {
     private static final int EMAIL_VERIFICATION_CODE_BOUND = 1_000_000;
     private static final int EMAIL_VERIFICATION_CODE_MIN_DIGITS = 6;
     private static final int EMAIL_VERIFICATION_EXPIRATION_MINUTES = 10;
+    private static final int EMAIL_RESEND_COOLDOWN_MINUTES = 3;
+    private static final int EMAIL_DAILY_SEND_LIMIT = 5;
+    private static final int EMAIL_MAX_VERIFICATION_ATTEMPTS = 5;
+    private static final int MYSQL_DUPLICATE_ENTRY_ERROR_CODE = 1062;
+    private static final String EMAIL_VERIFICATION_UNIQUE_CONSTRAINT =
+            "uk_email_verification_email";
 
     private final UserRepository userRepository;
     private final EmailVerificationRepository emailVerificationRepository;
@@ -54,32 +66,61 @@ public class AuthService {
             throw new BusinessException(ErrorCode.DUPLICATE_EMAIL);
         }
 
+        LocalDateTime now = LocalDateTime.now();
         String code = generateVerificationCode();
-        LocalDateTime expiresAt =
-                LocalDateTime.now().plusMinutes(EMAIL_VERIFICATION_EXPIRATION_MINUTES);
-        EmailVerification emailVerification =
-                emailVerificationRepository
-                        .findByEmail(email)
-                        .orElseGet(() -> EmailVerification.create(email, code, expiresAt));
-        emailVerification.refresh(code, expiresAt);
-        emailVerificationRepository.save(emailVerification);
+        LocalDateTime expiresAt = now.plusMinutes(EMAIL_VERIFICATION_EXPIRATION_MINUTES);
 
-        try {
-            emailSender.sendVerificationCode(email, code);
-        } catch (RuntimeException exception) {
-            throw new BusinessException(ErrorCode.EMAIL_SEND_FAILED);
+        EmailVerification emailVerification = null;
+        // 없는 행을 FOR UPDATE로 조회하면 MySQL gap lock으로 최초 발송끼리 데드락이 날 수 있어,
+        // 기존 행이 확인된 경우에만 비관적 잠금을 건다.
+        if (emailVerificationRepository.existsByEmail(email)) {
+            emailVerification =
+                    emailVerificationRepository.findByEmailForUpdate(email).orElse(null);
+        }
+        EmailVerificationState previousState = null;
+        if (emailVerification == null) {
+            emailVerification = EmailVerification.create(email, code, expiresAt);
+            try {
+                emailVerificationRepository.saveAndFlush(emailVerification);
+            } catch (DataIntegrityViolationException exception) {
+                if (isEmailVerificationUniqueConflict(exception)) {
+                    throw new BusinessException(ErrorCode.EMAIL_RESEND_TOO_SOON);
+                }
+                throw exception;
+            }
+        } else {
+            if (emailVerification.isWithinResendCooldown(now, EMAIL_RESEND_COOLDOWN_MINUTES)) {
+                throw new BusinessException(ErrorCode.EMAIL_RESEND_TOO_SOON);
+            }
+            if (emailVerification.dailySendCountAsOf(now.toLocalDate()) >= EMAIL_DAILY_SEND_LIMIT) {
+                throw new BusinessException(ErrorCode.EMAIL_SEND_LIMIT_EXCEEDED);
+            }
+            previousState = EmailVerificationState.from(emailVerification);
+            emailVerification.refresh(code, expiresAt);
+            emailVerificationRepository.saveAndFlush(emailVerification);
         }
 
-        return new EmailVerificationSendResponse(email, expiresAt, "인증 코드가 발송되었습니다.");
+        // 메일은 커밋 이후에 보내고, 실패하면 해당 발송 세대만 조건부 삭제 또는 직전 상태로 복구한다.
+        FailedEmailDeliveryCompensation compensation =
+                new FailedEmailDeliveryCompensation(
+                        emailVerification.getId(), emailVerification.getVersion(), previousState);
+        scheduleVerificationEmail(email, code, compensation);
+
+        // 다음 재발송 가능 시각은 저장된 createdAt 기준으로 계산해, 안내 시각과 실제 쿨다운 판정을 일치시킨다.
+        LocalDateTime resendAvailableAt =
+                emailVerification.getCreatedAt().plusMinutes(EMAIL_RESEND_COOLDOWN_MINUTES);
+        return new EmailVerificationSendResponse(
+                email, expiresAt, resendAvailableAt, "인증 코드가 발송되었습니다.");
     }
 
-    @Transactional
+    // 코드 입력 실패 시도(increaseAttempt)는 예외를 던져도 커밋되어야 하므로 BusinessException에 롤백하지 않는다.
+    @Transactional(noRollbackFor = BusinessException.class)
     public EmailVerificationConfirmResponse confirmEmailVerificationCode(
             EmailVerificationConfirmRequest request) {
         String email = normalizeEmail(request.email());
         EmailVerification emailVerification =
                 emailVerificationRepository
-                        .findByEmail(email)
+                        .findByEmailForUpdate(email)
                         .orElseThrow(
                                 () ->
                                         new BusinessException(
@@ -89,7 +130,14 @@ public class AuthService {
         if (emailVerification.isExpired(now)) {
             throw new BusinessException(ErrorCode.EXPIRED_VERIFICATION_CODE);
         }
+        if (emailVerification.isAttemptExceeded(EMAIL_MAX_VERIFICATION_ATTEMPTS)) {
+            throw new BusinessException(ErrorCode.EMAIL_VERIFICATION_ATTEMPTS_EXCEEDED);
+        }
         if (!emailVerification.getCode().equals(request.code())) {
+            emailVerification.increaseAttempt();
+            if (emailVerification.isAttemptExceeded(EMAIL_MAX_VERIFICATION_ATTEMPTS)) {
+                throw new BusinessException(ErrorCode.EMAIL_VERIFICATION_ATTEMPTS_EXCEEDED);
+            }
             throw new BusinessException(ErrorCode.INVALID_VERIFICATION_CODE);
         }
 
@@ -229,9 +277,153 @@ public class AuthService {
         return email.trim().toLowerCase(Locale.ROOT);
     }
 
+    private String maskEmail(String email) {
+        int at = email.indexOf('@');
+        if (at < 1) {
+            return "***";
+        }
+        return email.charAt(0) + "***" + email.substring(at);
+    }
+
+    private boolean isEmailVerificationUniqueConflict(DataIntegrityViolationException exception) {
+        String constraintName = findConstraintName(exception);
+        if (constraintName != null) {
+            return isEmailVerificationUniqueConstraint(constraintName);
+        }
+        if (hasMySqlDuplicateEntryError(exception)) {
+            return true;
+        }
+        return hasEmailVerificationConstraintInMessage(exception);
+    }
+
+    private String findConstraintName(Throwable exception) {
+        Throwable cause = exception;
+        while (cause != null) {
+            if (cause instanceof ConstraintViolationException constraintViolationException
+                    && constraintViolationException.getConstraintName() != null) {
+                return constraintViolationException.getConstraintName();
+            }
+            cause = cause.getCause();
+        }
+        return null;
+    }
+
+    private boolean isEmailVerificationUniqueConstraint(String constraintName) {
+        String normalizedConstraintName =
+                constraintName.replace("`", "").replace("\"", "").toLowerCase(Locale.ROOT);
+        return normalizedConstraintName.equals(EMAIL_VERIFICATION_UNIQUE_CONSTRAINT)
+                || normalizedConstraintName.endsWith("." + EMAIL_VERIFICATION_UNIQUE_CONSTRAINT);
+    }
+
+    private boolean hasMySqlDuplicateEntryError(Throwable exception) {
+        Throwable cause = exception;
+        while (cause != null) {
+            if (cause instanceof SQLException sqlException
+                    && sqlException.getErrorCode() == MYSQL_DUPLICATE_ENTRY_ERROR_CODE) {
+                return true;
+            }
+            cause = cause.getCause();
+        }
+        return false;
+    }
+
+    private boolean hasEmailVerificationConstraintInMessage(Throwable exception) {
+        Throwable cause = exception;
+        while (cause != null) {
+            String message = cause.getMessage();
+            if (message != null
+                    && message.toLowerCase(Locale.ROOT)
+                            .contains(EMAIL_VERIFICATION_UNIQUE_CONSTRAINT)) {
+                return true;
+            }
+            cause = cause.getCause();
+        }
+        return false;
+    }
+
+    private void scheduleVerificationEmail(
+            String email, String code, FailedEmailDeliveryCompensation compensation) {
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(
+                    new TransactionSynchronization() {
+                        @Override
+                        public void afterCommit() {
+                            sendVerificationEmail(email, code, compensation);
+                        }
+                    });
+        } else {
+            sendVerificationEmail(email, code, compensation);
+        }
+    }
+
+    private void sendVerificationEmail(
+            String email, String code, FailedEmailDeliveryCompensation compensation) {
+        try {
+            emailSender.sendVerificationCode(email, code);
+        } catch (RuntimeException exception) {
+            log.error("이메일 인증 코드 발송 실패: email={}", maskEmail(email), exception);
+            compensateFailedEmailDelivery(email, compensation);
+            throw new BusinessException(ErrorCode.EMAIL_SEND_FAILED, exception);
+        }
+    }
+
+    private void compensateFailedEmailDelivery(
+            String email, FailedEmailDeliveryCompensation compensation) {
+        try {
+            int affectedRows;
+            if (compensation.previousState() == null) {
+                affectedRows =
+                        emailVerificationRepository.deleteByIdAndVersion(
+                                compensation.id(), compensation.failedVersion());
+            } else {
+                EmailVerificationState previous = compensation.previousState();
+                affectedRows =
+                        emailVerificationRepository.restoreAfterFailedResend(
+                                compensation.id(),
+                                compensation.failedVersion(),
+                                previous.code(),
+                                previous.verified(),
+                                previous.expiresAt(),
+                                previous.verifiedAt(),
+                                previous.createdAt(),
+                                previous.dailySendCount(),
+                                previous.attemptCount());
+            }
+            if (affectedRows == 0) {
+                log.warn("이메일 발송 실패 보상 생략: 이후 상태 변경 감지, email={}", maskEmail(email));
+            }
+        } catch (RuntimeException compensationException) {
+            log.error("이메일 발송 실패 보상 중 DB 오류: email={}", maskEmail(email), compensationException);
+        }
+    }
+
     private String generateVerificationCode() {
         return String.format(
                 "%0" + EMAIL_VERIFICATION_CODE_MIN_DIGITS + "d",
                 secureRandom.nextInt(EMAIL_VERIFICATION_CODE_BOUND));
+    }
+
+    private record FailedEmailDeliveryCompensation(
+            Long id, Long failedVersion, EmailVerificationState previousState) {}
+
+    private record EmailVerificationState(
+            String code,
+            boolean verified,
+            LocalDateTime expiresAt,
+            LocalDateTime verifiedAt,
+            LocalDateTime createdAt,
+            int dailySendCount,
+            int attemptCount) {
+
+        private static EmailVerificationState from(EmailVerification emailVerification) {
+            return new EmailVerificationState(
+                    emailVerification.getCode(),
+                    emailVerification.isVerified(),
+                    emailVerification.getExpiresAt(),
+                    emailVerification.getVerifiedAt(),
+                    emailVerification.getCreatedAt(),
+                    emailVerification.getDailySendCount(),
+                    emailVerification.getAttemptCount());
+        }
     }
 }

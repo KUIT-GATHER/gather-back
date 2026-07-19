@@ -3,10 +3,17 @@ package com.gather.gather.domain.auth.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.gather.gather.domain.auth.dto.EmailVerificationConfirmRequest;
+import com.gather.gather.domain.auth.dto.EmailVerificationSendRequest;
 import com.gather.gather.domain.auth.dto.SignupRequest;
 import com.gather.gather.domain.auth.entity.EmailVerification;
 import com.gather.gather.domain.auth.entity.Gender;
@@ -20,11 +27,13 @@ import com.gather.gather.domain.region.entity.Region;
 import com.gather.gather.domain.region.repository.RegionRepository;
 import com.gather.gather.global.exception.BusinessException;
 import com.gather.gather.global.exception.ErrorCode;
+import java.sql.SQLException;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
+import org.hibernate.exception.ConstraintViolationException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -35,7 +44,9 @@ import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.test.util.ReflectionTestUtils;
 
 @ExtendWith(MockitoExtension.class)
 class AuthServiceTest {
@@ -65,6 +76,270 @@ class AuthServiceTest {
                         new TokenIssuer(tokenProvider, refreshTokenRepository),
                         new SignupValidator(userRepository, regionRepository),
                         new LoginPolicy());
+    }
+
+    @Test
+    @DisplayName("새 이메일이면 인증 코드를 발송하고 저장한다")
+    void sendEmailVerificationCode_newEmail_sendsAndSaves() {
+        String email = "new@example.com";
+        when(userRepository.existsByEmail(email)).thenReturn(false);
+
+        authService.sendEmailVerificationCode(new EmailVerificationSendRequest(email));
+
+        verify(emailSender).sendVerificationCode(eq(email), anyString());
+        verify(emailVerificationRepository).saveAndFlush(any(EmailVerification.class));
+    }
+
+    @Test
+    @DisplayName("예외 메시지에서 이메일 unique 충돌을 확인하면 EMAIL_RESEND_TOO_SOON을 던진다")
+    void sendEmailVerificationCode_messageFallbackUniqueConflict_throws() {
+        String email = "race@example.com";
+        when(userRepository.existsByEmail(email)).thenReturn(false);
+        when(emailVerificationRepository.saveAndFlush(any(EmailVerification.class)))
+                .thenThrow(
+                        new DataIntegrityViolationException(
+                                "duplicate email",
+                                new IllegalStateException(
+                                        "Duplicate entry 'race@example.com' for key "
+                                                + "'email_verification.uk_email_verification_email'")));
+
+        assertThatThrownBy(
+                        () ->
+                                authService.sendEmailVerificationCode(
+                                        new EmailVerificationSendRequest(email)))
+                .isInstanceOfSatisfying(
+                        BusinessException.class,
+                        exception ->
+                                assertThat(exception.getErrorCode())
+                                        .isEqualTo(ErrorCode.EMAIL_RESEND_TOO_SOON));
+        verify(emailSender, never()).sendVerificationCode(any(), any());
+    }
+
+    @Test
+    @DisplayName("Hibernate 제약조건 이름으로 이메일 unique 충돌을 확인한다")
+    void sendEmailVerificationCode_structuredConstraintNameConflict_throws() {
+        String email = "structured-race@example.com";
+        SQLException sqlException = new SQLException("duplicate", "23000", 1062);
+        ConstraintViolationException constraintException =
+                new ConstraintViolationException(
+                        "could not execute statement",
+                        sqlException,
+                        "insert into email_verification",
+                        "`email_verification`.`UK_EMAIL_VERIFICATION_EMAIL`");
+        when(userRepository.existsByEmail(email)).thenReturn(false);
+        when(emailVerificationRepository.saveAndFlush(any(EmailVerification.class)))
+                .thenThrow(
+                        new DataIntegrityViolationException(
+                                "duplicate email", constraintException));
+
+        assertThatThrownBy(
+                        () ->
+                                authService.sendEmailVerificationCode(
+                                        new EmailVerificationSendRequest(email)))
+                .isInstanceOfSatisfying(
+                        BusinessException.class,
+                        exception ->
+                                assertThat(exception.getErrorCode())
+                                        .isEqualTo(ErrorCode.EMAIL_RESEND_TOO_SOON));
+        verify(emailSender, never()).sendVerificationCode(any(), any());
+    }
+
+    @Test
+    @DisplayName("제약조건 이름이 없으면 MySQL 1062 오류 코드로 unique 충돌을 확인한다")
+    void sendEmailVerificationCode_mysqlDuplicateErrorCodeConflict_throws() {
+        String email = "mysql-code-race@example.com";
+        SQLException sqlException = new SQLException("duplicate", "23000", 1062);
+        when(userRepository.existsByEmail(email)).thenReturn(false);
+        when(emailVerificationRepository.saveAndFlush(any(EmailVerification.class)))
+                .thenThrow(new DataIntegrityViolationException("duplicate email", sqlException));
+
+        assertThatThrownBy(
+                        () ->
+                                authService.sendEmailVerificationCode(
+                                        new EmailVerificationSendRequest(email)))
+                .isInstanceOfSatisfying(
+                        BusinessException.class,
+                        exception ->
+                                assertThat(exception.getErrorCode())
+                                        .isEqualTo(ErrorCode.EMAIL_RESEND_TOO_SOON));
+        verify(emailSender, never()).sendVerificationCode(any(), any());
+    }
+
+    @Test
+    @DisplayName("구조화된 제약조건 이름이 다른 unique 충돌이면 원본 예외를 유지한다")
+    void sendEmailVerificationCode_differentStructuredConstraint_rethrowsOriginalException() {
+        String email = "different-constraint@example.com";
+        SQLException sqlException = new SQLException("duplicate", "23000", 1062);
+        ConstraintViolationException constraintException =
+                new ConstraintViolationException(
+                        "could not execute statement",
+                        sqlException,
+                        "insert into email_verification",
+                        "uk_different_constraint");
+        DataIntegrityViolationException integrityException =
+                new DataIntegrityViolationException("duplicate value", constraintException);
+        when(userRepository.existsByEmail(email)).thenReturn(false);
+        when(emailVerificationRepository.saveAndFlush(any(EmailVerification.class)))
+                .thenThrow(integrityException);
+
+        assertThatThrownBy(
+                        () ->
+                                authService.sendEmailVerificationCode(
+                                        new EmailVerificationSendRequest(email)))
+                .isSameAs(integrityException);
+        verify(emailSender, never()).sendVerificationCode(any(), any());
+    }
+
+    @Test
+    @DisplayName("최초 발송 저장의 이메일 unique 충돌이 아닌 무결성 오류는 원본 예외를 유지한다")
+    void sendEmailVerificationCode_nonUniqueIntegrityViolation_rethrowsOriginalException() {
+        String email = "invalid-schema@example.com";
+        DataIntegrityViolationException integrityException =
+                new DataIntegrityViolationException("Column 'code' cannot be null");
+        when(userRepository.existsByEmail(email)).thenReturn(false);
+        when(emailVerificationRepository.saveAndFlush(any(EmailVerification.class)))
+                .thenThrow(integrityException);
+
+        assertThatThrownBy(
+                        () ->
+                                authService.sendEmailVerificationCode(
+                                        new EmailVerificationSendRequest(email)))
+                .isSameAs(integrityException);
+        verify(emailSender, never()).sendVerificationCode(any(), any());
+    }
+
+    @Test
+    @DisplayName("재발송 실패 보상 중 DB 오류가 발생해도 SMTP 실패를 원인으로 유지한다")
+    void sendEmailVerificationCode_compensationFailure_preservesSmtpFailure() {
+        String email = "compensation-failure@example.com";
+        RuntimeException smtpException = new RuntimeException("smtp down");
+        EmailVerification existing =
+                EmailVerification.create(email, "111111", LocalDateTime.now().plusMinutes(10));
+        ReflectionTestUtils.setField(existing, "id", 1L);
+        ReflectionTestUtils.setField(existing, "version", 0L);
+        ReflectionTestUtils.setField(existing, "createdAt", LocalDateTime.now().minusMinutes(5));
+        when(userRepository.existsByEmail(email)).thenReturn(false);
+        when(emailVerificationRepository.existsByEmail(email)).thenReturn(true);
+        when(emailVerificationRepository.findByEmailForUpdate(email))
+                .thenReturn(Optional.of(existing));
+        when(emailVerificationRepository.saveAndFlush(existing)).thenReturn(existing);
+        when(emailVerificationRepository.restoreAfterFailedResend(
+                        any(),
+                        any(),
+                        anyString(),
+                        anyBoolean(),
+                        any(),
+                        any(),
+                        any(),
+                        anyInt(),
+                        anyInt()))
+                .thenThrow(new DataIntegrityViolationException("compensation failed"));
+        doThrow(smtpException).when(emailSender).sendVerificationCode(anyString(), anyString());
+
+        assertThatThrownBy(
+                        () ->
+                                authService.sendEmailVerificationCode(
+                                        new EmailVerificationSendRequest(email)))
+                .isInstanceOfSatisfying(
+                        BusinessException.class,
+                        exception -> {
+                            assertThat(exception.getErrorCode())
+                                    .isEqualTo(ErrorCode.EMAIL_SEND_FAILED);
+                            assertThat(exception.getCause()).isSameAs(smtpException);
+                        });
+    }
+
+    @Test
+    @DisplayName("재발송 쿨다운 이내면 발송하지 않고 EMAIL_RESEND_TOO_SOON을 던진다")
+    void sendEmailVerificationCode_withinCooldown_throws() {
+        String email = "cooldown@example.com";
+        EmailVerification existing =
+                EmailVerification.create(email, "111111", LocalDateTime.now().plusMinutes(10));
+        when(userRepository.existsByEmail(email)).thenReturn(false);
+        when(emailVerificationRepository.existsByEmail(email)).thenReturn(true);
+        when(emailVerificationRepository.findByEmailForUpdate(email))
+                .thenReturn(Optional.of(existing));
+
+        assertThatThrownBy(
+                        () ->
+                                authService.sendEmailVerificationCode(
+                                        new EmailVerificationSendRequest(email)))
+                .isInstanceOfSatisfying(
+                        BusinessException.class,
+                        exception ->
+                                assertThat(exception.getErrorCode())
+                                        .isEqualTo(ErrorCode.EMAIL_RESEND_TOO_SOON));
+        verify(emailSender, never()).sendVerificationCode(any(), any());
+    }
+
+    @Test
+    @DisplayName("당일 발송 한도에 도달하면 EMAIL_SEND_LIMIT_EXCEEDED를 던진다")
+    void sendEmailVerificationCode_dailyLimitReached_throws() {
+        String email = "limit@example.com";
+        EmailVerification existing =
+                EmailVerification.create(email, "111111", LocalDateTime.now().plusMinutes(10));
+        // 쿨다운은 지났지만 같은 날 발송 한도(5회)를 채운 상태를 재현한다.
+        ReflectionTestUtils.setField(existing, "createdAt", LocalDateTime.now().minusMinutes(5));
+        ReflectionTestUtils.setField(existing, "dailySendCount", 5);
+        when(userRepository.existsByEmail(email)).thenReturn(false);
+        when(emailVerificationRepository.existsByEmail(email)).thenReturn(true);
+        when(emailVerificationRepository.findByEmailForUpdate(email))
+                .thenReturn(Optional.of(existing));
+
+        assertThatThrownBy(
+                        () ->
+                                authService.sendEmailVerificationCode(
+                                        new EmailVerificationSendRequest(email)))
+                .isInstanceOfSatisfying(
+                        BusinessException.class,
+                        exception ->
+                                assertThat(exception.getErrorCode())
+                                        .isEqualTo(ErrorCode.EMAIL_SEND_LIMIT_EXCEEDED));
+        verify(emailSender, never()).sendVerificationCode(any(), any());
+    }
+
+    @Test
+    @DisplayName("틀린 코드를 입력하면 시도 횟수가 증가하고 INVALID_VERIFICATION_CODE를 던진다")
+    void confirmEmailVerificationCode_wrongCode_increasesAttempt() {
+        String email = "wrong@example.com";
+        EmailVerification existing =
+                EmailVerification.create(email, "123456", LocalDateTime.now().plusMinutes(10));
+        when(emailVerificationRepository.findByEmailForUpdate(email))
+                .thenReturn(Optional.of(existing));
+
+        assertThatThrownBy(
+                        () ->
+                                authService.confirmEmailVerificationCode(
+                                        new EmailVerificationConfirmRequest(email, "000000")))
+                .isInstanceOfSatisfying(
+                        BusinessException.class,
+                        exception ->
+                                assertThat(exception.getErrorCode())
+                                        .isEqualTo(ErrorCode.INVALID_VERIFICATION_CODE));
+        assertThat(existing.getAttemptCount()).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("시도 횟수를 모두 소진하면 올바른 코드라도 EMAIL_VERIFICATION_ATTEMPTS_EXCEEDED를 던진다")
+    void confirmEmailVerificationCode_attemptsExceeded_throws() {
+        String email = "exceeded@example.com";
+        EmailVerification existing =
+                EmailVerification.create(email, "123456", LocalDateTime.now().plusMinutes(10));
+        for (int i = 0; i < 5; i++) {
+            existing.increaseAttempt();
+        }
+        when(emailVerificationRepository.findByEmailForUpdate(email))
+                .thenReturn(Optional.of(existing));
+
+        assertThatThrownBy(
+                        () ->
+                                authService.confirmEmailVerificationCode(
+                                        new EmailVerificationConfirmRequest(email, "123456")))
+                .isInstanceOfSatisfying(
+                        BusinessException.class,
+                        exception ->
+                                assertThat(exception.getErrorCode())
+                                        .isEqualTo(ErrorCode.EMAIL_VERIFICATION_ATTEMPTS_EXCEEDED));
     }
 
     @Test
