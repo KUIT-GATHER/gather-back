@@ -1,7 +1,6 @@
 package com.gather.gather.domain.posting.service;
 
 import com.gather.gather.domain.posting.entity.PostingRecommendedKeyword;
-import com.gather.gather.domain.posting.entity.PostingSearchLog;
 import com.gather.gather.domain.posting.repository.PostingRecommendedKeywordRepository;
 import com.gather.gather.domain.posting.repository.PostingSearchLogRepository;
 import com.gather.gather.domain.posting.service.support.NoriKeywordTokenizer;
@@ -32,11 +31,11 @@ public class PostingKeywordRecommendationService {
     @Transactional
     public int aggregate() {
         LocalDateTime since = LocalDateTime.now().minusDays(AGGREGATION_WINDOW_DAYS);
-        List<PostingSearchLog> logs = postingSearchLogRepository.findAllBySearchedAtAfter(since);
+        List<String> keywords = postingSearchLogRepository.findKeywordsBySearchedAtAfter(since);
 
         Map<String, Integer> tokenCounts = new HashMap<>();
-        for (PostingSearchLog searchLog : logs) {
-            for (String token : noriKeywordTokenizer.tokenize(searchLog.getKeyword())) {
+        for (String keyword : keywords) {
+            for (String token : noriKeywordTokenizer.tokenize(keyword)) {
                 if (token.length() > MAX_RECOMMENDED_KEYWORD_LENGTH) {
                     continue;
                 }

@@ -10,7 +10,12 @@ import org.springframework.data.repository.query.Param;
 
 public interface PostingSearchLogRepository extends JpaRepository<PostingSearchLog, Long> {
 
-    List<PostingSearchLog> findAllBySearchedAtAfter(LocalDateTime after);
+    /**
+     * 집계 배치는 keyword 문자열만 필요하다. Entity 전체를 조회하면 영속성 컨텍스트가 각 로우를 엔티티로 관리하는 오버헤드가 붙으므로, keyword 컬럼만
+     * 프로젝션해서 가져온다.
+     */
+    @Query("select l.keyword from PostingSearchLog l where l.searchedAt > :after")
+    List<String> findKeywordsBySearchedAtAfter(@Param("after") LocalDateTime after);
 
     /**
      * derived delete 메서드(deleteBy...)는 {@code @Query} 없이 쓰면 엔티티를 조회해 개별 remove()하는 방식으로 동작해서, 로그가

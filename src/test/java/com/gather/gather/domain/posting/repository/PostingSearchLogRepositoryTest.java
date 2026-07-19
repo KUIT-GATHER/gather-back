@@ -19,15 +19,15 @@ class PostingSearchLogRepositoryTest {
     @Autowired private PostingSearchLogRepository postingSearchLogRepository;
 
     @Test
-    void findAllBySearchedAtAfter_returnsOnlyLogsWithinWindow() throws Exception {
+    void findKeywordsBySearchedAtAfter_returnsOnlyKeywordsWithinWindow() throws Exception {
         save("유기견봉사", LocalDateTime.now().minusDays(10));
         save("환경정화", LocalDateTime.now().minusDays(90));
 
-        List<PostingSearchLog> recent =
-                postingSearchLogRepository.findAllBySearchedAtAfter(
+        List<String> recent =
+                postingSearchLogRepository.findKeywordsBySearchedAtAfter(
                         LocalDateTime.now().minusDays(60));
 
-        assertThat(recent).extracting(PostingSearchLog::getKeyword).containsExactly("유기견봉사");
+        assertThat(recent).containsExactly("유기견봉사");
     }
 
     @Test
@@ -37,10 +37,10 @@ class PostingSearchLogRepositoryTest {
 
         postingSearchLogRepository.deleteBySearchedAtBefore(LocalDateTime.now().minusDays(60));
 
-        List<PostingSearchLog> remaining =
-                postingSearchLogRepository.findAllBySearchedAtAfter(
+        List<String> remaining =
+                postingSearchLogRepository.findKeywordsBySearchedAtAfter(
                         LocalDateTime.now().minusDays(365));
-        assertThat(remaining).extracting(PostingSearchLog::getKeyword).containsExactly("유기견봉사");
+        assertThat(remaining).containsExactly("유기견봉사");
     }
 
     /** searchedAt이 빌더에서 now()로 고정되므로, 리플렉션으로 과거 시각을 직접 주입해 시간 경계 테스트를 구성한다. */

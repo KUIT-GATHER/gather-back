@@ -6,7 +6,6 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.gather.gather.domain.posting.entity.PostingRecommendedKeyword;
-import com.gather.gather.domain.posting.entity.PostingSearchLog;
 import com.gather.gather.domain.posting.repository.PostingRecommendedKeywordRepository;
 import com.gather.gather.domain.posting.repository.PostingSearchLogRepository;
 import com.gather.gather.domain.posting.service.support.NoriKeywordTokenizer;
@@ -40,10 +39,8 @@ class PostingKeywordRecommendationServiceTest {
     @Test
     @DisplayName("aggregate counts tokens across logs and replaces the table with the top keywords")
     void aggregate_ranksTokensByFrequencyAndReplacesTable() {
-        PostingSearchLog log1 = PostingSearchLog.builder().keyword("유기견봉사").build();
-        PostingSearchLog log2 = PostingSearchLog.builder().keyword("유기견").build();
-        when(postingSearchLogRepository.findAllBySearchedAtAfter(any()))
-                .thenReturn(List.of(log1, log2));
+        when(postingSearchLogRepository.findKeywordsBySearchedAtAfter(any()))
+                .thenReturn(List.of("유기견봉사", "유기견"));
         when(noriKeywordTokenizer.tokenize("유기견봉사")).thenReturn(List.of("유기견", "봉사"));
         when(noriKeywordTokenizer.tokenize("유기견")).thenReturn(List.of("유기견"));
 
@@ -66,9 +63,8 @@ class PostingKeywordRecommendationServiceTest {
     @DisplayName("aggregate ignores tokens longer than the recommended-keyword column length")
     void aggregate_ignoresOversizedTokens() {
         String oversizedToken = "가".repeat(51);
-        PostingSearchLog searchLog = PostingSearchLog.builder().keyword("아무말").build();
-        when(postingSearchLogRepository.findAllBySearchedAtAfter(any()))
-                .thenReturn(List.of(searchLog));
+        when(postingSearchLogRepository.findKeywordsBySearchedAtAfter(any()))
+                .thenReturn(List.of("아무말"));
         when(noriKeywordTokenizer.tokenize("아무말")).thenReturn(List.of(oversizedToken, "아무말"));
 
         int count = service.aggregate();
