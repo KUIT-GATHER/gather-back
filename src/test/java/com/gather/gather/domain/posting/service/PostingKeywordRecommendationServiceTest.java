@@ -63,6 +63,28 @@ class PostingKeywordRecommendationServiceTest {
     }
 
     @Test
+    @DisplayName("aggregate ignores tokens longer than the recommended-keyword column length")
+    void aggregate_ignoresOversizedTokens() {
+        String oversizedToken = "가".repeat(51);
+        PostingSearchLog searchLog = PostingSearchLog.builder().keyword("아무말").build();
+        when(postingSearchLogRepository.findAllBySearchedAtAfter(any()))
+                .thenReturn(List.of(searchLog));
+        when(noriKeywordTokenizer.tokenize("아무말")).thenReturn(List.of(oversizedToken, "아무말"));
+
+        int count = service.aggregate();
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<PostingRecommendedKeyword>> captor =
+                ArgumentCaptor.forClass(List.class);
+        verify(postingRecommendedKeywordRepository).saveAll(captor.capture());
+
+        assertThat(count).isEqualTo(1);
+        assertThat(captor.getValue())
+                .extracting(PostingRecommendedKeyword::getKeyword)
+                .containsExactly("아무말");
+    }
+
+    @Test
     @DisplayName("cleanupOldLogs deletes logs older than the retention window")
     void cleanupOldLogs_deletesOldLogs() {
         service.cleanupOldLogs();

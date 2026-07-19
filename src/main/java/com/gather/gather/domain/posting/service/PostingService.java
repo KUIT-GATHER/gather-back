@@ -21,12 +21,14 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class PostingService {
@@ -66,9 +68,6 @@ public class PostingService {
             String keyword,
             PostingCategory category) {
         validateSort(pageable.getSort());
-        if (keyword != null && !keyword.isBlank()) {
-            postingSearchLogService.log(keyword);
-        }
         PostingStatus effectiveStatus = status != null ? status : PostingStatus.RECRUITING;
         List<Long> regionIds = resolveRegionIds(regionId, regionGroupId);
 
@@ -81,6 +80,8 @@ public class PostingService {
                         keyword,
                         category,
                         pageable);
+
+        logSearchKeywordSafely(keyword);
 
         Map<Long, String> regionNames = findRegionNames(postings);
 
@@ -108,6 +109,22 @@ public class PostingService {
                                 .orElse(null)
                         : null;
         return PostingResponse.from(posting, regionName, buildLocations(posting));
+    }
+
+    /**
+     * 검색이 성공한 뒤에만 호출한다. {@code postingSearchLogService.log}는 REQUIRES_NEW로 분리된 트랜잭션이라 자체 try/catch로
+     * 본문 예외를 흡수하지만, 프록시가 메서드 리턴 후 수행하는 커밋 단계의 실패까지는 막지 못한다. 그 경우에도 검색 응답이 500으로 실패하지 않도록 호출부에서 한 번
+     * 더 감싼다.
+     */
+    private void logSearchKeywordSafely(String keyword) {
+        if (keyword == null || keyword.isBlank()) {
+            return;
+        }
+        try {
+            postingSearchLogService.log(keyword);
+        } catch (RuntimeException e) {
+            log.warn("검색어 로깅 실패. keyword={}", keyword, e);
+        }
     }
 
     private void validateSort(Sort sort) {

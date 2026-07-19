@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -171,13 +172,56 @@ class PostingServiceTest {
         assertThatThrownBy(
                         () ->
                                 postingService.getPostings(
-                                        pageable, 1L, 7L, null, null, null, null, null))
+                                        pageable, 1L, 7L, null, null, null, "환경", null))
                 .isInstanceOf(BusinessException.class)
                 .satisfies(
                         ex ->
                                 assertThat(((BusinessException) ex).getErrorCode())
                                         .isEqualTo(ErrorCode.VALIDATION_ERROR));
         verify(postingRepository, never()).search(any(), any(), any(), any(), any(), any(), any());
+        verify(postingSearchLogService, never()).log(any());
+    }
+
+    @Test
+    @DisplayName("getPostings does not log the keyword when sort validation fails")
+    void getPostings_doesNotLogKeyword_whenSortInvalid() {
+        Pageable pageable = PageRequest.of(0, 20, Sort.by("string"));
+
+        assertThatThrownBy(
+                        () ->
+                                postingService.getPostings(
+                                        pageable, null, null, null, null, null, "환경", null))
+                .isInstanceOf(BusinessException.class);
+
+        verify(postingSearchLogService, never()).log(any());
+    }
+
+    @Test
+    @DisplayName("getPostings logs the keyword only after the search succeeds")
+    void getPostings_logsKeyword_onlyAfterSearchSucceeds() {
+        Pageable pageable = PageRequest.of(0, 20);
+        when(postingRepository.search(
+                        PostingStatus.RECRUITING, null, null, null, "환경", null, pageable))
+                .thenReturn(new PageImpl<>(List.of()));
+
+        postingService.getPostings(pageable, null, null, null, null, null, "환경", null);
+
+        verify(postingSearchLogService).log("환경");
+    }
+
+    @Test
+    @DisplayName("getPostings still returns results when search-log recording throws")
+    void getPostings_returnsResults_whenSearchLoggingThrows() {
+        Pageable pageable = PageRequest.of(0, 20);
+        when(postingRepository.search(
+                        PostingStatus.RECRUITING, null, null, null, "환경", null, pageable))
+                .thenReturn(new PageImpl<>(List.of()));
+        doThrow(new RuntimeException("logging failed")).when(postingSearchLogService).log("환경");
+
+        PageResponse<PostingSummaryResponse> result =
+                postingService.getPostings(pageable, null, null, null, null, null, "환경", null);
+
+        assertThat(result.content()).isEmpty();
     }
 
     @Test

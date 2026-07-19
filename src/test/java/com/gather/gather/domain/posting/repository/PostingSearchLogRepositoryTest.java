@@ -11,7 +11,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.transaction.annotation.Transactional;
 
-/** 실제 DB에서 최근 로그 조회와 오래된 로그 삭제(derived deleteBy + @Modifying)가 정상 동작하는지 검증한다. */
+/** 실제 DB에서 최근 로그 조회와 오래된 로그 삭제(명시적 JPQL bulk delete)가 정상 동작하는지 검증한다. */
 @SpringBootTest
 @Transactional
 class PostingSearchLogRepositoryTest {

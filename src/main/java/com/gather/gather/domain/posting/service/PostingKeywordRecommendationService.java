@@ -21,6 +21,9 @@ public class PostingKeywordRecommendationService {
     private static final int LOG_RETENTION_DAYS = 60;
     private static final int TOP_KEYWORD_COUNT = 10;
 
+    /** {@code posting_recommended_keyword.keyword} 컬럼 길이(VARCHAR(50))와 맞춘다. */
+    private static final int MAX_RECOMMENDED_KEYWORD_LENGTH = 50;
+
     private final PostingSearchLogRepository postingSearchLogRepository;
     private final PostingRecommendedKeywordRepository postingRecommendedKeywordRepository;
     private final NoriKeywordTokenizer noriKeywordTokenizer;
@@ -34,6 +37,9 @@ public class PostingKeywordRecommendationService {
         Map<String, Integer> tokenCounts = new HashMap<>();
         for (PostingSearchLog searchLog : logs) {
             for (String token : noriKeywordTokenizer.tokenize(searchLog.getKeyword())) {
+                if (token.length() > MAX_RECOMMENDED_KEYWORD_LENGTH) {
+                    continue;
+                }
                 tokenCounts.merge(token, 1, Integer::sum);
             }
         }
