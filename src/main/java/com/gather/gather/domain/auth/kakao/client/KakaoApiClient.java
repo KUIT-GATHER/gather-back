@@ -15,6 +15,7 @@ import org.springframework.boot.http.client.ClientHttpRequestFactoryBuilder;
 import org.springframework.boot.http.client.ClientHttpRequestFactorySettings;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpRequest;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
 import org.springframework.http.client.ClientHttpRequestFactory;
@@ -102,6 +103,12 @@ public class KakaoApiClient {
                                         .body(form)
                                         .retrieve()
                                         .onStatus(
+                                                status ->
+                                                        status.value()
+                                                                == HttpStatus.TOO_MANY_REQUESTS
+                                                                        .value(),
+                                                this::rejectAsRateLimited)
+                                        .onStatus(
                                                 HttpStatusCode::is4xxClientError,
                                                 this::rejectAsBadRequest)
                                         .onStatus(
@@ -131,6 +138,12 @@ public class KakaoApiClient {
                                                 HttpHeaders.AUTHORIZATION,
                                                 BEARER_PREFIX + kakaoAccessToken)
                                         .retrieve()
+                                        .onStatus(
+                                                status ->
+                                                        status.value()
+                                                                == HttpStatus.TOO_MANY_REQUESTS
+                                                                        .value(),
+                                                this::rejectAsRateLimited)
                                         .onStatus(
                                                 HttpStatusCode::is4xxClientError,
                                                 this::rejectAsBadRequest)
@@ -165,6 +178,16 @@ public class KakaoApiClient {
                 response.getStatusCode(),
                 readBody(response));
         throw new BusinessException(ErrorCode.VALIDATION_ERROR);
+    }
+
+    private void rejectAsRateLimited(HttpRequest request, ClientHttpResponse response)
+            throws IOException {
+        log.error(
+                "카카오 API 요청 제한이 발생했습니다. status={}, path={}, body={}",
+                response.getStatusCode(),
+                request.getURI().getPath(),
+                readBody(response));
+        throw new BusinessException(ErrorCode.KAKAO_API_UNAVAILABLE);
     }
 
     private void rejectAsServerError(HttpRequest request, ClientHttpResponse response)

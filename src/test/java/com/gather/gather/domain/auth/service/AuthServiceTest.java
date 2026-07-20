@@ -8,17 +8,20 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.gather.gather.domain.auth.dto.EmailVerificationConfirmRequest;
 import com.gather.gather.domain.auth.dto.EmailVerificationSendRequest;
+import com.gather.gather.domain.auth.dto.LoginRequest;
 import com.gather.gather.domain.auth.dto.SignupRequest;
 import com.gather.gather.domain.auth.entity.EmailVerification;
 import com.gather.gather.domain.auth.entity.Gender;
 import com.gather.gather.domain.auth.entity.RefreshToken;
 import com.gather.gather.domain.auth.entity.User;
+import com.gather.gather.domain.auth.entity.UserStatus;
 import com.gather.gather.domain.auth.repository.EmailVerificationRepository;
 import com.gather.gather.domain.auth.repository.RefreshTokenRepository;
 import com.gather.gather.domain.auth.repository.UserRepository;
@@ -39,6 +42,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.params.provider.NullAndEmptySource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
@@ -521,6 +525,60 @@ class AuthServiceTest {
     }
 
     @Test
+    @DisplayName("login은 이메일과 비밀번호가 일치하는 활성 회원에게 새 토큰을 발급한다")
+    void login_withValidCredentials_issuesTokens() {
+        User user = activeUser();
+        when(userRepository.findByEmail("test@example.com")).thenReturn(Optional.of(user));
+        when(passwordEncoder.matches("password123!", "encoded-password")).thenReturn(true);
+        prepareTokenIssue(user);
+
+        TokenIssueResult result = authService.login(loginRequest());
+
+        assertThat(result.accessToken()).isEqualTo("new-access-token");
+        assertThat(result.refreshToken()).isEqualTo("new-refresh-token");
+        verify(refreshTokenRepository).save(any(RefreshToken.class));
+    }
+
+    @Test
+    @DisplayName("login은 존재하지 않는 이메일이면 INVALID_LOGIN이고 토큰을 발급하지 않는다")
+    void login_withUnknownEmail_throwsInvalidLogin() {
+        when(userRepository.findByEmail("test@example.com")).thenReturn(Optional.empty());
+
+        assertErrorCode(() -> authService.login(loginRequest()), ErrorCode.INVALID_LOGIN);
+
+        verify(tokenProvider, never()).createAccessToken(any(User.class));
+    }
+
+    @Test
+    @DisplayName("login은 비밀번호가 일치하지 않으면 INVALID_LOGIN이고 토큰을 발급하지 않는다")
+    void login_withWrongPassword_throwsInvalidLogin() {
+        User user = activeUser();
+        when(userRepository.findByEmail("test@example.com")).thenReturn(Optional.of(user));
+        when(passwordEncoder.matches("password123!", "encoded-password")).thenReturn(false);
+
+        assertErrorCode(() -> authService.login(loginRequest()), ErrorCode.INVALID_LOGIN);
+
+        verify(tokenProvider, never()).createAccessToken(any(User.class));
+    }
+
+    @ParameterizedTest
+    @EnumSource(
+            value = UserStatus.class,
+            names = {"SUSPENDED", "WITHDRAWN"})
+    @DisplayName("login은 정지·탈퇴 회원의 토큰 발급을 차단한다")
+    void login_withBlockedUserStatus_throwsStatusError(UserStatus status) {
+        User user = mock(User.class);
+        when(user.getPassword()).thenReturn("encoded-password");
+        when(user.getStatus()).thenReturn(status);
+        when(userRepository.findByEmail("test@example.com")).thenReturn(Optional.of(user));
+        when(passwordEncoder.matches("password123!", "encoded-password")).thenReturn(true);
+
+        assertErrorCode(() -> authService.login(loginRequest()), errorCodeFor(status));
+
+        verify(tokenProvider, never()).createAccessToken(any(User.class));
+    }
+
+    @Test
     @DisplayName("reissue는 기존 Refresh Token을 revoke하고 새 토큰을 저장한다")
     void reissue_revokesOldRefreshTokenAndStoresNewRefreshToken() {
         User user = activeUser();
@@ -566,6 +624,27 @@ class AuthServiceTest {
                                         .isEqualTo(ErrorCode.REVOKED_TOKEN));
 
         verify(refreshTokenRepository, never()).save(org.mockito.ArgumentMatchers.any());
+    }
+
+    @ParameterizedTest
+    @EnumSource(
+            value = UserStatus.class,
+            names = {"SUSPENDED", "WITHDRAWN"})
+    @DisplayName("reissue는 정지·탈퇴 회원의 토큰 재발급을 차단하고 기존 토큰을 revoke하지 않는다")
+    void reissue_withBlockedUserStatus_throwsStatusError(UserStatus status) {
+        User user = mock(User.class);
+        when(user.getStatus()).thenReturn(status);
+        RefreshToken refreshToken =
+                RefreshToken.create("old-refresh-hash", user, LocalDateTime.now().plusDays(1));
+        when(tokenProvider.hashToken("old-refresh-token")).thenReturn("old-refresh-hash");
+        when(refreshTokenRepository.findByTokenHash("old-refresh-hash"))
+                .thenReturn(Optional.of(refreshToken));
+
+        assertErrorCode(() -> authService.reissue("old-refresh-token"), errorCodeFor(status));
+
+        assertThat(refreshToken.isRevoked()).isFalse();
+        verify(tokenProvider, never()).createAccessToken(any(User.class));
+        verify(refreshTokenRepository, never()).save(any(RefreshToken.class));
     }
 
     @Test
@@ -615,6 +694,24 @@ class AuthServiceTest {
                 List.of());
     }
 
+    private void prepareTokenIssue(User user) {
+        when(tokenProvider.createAccessToken(user)).thenReturn("new-access-token");
+        when(tokenProvider.generateToken()).thenReturn("new-refresh-token");
+        when(tokenProvider.hashToken("new-refresh-token")).thenReturn("new-refresh-hash");
+        when(tokenProvider.refreshTokenExpiresAt()).thenReturn(LocalDateTime.now().plusDays(14));
+    }
+
+    private void assertErrorCode(Runnable action, ErrorCode expected) {
+        assertThatThrownBy(action::run)
+                .isInstanceOfSatisfying(
+                        BusinessException.class,
+                        exception -> assertThat(exception.getErrorCode()).isEqualTo(expected));
+    }
+
+    private static ErrorCode errorCodeFor(UserStatus status) {
+        return status == UserStatus.SUSPENDED ? ErrorCode.SUSPENDED_USER : ErrorCode.WITHDRAWN_USER;
+    }
+
     private void prepareVerifiedEmail() {
         EmailVerification emailVerification =
                 EmailVerification.create(
@@ -658,6 +755,10 @@ class AuthServiceTest {
 
     private static SignupRequest signupRequest(Long activityRegionId) {
         return signupRequest(activityRegionId, "홍길동", "길동");
+    }
+
+    private static LoginRequest loginRequest() {
+        return new LoginRequest("test@example.com", "password123!");
     }
 
     private static SignupRequest signupRequest(

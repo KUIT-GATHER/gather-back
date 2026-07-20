@@ -191,7 +191,7 @@
 - 성공은 항상 `200`이고 `data.signupStatus`로 분기합니다. **둘 다 정상 응답이며 `ADDITIONAL_INFO_REQUIRED`는 에러가 아닙니다.**
   - `LOGIN_COMPLETED`(기존 회원): `data = { signupStatus, accessToken, tokenType: "Bearer" }` + Refresh Token 쿠키. 일반 로그인과 동일하게 처리하면 됩니다.
   - `ADDITIONAL_INFO_REQUIRED`(신규 회원): `data = { signupStatus, signupToken, profile: { nickname } }`. 쿠키는 내려가지 않습니다. `signupToken`을 메모리에 보관하고 추가정보 화면으로 이동하세요. `profile.nickname`은 초깃값 용도이며 `null`일 수 있습니다.
-- `400`(인가 코드 무효·재사용, redirectUri 불일치)과 `500`(카카오 장애)은 **`error.code`를 보지 말고 전부 "카카오 로그인 다시 시작"**으로 처리하세요. 콜백 새로고침·뒤로가기로 인가 코드가 재사용되면 `400`이 나는 것이 정상입니다.
+- `400`(인가 코드 무효·재사용, redirectUri 불일치), `500`(카카오 장애), `503 KAKAO_API_UNAVAILABLE`(카카오 요청 제한)은 **`error.code`를 보지 말고 전부 "카카오 로그인 다시 시작"**으로 처리하세요. 콜백 새로고침·뒤로가기로 인가 코드가 재사용되면 `400`이 나는 것이 정상입니다.
 - **단, `403`은 재시작 대상이 아닙니다.** 기존 카카오 회원이 정지·탈퇴 상태면 일반 로그인과 동일하게 `403 SUSPENDED_USER` / `403 WITHDRAWN_USER`로 차단되며, 재로그인을 반복시키지 말고 계정 상태를 안내해야 합니다(§3-5와 동일).
 
 ### 3-11. 카카오 추가정보 가입 — `POST /api/v1/auth/kakao/signup`
@@ -233,9 +233,9 @@
 
 - 현재는 한 번 인증되면 **만료 없이** 회원가입에 사용 가능. 인증 후 유효시간 제한 / 가입 시 consume 처리 여부를 논의 중 — 정책 확정 시 프론트 타이머/재인증 UX에 영향 가능.
 
-### 4-3. Access Token은 임시 구조 (후속 PR)
+### 4-3. Access Token 인증 구조
 
-- 현재 Access Token은 JWT가 아닌 **임시 랜덤 토큰**이며, 검증 필터가 없어 보호 API 인증이 아직 동작하지 않습니다. 토큰 **저장/재발급/로그아웃 흐름 연동은 지금 가능**하지만, "401 시 reissue 후 재시도" 같은 인터셉터 로직은 JWT 필터 적용 후 확정하세요.
+- Access Token은 `TokenProvider`가 서명한 JWT이며, 보호 API에서는 `JwtAuthenticationFilter`가 토큰을 검증해 인증 정보를 구성합니다. 프론트는 보호 API의 `401` 응답 시 Refresh Token 쿠키로 `/api/v1/auth/reissue`를 호출한 뒤 새 Access Token으로 원 요청을 재시도할 수 있습니다.
 
 ### 4-4. 실메일 발송 (후속 PR)
 

@@ -106,6 +106,22 @@ class KakaoApiClientTest {
     }
 
     @Test
+    @DisplayName("토큰 교환 429는 사용자 입력 오류가 아니라 카카오 서비스 제한으로 매핑한다")
+    void requestAccessToken_whenRateLimited_throwsKakaoApiUnavailable() {
+        authServer
+                .expect(requestTo(AUTH_BASE_URL + "/oauth/token"))
+                .andRespond(
+                        withStatus(HttpStatus.TOO_MANY_REQUESTS)
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .body("{\"error\":\"too_many_requests\"}"));
+
+        assertErrorCode(
+                () -> client.requestAccessToken("auth-code", REDIRECT_URI),
+                ErrorCode.KAKAO_API_UNAVAILABLE);
+        authServer.verify();
+    }
+
+    @Test
     @DisplayName("토큰 교환 5xx는 500으로 매핑한다")
     void requestAccessToken_whenKakaoRespondsWith5xx_throwsInternalServerError() {
         authServer.expect(requestTo(AUTH_BASE_URL + "/oauth/token")).andRespond(withServerError());
@@ -176,6 +192,7 @@ class KakaoApiClientTest {
 
         assertThat(response.id()).isEqualTo(123456789L);
         assertThat(response.nickname()).isNull();
+        apiServer.verify();
     }
 
     @Test
@@ -202,6 +219,21 @@ class KakaoApiClientTest {
                 .andRespond(withStatus(HttpStatus.UNAUTHORIZED).body("{\"code\":-401}"));
 
         assertErrorCode(() -> client.getUserInfo("expired-token"), ErrorCode.VALIDATION_ERROR);
+    }
+
+    @Test
+    @DisplayName("사용자 정보 조회 429는 사용자 입력 오류가 아니라 카카오 서비스 제한으로 매핑한다")
+    void getUserInfo_whenRateLimited_throwsKakaoApiUnavailable() {
+        apiServer
+                .expect(requestTo(API_BASE_URL + "/v2/user/me"))
+                .andRespond(
+                        withStatus(HttpStatus.TOO_MANY_REQUESTS)
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .body("{\"msg\":\"too many requests\"}"));
+
+        assertErrorCode(
+                () -> client.getUserInfo("kakao-access-token"), ErrorCode.KAKAO_API_UNAVAILABLE);
+        apiServer.verify();
     }
 
     @Test

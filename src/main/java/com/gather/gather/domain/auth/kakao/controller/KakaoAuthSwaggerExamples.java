@@ -30,6 +30,17 @@ final class KakaoAuthSwaggerExamples {
               }
             }
             """;
+    static final String KAKAO_API_UNAVAILABLE_EXAMPLE =
+            """
+            {
+              "success": false,
+              "data": null,
+              "error": {
+                "code": "KAKAO_API_UNAVAILABLE",
+                "message": "카카오 로그인 서비스를 일시적으로 사용할 수 없습니다."
+              }
+            }
+            """;
     static final String SIGNUP_TOKEN_EXPIRED_EXAMPLE =
             """
             {

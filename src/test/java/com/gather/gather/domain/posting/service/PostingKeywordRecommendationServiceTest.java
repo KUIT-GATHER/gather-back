@@ -14,6 +14,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -40,8 +42,8 @@ class PostingKeywordRecommendationServiceTest {
     @DisplayName("aggregate counts tokens across logs and replaces the table with the top keywords")
     void aggregate_ranksTokensByFrequencyAndReplacesTable() {
         when(postingSearchLogRepository.findKeywordsBySearchedAtAfter(any()))
-                .thenReturn(List.of("유기견봉사", "유기견"));
-        when(noriKeywordTokenizer.tokenize("유기견봉사")).thenReturn(List.of("유기견", "봉사"));
+                .thenReturn(List.of("유기견보호", "유기견"));
+        when(noriKeywordTokenizer.tokenize("유기견보호")).thenReturn(List.of("유기견", "보호"));
         when(noriKeywordTokenizer.tokenize("유기견")).thenReturn(List.of("유기견"));
 
         int count = service.aggregate();
@@ -78,6 +80,28 @@ class PostingKeywordRecommendationServiceTest {
         assertThat(captor.getValue())
                 .extracting(PostingRecommendedKeyword::getKeyword)
                 .containsExactly("아무말");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"봉사", "활동", "모집", "신청", "참여", "공고"})
+    @DisplayName("aggregate excludes stopword tokens that are too generic to recommend")
+    void aggregate_excludesStopwordTokens(String stopword) {
+        String logKeyword = "유기견" + stopword;
+        when(postingSearchLogRepository.findKeywordsBySearchedAtAfter(any()))
+                .thenReturn(List.of(logKeyword));
+        when(noriKeywordTokenizer.tokenize(logKeyword)).thenReturn(List.of("유기견", stopword));
+
+        int count = service.aggregate();
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<PostingRecommendedKeyword>> captor =
+                ArgumentCaptor.forClass(List.class);
+        verify(postingRecommendedKeywordRepository).saveAll(captor.capture());
+
+        assertThat(count).isEqualTo(1);
+        assertThat(captor.getValue())
+                .extracting(PostingRecommendedKeyword::getKeyword)
+                .containsExactly("유기견");
     }
 
     @Test
