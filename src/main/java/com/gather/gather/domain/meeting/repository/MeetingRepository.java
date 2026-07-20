@@ -4,8 +4,9 @@ import com.gather.gather.domain.meeting.entity.Meeting;
 import com.gather.gather.domain.meeting.enums.MeetingStatus;
 import com.gather.gather.domain.posting.entity.PostingCategory;
 import jakarta.persistence.LockModeType;
-import java.util.List;
 import java.util.Optional;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
@@ -35,11 +36,11 @@ public interface MeetingRepository extends JpaRepository<Meeting, Long> {
               AND (:regionId IS NULL OR m.regionId = :regionId)
               AND (:category IS NULL OR m.category = :category)
               AND (:status IS NULL OR m.status = :status)
-            ORDER BY m.createdAt DESC
             """)
-    List<Meeting> searchMeetings(
+    Page<Meeting> searchMeetings(
             @Param("keyword") String keyword,
             @Param("regionId") Long regionId,
             @Param("category") PostingCategory category,
-            @Param("status") MeetingStatus status);
+            @Param("status") MeetingStatus status,
+            Pageable pageable);
 }
