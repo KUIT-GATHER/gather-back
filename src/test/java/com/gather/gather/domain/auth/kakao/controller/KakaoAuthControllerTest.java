@@ -296,6 +296,40 @@ class KakaoAuthControllerTest {
         verifyNoInteractions(kakaoAuthService);
     }
 
+    @Test
+    @DisplayName("전화번호가 20자이면 검증을 통과한다")
+    void signup_withMaxLengthPhoneNumber_returnsCreated() throws Exception {
+        when(kakaoAuthService.signup(eq("signup-token"), any(KakaoSignupRequest.class)))
+                .thenReturn(new TokenIssueResult("access-token", "refresh-token"));
+        when(refreshTokenCookieProvider.create("refresh-token"))
+                .thenReturn(refreshCookie("refresh-token"));
+
+        mockMvc.perform(
+                        post("/api/v1/auth/kakao/signup")
+                                .header(SIGNUP_TOKEN_HEADER, "signup-token")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(
+                                        """
+                                        {
+                                          "name": "홍길동",
+                                          "birthDate": "2002-03-15",
+                                          "gender": "MALE",
+                                          "phoneNumber": "01012345678901234567",
+                                          "nickname": "길동",
+                                          "introduction": null,
+                                          "activityRegionId": 123,
+                                          "interestCategories": ["WELFARE"],
+                                          "serviceTermsAgreed": true,
+                                          "privacyPolicyAgreed": true,
+                                          "marketingAgreed": false
+                                        }
+                                        """))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.success").value(true));
+
+        verify(kakaoAuthService).signup(eq("signup-token"), any(KakaoSignupRequest.class));
+    }
+
     private org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder
             loginRequest() {
         return post("/api/v1/auth/kakao/login")
