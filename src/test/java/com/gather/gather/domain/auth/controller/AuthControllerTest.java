@@ -13,6 +13,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.gather.gather.domain.auth.dto.LoginRequest;
+import com.gather.gather.domain.auth.dto.PhoneNumberAvailabilityRequest;
+import com.gather.gather.domain.auth.dto.PhoneNumberAvailabilityResponse;
+import com.gather.gather.domain.auth.dto.SignupRequest;
+import com.gather.gather.domain.auth.dto.SignupResponse;
 import com.gather.gather.domain.auth.service.AuthService;
 import com.gather.gather.domain.auth.service.RefreshTokenCookieProvider;
 import com.gather.gather.domain.auth.service.TokenIssueResult;
@@ -72,6 +76,112 @@ class AuthControllerTest {
                 .andExpect(jsonPath("$.error.code").value("VALIDATION_ERROR"));
 
         verifyNoInteractions(authService);
+    }
+
+    @Test
+    @DisplayName("회원가입에서 전화번호가 20자를 넘으면 저장 전에 400으로 막는다")
+    void signup_withTooLongPhoneNumber_returnsBadRequest() throws Exception {
+        mockMvc.perform(
+                        post("/api/v1/auth/signup")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(
+                                        """
+                                        {
+                                          "name": "홍길동",
+                                          "birthDate": "2000-01-01",
+                                          "gender": "MALE",
+                                          "phoneNumber": "010123456789012345678",
+                                          "email": "test@example.com",
+                                          "password": "password123!",
+                                          "passwordConfirm": "password123!",
+                                          "nickname": "길동",
+                                          "introduction": null,
+                                          "activityRegionId": 123,
+                                          "interestCategories": ["WELFARE"],
+                                          "serviceTermsAgreed": true,
+                                          "privacyPolicyAgreed": true,
+                                          "marketingAgreed": false
+                                        }
+                                        """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.error.code").value("VALIDATION_ERROR"));
+
+        verifyNoInteractions(authService);
+    }
+
+    @Test
+    @DisplayName("회원가입에서 전화번호가 20자이면 검증을 통과한다")
+    void signup_withMaxLengthPhoneNumber_returnsCreated() throws Exception {
+        when(authService.signup(any(SignupRequest.class)))
+                .thenReturn(new SignupResponse(1L, "test@example.com", "홍길동", "길동"));
+
+        mockMvc.perform(
+                        post("/api/v1/auth/signup")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(
+                                        """
+                                        {
+                                          "name": "홍길동",
+                                          "birthDate": "2000-01-01",
+                                          "gender": "MALE",
+                                          "phoneNumber": "01012345678901234567",
+                                          "email": "test@example.com",
+                                          "password": "password123!",
+                                          "passwordConfirm": "password123!",
+                                          "nickname": "길동",
+                                          "introduction": null,
+                                          "activityRegionId": 123,
+                                          "interestCategories": ["WELFARE"],
+                                          "serviceTermsAgreed": true,
+                                          "privacyPolicyAgreed": true,
+                                          "marketingAgreed": false
+                                        }
+                                        """))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.success").value(true));
+
+        verify(authService).signup(any(SignupRequest.class));
+    }
+
+    @Test
+    @DisplayName("전화번호 중복 확인에서 전화번호가 20자를 넘으면 400으로 막는다")
+    void checkPhoneNumberAvailability_withTooLongPhoneNumber_returnsBadRequest() throws Exception {
+        mockMvc.perform(
+                        post("/api/v1/auth/phone-numbers/availability")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(
+                                        """
+                                        {
+                                          "phoneNumber": "010123456789012345678"
+                                        }
+                                        """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.error.code").value("VALIDATION_ERROR"));
+
+        verifyNoInteractions(authService);
+    }
+
+    @Test
+    @DisplayName("전화번호 중복 확인에서 전화번호가 20자이면 검증을 통과한다")
+    void checkPhoneNumberAvailability_withMaxLengthPhoneNumber_returnsOk() throws Exception {
+        when(authService.checkPhoneNumberAvailability(any(PhoneNumberAvailabilityRequest.class)))
+                .thenReturn(new PhoneNumberAvailabilityResponse("01012345678901234567", true));
+
+        mockMvc.perform(
+                        post("/api/v1/auth/phone-numbers/availability")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(
+                                        """
+                                        {
+                                          "phoneNumber": "01012345678901234567"
+                                        }
+                                        """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true));
+
+        verify(authService).checkPhoneNumberAvailability(any(PhoneNumberAvailabilityRequest.class));
     }
 
     @Test
