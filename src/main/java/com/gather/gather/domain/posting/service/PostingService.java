@@ -1,11 +1,10 @@
 package com.gather.gather.domain.posting.service;
 
-import com.gather.gather.domain.category.entity.Category;
-import com.gather.gather.domain.category.repository.CategoryRepository;
 import com.gather.gather.domain.posting.dto.PostingLocationResponse;
 import com.gather.gather.domain.posting.dto.PostingResponse;
 import com.gather.gather.domain.posting.dto.PostingSummaryResponse;
 import com.gather.gather.domain.posting.entity.Posting;
+import com.gather.gather.domain.posting.entity.PostingCategory;
 import com.gather.gather.domain.posting.entity.PostingStatus;
 import com.gather.gather.domain.posting.repository.PostingLocationRepository;
 import com.gather.gather.domain.posting.repository.PostingRepository;
@@ -22,45 +21,75 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class PostingService {
 
+    /**
+     * {@link PostingRepository#search}가 JPQL로 정렬을 적용하기 때문에, 존재하지 않는 프로퍼티로 정렬을 시도하면 500
+     * INTERNAL_SERVER_ERROR로 이어진다(Hibernate가 속성을 못 찾아 던지는 예외를 GlobalExceptionHandler의 catch-all이
+     * 받음). 클라이언트 입력값 문제이므로 쿼리 실행 전에 검증해 400으로 응답한다.
+     */
+    private static final Set<String> SORTABLE_PROPERTIES =
+            Set.of(
+                    "id",
+                    "title",
+                    "status",
+                    "actStartDate",
+                    "actEndDate",
+                    "noticeStartDate",
+                    "noticeEndDate",
+                    "recruitCount",
+                    "applicantCount",
+                    "createdAt",
+                    "updatedAt");
+
     private final PostingRepository postingRepository;
     private final PostingLocationRepository postingLocationRepository;
     private final RegionRepository regionRepository;
-    private final CategoryRepository categoryRepository;
+    private final PostingSearchLogService postingSearchLogService;
 
     @Transactional(readOnly = true)
     public PageResponse<PostingSummaryResponse> getPostings(
             Pageable pageable,
             Long regionId,
+            Long regionGroupId,
             PostingStatus status,
             LocalDate noticeStartDate,
-            LocalDate noticeEndDate) {
+            LocalDate noticeEndDate,
+            String keyword,
+            PostingCategory category) {
+        validateSort(pageable.getSort());
         PostingStatus effectiveStatus = status != null ? status : PostingStatus.RECRUITING;
-        List<Long> regionIds =
-                regionId != null ? regionRepository.findIdsIncludingChildren(regionId) : null;
+        List<Long> regionIds = resolveRegionIds(regionId, regionGroupId);
 
         Page<Posting> postings =
                 postingRepository.search(
-                        effectiveStatus, regionIds, noticeStartDate, noticeEndDate, pageable);
+                        effectiveStatus,
+                        regionIds,
+                        noticeStartDate,
+                        noticeEndDate,
+                        keyword,
+                        category,
+                        pageable);
+
+        logSearchKeywordSafely(keyword);
 
         Map<Long, String> regionNames = findRegionNames(postings);
-        Map<Long, String> categoryNames = findCategoryNames(postings);
 
         Page<PostingSummaryResponse> responses =
                 postings.map(
                         posting ->
                                 PostingSummaryResponse.from(
-                                        posting,
-                                        regionNames.get(posting.getRegionId()),
-                                        categoryNames.get(posting.getCategoryId())));
+                                        posting, regionNames.get(posting.getRegionId())));
 
         return PageResponse.from(responses);
     }
@@ -79,13 +108,45 @@ public class PostingService {
                                 .map(Region::getName)
                                 .orElse(null)
                         : null;
-        String categoryName =
-                categoryRepository
-                        .findById(posting.getCategoryId())
-                        .map(Category::getName)
-                        .orElse(null);
+        return PostingResponse.from(posting, regionName, buildLocations(posting));
+    }
 
-        return PostingResponse.from(posting, regionName, categoryName, buildLocations(posting));
+    /**
+     * 검색이 성공한 뒤에만 호출한다. {@code postingSearchLogService.log}는 REQUIRES_NEW로 분리된 트랜잭션이라 자체 try/catch로
+     * 본문 예외를 흡수하지만, 프록시가 메서드 리턴 후 수행하는 커밋 단계의 실패까지는 막지 못한다. 그 경우에도 검색 응답이 500으로 실패하지 않도록 호출부에서 한 번
+     * 더 감싼다.
+     */
+    private void logSearchKeywordSafely(String keyword) {
+        if (keyword == null || keyword.isBlank()) {
+            return;
+        }
+        try {
+            postingSearchLogService.log(keyword);
+        } catch (RuntimeException e) {
+            log.warn("검색어 로깅 실패. keyword 길이={}", keyword.length(), e);
+        }
+    }
+
+    private void validateSort(Sort sort) {
+        for (Sort.Order order : sort) {
+            if (!SORTABLE_PROPERTIES.contains(order.getProperty())) {
+                throw new BusinessException(ErrorCode.VALIDATION_ERROR);
+            }
+        }
+    }
+
+    /** regionId(단일 시도/시군구)와 regionGroupId(9버튼 권역)는 동시에 줄 수 없다 — 필터 기준이 서로 다른 축이라 모호하다. */
+    private List<Long> resolveRegionIds(Long regionId, Long regionGroupId) {
+        if (regionId != null && regionGroupId != null) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR);
+        }
+        if (regionGroupId != null) {
+            return regionRepository.findIdsIncludingChildrenByGroupId(regionGroupId);
+        }
+        if (regionId != null) {
+            return regionRepository.findIdsIncludingChildren(regionId);
+        }
+        return null;
     }
 
     private List<PostingLocationResponse> buildLocations(Posting posting) {
@@ -105,14 +166,5 @@ public class PostingService {
                         .collect(Collectors.toSet());
         return regionRepository.findAllById(regionIds).stream()
                 .collect(Collectors.toMap(Region::getId, Region::getName));
-    }
-
-    private Map<Long, String> findCategoryNames(Page<Posting> postings) {
-        Set<Long> categoryIds =
-                postings.getContent().stream()
-                        .map(Posting::getCategoryId)
-                        .collect(Collectors.toSet());
-        return categoryRepository.findAllById(categoryIds).stream()
-                .collect(Collectors.toMap(Category::getId, Category::getName));
     }
 }

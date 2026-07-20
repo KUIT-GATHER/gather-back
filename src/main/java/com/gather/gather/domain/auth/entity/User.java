@@ -1,17 +1,19 @@
 package com.gather.gather.domain.auth.entity;
 
-import com.gather.gather.domain.category.entity.Category;
+import com.gather.gather.domain.posting.entity.PostingCategory;
 import com.gather.gather.domain.region.entity.Region;
+import jakarta.persistence.CollectionTable;
 import jakarta.persistence.Column;
+import jakarta.persistence.ElementCollection;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
+import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
-import jakarta.persistence.JoinTable;
-import jakarta.persistence.ManyToMany;
+import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import java.time.LocalDate;
 import java.util.ArrayList;
@@ -30,7 +32,7 @@ public class User {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(nullable = false, length = 12)
+    @Column(nullable = false, length = 20)
     private String name;
 
     @Column(nullable = false)
@@ -43,13 +45,14 @@ public class User {
     @Column(nullable = false, unique = true, length = 20)
     private String phoneNumber;
 
-    @Column(nullable = false, unique = true, length = 255)
+    // 소셜 가입 회원은 이메일·비밀번호를 보유하지 않는다.
+    @Column(unique = true, length = 255)
     private String email;
 
-    @Column(nullable = false, length = 255)
+    @Column(length = 255)
     private String password;
 
-    @Column(nullable = false, unique = true, length = 8)
+    @Column(nullable = false, unique = true, length = 20)
     private String nickname;
 
     @Column(length = 50)
@@ -75,19 +78,15 @@ public class User {
     @Column(nullable = false)
     private boolean marketingAgreed;
 
-    @ManyToMany
-    @JoinTable(
-            name = "user_activity_region",
-            joinColumns = @JoinColumn(name = "user_id"),
-            inverseJoinColumns = @JoinColumn(name = "region_id"))
-    private List<Region> activityRegions = new ArrayList<>();
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "activity_region_id", nullable = false)
+    private Region activityRegion;
 
-    @ManyToMany
-    @JoinTable(
-            name = "user_interest_category",
-            joinColumns = @JoinColumn(name = "user_id"),
-            inverseJoinColumns = @JoinColumn(name = "category_id"))
-    private List<Category> interestCategories = new ArrayList<>();
+    @ElementCollection
+    @CollectionTable(name = "user_interest_category", joinColumns = @JoinColumn(name = "user_id"))
+    @Enumerated(EnumType.STRING)
+    @Column(name = "category", nullable = false, length = 20)
+    private List<PostingCategory> interestCategories = new ArrayList<>();
 
     private User(
             String name,
@@ -98,11 +97,12 @@ public class User {
             String password,
             String nickname,
             String introduction,
+            boolean emailVerified,
             boolean serviceTermsAgreed,
             boolean privacyPolicyAgreed,
             boolean marketingAgreed,
-            List<Region> activityRegions,
-            List<Category> interestCategories) {
+            Region activityRegion,
+            List<PostingCategory> interestCategories) {
         this.name = name;
         this.birthDate = birthDate;
         this.gender = gender;
@@ -113,11 +113,11 @@ public class User {
         this.introduction = introduction;
         this.role = UserRole.USER;
         this.status = UserStatus.ACTIVE;
-        this.emailVerified = true;
+        this.emailVerified = emailVerified;
         this.serviceTermsAgreed = serviceTermsAgreed;
         this.privacyPolicyAgreed = privacyPolicyAgreed;
         this.marketingAgreed = marketingAgreed;
-        this.activityRegions = new ArrayList<>(activityRegions);
+        this.activityRegion = activityRegion;
         this.interestCategories = new ArrayList<>(interestCategories);
     }
 
@@ -133,8 +133,8 @@ public class User {
             boolean serviceTermsAgreed,
             boolean privacyPolicyAgreed,
             boolean marketingAgreed,
-            List<Region> activityRegions,
-            List<Category> interestCategories) {
+            Region activityRegion,
+            List<PostingCategory> interestCategories) {
         return new User(
                 name,
                 birthDate,
@@ -144,10 +144,41 @@ public class User {
                 password,
                 nickname,
                 introduction,
+                true,
                 serviceTermsAgreed,
                 privacyPolicyAgreed,
                 marketingAgreed,
-                activityRegions,
+                activityRegion,
+                interestCategories);
+    }
+
+    /** 인증할 이메일 자체가 존재하지 않으므로 emailVerified는 false다. 이메일 등록·인증 기능이 생기면 그때 true로 전환한다. */
+    public static User createSocial(
+            String name,
+            LocalDate birthDate,
+            Gender gender,
+            String phoneNumber,
+            String nickname,
+            String introduction,
+            boolean serviceTermsAgreed,
+            boolean privacyPolicyAgreed,
+            boolean marketingAgreed,
+            Region activityRegion,
+            List<PostingCategory> interestCategories) {
+        return new User(
+                name,
+                birthDate,
+                gender,
+                phoneNumber,
+                null,
+                null,
+                nickname,
+                introduction,
+                false,
+                serviceTermsAgreed,
+                privacyPolicyAgreed,
+                marketingAgreed,
+                activityRegion,
                 interestCategories);
     }
 }

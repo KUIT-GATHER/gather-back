@@ -47,3 +47,6 @@ application-secret.yml
 
 ### 개인 Claude 설정 ###
 .claude
+
+### 개인 Codex 설정 ###
+.codex/

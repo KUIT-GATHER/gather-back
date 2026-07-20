@@ -8,11 +8,14 @@ info:
     프론트 연동 참고사항:
     - `signup`, `login`, `logout`, `reissue`는 인증 행위 API이므로 동사형 경로를 사용합니다.
     - `regions`, `categories` 조회 API는 auth 도메인 소유는 아니지만 회원가입 화면에서 필요하므로 함께 명세에 포함했습니다.
-    - 관심 카테고리는 `GET /api/v1/categories` 응답의 `id`를 기준으로 선택합니다.
-    - 회원가입 요청에는 선택한 카테고리 ID 배열인 `interestCategoryIds`만 전달하며, `code`는 전달하지 않습니다.
-    - 카테고리 `id`는 DB 참조용, `code`는 프론트 아이콘·색상·필터 칩 매핑용 고정값, `name`은 화면 표시용입니다.
-    - 로그아웃은 Access Token 없이 Refresh Token만으로 요청합니다.
-    - 로그아웃은 같은 Refresh Token으로 여러 번 요청해도 성공 응답을 반환합니다.
+    - 회원가입 요청에는 관심 카테고리 enum 값 배열인 `interestCategories`를 전달합니다. 값은 `PostingCategory`(ENVIRONMENT, EDUCATION, CULTURE, COMMUNITY, WELFARE, OVERSEAS) 중 중복 없이 1개 이상이며, 정의되지 않은 값은 400(`VALIDATION_ERROR`)입니다.
+    - `GET /api/v1/categories`는 아직 기존 16종 분류(`id`/`code`/`name`)를 반환합니다. 6종 enum 전환은 별도 작업으로 진행 중이므로, 전환 완료 전까지 회원가입 카테고리 선택지는 프론트에서 6종 enum 기준으로 처리합니다.
+    - Refresh Token은 응답 body가 아니라 `gather_refresh_token` HttpOnly 쿠키로 전달합니다.
+    - 재발급과 로그아웃은 Access Token 없이 Refresh Token 쿠키만으로 요청합니다.
+    - 로그아웃은 같은 Refresh Token 쿠키로 여러 번 요청해도 성공 응답을 반환합니다.
+    - 카카오 로그인은 `POST /api/v1/auth/kakao/login`에 `{authorizationCode, redirectUri}`를 전달합니다. `redirectUri`는 서버 허용 목록과 문자열까지 정확히 일치해야 합니다. 응답은 200이며 `signupStatus`로 기존 회원(`LOGIN_COMPLETED`)과 신규 회원(`ADDITIONAL_INFO_REQUIRED`)을 구분합니다. `ADDITIONAL_INFO_REQUIRED`는 에러가 아닙니다.
+    - 신규 카카오 회원은 `POST /api/v1/auth/kakao/signup`에 추가정보를 제출하며, 로그인 응답으로 받은 가입용 임시 토큰을 `Authorization`이 아니라 `X-Signup-Token` 헤더로 전달합니다. 카카오 가입은 이메일·비밀번호를 받지 않습니다.
+    - `/kakao/login` 실패 중 400(인가 코드 무효·재사용·redirectUri 불일치), 500(카카오 장애), 503(카카오 요청 제한)은 코드값으로 분기하지 말고 모두 "카카오 로그인 다시 시작"으로 처리합니다. 단 403(정지·탈퇴)은 재시작하지 않고 계정 상태를 안내합니다.
   version: 1.0.0
 
 servers:
@@ -22,6 +25,8 @@ servers:
 tags:
   - name: Auth
     description: 인증, 회원가입, 토큰 관련 API
+  - name: Auth - Kakao
+    description: 카카오 로그인 및 카카오 회원가입 API
   - name: Signup Support
     description: 회원가입 보조 조회 API
 
@@ -241,13 +246,10 @@ paths:
               passwordConfirm: password123!
               nickname: 길동
               introduction: 함께 봉사하고 싶습니다.
-              activityRegionIds:
-                - 1
-                - 2
-              interestCategoryIds:
-                - 1
-                - 4
-                - 5
+              activityRegionId: 123
+              interestCategories:
+                - WELFARE
+                - EDUCATION
               serviceTermsAgreed: true
               privacyPolicyAgreed: true
               marketingAgreed: false
@@ -305,14 +307,14 @@ paths:
                     error:
                       code: REQUIRED_TERMS_NOT_AGREED
                       message: 필수 약관 동의가 필요합니다.
-                invalidActivityRegionCount:
-                  summary: 활동 지역 개수 오류
+                invalidActivityRegion:
+                  summary: 활동 지역 오류
                   value:
                     success: false
                     data: null
                     error:
-                      code: INVALID_ACTIVITY_REGION_COUNT
-                      message: 활동 지역은 1개 이상 3개 이하로 선택해야 합니다.
+                      code: INVALID_ACTIVITY_REGION
+                      message: 활동 지역은 시군구 단위로 1개 선택해야 합니다.
                 invalidInterestCategoryCount:
                   summary: 관심 카테고리 개수 오류
                   value:
@@ -320,9 +322,9 @@ paths:
                     data: null
                     error:
                       code: INVALID_INTEREST_CATEGORY_COUNT
-                      message: 관심 카테고리는 1개 이상 선택해야 합니다.
+                      message: 관심 카테고리는 중복 없이 1개 이상 선택해야 합니다.
         '404':
-          description: 활동 지역 또는 관심 카테고리 없음
+          description: 활동 지역 없음
           content:
             application/json:
               schema:
@@ -336,14 +338,6 @@ paths:
                     error:
                       code: REGION_NOT_FOUND
                       message: 활동 지역을 찾을 수 없습니다.
-                categoryNotFound:
-                  summary: 관심 카테고리 없음
-                  value:
-                    success: false
-                    data: null
-                    error:
-                      code: CATEGORY_NOT_FOUND
-                      message: 관심 카테고리를 찾을 수 없습니다.
         '409':
           description: 중복 데이터 존재
           content:
@@ -381,7 +375,7 @@ paths:
       tags:
         - Auth
       summary: 로그인
-      description: 이메일과 비밀번호를 검증한 뒤 Access Token과 Refresh Token을 발급합니다.
+      description: 이메일과 비밀번호를 검증한 뒤 Access Token은 응답 본문으로, Refresh Token은 HttpOnly 쿠키로 발급합니다.
       operationId: login
       requestBody:
         required: true
@@ -395,6 +389,12 @@ paths:
       responses:
         '200':
           description: 로그인 성공
+          headers:
+            Set-Cookie:
+              description: HttpOnly Refresh Token 쿠키. Domain은 설정하지 않으며 Path는 `/api/v1/auth`입니다.
+              schema:
+                type: string
+              example: gather_refresh_token=refresh-token-value; Path=/api/v1/auth; Max-Age=1209600; HttpOnly; SameSite=Lax
           content:
             application/json:
               schema:
@@ -403,7 +403,6 @@ paths:
                 success: true
                 data:
                   accessToken: access-token-value
-                  refreshToken: refresh-token-value
                   tokenType: Bearer
                 error: null
         '400':
@@ -459,19 +458,24 @@ paths:
       tags:
         - Auth
       summary: 토큰 재발급
-      description: Refresh Token을 검증한 뒤 새로운 Access Token과 Refresh Token을 발급합니다.
+      description: Refresh Token 쿠키를 검증한 뒤 새로운 Access Token과 Refresh Token 쿠키를 발급합니다.
       operationId: reissueToken
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/TokenReissueRequest'
-            example:
-              refreshToken: refresh-token-value
+      parameters:
+        - name: gather_refresh_token
+          in: cookie
+          required: true
+          description: 로그인 또는 직전 재발급에서 받은 HttpOnly Refresh Token 쿠키
+          schema:
+            type: string
       responses:
         '200':
           description: 토큰 재발급 성공
+          headers:
+            Set-Cookie:
+              description: rotation으로 새로 발급되는 HttpOnly Refresh Token 쿠키
+              schema:
+                type: string
+              example: gather_refresh_token=new-refresh-token-value; Path=/api/v1/auth; Max-Age=1209600; HttpOnly; SameSite=Lax
           content:
             application/json:
               schema:
@@ -480,21 +484,8 @@ paths:
                 success: true
                 data:
                   accessToken: new-access-token-value
-                  refreshToken: new-refresh-token-value
                   tokenType: Bearer
                 error: null
-        '400':
-          description: 요청 값 검증 실패
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorApiResponse'
-              example:
-                success: false
-                data: null
-                error:
-                  code: VALIDATION_ERROR
-                  message: 요청 값이 올바르지 않습니다.
         '401':
           description: Refresh Token 오류
           content:
@@ -558,22 +549,27 @@ paths:
       description: |
         Refresh Token 하나를 폐기합니다.
 
-        Access Token 인증을 요구하지 않으며 Refresh Token만으로 처리합니다.
+        Access Token 인증을 요구하지 않으며 Refresh Token 쿠키만으로 처리합니다.
         이는 Access Token이 만료된 상태에서도 사용자가 로그아웃할 수 있도록 하기 위함입니다.
 
         이미 폐기되었거나 만료된 Refresh Token도 서버에 기록이 존재하면 성공 응답을 반환합니다(멱등 처리).
       operationId: logout
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/LogoutRequest'
-            example:
-              refreshToken: refresh-token-value
+      parameters:
+        - name: gather_refresh_token
+          in: cookie
+          required: true
+          description: 폐기할 HttpOnly Refresh Token 쿠키
+          schema:
+            type: string
       responses:
         '200':
           description: 로그아웃 성공
+          headers:
+            Set-Cookie:
+              description: Refresh Token 삭제 쿠키
+              schema:
+                type: string
+              example: gather_refresh_token=; Path=/api/v1/auth; Max-Age=0; HttpOnly; SameSite=Lax
           content:
             application/json:
               schema:
@@ -582,18 +578,6 @@ paths:
                 success: true
                 data: null
                 error: null
-        '400':
-          description: 요청 값 검증 실패
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorApiResponse'
-              example:
-                success: false
-                data: null
-                error:
-                  code: VALIDATION_ERROR
-                  message: 요청 값이 올바르지 않습니다.
         '401':
           description: 유효하지 않은 Refresh Token
           content:
@@ -606,6 +590,295 @@ paths:
                 error:
                   code: INVALID_TOKEN
                   message: 유효하지 않은 토큰입니다.
+
+  /api/v1/auth/kakao/login:
+    post:
+      tags:
+        - Auth - Kakao
+      summary: 카카오 로그인
+      description: |
+        카카오 인가 코드를 검증한 뒤 기존 회원이면 로그인시키고, 신규 회원이면 가입용 임시 토큰을 발급합니다.
+        두 경우 모두 HTTP 200이며 `signupStatus`로 구분합니다. `ADDITIONAL_INFO_REQUIRED`는 에러가 아닙니다.
+
+        400(인가 코드 무효·재사용, redirectUri 불일치), 500(카카오 장애), 503(카카오 요청 제한)은 코드값으로 분기하지 말고 모두
+        "카카오 로그인 다시 시작"으로 처리합니다. 단 403(정지·탈퇴)은 재시작하지 않고 계정 상태를 안내합니다.
+      operationId: kakaoLogin
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/KakaoLoginRequest'
+            example:
+              authorizationCode: R0-abcdefghijklmnopqrstuvwxyz1234567890
+              redirectUri: https://gathernow.kr/login/kakao/callback
+      responses:
+        '200':
+          description: 카카오 인증 성공. 기존 회원은 로그인 완료, 신규 회원은 추가정보 입력 필요.
+          headers:
+            Set-Cookie:
+              description: LOGIN_COMPLETED일 때만 발급되는 HttpOnly Refresh Token 쿠키
+              schema:
+                type: string
+              example: gather_refresh_token=refresh-token-value; Path=/api/v1/auth; Max-Age=1209600; HttpOnly; SameSite=Lax
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/KakaoLoginApiResponse'
+              examples:
+                loginCompleted:
+                  summary: 기존 카카오 회원 로그인 완료
+                  value:
+                    success: true
+                    data:
+                      signupStatus: LOGIN_COMPLETED
+                      accessToken: access-token-value
+                      tokenType: Bearer
+                    error: null
+                additionalInfoRequired:
+                  summary: 신규 카카오 회원. 추가정보 입력 필요.
+                  value:
+                    success: true
+                    data:
+                      signupStatus: ADDITIONAL_INFO_REQUIRED
+                      signupToken: signup-token-value
+                      profile:
+                        nickname: 동현
+                    error: null
+                additionalInfoRequiredNoNickname:
+                  summary: 카카오 닉네임을 가져오지 못한 경우
+                  value:
+                    success: true
+                    data:
+                      signupStatus: ADDITIONAL_INFO_REQUIRED
+                      signupToken: signup-token-value
+                      profile:
+                        nickname: null
+                    error: null
+        '400':
+          description: 요청 값 검증 실패, 인가 코드 무효·재사용, 또는 허용되지 않은 redirectUri
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorApiResponse'
+              example:
+                success: false
+                data: null
+                error:
+                  code: VALIDATION_ERROR
+                  message: 요청 값이 올바르지 않습니다.
+        '403':
+          description: 기존 카카오 회원의 계정 상태로 인한 로그인 차단. 재시작이 아니라 계정 상태 안내가 필요합니다.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorApiResponse'
+              examples:
+                suspendedUser:
+                  summary: 이용 정지 계정
+                  value:
+                    success: false
+                    data: null
+                    error:
+                      code: SUSPENDED_USER
+                      message: 이용 정지된 계정입니다.
+                withdrawnUser:
+                  summary: 탈퇴 계정
+                  value:
+                    success: false
+                    data: null
+                    error:
+                      code: WITHDRAWN_USER
+                      message: 탈퇴한 계정입니다.
+        '500':
+          description: 카카오 API 장애 또는 타임아웃
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorApiResponse'
+              example:
+                success: false
+                data: null
+                error:
+                  code: INTERNAL_SERVER_ERROR
+                  message: 서버 오류가 발생했습니다.
+        '503':
+          description: 카카오 API 요청 제한. 카카오 로그인을 다시 시작하세요.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorApiResponse'
+              example:
+                success: false
+                data: null
+                error:
+                  code: KAKAO_API_UNAVAILABLE
+                  message: 카카오 로그인 서비스를 일시적으로 사용할 수 없습니다.
+
+  /api/v1/auth/kakao/signup:
+    post:
+      tags:
+        - Auth - Kakao
+      summary: 카카오 추가정보 가입
+      description: |
+        카카오 로그인에서 받은 가입용 임시 토큰과 추가정보로 회원가입을 완료하고 곧바로 로그인 토큰을 발급합니다.
+        이메일과 비밀번호는 받지 않습니다.
+
+        가입 토큰은 `Authorization`이 아니라 `X-Signup-Token` 헤더로 보냅니다.
+        전화번호가 이미 가입에 사용된 경우 `DUPLICATE_PHONE_NUMBER`(409)로 실패합니다. 이는 기존 일반 계정과
+        동일인이라는 뜻이므로, 입력 오류가 아니라 기존 계정 로그인 안내로 처리합니다.
+      operationId: kakaoSignup
+      parameters:
+        - name: X-Signup-Token
+          in: header
+          required: true
+          description: 카카오 로그인 응답으로 받은 가입용 임시 토큰
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/KakaoSignupRequest'
+            example:
+              name: 홍길동
+              birthDate: '2002-03-15'
+              gender: MALE
+              phoneNumber: '01012345678'
+              nickname: 길동
+              introduction: 함께 봉사하고 싶습니다.
+              activityRegionId: 123
+              interestCategories:
+                - WELFARE
+                - EDUCATION
+              serviceTermsAgreed: true
+              privacyPolicyAgreed: true
+              marketingAgreed: false
+      responses:
+        '201':
+          description: 가입 및 자동 로그인 성공
+          headers:
+            Set-Cookie:
+              description: HttpOnly Refresh Token 쿠키
+              schema:
+                type: string
+              example: gather_refresh_token=refresh-token-value; Path=/api/v1/auth; Max-Age=1209600; HttpOnly; SameSite=Lax
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenApiResponse'
+              example:
+                success: true
+                data:
+                  accessToken: access-token-value
+                  tokenType: Bearer
+                error: null
+        '400':
+          description: 요청 값 검증 실패 또는 비즈니스 규칙 위반
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorApiResponse'
+              examples:
+                validationError:
+                  summary: 단일 필드 검증 실패
+                  value:
+                    success: false
+                    data: null
+                    error:
+                      code: VALIDATION_ERROR
+                      message: 요청 값이 올바르지 않습니다.
+                requiredTermsNotAgreed:
+                  summary: 필수 약관 미동의
+                  value:
+                    success: false
+                    data: null
+                    error:
+                      code: REQUIRED_TERMS_NOT_AGREED
+                      message: 필수 약관 동의가 필요합니다.
+                invalidActivityRegion:
+                  summary: 활동 지역 오류
+                  value:
+                    success: false
+                    data: null
+                    error:
+                      code: INVALID_ACTIVITY_REGION
+                      message: 활동 지역은 시군구 단위로 1개 선택해야 합니다.
+                invalidInterestCategoryCount:
+                  summary: 관심 카테고리 개수 오류
+                  value:
+                    success: false
+                    data: null
+                    error:
+                      code: INVALID_INTEREST_CATEGORY_COUNT
+                      message: 관심 카테고리는 중복 없이 1개 이상 선택해야 합니다.
+        '401':
+          description: 가입용 토큰 오류. signupToken을 지우고 카카오 로그인부터 다시 시작하세요.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorApiResponse'
+              examples:
+                signupTokenExpired:
+                  summary: 가입용 토큰 만료(15분 초과)
+                  value:
+                    success: false
+                    data: null
+                    error:
+                      code: SIGNUP_TOKEN_EXPIRED
+                      message: 가입 인증이 만료되었습니다. 카카오 로그인부터 다시 진행해주세요.
+                signupTokenInvalid:
+                  summary: 서명 변조·클레임 불일치·헤더 누락
+                  value:
+                    success: false
+                    data: null
+                    error:
+                      code: SIGNUP_TOKEN_INVALID
+                      message: 유효하지 않은 가입 인증입니다. 카카오 로그인부터 다시 진행해주세요.
+        '404':
+          description: 활동 지역 없음
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorApiResponse'
+              example:
+                success: false
+                data: null
+                error:
+                  code: REGION_NOT_FOUND
+                  message: 활동 지역을 찾을 수 없습니다.
+        '409':
+          description: 중복 데이터 존재
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorApiResponse'
+              examples:
+                duplicatePhoneNumber:
+                  summary: 이미 가입된 전화번호. 기존 계정 로그인 안내가 필요합니다.
+                  value:
+                    success: false
+                    data: null
+                    error:
+                      code: DUPLICATE_PHONE_NUMBER
+                      message: 이미 사용 중인 전화번호입니다.
+                duplicateNickname:
+                  summary: 닉네임 중복
+                  value:
+                    success: false
+                    data: null
+                    error:
+                      code: DUPLICATE_NICKNAME
+                      message: 이미 사용 중인 닉네임입니다.
+                alreadyRegistered:
+                  summary: 이미 가입된 카카오 계정(가입 토큰 재사용)
+                  value:
+                    success: false
+                    data: null
+                    error:
+                      code: ALREADY_REGISTERED
+                      message: 이미 가입된 계정입니다.
 
   /api/v1/regions:
     get:
@@ -654,10 +927,10 @@ paths:
                 success: true
                 data:
                   - id: 1
-                    code: ENVIRONMENT
-                    name: 환경
-                  - id: 2
-                    code: EDUCATION
+                    code: '0100'
+                    name: 생활편의
+                  - id: 4
+                    code: '0400'
                     name: 교육
                 error: null
 
@@ -694,9 +967,9 @@ components:
         - WITHDRAWN
       example: ACTIVE
 
-    CategoryCode:
+    PostingCategory:
       type: string
-      description: 카테고리 의미 고정값
+      description: 관심 카테고리 enum. 공고·모임·회원 관심 카테고리에서 공통으로 사용하는 6종 분류입니다.
       enum:
         - ENVIRONMENT
         - EDUCATION
@@ -704,7 +977,7 @@ components:
         - COMMUNITY
         - WELFARE
         - OVERSEAS
-      example: ENVIRONMENT
+      example: WELFARE
 
     ApiError:
       type: object
@@ -895,16 +1168,18 @@ components:
         - password
         - passwordConfirm
         - nickname
-        - activityRegionIds
-        - interestCategoryIds
+        - activityRegionId
+        - interestCategories
         - serviceTermsAgreed
         - privacyPolicyAgreed
         - marketingAgreed
       properties:
         name:
           type: string
-          maxLength: 12
-          description: 이름. 한글은 최대 7자, 영문은 최대 12자, 한글/영문 혼합 입력은 최대 12자까지 허용합니다.
+          minLength: 2
+          maxLength: 20
+          pattern: '^(?:[가-힣]{2,10}|[A-Za-z]{2,20})$'
+          description: 이름. 완성형 한글 2~10자 또는 영문 2~20자만 허용하며, 혼합·공백·숫자·특수문자는 허용하지 않습니다.
           example: 홍길동
         birthDate:
           type: string
@@ -939,8 +1214,9 @@ components:
         nickname:
           type: string
           minLength: 2
-          maxLength: 8
-          description: 닉네임. 2자 이상 8자 이하입니다.
+          maxLength: 20
+          pattern: '^(?:[가-힣]{2,10}|[A-Za-z]{2,20})$'
+          description: 닉네임. 완성형 한글 2~10자 또는 영문 2~20자만 허용하며, 혼합·공백·숫자·특수문자는 허용하지 않습니다.
           example: 길동
         introduction:
           type: string
@@ -948,30 +1224,21 @@ components:
           nullable: true
           description: 소개글. 최대 50자입니다.
           example: 함께 봉사하고 싶습니다.
-        activityRegionIds:
-          type: array
-          minItems: 1
-          maxItems: 3
-          uniqueItems: true
-          description: 활동 지역 ID 목록. 회원가입 화면에 노출되는 최상위 지역(level 1)만 중복 없이 1개 이상 3개 이하로 선택합니다.
-          items:
-            type: integer
-            format: int64
-          example:
-            - 1
-            - 2
-        interestCategoryIds:
+        activityRegionId:
+          type: integer
+          format: int64
+          description: 활동 지역 ID. 회원가입 시 선택하는 시군구(level 2) 단위 활동 지역 1개입니다. 향후 공고/모임 검색의 기본 지역 필터 초기값으로 사용합니다.
+          example: 123
+        interestCategories:
           type: array
           minItems: 1
           uniqueItems: true
-          description: 관심 카테고리 ID 목록. 1개 이상입니다.
+          description: 관심 카테고리 목록. 중복 없이 1개 이상입니다.
           items:
-            type: integer
-            format: int64
+            $ref: '#/components/schemas/PostingCategory'
           example:
-            - 1
-            - 4
-            - 5
+            - WELFARE
+            - EDUCATION
         serviceTermsAgreed:
           type: boolean
           description: 서비스 이용약관 동의 여부. true 필수입니다.
@@ -1030,6 +1297,158 @@ components:
             - $ref: '#/components/schemas/ApiError'
           example: null
 
+    KakaoLoginRequest:
+      type: object
+      required:
+        - authorizationCode
+        - redirectUri
+      properties:
+        authorizationCode:
+          type: string
+          description: 카카오 콜백으로 전달받은 인가 코드. 한 번 사용하면 재사용할 수 없습니다.
+          example: R0-abcdefghijklmnopqrstuvwxyz1234567890
+        redirectUri:
+          type: string
+          description: 인가 요청에 사용한 Redirect URI. 서버 허용 목록과 문자열까지 정확히 일치해야 합니다.
+          example: https://gathernow.kr/login/kakao/callback
+
+    KakaoProfile:
+      type: object
+      description: 추가정보 화면의 닉네임 초깃값 용도. ADDITIONAL_INFO_REQUIRED일 때만 내려갑니다.
+      properties:
+        nickname:
+          type: string
+          nullable: true
+          description: 카카오 닉네임. 없으면 null입니다.
+          example: 동현
+
+    KakaoLoginData:
+      type: object
+      description: |
+        signupStatus에 따라 채워지는 필드가 다릅니다. 해당 상태에 없는 필드는 응답에서 생략됩니다.
+        LOGIN_COMPLETED이면 accessToken·tokenType이, ADDITIONAL_INFO_REQUIRED이면 signupToken·profile이 내려갑니다.
+      required:
+        - signupStatus
+      properties:
+        signupStatus:
+          type: string
+          enum:
+            - LOGIN_COMPLETED
+            - ADDITIONAL_INFO_REQUIRED
+          description: 로그인 결과 상태. 둘 다 정상 200 응답입니다.
+          example: ADDITIONAL_INFO_REQUIRED
+        accessToken:
+          type: string
+          nullable: true
+          description: Gather Access Token. LOGIN_COMPLETED일 때만 내려갑니다.
+          example: access-token-value
+        tokenType:
+          type: string
+          nullable: true
+          description: 토큰 타입. LOGIN_COMPLETED일 때만 내려갑니다.
+          example: Bearer
+        signupToken:
+          type: string
+          nullable: true
+          description: 가입용 임시 토큰. ADDITIONAL_INFO_REQUIRED일 때만 내려갑니다. X-Signup-Token 헤더로 재전송합니다.
+          example: signup-token-value
+        profile:
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/KakaoProfile'
+
+    KakaoLoginApiResponse:
+      type: object
+      required:
+        - success
+        - data
+        - error
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          $ref: '#/components/schemas/KakaoLoginData'
+        error:
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/ApiError'
+          example: null
+
+    KakaoSignupRequest:
+      type: object
+      required:
+        - name
+        - birthDate
+        - gender
+        - phoneNumber
+        - nickname
+        - activityRegionId
+        - interestCategories
+        - serviceTermsAgreed
+        - privacyPolicyAgreed
+        - marketingAgreed
+      properties:
+        name:
+          type: string
+          minLength: 2
+          maxLength: 20
+          pattern: '^(?:[가-힣]{2,10}|[A-Za-z]{2,20})$'
+          description: 이름. 완성형 한글 2~10자 또는 영문 2~20자만 허용하며, 혼합·공백·숫자·특수문자는 허용하지 않습니다.
+          example: 홍길동
+        birthDate:
+          type: string
+          format: date
+          description: 생년월일. yyyy-MM-dd 형식이며 미래 날짜는 허용하지 않습니다.
+          example: '2002-03-15'
+        gender:
+          $ref: '#/components/schemas/Gender'
+        phoneNumber:
+          type: string
+          pattern: '^[0-9]+$'
+          description: 전화번호. 숫자만 전달합니다. 서버에서 하이픈과 공백을 제거해 정규화합니다.
+          example: '01012345678'
+        nickname:
+          type: string
+          minLength: 2
+          maxLength: 20
+          pattern: '^(?:[가-힣]{2,10}|[A-Za-z]{2,20})$'
+          description: 닉네임. 완성형 한글 2~10자 또는 영문 2~20자만 허용합니다. 카카오 닉네임을 초깃값으로 채운 뒤 사용자가 수정할 수 있습니다.
+          example: 길동
+        introduction:
+          type: string
+          maxLength: 50
+          nullable: true
+          description: 소개글. 최대 50자입니다.
+          example: 함께 봉사하고 싶습니다.
+        activityRegionId:
+          type: integer
+          format: int64
+          description: 활동 지역 ID. 시군구(level 2) 단위 1개입니다.
+          example: 123
+        interestCategories:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          description: 관심 카테고리 목록. 중복 없이 1개 이상입니다.
+          items:
+            $ref: '#/components/schemas/PostingCategory'
+          example:
+            - WELFARE
+            - EDUCATION
+        serviceTermsAgreed:
+          type: boolean
+          description: 서비스 이용약관 동의 여부. true 필수입니다.
+          example: true
+        privacyPolicyAgreed:
+          type: boolean
+          description: 개인정보 처리방침 동의 여부. true 필수입니다.
+          example: true
+        marketingAgreed:
+          type: boolean
+          description: 맞춤형 봉사/이벤트 알림 수신 동의 여부. 선택 동의입니다.
+          example: false
+
     LoginRequest:
       type: object
       required:
@@ -1047,41 +1466,16 @@ components:
           description: 비밀번호
           example: password123!
 
-    TokenReissueRequest:
-      type: object
-      required:
-        - refreshToken
-      properties:
-        refreshToken:
-          type: string
-          description: 로그인 시 발급받은 Refresh Token
-          example: refresh-token-value
-
-    LogoutRequest:
-      type: object
-      required:
-        - refreshToken
-      properties:
-        refreshToken:
-          type: string
-          description: 폐기할 Refresh Token
-          example: refresh-token-value
-
     TokenData:
       type: object
       required:
         - accessToken
-        - refreshToken
         - tokenType
       properties:
         accessToken:
           type: string
           description: API 인증에 사용할 Access Token
           example: access-token-value
-        refreshToken:
-          type: string
-          description: Access Token 재발급에 사용할 Refresh Token
-          example: refresh-token-value
         tokenType:
           type: string
           description: 토큰 타입
@@ -1136,7 +1530,7 @@ components:
         id:
           type: integer
           format: int64
-          description: 지역 ID. 회원가입의 activityRegionIds에 사용합니다.
+          description: 지역 ID. 회원가입의 activityRegionId에 사용합니다.
           example: 1
         name:
           type: string
@@ -1187,14 +1581,16 @@ components:
         id:
           type: integer
           format: int64
-          description: 카테고리 ID. 회원가입의 interestCategoryIds에 사용합니다.
+          description: 카테고리 ID. 기존 16종 분류의 DB 참조용 식별자입니다.
           example: 1
         code:
-          $ref: '#/components/schemas/CategoryCode'
+          type: string
+          description: 1365 기준 봉사분야 숫자 문자열 코드입니다. 현재 seed 기준 값은 0100 생활편의, 0200 주거환경, 0300 상담·멘토링, 0400 교육, 0500 보건·의료, 0600 농어촌 봉사, 0700 문화·체육·예술·관광, 0800 환경·생태계보호, 0900 사무행정, 1000 지역안전·보호, 1100 인권·공익, 1200 재난·재해, 1300 국제협력·해외봉사, 1500 기타, 1700 자원봉사 기본교육, 1900 온라인자원봉사입니다.
+          example: '0100'
         name:
           type: string
           description: 카테고리 표시명
-          example: 환경
+          example: 생활편의
 
     CategoryListApiResponse:
       type: object

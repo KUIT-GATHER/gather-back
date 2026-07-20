@@ -3,23 +3,20 @@ package com.gather.gather.domain.posting.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
-import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.gather.gather.domain.category.entity.Category;
-import com.gather.gather.domain.category.repository.CategoryRepository;
 import com.gather.gather.domain.posting.client.VolunteerApiClient;
 import com.gather.gather.domain.posting.client.VolunteerApiException;
 import com.gather.gather.domain.posting.client.dto.VolunteerApiItemDto;
 import com.gather.gather.domain.posting.client.dto.VolunteerApiSearchCondition;
 import com.gather.gather.domain.posting.client.dto.VolunteerApiSearchItemDto;
 import com.gather.gather.domain.posting.entity.Posting;
+import com.gather.gather.domain.posting.entity.PostingCategory;
 import com.gather.gather.domain.posting.entity.PostingStatus;
 import com.gather.gather.domain.posting.repository.PostingLocationRepository;
 import com.gather.gather.domain.posting.repository.PostingRepository;
@@ -46,7 +43,7 @@ class PostingSyncServiceTest {
     @Mock private PostingRepository postingRepository;
     @Mock private RegionRepository regionRepository;
     @Mock private PostingLocationRepository postingLocationRepository;
-    @Mock private CategoryRepository categoryRepository;
+    @Mock private DongResolver dongResolver;
 
     private PostingSyncService postingSyncService;
 
@@ -58,14 +55,11 @@ class PostingSyncServiceTest {
                         postingRepository,
                         regionRepository,
                         postingLocationRepository,
-                        categoryRepository);
-        // 대부분의 테스트는 categoryId 매칭 자체가 관심사가 아니므로 기본값으로 항상 매칭되게 lenient 처리.
-        // categoryWithId(...)가 내부적으로 when(...)을 호출하므로, 바깥 when(...).thenReturn(...) 체인이 완료되기 전에
-        // 인자로 인라인하면 Mockito가 미완성 스터빙으로 오인해 UnfinishedStubbingException을 던진다 — 반드시 별도 문장으로 분리.
-        Category defaultCategory = categoryWithId(1L);
-        lenient()
-                .when(categoryRepository.findByName(anyString()))
-                .thenReturn(Optional.of(defaultCategory));
+                        dongResolver);
+        // Mockito는 unstubbed Long 반환 메서드의 기본값을 null이 아닌 0L로 준다. 동 매칭을 시도하지 않는
+        // 대부분의 테스트가 구 단위 regionId를 그대로 쓰도록, 기본은 "동 매칭 없음"으로 고정한다.
+        lenient().when(dongResolver.resolve(any(), any(), any(), any())).thenReturn(null);
+        lenient().when(dongResolver.isDongOf(any(), any())).thenReturn(false);
     }
 
     @Test
@@ -169,18 +163,16 @@ class PostingSyncServiceTest {
     }
 
     @Test
-    @DisplayName("updateExisting refreshes categoryId from srvcClCode instead of leaving it stale")
-    void syncRecentPostings_refreshesCategoryId_onUpdate() {
+    @DisplayName("updateExisting refreshes category from srvcClCode instead of leaving it stale")
+    void syncRecentPostings_refreshesCategory_onUpdate() {
         Posting existing = existingPosting("500");
         when(volunteerApiClient.searchList(any(), eq(1), eq(100)))
                 .thenReturn(List.of(searchItem("500", "2")));
         when(postingRepository.findByExtId("500")).thenReturn(Optional.of(existing));
-        Category matchedCategory = categoryWithId(7L);
-        when(categoryRepository.findByName("생활편의")).thenReturn(Optional.of(matchedCategory));
 
         postingSyncService.syncRecentPostings();
 
-        assertThat(existing.getCategoryId()).isEqualTo(7L);
+        assertThat(existing.getCategory()).isEqualTo(PostingCategory.WELFARE);
     }
 
     @Test
@@ -355,62 +347,72 @@ class PostingSyncServiceTest {
     }
 
     @Test
-    @DisplayName("resolveCategoryId matches Category by srvcClCode text (분야명)")
-    void syncRecentPostings_matchesCategoryBySrvcClCodeText() {
+    @DisplayName("insertNew upgrades regionId to dong level when DongResolver finds a match")
+    void syncRecentPostings_upgradesToDongLevel_whenDongResolverMatches() {
         when(volunteerApiClient.searchList(any(), eq(1), eq(100)))
-                .thenReturn(List.of(searchItem("C1", "2")));
-        when(postingRepository.findByExtId("C1")).thenReturn(Optional.empty());
-        when(volunteerApiClient.getItem("C1")).thenReturn(detailItem("C1", "2", "20260601"));
-        Category matchedCategory = categoryWithId(3L);
-        when(categoryRepository.findByName("생활편의")).thenReturn(Optional.of(matchedCategory));
+                .thenReturn(List.of(searchItem("R4", "2")));
+        when(postingRepository.findByExtId("R4")).thenReturn(Optional.empty());
+        when(volunteerApiClient.getItem("R4")).thenReturn(detailItem("R4", "2", "20260601"));
+        when(regionRepository.findByCode("3020000"))
+                .thenReturn(Optional.of(regionWithId(5L, "3020000")));
+        when(dongResolver.resolve(eq(5L), any(), any(), any())).thenReturn(50L);
 
         postingSyncService.syncRecentPostings();
 
         ArgumentCaptor<Posting> captor = ArgumentCaptor.forClass(Posting.class);
         verify(postingRepository).save(captor.capture());
-        assertThat(captor.getValue().getCategoryId()).isEqualTo(3L);
-    }
-
-    @Test
-    @DisplayName("resolveCategoryId falls back to '기타' when srvcClCode has no matching Category")
-    void syncRecentPostings_fallsBackToGitaCategory_whenSrvcClCodeNotMatched() {
-        when(volunteerApiClient.searchList(any(), eq(1), eq(100)))
-                .thenReturn(List.of(searchItem("C2", "2")));
-        when(postingRepository.findByExtId("C2")).thenReturn(Optional.empty());
-        when(volunteerApiClient.getItem("C2")).thenReturn(detailItem("C2", "2", "20260601"));
-        when(categoryRepository.findByName("생활편의")).thenReturn(Optional.empty());
-        Category fallbackCategory = categoryWithId(14L);
-        when(categoryRepository.findByName("기타")).thenReturn(Optional.of(fallbackCategory));
-
-        postingSyncService.syncRecentPostings();
-
-        ArgumentCaptor<Posting> captor = ArgumentCaptor.forClass(Posting.class);
-        verify(postingRepository).save(captor.capture());
-        assertThat(captor.getValue().getCategoryId()).isEqualTo(14L);
+        assertThat(captor.getValue().getRegionId()).isEqualTo(50L);
     }
 
     @Test
     @DisplayName(
-            "insertNew fails the item (not the whole batch) when the '기타' fallback Category is not"
-                    + " seeded")
-    void syncRecentPostings_marksItemFailed_whenFallbackCategoryNotSeeded() {
+            "updateExisting keeps an already-resolved dong-level regionId instead of downgrading"
+                    + " it to gu level, without attempting a fresh dong re-resolution")
+    void syncRecentPostings_keepsExistingDongLevelRegion_onListSyncUpdate() {
+        Posting existing = existingPosting("R5");
+        org.springframework.test.util.ReflectionTestUtils.setField(existing, "regionId", 50L);
         when(volunteerApiClient.searchList(any(), eq(1), eq(100)))
-                .thenReturn(List.of(searchItem("C3", "2")));
-        when(postingRepository.findByExtId("C3")).thenReturn(Optional.empty());
-        when(volunteerApiClient.getItem("C3")).thenReturn(detailItem("C3", "2", "20260601"));
-        when(categoryRepository.findByName("생활편의")).thenReturn(Optional.empty());
-        when(categoryRepository.findByName("기타")).thenReturn(Optional.empty());
+                .thenReturn(List.of(searchItem("R5", "2")));
+        when(postingRepository.findByExtId("R5")).thenReturn(Optional.of(existing));
+        when(regionRepository.findByCode("3020000"))
+                .thenReturn(Optional.of(regionWithId(5L, "3020000")));
+        when(dongResolver.isDongOf(50L, 5L)).thenReturn(true);
 
-        PostingSyncResult result = postingSyncService.syncRecentPostings();
+        postingSyncService.syncRecentPostings();
 
-        verify(postingRepository, never()).save(any());
-        assertThat(result).isEqualTo(new PostingSyncResult(1, 0, 0, 1, 0));
+        assertThat(existing.getRegionId()).isEqualTo(50L);
     }
 
-    private Category categoryWithId(Long id) {
-        Category category = mock(Category.class);
-        lenient().when(category.getId()).thenReturn(id);
-        return category;
+    @Test
+    @DisplayName(
+            "resolveCategory maps srvcClCode text (분야명) to PostingCategory via the 16→6 mapping")
+    void syncRecentPostings_mapsSrvcClCodeTextToPostingCategory() {
+        when(volunteerApiClient.searchList(any(), eq(1), eq(100)))
+                .thenReturn(List.of(searchItem("C1", "2")));
+        when(postingRepository.findByExtId("C1")).thenReturn(Optional.empty());
+        when(volunteerApiClient.getItem("C1")).thenReturn(detailItem("C1", "2", "20260601"));
+
+        postingSyncService.syncRecentPostings();
+
+        ArgumentCaptor<Posting> captor = ArgumentCaptor.forClass(Posting.class);
+        verify(postingRepository).save(captor.capture());
+        assertThat(captor.getValue().getCategory()).isEqualTo(PostingCategory.WELFARE);
+    }
+
+    @Test
+    @DisplayName("resolveCategory falls back to COMMUNITY when srvcClCode has no mapping entry")
+    void syncRecentPostings_fallsBackToCommunityCategory_whenSrvcClCodeNotMapped() {
+        when(volunteerApiClient.searchList(any(), eq(1), eq(100)))
+                .thenReturn(List.of(searchItem("C2", "2")));
+        when(postingRepository.findByExtId("C2")).thenReturn(Optional.empty());
+        when(volunteerApiClient.getItem("C2"))
+                .thenReturn(detailItemWithSrvcClCode("C2", "2", "20260601", "존재하지않는분야"));
+
+        postingSyncService.syncRecentPostings();
+
+        ArgumentCaptor<Posting> captor = ArgumentCaptor.forClass(Posting.class);
+        verify(postingRepository).save(captor.capture());
+        assertThat(captor.getValue().getCategory()).isEqualTo(PostingCategory.COMMUNITY);
     }
 
     private Posting existingPosting(String extId) {
@@ -419,7 +421,7 @@ class PostingSyncServiceTest {
                 .title("기존 제목")
                 .status(PostingStatus.RECRUITING)
                 .activityDate(LocalDate.of(2026, 1, 1))
-                .categoryId(1L)
+                .category(PostingCategory.EDUCATION)
                 .build();
     }
 
@@ -512,6 +514,23 @@ class PostingSyncServiceTest {
             String progrmBgnde,
             String sidoCd,
             String gugunCd) {
+        return detailItemWithSrvcClCode(
+                progrmRegistNo, progrmSttusSe, progrmBgnde, sidoCd, gugunCd, "생활편의");
+    }
+
+    private VolunteerApiItemDto detailItemWithSrvcClCode(
+            String progrmRegistNo, String progrmSttusSe, String progrmBgnde, String srvcClCode) {
+        return detailItemWithSrvcClCode(
+                progrmRegistNo, progrmSttusSe, progrmBgnde, "6110000", "3020000", srvcClCode);
+    }
+
+    private VolunteerApiItemDto detailItemWithSrvcClCode(
+            String progrmRegistNo,
+            String progrmSttusSe,
+            String progrmBgnde,
+            String sidoCd,
+            String gugunCd,
+            String srvcClCode) {
         return new VolunteerApiItemDto(
                 "09",
                 "18",
@@ -545,7 +564,7 @@ class PostingSyncServiceTest {
                 progrmSttusSe,
                 "5",
                 sidoCd,
-                "생활편의",
+                srvcClCode,
                 "02-111-1111",
                 "N");
     }

@@ -2,7 +2,6 @@ package com.gather.gather.domain.meeting.service;
 
 import com.gather.gather.domain.auth.entity.User;
 import com.gather.gather.domain.auth.repository.UserRepository;
-import com.gather.gather.domain.category.repository.CategoryRepository;
 import com.gather.gather.domain.meeting.dto.MeetingCreateRequest;
 import com.gather.gather.domain.meeting.dto.MeetingDetailResponse;
 import com.gather.gather.domain.meeting.dto.MeetingResponse;
@@ -12,6 +11,9 @@ import com.gather.gather.domain.meeting.enums.MeetingMemberStatus;
 import com.gather.gather.domain.meeting.enums.MeetingStatus;
 import com.gather.gather.domain.meeting.repository.MeetingMemberRepository;
 import com.gather.gather.domain.meeting.repository.MeetingRepository;
+import com.gather.gather.domain.posting.entity.Posting;
+import com.gather.gather.domain.posting.entity.PostingCategory;
+import com.gather.gather.domain.posting.repository.PostingRepository;
 import com.gather.gather.domain.region.repository.RegionRepository;
 import com.gather.gather.global.exception.BusinessException;
 import com.gather.gather.global.exception.ErrorCode;
@@ -19,6 +21,7 @@ import com.gather.gather.global.util.SecurityUtil;
 import java.time.LocalDateTime;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -30,14 +33,14 @@ public class MeetingService {
     private final MeetingRepository meetingRepository;
     private final MeetingMemberRepository meetingMemberRepository;
     private final UserRepository userRepository;
-    private final CategoryRepository categoryRepository;
     private final RegionRepository regionRepository;
+    private final PostingRepository postingRepository;
 
     @Transactional
     public MeetingResponse createMeeting(MeetingCreateRequest request) {
         validateMeetingTime(request.deadline(), request.activityStartAt(), request.activityEndAt());
-        validateCategoryExists(request.categoryId());
         validateRegionExists(request.regionId());
+        PostingCategory category = resolveCategory(request);
 
         Long userId = SecurityUtil.getCurrentUserId();
         User host = getUser(userId);
@@ -49,7 +52,7 @@ public class MeetingService {
                         request.maxMember(),
                         request.deadline(),
                         request.memo(),
-                        request.categoryId(),
+                        category,
                         request.regionId(),
                         host,
                         request.participationCondition(),
@@ -66,8 +69,8 @@ public class MeetingService {
     }
 
     public List<MeetingResponse> getMeetings(
-            String keyword, Long regionId, Long categoryId, MeetingStatus status) {
-        return meetingRepository.searchMeetings(keyword, regionId, categoryId, null).stream()
+            String keyword, Long regionId, PostingCategory category, MeetingStatus status) {
+        return meetingRepository.searchMeetings(keyword, regionId, category, null).stream()
                 .map(meeting -> MeetingResponse.from(meeting, resolveDisplayStatus(meeting)))
                 .filter(response -> status == null || response.status() == status)
                 .toList();
@@ -86,8 +89,11 @@ public class MeetingService {
 
         validateJoinableMeeting(meeting, userId);
 
-        MeetingMember meetingMember = MeetingMember.createMember(user, meeting);
-        meetingMemberRepository.save(meetingMember);
+        try {
+            meetingMemberRepository.saveAndFlush(MeetingMember.createMember(user, meeting));
+        } catch (DataIntegrityViolationException exception) {
+            throw new BusinessException(ErrorCode.MEETING_ALREADY_JOINED);
+        }
 
         meeting.increaseMemberCount();
 
@@ -143,10 +149,21 @@ public class MeetingService {
         }
     }
 
-    private void validateCategoryExists(Long categoryId) {
-        if (!categoryRepository.existsById(categoryId)) {
-            throw new BusinessException(ErrorCode.CATEGORY_NOT_FOUND);
+    private PostingCategory resolveCategory(MeetingCreateRequest request) {
+        if (request.volunteerPostingId() != null) {
+            Posting posting =
+                    postingRepository
+                            .findById(request.volunteerPostingId())
+                            .orElseThrow(() -> new BusinessException(ErrorCode.POSTING_NOT_FOUND));
+
+            return posting.getCategory();
         }
+
+        if (request.category() == null) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR);
+        }
+
+        return request.category();
     }
 
     private void validateRegionExists(Long regionId) {

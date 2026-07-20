@@ -73,16 +73,16 @@
 
 | 필드 | 규칙 |
 |---|---|
-| `name` | 한글만이면 최대 7자, 영문/혼합은 최대 12자 |
+| `name` | 완성형 한글 2~10자 또는 영문 2~20자. 혼합·공백·숫자·특수문자 불가 |
 | `birthDate` | `yyyy-MM-dd`, 미래 날짜 불가 |
 | `gender` | `MALE` / `FEMALE` (그 외 값은 400) |
 | `phoneNumber` | 숫자만 권장(하이픈은 서버가 제거) |
 | `email` | **인증 완료된 이메일**이어야 함, 최대 255자 |
 | `password` / `passwordConfirm` | 6~12자, 두 값 일치 필수 |
-| `nickname` | 2~8자 |
+| `nickname` | 완성형 한글 2~10자 또는 영문 2~20자. 혼합·공백·숫자·특수문자 불가 |
 | `introduction` | 최대 50자, **선택**(생략/빈문자열 가능 — 빈문자열은 null 처리됨) |
-| `activityRegionIds` | **1~3개, 중복 불가, 최상위 지역(level 1)만** |
-| `interestCategoryIds` | 1개 이상, 중복 불가 |
+| `activityRegionId` | **시군구(level 2) 단위 활동 지역 1개**. 향후 공고/모임 검색의 기본 지역 필터 초기값으로 사용 |
+| `interestCategories` | `PostingCategory` enum(ENVIRONMENT/EDUCATION/CULTURE/COMMUNITY/WELFARE/OVERSEAS) 값 배열, 1개 이상·중복 불가. 정의되지 않은 값은 400(`VALIDATION_ERROR`) |
 | `serviceTermsAgreed` / `privacyPolicyAgreed` | **반드시 `true`** |
 | `marketingAgreed` | `true`/`false` 모두 가능(선택 동의), 필드 자체는 필수 |
 
@@ -93,8 +93,9 @@
 | 400 | `PASSWORD_MISMATCH` | 비밀번호 확인 필드 |
 | 400 | `EMAIL_NOT_VERIFIED` | 이메일 인증 단계로 유도 |
 | 400 | `REQUIRED_TERMS_NOT_AGREED` | 약관 동의 |
-| 400 | `INVALID_ACTIVITY_REGION_COUNT` / `INVALID_INTEREST_CATEGORY_COUNT` | 지역/카테고리 선택 |
-| 404 | `REGION_NOT_FOUND` / `CATEGORY_NOT_FOUND` | 잘못된 id (정상 UI에선 미발생) |
+| 400 | `INVALID_ACTIVITY_REGION` / `INVALID_INTEREST_CATEGORY_COUNT` | 지역/카테고리 선택 |
+| 400 | `VALIDATION_ERROR` | 정의되지 않은 카테고리 enum 값 (정상 UI에선 미발생) |
+| 404 | `REGION_NOT_FOUND` | 잘못된 지역 id (정상 UI에선 미발생) |
 | 409 | `DUPLICATE_EMAIL` / `DUPLICATE_PHONE_NUMBER` / `DUPLICATE_NICKNAME` | 각 필드 |
 
 - 사전 중복확인을 통과했어도 가입 시점에 `409`가 다시 날 수 있습니다(그 사이 다른 가입). **409 재처리 로직 필수.**
@@ -103,11 +104,13 @@
 
 - 이메일 없음 / 비밀번호 틀림을 구분하지 않고 **동일하게 `401 INVALID_LOGIN`** (보안상 의도).
 - `403 SUSPENDED_USER`(정지) / `403 WITHDRAWN_USER`(탈퇴)는 별도 안내 필요.
-- 성공 시 `{ accessToken, refreshToken, tokenType: "Bearer" }`.
+- 성공 시 응답 body는 `{ accessToken, tokenType: "Bearer" }`.
+- Refresh Token은 `Set-Cookie: gather_refresh_token=...; HttpOnly; Path=/api/v1/auth; SameSite=Lax`로만 전달됩니다.
 
 ### 3-6. 토큰 재발급 — `POST /api/v1/auth/reissue`
 
-- **재발급 성공 시 기존 Refresh Token은 즉시 폐기**(rotation)됩니다. 응답 받으면 **access/refresh 둘 다 교체 저장**하세요. 기존 refresh를 다시 쓰면 `401 REVOKED_TOKEN`.
+- 요청 body는 없습니다. 브라우저가 `gather_refresh_token` 쿠키를 자동 전송해야 하므로 프론트 API client에 credentials 옵션을 켜야 합니다.
+- **재발급 성공 시 기존 Refresh Token은 즉시 폐기**(rotation)됩니다. 응답 body의 Access Token을 교체하고, 새 Refresh Token은 `Set-Cookie`로 갱신됩니다. 기존 refresh를 다시 쓰면 `401 REVOKED_TOKEN`.
 - 401 세부
   - `INVALID_TOKEN`(서버에 없음)
   - `EXPIRED_TOKEN`(만료)
@@ -116,42 +119,123 @@
 
 ### 3-7. 로그아웃 — `POST /api/v1/auth/logout`
 
-- **Access Token 불필요**, Refresh Token만 body로 전송 (Access 만료 상태에서도 로그아웃 가능하게 하기 위함).
+- **Access Token 불필요**, 요청 body 없음. Refresh Token은 `gather_refresh_token` 쿠키로 전송됩니다.
 - 이미 만료/폐기된 토큰이어도 서버에 기록이 있으면 **200 성공(멱등)** — 여러 번 눌러도 안전.
-- 서버가 모르는 토큰이면 `401 INVALID_TOKEN`. 이 경우에도 프론트는 로컬 토큰 삭제하고 로그아웃 완료 처리하면 됩니다.
+- 성공 시 서버가 `Max-Age=0` 삭제 쿠키를 내려 브라우저의 Refresh Token 쿠키를 제거합니다.
+- 서버가 모르는 토큰이면 `401 INVALID_TOKEN`. 이 경우에도 프론트는 로컬 Access Token을 삭제하고 로그아웃 완료 처리하면 됩니다.
 
 ### 3-8. 지역 조회 — `GET /api/v1/regions`
 
-- 응답 필드: `id, name, level, code, parentId`.
-- **회원가입 화면에서는 `id`, `name`만 사용**하면 됩니다. 활동 지역 후보는 `level === 1`인 항목만 필터링하세요.
-- `code`는 지역 식별 코드입니다. 단일 시도는 1365 행정구역 코드와 매핑될 수 있고, 광역권은 서비스 내부 코드가 사용될 수 있습니다. 예: 서울=`"11"`, 경기=`"41"` — 문자열임에 주의.
-- ⚠️ **응답 순서 보장 없음.** 3x3 버튼 고정 순서는 프론트에서 고정 배열로 매핑하세요.
+- 응답 필드: `id, name, level, code, parentId, regionGroupId`.
+- **회원가입 화면에서는 `id`, `name`만 사용**하면 됩니다. 활동 지역 후보는 `level === 2`인 시군구만 필터링하세요.
+- `code`는 지역 식별 코드입니다. 시도/시군구는 1365 행정구역 코드입니다. 예: 서울특별시=`"6110000"`, 강남구=`"3220000"` — 문자열임에 주의.
+- `regionGroupId`는 시도(`level === 1`) 행에만 존재하고(시군구는 항상 `null`), 소속 권역(9버튼) `id`입니다.
+- ⚠️ **응답 순서 보장 없음.** 필요하면 `id` 기준으로 정렬해서 쓰세요.
+
+### 3-8-1. 활동 지역 권역(9버튼) 조회 — `GET /api/v1/regions/groups`
+
+- 응답: `{ id, code, name }[]`. **`sort_order` 기준 고정 순서로 정렬되어 내려오므로 프론트에서 별도 정렬/고정 배열 매핑 불필요.**
+- 9버튼: `서울 / 부산 / 인천 / 경기 / 강원 / 제주 / 경상 / 전라 / 충청`. `code`는 1365 코드가 아닌 서비스 내부 코드(`GRP_SEOUL` 등, §4-1 참고).
+- 버튼 클릭 → 시군구 좁히기: `/regions` 목록에서 `level === 1 && regionGroupId === group.id`인 시도 id 집합을 구한 뒤, 그 집합을 `parentId`로 갖는 `level === 2` 행만 필터링.
+
+### 3-8-2. 봉사공고 지역 필터 — `GET /api/v1/postings?regionId=` / `?regionGroupId=` (신규, 2026-07-10)
+
+봉사공고 목록 조회에 지역 필터 파라미터 2개가 추가됐습니다. 둘 다 **선택(optional)**이고, **동시에 보낼 수 없습니다.**
+
+| 파라미터 | 값 | 용도 |
+|---|---|---|
+| `regionId` | `/regions` 응답의 `id` (시도 또는 시군구) | 지도/드롭다운 등에서 **특정 지역 하나**를 골랐을 때 |
+| `regionGroupId` | `/regions/groups` 응답의 `id` (9버튼) | **9버튼 중 하나**를 골랐을 때 (경상/전라/충청처럼 시도가 여러 개 묶인 버튼도 이 파라미터 하나로 처리됨) |
+
+- 어느 쪽을 보내든 서버가 **그 지역의 하위 지역 공고까지 자동으로 포함**해서 반환합니다 (예: 서울 시도로 `regionId`를 보내면 서울 산하 모든 구 공고가, 경상 그룹으로 `regionGroupId`를 보내면 대구·울산·경북·경남 전체 공고가 포함됩니다). 프론트에서 하위 지역 id를 직접 모아서 여러 번 요청할 필요 없습니다.
+- **`regionId`와 `regionGroupId`를 동시에 지정하면 `400 VALIDATION_ERROR`**가 납니다. UI 상태를 "9버튼 모드"와 "특정 지역 모드" 둘 중 하나로만 유지하세요 — 버튼을 눌렀다가 특정 지역을 다시 고르면 이전 파라미터는 지우고 새 파라미터만 보내야 합니다.
+- 둘 다 생략하면 지역 필터 없이 전체 공고가 반환됩니다.
+- 예시:
+  - 서울 버튼(단일 시도) 선택: `GET /api/v1/postings?regionGroupId=1`
+  - 경상 버튼(여러 시도 묶음) 선택: `GET /api/v1/postings?regionGroupId=7`
+  - 특정 구(강남구 등)로 좁혀서 선택: `GET /api/v1/postings?regionId=18`
+  - 둘 다 보낸 잘못된 예 (400 발생): `GET /api/v1/postings?regionId=18&regionGroupId=7`
 
 ### 3-9. 카테고리 조회 — `GET /api/v1/categories`
 
 - 응답: `{ id, code, name }`, `id` 오름차순 정렬 보장.
 - 용도 구분
   - **`id`** : 회원가입 요청에 보내는 값
-  - **`code`**(`ENVIRONMENT` 등 6종 고정) : 아이콘 · 색상 · 필터 칩 매핑 키
+  - **`code`** : 1365 기준 숫자 문자열 코드. 현재 16개 값이 seed되어 있으며 아이콘 · 색상 · 필터 칩 매핑 키로 사용할 수 있음
   - **`name`** : 화면 표시용.
-- `id = 1은 환경` 식의 **id 하드코딩 금지** — 반드시 조회 결과의 id 사용.
+- `id = 1은 생활편의` 식의 **id 하드코딩 금지** — 반드시 조회 결과의 id 사용.
+- 현재 seed 기준 카테고리 코드 체계:
+
+| code | name |
+|---|---|
+| `0100` | 생활편의 |
+| `0200` | 주거환경 |
+| `0300` | 상담·멘토링 |
+| `0400` | 교육 |
+| `0500` | 보건·의료 |
+| `0600` | 농어촌 봉사 |
+| `0700` | 문화·체육·예술·관광 |
+| `0800` | 환경·생태계보호 |
+| `0900` | 사무행정 |
+| `1000` | 지역안전·보호 |
+| `1100` | 인권·공익 |
+| `1200` | 재난·재해 |
+| `1300` | 국제협력·해외봉사 |
+| `1500` | 기타 |
+| `1700` | 자원봉사 기본교육 |
+| `1900` | 온라인자원봉사 |
+
+### 3-10. 카카오 로그인 — `POST /api/v1/auth/kakao/login`
+
+- 요청 body: `{ authorizationCode, redirectUri }`. `redirectUri`는 인가 요청에 쓴 값 그대로이며, 서버 허용 목록과 **문자열까지 정확히 일치**해야 합니다(trailing slash 하나만 달라도 400).
+- 성공은 항상 `200`이고 `data.signupStatus`로 분기합니다. **둘 다 정상 응답이며 `ADDITIONAL_INFO_REQUIRED`는 에러가 아닙니다.**
+  - `LOGIN_COMPLETED`(기존 회원): `data = { signupStatus, accessToken, tokenType: "Bearer" }` + Refresh Token 쿠키. 일반 로그인과 동일하게 처리하면 됩니다.
+  - `ADDITIONAL_INFO_REQUIRED`(신규 회원): `data = { signupStatus, signupToken, profile: { nickname } }`. 쿠키는 내려가지 않습니다. `signupToken`을 메모리에 보관하고 추가정보 화면으로 이동하세요. `profile.nickname`은 초깃값 용도이며 `null`일 수 있습니다.
+- `400`(인가 코드 무효·재사용, redirectUri 불일치), `500`(카카오 장애), `503 KAKAO_API_UNAVAILABLE`(카카오 요청 제한)은 **`error.code`를 보지 말고 전부 "카카오 로그인 다시 시작"**으로 처리하세요. 콜백 새로고침·뒤로가기로 인가 코드가 재사용되면 `400`이 나는 것이 정상입니다.
+- **단, `403`은 재시작 대상이 아닙니다.** 기존 카카오 회원이 정지·탈퇴 상태면 일반 로그인과 동일하게 `403 SUSPENDED_USER` / `403 WITHDRAWN_USER`로 차단되며, 재로그인을 반복시키지 말고 계정 상태를 안내해야 합니다(§3-5와 동일).
+
+### 3-11. 카카오 추가정보 가입 — `POST /api/v1/auth/kakao/signup`
+
+- 로그인에서 받은 `signupToken`을 **`X-Signup-Token` 헤더**로 보냅니다(`Authorization` 아님). 헤더가 없거나 위조·만료면 `401`입니다.
+- 요청 body는 회원가입(`/signup`)에서 **`email`·`password`·`passwordConfirm`만 뺀** 형태입니다. 카카오 가입은 이메일·비밀번호를 받지 않습니다. 나머지 필드 규칙은 §3-4와 동일합니다.
+- 성공은 `201`이며 `{ accessToken, tokenType: "Bearer" }` + Refresh Token 쿠키를 곧바로 내려줍니다(가입 후 자동 로그인). 별도 로그인 호출이 필요 없습니다.
+- 에러코드 → 화면 매핑:
+
+| 상태 | code | 처리 |
+|---|---|---|
+| 401 | `SIGNUP_TOKEN_EXPIRED` | signupToken 제거 후 카카오 로그인부터 재시작(15분 초과) |
+| 401 | `SIGNUP_TOKEN_INVALID` | signupToken 제거 후 카카오 로그인부터 재시작(위조·헤더 누락) |
+| 400 | `REQUIRED_TERMS_NOT_AGREED` / `INVALID_ACTIVITY_REGION` / `INVALID_INTEREST_CATEGORY_COUNT` / `VALIDATION_ERROR` | 해당 입력 수정(signupToken은 유지) |
+| 404 | `REGION_NOT_FOUND` | 지역 재선택(signupToken은 유지) |
+| 409 | `DUPLICATE_PHONE_NUMBER` | **이미 가입된 전화번호 = 기존 계정과 동일인**. 입력 오류가 아니라 "기존 계정(이메일 로그인)으로 로그인" 안내 화면으로 유도 |
+| 409 | `DUPLICATE_NICKNAME` | 닉네임 수정(signupToken은 유지) |
+| 409 | `ALREADY_REGISTERED` | 이미 가입된 카카오 계정(토큰 재사용). signupToken 제거 후 로그인 다시 시도 |
+
+- signupToken 유지/제거 기준: **401·`ALREADY_REGISTERED`는 제거**하고 카카오 로그인부터, 그 외 검증 오류는 **유지**한 채 입력만 고쳐 재요청하세요(토큰은 15분 단일 발급이라 재발급되지 않습니다).
 
 ## 4. 논의 중 / 미확정 사항
 
-### 4-1. 활동 지역 코드 체계 (주의사항)
+### 4-1. 활동 지역 코드 체계 — 확정 (region_group 도입, 2026-07-10)
 
 - 활동 지역 버튼 9개: `서울 / 부산 / 인천 / 경기 / 강원 / 제주 / 경상 / 전라 / 충청`
-- 단일 시도 6개(서울 : 11, 부산 : 26, 인천 : 28, 경기 : 41, 강원 : 42, 제주 : 50)는 표준 코드로 확정 가능하나, **경상/전라/충청은 여러 시도를 묶은 광역권이라 단일 행정구역 코드가 없음.**
-- 현재 명세에는 서울/경기 예시만 반영했고, **9개 버튼의 실제 `id`/`code` 값은 region 초기 데이터 확정 후 공유** 예정.
-- 확인 중: 대구·울산·광주·대전·세종의 소속 / 광역권 버튼의 code 규칙 / 강원 신설코드(42 vs 51).
+- `GET /api/v1/regions/groups` 신설: 9버튼을 고정 노출 순서(`sort_order`)로 반환. 응답 필드: `id, code, name`.
+- 경상/전라/충청처럼 여러 시도를 묶은 권역은 1365 행정구역 코드가 없어 서비스 내부 코드(`GRP_GYEONGSANG` 등)를 사용. 단일 시도 6개 버튼(서울/부산/인천/경기/강원/제주)도 동일한 내부 코드 체계(`GRP_SEOUL` 등)로 통일.
+- 대구·울산·광주·대전·세종 소속 확정: **대구·울산→경상, 광주→전라, 대전·세종→충청** (구 관할 기준).
+- `GET /api/v1/regions` 응답에 `regionGroupId` 필드 추가(시도 `level=1` 행에만 값 존재, 시군구 `level=2`는 항상 `null`). 버튼 클릭 시 시군구 좁히기: `regions` 목록에서 `level===1 && regionGroupId===groupId`인 시도들의 `id` 집합을 구한 뒤, 그 집합을 `parentId`로 갖는 `level===2` 행을 필터링.
+- 관련 마이그레이션: `V11__create_region_group_table.sql`.
+- **검색 필터 연동 완료**: 공고 목록의 지역 필터 사용법(`regionId`/`regionGroupId` 파라미터, 예시, 400 케이스)은 §3-8-2 참고.
+- **필터 깊이 확장(2026-07-11)**: `regionId`/`regionGroupId`로 필터링하면 직계 자식뿐 아니라 그 아래 한 단계(예: 시도 선택 시 시군구 + 그 소속 읍/면/동까지)까지 포함하도록 서버 쿼리를 확장했다. 프론트에서 지금 당장 바꿀 건 없다 — `level=4`(읍/면/동) 데이터는 아직 이 브랜치에 없어서 `/regions` 응답엔 여전히 `level 1`(시도)·`level 2`(시군구)만 내려온다. 다만 향후 읍/면/동 데이터가 합쳐진 뒤에는:
+  - 지금 쓰고 있는 `regionId`/`regionGroupId` 파라미터를 그대로 재사용하면 되고(새 파라미터 불필요), 읍/면/동 단위 공고도 자동으로 필터 결과에 포함된다.
+  - 특정 읍/면/동 하나로 좁혀서 검색하고 싶으면 그 동의 `id`를 그대로 `regionId`에 넣으면 된다(시도/시군구와 동일한 파라미터).
+  - `level` 값은 `1, 2, 4`만 쓰고 **3은 의도적으로 비워둔다**(1365 API가 시/군/구를 구분하지 않아 사용 안 함) — `level`이 1,2,3 연속이라고 가정하지 말고 항상 실제 값으로 분기할 것.
 
 ### 4-2. 이메일 인증 재사용 정책 (팀 결정 필요)
 
 - 현재는 한 번 인증되면 **만료 없이** 회원가입에 사용 가능. 인증 후 유효시간 제한 / 가입 시 consume 처리 여부를 논의 중 — 정책 확정 시 프론트 타이머/재인증 UX에 영향 가능.
 
-### 4-3. Access Token은 임시 구조 (후속 PR)
+### 4-3. Access Token 인증 구조
 
-- 현재 Access Token은 JWT가 아닌 **임시 랜덤 토큰**이며, 검증 필터가 없어 보호 API 인증이 아직 동작하지 않습니다. 토큰 **저장/재발급/로그아웃 흐름 연동은 지금 가능**하지만, "401 시 reissue 후 재시도" 같은 인터셉터 로직은 JWT 필터 적용 후 확정하세요.
+- Access Token은 `TokenProvider`가 서명한 JWT이며, 보호 API에서는 `JwtAuthenticationFilter`가 토큰을 검증해 인증 정보를 구성합니다. 프론트는 보호 API의 `401` 응답 시 Refresh Token 쿠키로 `/api/v1/auth/reissue`를 호출한 뒤 새 Access Token으로 원 요청을 재시도할 수 있습니다.
 
 ### 4-4. 실메일 발송 (후속 PR)
 

@@ -12,7 +12,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.gather.gather.domain.posting.dto.PostingLocationResponse;
 import com.gather.gather.domain.posting.dto.PostingResponse;
 import com.gather.gather.domain.posting.dto.PostingSummaryResponse;
+import com.gather.gather.domain.posting.entity.PostingCategory;
 import com.gather.gather.domain.posting.entity.PostingStatus;
+import com.gather.gather.domain.posting.service.PostingKeywordRecommendationService;
 import com.gather.gather.domain.posting.service.PostingService;
 import com.gather.gather.global.common.PageResponse;
 import com.gather.gather.global.exception.BusinessException;
@@ -37,6 +39,8 @@ class PostingControllerTest {
 
     @MockitoBean private PostingService postingService;
 
+    @MockitoBean private PostingKeywordRecommendationService postingKeywordRecommendationService;
+
     @Test
     @DisplayName("GET /api/v1/postings returns 200 with a page of postings")
     void getPostings_returns200WithPage() throws Exception {
@@ -53,9 +57,9 @@ class PostingControllerTest {
                         1,
                         2L,
                         "동구",
-                        10L,
-                        "환경");
-        when(postingService.getPostings(any(), any(), any(), any(), any()))
+                        PostingCategory.ENVIRONMENT,
+                        LocalDate.of(2026, 7, 5));
+        when(postingService.getPostings(any(), any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(new PageResponse<>(List.of(summary), 1, 1, 0, 20));
 
         mockMvc.perform(get("/api/v1/postings"))
@@ -64,7 +68,7 @@ class PostingControllerTest {
                 .andExpect(jsonPath("$.data.content").isArray())
                 .andExpect(jsonPath("$.data.content.length()").value(1))
                 .andExpect(jsonPath("$.data.content[0].regionName").value("동구"))
-                .andExpect(jsonPath("$.data.content[0].categoryName").value("환경"))
+                .andExpect(jsonPath("$.data.content[0].category").value("ENVIRONMENT"))
                 .andExpect(jsonPath("$.data.totalElements").value(1))
                 .andExpect(jsonPath("$.data.totalPages").value(1))
                 .andExpect(jsonPath("$.data.page").value(0))
@@ -74,7 +78,7 @@ class PostingControllerTest {
     @Test
     @DisplayName("GET /api/v1/postings returns 200 with empty content when no postings match")
     void getPostings_returns200WithEmptyContent_whenNoPostings() throws Exception {
-        when(postingService.getPostings(any(), any(), any(), any(), any()))
+        when(postingService.getPostings(any(), any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(new PageResponse<>(List.of(), 0, 0, 0, 20));
 
         mockMvc.perform(get("/api/v1/postings"))
@@ -100,9 +104,9 @@ class PostingControllerTest {
                         null,
                         null,
                         null,
-                        10L,
-                        "환경");
-        when(postingService.getPostings(any(), any(), any(), any(), any()))
+                        PostingCategory.ENVIRONMENT,
+                        null);
+        when(postingService.getPostings(any(), any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(new PageResponse<>(List.of(summary), 1, 1, 0, 20));
 
         mockMvc.perform(get("/api/v1/postings"))
@@ -113,14 +117,15 @@ class PostingControllerTest {
     @Test
     @DisplayName("GET /api/v1/postings?page=1&size=5 binds Pageable from query params")
     void getPostings_bindsPageableFromQueryParams() throws Exception {
-        when(postingService.getPostings(any(), any(), any(), any(), any()))
+        when(postingService.getPostings(any(), any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(new PageResponse<>(List.of(), 0, 0, 1, 5));
 
         mockMvc.perform(get("/api/v1/postings").param("page", "1").param("size", "5"))
                 .andExpect(status().isOk());
 
         ArgumentCaptor<Pageable> captor = ArgumentCaptor.forClass(Pageable.class);
-        verify(postingService).getPostings(captor.capture(), any(), any(), any(), any());
+        verify(postingService)
+                .getPostings(captor.capture(), any(), any(), any(), any(), any(), any(), any());
         org.assertj.core.api.Assertions.assertThat(captor.getValue().getPageNumber()).isEqualTo(1);
         org.assertj.core.api.Assertions.assertThat(captor.getValue().getPageSize()).isEqualTo(5);
     }
@@ -128,7 +133,8 @@ class PostingControllerTest {
     @Test
     @DisplayName("GET /api/v1/postings?regionId=1&status=CLOSED binds filter query params")
     void getPostings_bindsFilterQueryParams() throws Exception {
-        when(postingService.getPostings(any(), eq(1L), eq(PostingStatus.CLOSED), any(), any()))
+        when(postingService.getPostings(
+                        any(), eq(1L), any(), eq(PostingStatus.CLOSED), any(), any(), any(), any()))
                 .thenReturn(new PageResponse<>(List.of(), 0, 0, 0, 20));
 
         mockMvc.perform(
@@ -143,9 +149,92 @@ class PostingControllerTest {
                 .getPostings(
                         any(),
                         eq(1L),
+                        any(),
                         eq(PostingStatus.CLOSED),
                         eq(LocalDate.of(2026, 7, 1)),
-                        eq(LocalDate.of(2026, 7, 31)));
+                        eq(LocalDate.of(2026, 7, 31)),
+                        any(),
+                        any());
+    }
+
+    @Test
+    @DisplayName("GET /api/v1/postings?regionGroupId=7 binds region group query param")
+    void getPostings_bindsRegionGroupIdQueryParam() throws Exception {
+        when(postingService.getPostings(any(), any(), eq(7L), any(), any(), any(), any(), any()))
+                .thenReturn(new PageResponse<>(List.of(), 0, 0, 0, 20));
+
+        mockMvc.perform(get("/api/v1/postings").param("regionGroupId", "7"))
+                .andExpect(status().isOk());
+
+        verify(postingService).getPostings(any(), any(), eq(7L), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    @DisplayName(
+            "GET /api/v1/postings?regionId=1&regionGroupId=7 returns 400 when service rejects the"
+                    + " combination")
+    void getPostings_returns400_whenRegionIdAndRegionGroupIdBothProvided() throws Exception {
+        when(postingService.getPostings(any(), eq(1L), eq(7L), any(), any(), any(), any(), any()))
+                .thenThrow(new BusinessException(ErrorCode.VALIDATION_ERROR));
+
+        mockMvc.perform(get("/api/v1/postings").param("regionId", "1").param("regionGroupId", "7"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.error.code").value("VALIDATION_ERROR"));
+    }
+
+    @Test
+    @DisplayName("GET /api/v1/postings?keyword=환경 binds keyword query param")
+    void getPostings_bindsKeywordQueryParam() throws Exception {
+        when(postingService.getPostings(any(), any(), any(), any(), any(), any(), eq("환경"), any()))
+                .thenReturn(new PageResponse<>(List.of(), 0, 0, 0, 20));
+
+        mockMvc.perform(get("/api/v1/postings").param("keyword", "환경")).andExpect(status().isOk());
+
+        verify(postingService)
+                .getPostings(any(), any(), any(), any(), any(), any(), eq("환경"), any());
+    }
+
+    @Test
+    @DisplayName("GET /api/v1/postings?category=WELFARE binds category query param")
+    void getPostings_bindsCategoryQueryParam() throws Exception {
+        when(postingService.getPostings(
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        eq(PostingCategory.WELFARE)))
+                .thenReturn(new PageResponse<>(List.of(), 0, 0, 0, 20));
+
+        mockMvc.perform(get("/api/v1/postings").param("category", "WELFARE"))
+                .andExpect(status().isOk());
+
+        verify(postingService)
+                .getPostings(
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        eq(PostingCategory.WELFARE));
+    }
+
+    @Test
+    @DisplayName(
+            "GET /api/v1/postings?sort=invalidProp returns 400 when sort property is not whitelisted")
+    void getPostings_returns400_whenSortPropertyInvalid() throws Exception {
+        when(postingService.getPostings(any(), any(), any(), any(), any(), any(), any(), any()))
+                .thenThrow(new BusinessException(ErrorCode.VALIDATION_ERROR));
+
+        mockMvc.perform(get("/api/v1/postings").param("sort", "invalidProp"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.error.code").value("VALIDATION_ERROR"));
     }
 
     @Test
@@ -179,8 +268,7 @@ class PostingControllerTest {
                         "울산 동구 어딘가",
                         2L,
                         "동구",
-                        10L,
-                        "환경",
+                        PostingCategory.ENVIRONMENT,
                         List.of(new PostingLocationResponse(1, "동구 일대", null, null)),
                         null,
                         null);
@@ -214,5 +302,32 @@ class PostingControllerTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.error.code").value("VALIDATION_ERROR"));
+    }
+
+    @Test
+    @DisplayName("GET /api/v1/postings/keywords/recommended returns 200 with top keywords")
+    void getRecommendedKeywords_returns200WithKeywords() throws Exception {
+        when(postingKeywordRecommendationService.getRecommendedKeywords())
+                .thenReturn(List.of("유기견", "봉사", "환경정화"));
+
+        mockMvc.perform(get("/api/v1/postings/keywords/recommended"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data").isArray())
+                .andExpect(jsonPath("$.data.length()").value(3))
+                .andExpect(jsonPath("$.data[0]").value("유기견"));
+    }
+
+    @Test
+    @DisplayName(
+            "GET /api/v1/postings/keywords/recommended returns 200 with empty list when no data")
+    void getRecommendedKeywords_returns200WithEmptyList_whenNoData() throws Exception {
+        when(postingKeywordRecommendationService.getRecommendedKeywords()).thenReturn(List.of());
+
+        mockMvc.perform(get("/api/v1/postings/keywords/recommended"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data").isArray())
+                .andExpect(jsonPath("$.data.length()").value(0));
     }
 }

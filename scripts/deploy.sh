@@ -7,7 +7,7 @@ DEPLOY_DIR="/opt/gather"
 CURRENT_JAR="$DEPLOY_DIR/gather.jar"
 NEW_JAR="$DEPLOY_DIR/gather.jar.new"
 BACKUP_JAR="$DEPLOY_DIR/gather-$(date +%Y%m%d-%H%M%S).jar.bak"
-HEALTH_URL="http://localhost/health"
+HEALTH_URL="http://localhost:8080/health"
 
 echo "===== Gather Backend Deploy Start ====="
 
@@ -38,7 +38,7 @@ echo "5. Restart systemd service"
 sudo systemctl restart "$APP_NAME"
 
 echo "6. Wait for application startup"
-sleep 20
+sleep 90
 
 echo "7. Health check"
 if curl --fail --max-time 10 "$HEALTH_URL"; then
@@ -53,7 +53,7 @@ else
     echo "Rollback to backup jar"
     cp "$BACKUP_JAR" "$CURRENT_JAR"
     sudo systemctl restart "$APP_NAME"
-    sleep 20
+    sleep 90
 
     if curl --fail --max-time 10 "$HEALTH_URL"; then
       echo ""

@@ -1,3 +1,6 @@
+server:
+  forward-headers-strategy: framework
+
 spring:
   application:
     name: gather
@@ -29,8 +32,27 @@ spring:
 # 이메일 발송 방식. log = 서버 로그로만 인증코드 출력(기본), smtp = 실제 발송.
 # smtp 모드는 spring.mail.username/password 필요 (로컬: application-secret.yml, 운영: 환경변수).
 gather:
+  auth:
+    refresh-cookie:
+      name: gather_refresh_token
+      secure: ${GATHER_REFRESH_COOKIE_SECURE:false}
+      same-site: ${GATHER_REFRESH_COOKIE_SAME_SITE:Lax}
+      path: /api/v1/auth
+      max-age-seconds: 1209600
+  cors:
+    allowed-origins:
+      - https://gathernow.kr
+      - http://localhost:5173
+      - https://dev.gathernow.kr
   email:
     mode: log
 
 volunteer-api:
   base-url: https://apis.data.go.kr/1741000/volunteerPartcptnService
+
+# 비밀값(rest-api-key/client-secret/signup-token-secret)은 여기 두지 않는다.
+# 로컬은 application-secret.yml, 운영은 /etc/gather/gather.env 환경변수로 주입한다.
+# redirect-uris는 카카오 콘솔 등록값과 문자열까지 정확히 같아야 한다(불일치 시 KOE006).
+kakao:
+  redirect-uris: ${KAKAO_REDIRECT_URIS:http://localhost:5173/login/kakao/callback,https://dev.gathernow.kr/login/kakao/callback,https://gathernow.kr/login/kakao/callback}
+  signup-token-expiration-seconds: ${KAKAO_SIGNUP_TOKEN_EXPIRATION_SECONDS:900}

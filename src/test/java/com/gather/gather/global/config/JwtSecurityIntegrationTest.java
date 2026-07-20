@@ -110,6 +110,14 @@ class JwtSecurityIntegrationTest {
     }
 
     @Test
+    @DisplayName("활동 지역 권역 조회(/api/v1/regions/groups)는 토큰 없이 통과한다(401이 아니다)")
+    void permitAllPath_regionGroups_passesWithoutToken() throws Exception {
+        mockMvc.perform(get("/api/v1/regions/groups"))
+                .andExpect(
+                        result -> assertThat(result.getResponse().getStatus()).isNotEqualTo(401));
+    }
+
+    @Test
     @DisplayName("유효한 토큰이면 통과하고 principal은 Long userId, authority는 ROLE_USER이다")
     void validToken_authenticatesWithLongPrincipalAndRoleAuthority() throws Exception {
         String token = tokenProvider.createAccessToken(newUser(100L, UserRole.USER));
