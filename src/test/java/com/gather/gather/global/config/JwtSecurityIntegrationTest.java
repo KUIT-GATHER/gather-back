@@ -150,7 +150,7 @@ class JwtSecurityIntegrationTest {
     }
 
     @Test
-    @DisplayName("ADMIN 전용 배치 트리거에 토큰 없이 요청하면 401 UNAUTHORIZED이다")
+    @DisplayName("ADMIN 전용 배치 트리거(/api/v1/postings/sync)에 토큰 없이 요청하면 401 UNAUTHORIZED이다")
     void adminOnlySync_withoutToken_returns401Unauthorized() throws Exception {
         mockMvc.perform(post(SYNC_PATH))
                 .andExpect(status().isUnauthorized())
@@ -178,6 +178,39 @@ class JwtSecurityIntegrationTest {
         mockMvc.perform(post(SYNC_PATH).header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true));
+    }
+
+    @Test
+    @DisplayName("관리자 전용 API(/api/v1/admin/**)에 ADMIN 토큰으로 요청하면 통과한다")
+    void adminOnlyPath_withAdminToken_passes() throws Exception {
+        String token = tokenProvider.createAccessToken(newUser(200L, UserRole.ADMIN));
+
+        mockMvc.perform(
+                        post("/api/v1/admin/postings/keywords/aggregate")
+                                .header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true));
+    }
+
+    @Test
+    @DisplayName("관리자 전용 API에 USER 토큰으로 요청하면 403 FORBIDDEN이다")
+    void adminOnlyPath_withUserToken_returns403Forbidden() throws Exception {
+        String token = tokenProvider.createAccessToken(newUser(200L, UserRole.USER));
+
+        mockMvc.perform(
+                        post("/api/v1/admin/postings/keywords/aggregate")
+                                .header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.error.code").value("FORBIDDEN"));
+    }
+
+    @Test
+    @DisplayName("관리자 전용 API에 토큰 없이 요청하면 401 UNAUTHORIZED이다")
+    void adminOnlyPath_withoutToken_returns401Unauthorized() throws Exception {
+        mockMvc.perform(post("/api/v1/admin/postings/keywords/aggregate"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.error.code").value("UNAUTHORIZED"));
     }
 
     private SecretKey signingKey() {

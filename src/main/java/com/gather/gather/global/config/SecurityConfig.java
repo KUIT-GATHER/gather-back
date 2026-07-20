@@ -46,6 +46,9 @@ public class SecurityConfig {
         "/v3/api-docs/**"
     };
 
+    // ADMIN 권한 보유자만 접근 가능한 경로. anyRequest().authenticated()보다 먼저 평가되어야 한다.
+    private static final String[] ADMIN_ONLY_PATHS = {"/api/v1/admin/**"};
+
     private final TokenProvider tokenProvider;
     private final ObjectMapper objectMapper;
     private final CorsProperties corsProperties;
@@ -74,6 +77,8 @@ public class SecurityConfig {
                                         .requestMatchers(PERMIT_ALL_PATHS)
                                         .permitAll()
                                         .requestMatchers(HttpMethod.POST, ADMIN_ONLY_SYNC_PATH)
+                                        .hasRole("ADMIN")
+                                        .requestMatchers(ADMIN_ONLY_PATHS)
                                         .hasRole("ADMIN")
                                         .anyRequest()
                                         .authenticated())

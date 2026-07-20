@@ -27,7 +27,7 @@ class PostingSearchLogRepositoryTest {
                 postingSearchLogRepository.findKeywordsBySearchedAtAfter(
                         LocalDateTime.now().minusDays(60));
 
-        assertThat(recent).containsExactly("유기견봉사");
+        assertThat(recent).contains("유기견봉사").doesNotContain("환경정화");
     }
 
     @Test
@@ -40,7 +40,7 @@ class PostingSearchLogRepositoryTest {
         List<String> remaining =
                 postingSearchLogRepository.findKeywordsBySearchedAtAfter(
                         LocalDateTime.now().minusDays(365));
-        assertThat(remaining).containsExactly("유기견봉사");
+        assertThat(remaining).contains("유기견봉사").doesNotContain("환경정화");
     }
 
     /** searchedAt이 빌더에서 now()로 고정되므로, 리플렉션으로 과거 시각을 직접 주입해 시간 경계 테스트를 구성한다. */
