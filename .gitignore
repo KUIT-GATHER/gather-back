@@ -50,3 +50,6 @@ application-secret.yml
 
 ### 개인 Codex 설정 ###
 .codex/
+
+### macOS ###
+.DS_Store
