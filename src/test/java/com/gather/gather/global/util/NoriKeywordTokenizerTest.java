@@ -1,4 +1,4 @@
-package com.gather.gather.domain.posting.service.support;
+package com.gather.gather.global.util;
 
 import static org.assertj.core.api.Assertions.assertThat;
 

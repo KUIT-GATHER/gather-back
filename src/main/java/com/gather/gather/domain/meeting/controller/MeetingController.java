@@ -4,6 +4,7 @@ import com.gather.gather.domain.meeting.dto.MeetingCreateRequest;
 import com.gather.gather.domain.meeting.dto.MeetingDetailResponse;
 import com.gather.gather.domain.meeting.dto.MeetingResponse;
 import com.gather.gather.domain.meeting.enums.MeetingStatus;
+import com.gather.gather.domain.meeting.service.MeetingKeywordRecommendationService;
 import com.gather.gather.domain.meeting.service.MeetingService;
 import com.gather.gather.domain.posting.entity.PostingCategory;
 import com.gather.gather.global.common.ApiResponse;
@@ -34,6 +35,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class MeetingController {
 
     private final MeetingService meetingService;
+    private final MeetingKeywordRecommendationService meetingKeywordRecommendationService;
 
     @Operation(summary = "모임 생성", description = "로그인한 사용자가 새로운 모임을 생성합니다.")
     @PostMapping
@@ -55,8 +57,7 @@ public class MeetingController {
                                 "정렬 기준 (property,direction). 예: createdAt,desc. "
                                         + "허용 필드: id, name, currentMemberCount, maxMember, "
                                         + "regionId, category, status, deadline, activityStartAt, "
-                                        + "activityEndAt, createdAt, updatedAt. 허용되지 않은 필드로 "
-                                        + "정렬을 요청하면 400 VALIDATION_ERROR가 반환됩니다.",
+                                        + "activityEndAt, createdAt, updatedAt.",
                         example = "createdAt,desc")
             })
     @GetMapping
@@ -70,6 +71,16 @@ public class MeetingController {
                     Pageable pageable) {
         return ApiResponse.success(
                 meetingService.getMeetings(keyword, regionId, category, status, pageable));
+    }
+
+    @Operation(
+            summary = "모임 추천검색어 목록 조회",
+            description =
+                    "최근 60일간 모임 검색어를 형태소 분석해 집계한 인기 검색어 상위 10개를 반환합니다. "
+                            + "매일 새벽 5시 배치로 갱신되며, 실시간 반영은 아닙니다. 인증이 필요 없습니다.")
+    @GetMapping("/keywords/recommended")
+    public ApiResponse<List<String>> getRecommendedKeywords() {
+        return ApiResponse.success(meetingKeywordRecommendationService.getRecommendedKeywords());
     }
 
     @Operation(summary = "내 모임 조회", description = "로그인한 사용자가 참여한 모임 목록을 조회합니다.")
