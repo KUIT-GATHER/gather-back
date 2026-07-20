@@ -267,6 +267,35 @@ class KakaoAuthControllerTest {
         verifyNoInteractions(kakaoAuthService);
     }
 
+    @Test
+    @DisplayName("전화번호가 20자를 넘으면 저장 전에 400으로 막는다")
+    void signup_withTooLongPhoneNumber_returnsBadRequest() throws Exception {
+        mockMvc.perform(
+                        post("/api/v1/auth/kakao/signup")
+                                .header(SIGNUP_TOKEN_HEADER, "signup-token")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(
+                                        """
+                                        {
+                                          "name": "홍길동",
+                                          "birthDate": "2002-03-15",
+                                          "gender": "MALE",
+                                          "phoneNumber": "010123456789012345678",
+                                          "nickname": "길동",
+                                          "introduction": null,
+                                          "activityRegionId": 123,
+                                          "interestCategories": ["WELFARE"],
+                                          "serviceTermsAgreed": true,
+                                          "privacyPolicyAgreed": true,
+                                          "marketingAgreed": false
+                                        }
+                                        """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("VALIDATION_ERROR"));
+
+        verifyNoInteractions(kakaoAuthService);
+    }
+
     private org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder
             loginRequest() {
         return post("/api/v1/auth/kakao/login")

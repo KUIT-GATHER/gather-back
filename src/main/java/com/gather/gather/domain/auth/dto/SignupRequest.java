@@ -22,7 +22,9 @@ public record SignupRequest(
                 @PastOrPresent
                 LocalDate birthDate,
         @Schema(description = "성별", example = "MALE") @NotNull Gender gender,
-        @Schema(description = "전화번호. 하이픈과 공백은 서버에서 제거합니다.", example = "01012345678") @NotBlank
+        @Schema(description = "전화번호. 하이픈과 공백은 서버에서 제거합니다.", example = "01012345678")
+                @NotBlank
+                @Size(max = 20)
                 String phoneNumber,
         @Schema(description = "이메일. 서버에서 앞뒤 공백 제거 및 소문자화합니다.", example = "test@example.com")
                 @NotBlank
