@@ -54,6 +54,17 @@ public enum ErrorCode {
     BOOKMARK_DUPLICATE(HttpStatus.CONFLICT, "이미 북마크한 공고입니다."),
     BOOKMARK_NOT_FOUND(HttpStatus.NOT_FOUND, "북마크를 찾을 수 없습니다."),
 
+    UNSUPPORTED_PROFILE_IMAGE_TYPE(HttpStatus.BAD_REQUEST, "지원하지 않는 프로필 이미지 형식입니다."),
+    PROFILE_IMAGE_SIZE_EXCEEDED(HttpStatus.BAD_REQUEST, "프로필 이미지의 허용 크기를 초과했습니다."),
+    INVALID_PROFILE_IMAGE_KEY(HttpStatus.BAD_REQUEST, "올바르지 않은 프로필 이미지 경로입니다."),
+    PROFILE_IMAGE_OBJECT_NOT_FOUND(HttpStatus.NOT_FOUND, "업로드된 프로필 이미지 객체를 찾을 수 없습니다."),
+    PROFILE_IMAGE_UPLOAD_EXPIRED(HttpStatus.BAD_REQUEST, "프로필 이미지 업로드 요청이 만료되었습니다."),
+    PROFILE_IMAGE_UPLOAD_LIMIT_EXCEEDED(
+            HttpStatus.TOO_MANY_REQUESTS, "처리되지 않은 프로필 이미지 업로드 요청이 너무 많습니다."),
+    PROFILE_IMAGE_SIZE_MISMATCH(HttpStatus.BAD_REQUEST, "요청한 크기와 업로드된 이미지 크기가 다릅니다."),
+    INVALID_PROFILE_IMAGE_CONTENT(HttpStatus.BAD_REQUEST, "실제 프로필 이미지 형식이 올바르지 않습니다."),
+    S3_OPERATION_FAILED(HttpStatus.BAD_GATEWAY, "이미지 저장소 연동에 실패했습니다."),
+
     MEETING_MEMBER_REQUIRED(HttpStatus.FORBIDDEN, "모임에 가입해야 이용할 수 있습니다."),
     POST_NOT_FOUND(HttpStatus.NOT_FOUND, "게시글을 찾을 수 없습니다."),
     POST_FORBIDDEN(HttpStatus.FORBIDDEN, "게시글에 대한 권한이 없습니다."),

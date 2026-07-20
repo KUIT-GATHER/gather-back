@@ -58,6 +58,9 @@ public class User {
     @Column(length = 50)
     private String introduction;
 
+    @Column(name = "profile_image_key", length = 255)
+    private String profileImageKey;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     private UserRole role;
@@ -180,5 +183,9 @@ public class User {
                 marketingAgreed,
                 activityRegion,
                 interestCategories);
+    }
+
+    public void changeProfileImageKey(String profileImageKey) {
+        this.profileImageKey = profileImageKey;
     }
 }

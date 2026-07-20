@@ -18,6 +18,18 @@ volunteer-api:
   base-url: https://apis.data.go.kr/1741000/volunteerPartcptnService
 
 gather:
+  aws:
+    s3:
+      region: ap-northeast-2
+      bucket: test-profile-images
+      public-base-url: https://test-profile-images.s3.ap-northeast-2.amazonaws.com
+      presigned-url-expiration-seconds: 300
+      max-image-size-bytes: 5242880
+      object-prefix: profiles
+      max-pending-uploads-per-user: 3
+      cleanup-batch-size: 100
+      cleanup-fixed-delay-milliseconds: 3600000
+      cleanup-scheduler-enabled: false
   auth:
     refresh-cookie:
       name: gather_refresh_token
