@@ -39,6 +39,7 @@ public enum ErrorCode {
     INTERNAL_SERVER_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "서버 오류가 발생했습니다."),
 
     USER_NOT_FOUND(HttpStatus.NOT_FOUND, "사용자를 찾을 수 없습니다."),
+    INVALID_PROFILE_IMAGE_KEY(HttpStatus.BAD_REQUEST, "본인이 업로드한 프로필 사진이 아닙니다."),
     MEETING_NOT_FOUND(HttpStatus.NOT_FOUND, "모임을 찾을 수 없습니다."),
     MEETING_ALREADY_JOINED(HttpStatus.CONFLICT, "이미 참여한 모임입니다."),
     MEETING_FULL(HttpStatus.CONFLICT, "모임 인원이 가득 찼습니다."),

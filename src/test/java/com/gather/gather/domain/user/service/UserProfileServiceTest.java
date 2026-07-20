@@ -3,6 +3,7 @@ package com.gather.gather.domain.user.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -32,6 +33,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.MockedStatic;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.test.util.ReflectionTestUtils;
 
 @ExtendWith(MockitoExtension.class)
@@ -103,7 +105,7 @@ class UserProfileServiceTest {
 
     @Test
     @DisplayName(
-            "updateMyProfile updates fields and does not touch the image when key is unchanged")
+            "updateMyProfile updates fields and skips the nickname duplicate check when unchanged")
     void updateMyProfile_updatesFields_whenNicknameUnchanged() {
         User user = existingUser();
         Region newRegion = Region.create("종로구", 2, "11110", null);
@@ -120,15 +122,37 @@ class UserProfileServiceTest {
 
             assertThat(response.name()).isEqualTo("홍길동");
             assertThat(user.getActivityRegion()).isSameAs(newRegion);
-            verify(userRepository, never()).existsByNicknameAndIdNot(any(), any());
+            verify(signupValidator, never()).validateNicknameNotDuplicated(any(), any());
             verify(profileImageStorageClient, never()).deleteObject(any());
         }
     }
 
     @Test
     @DisplayName(
-            "updateMyProfile throws DUPLICATE_NICKNAME when the new nickname belongs to another"
-                    + " user")
+            "updateMyProfile validates the new nickname against SignupValidator and succeeds when"
+                    + " it's available")
+    void updateMyProfile_succeeds_whenNicknameChangedAndAvailable() {
+        User user = existingUser();
+        Region region = Region.create("강남구", 2, "11680", null);
+        UserProfileUpdateRequest request = updateRequest("새닉네임", null);
+
+        try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
+            securityUtil.when(SecurityUtil::getCurrentUserId).thenReturn(USER_ID);
+            when(userRepository.findById(USER_ID)).thenReturn(Optional.of(user));
+            when(signupValidator.findActivityRegion(REGION_ID)).thenReturn(region);
+            when(userRepository.saveAndFlush(user)).thenReturn(user);
+
+            UserProfileResponse response = userProfileService.updateMyProfile(request);
+
+            assertThat(response.nickname()).isEqualTo("새닉네임");
+            verify(signupValidator).validateNicknameNotDuplicated("새닉네임", USER_ID);
+        }
+    }
+
+    @Test
+    @DisplayName(
+            "updateMyProfile throws DUPLICATE_NICKNAME when SignupValidator rejects the new"
+                    + " nickname")
     void updateMyProfile_throwsDuplicateNickname_whenNicknameTakenByAnotherUser() {
         User user = existingUser();
         UserProfileUpdateRequest request = updateRequest("새닉네임", null);
@@ -136,7 +160,9 @@ class UserProfileServiceTest {
         try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
             securityUtil.when(SecurityUtil::getCurrentUserId).thenReturn(USER_ID);
             when(userRepository.findById(USER_ID)).thenReturn(Optional.of(user));
-            when(userRepository.existsByNicknameAndIdNot("새닉네임", USER_ID)).thenReturn(true);
+            doThrow(new BusinessException(ErrorCode.DUPLICATE_NICKNAME))
+                    .when(signupValidator)
+                    .validateNicknameNotDuplicated("새닉네임", USER_ID);
 
             assertThatThrownBy(() -> userProfileService.updateMyProfile(request))
                     .isInstanceOf(BusinessException.class)
@@ -148,9 +174,9 @@ class UserProfileServiceTest {
 
     @Test
     @DisplayName(
-            "updateMyProfile replaces the image key and deletes the old S3 object when the key"
-                    + " changes")
-    void updateMyProfile_replacesImageKey_andDeletesOldObject() {
+            "updateMyProfile replaces the image key and deletes the old S3 object only after the"
+                    + " save succeeds")
+    void updateMyProfile_replacesImageKey_andDeletesOldObjectAfterSave() {
         User user = existingUser();
         ReflectionTestUtils.setField(user, "profileImageKey", "profiles/1/old.jpg");
         Region region = Region.create("강남구", 2, "11680", null);
@@ -166,6 +192,121 @@ class UserProfileServiceTest {
 
             assertThat(user.getProfileImageKey()).isEqualTo("profiles/1/new.jpg");
             verify(profileImageStorageClient, times(1)).deleteObject("profiles/1/old.jpg");
+        }
+    }
+
+    @Test
+    @DisplayName("updateMyProfile does not call deleteObject when this is the user's first upload")
+    void updateMyProfile_doesNotDeleteObject_whenFirstUpload() {
+        User user = existingUser();
+        Region region = Region.create("강남구", 2, "11680", null);
+        UserProfileUpdateRequest request = updateRequest("길동", "profiles/1/first.jpg");
+
+        try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
+            securityUtil.when(SecurityUtil::getCurrentUserId).thenReturn(USER_ID);
+            when(userRepository.findById(USER_ID)).thenReturn(Optional.of(user));
+            when(signupValidator.findActivityRegion(REGION_ID)).thenReturn(region);
+            when(userRepository.saveAndFlush(user)).thenReturn(user);
+
+            userProfileService.updateMyProfile(request);
+
+            assertThat(user.getProfileImageKey()).isEqualTo("profiles/1/first.jpg");
+            verify(profileImageStorageClient, never()).deleteObject(any());
+        }
+    }
+
+    @Test
+    @DisplayName(
+            "updateMyProfile does not touch the image or call deleteObject when the same key is"
+                    + " resent")
+    void updateMyProfile_skipsImageUpdate_whenKeyUnchanged() {
+        User user = existingUser();
+        ReflectionTestUtils.setField(user, "profileImageKey", "profiles/1/old.jpg");
+        Region region = Region.create("강남구", 2, "11680", null);
+        UserProfileUpdateRequest request = updateRequest("길동", "profiles/1/old.jpg");
+
+        try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
+            securityUtil.when(SecurityUtil::getCurrentUserId).thenReturn(USER_ID);
+            when(userRepository.findById(USER_ID)).thenReturn(Optional.of(user));
+            when(signupValidator.findActivityRegion(REGION_ID)).thenReturn(region);
+            when(userRepository.saveAndFlush(user)).thenReturn(user);
+
+            userProfileService.updateMyProfile(request);
+
+            assertThat(user.getProfileImageKey()).isEqualTo("profiles/1/old.jpg");
+            verify(profileImageStorageClient, never()).deleteObject(any());
+        }
+    }
+
+    @Test
+    @DisplayName(
+            "updateMyProfile throws INVALID_PROFILE_IMAGE_KEY when the key does not belong to the"
+                    + " current user")
+    void updateMyProfile_throwsInvalidProfileImageKey_whenKeyBelongsToAnotherUser() {
+        User user = existingUser();
+        UserProfileUpdateRequest request = updateRequest("길동", "profiles/999/other-user.jpg");
+
+        try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
+            securityUtil.when(SecurityUtil::getCurrentUserId).thenReturn(USER_ID);
+            when(userRepository.findById(USER_ID)).thenReturn(Optional.of(user));
+
+            assertThatThrownBy(() -> userProfileService.updateMyProfile(request))
+                    .isInstanceOf(BusinessException.class)
+                    .hasFieldOrPropertyWithValue("errorCode", ErrorCode.INVALID_PROFILE_IMAGE_KEY);
+
+            verify(userRepository, never()).saveAndFlush(any());
+            verify(profileImageStorageClient, never()).deleteObject(any());
+        }
+    }
+
+    @Test
+    @DisplayName(
+            "updateMyProfile does not delete the old image when a concurrent save conflict rolls"
+                    + " back the update")
+    void updateMyProfile_doesNotDeleteOldImage_whenSaveFails() {
+        User user = existingUser();
+        ReflectionTestUtils.setField(user, "profileImageKey", "profiles/1/old.jpg");
+        Region region = Region.create("강남구", 2, "11680", null);
+        UserProfileUpdateRequest request = updateRequest("새닉네임", "profiles/1/new.jpg");
+
+        try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
+            securityUtil.when(SecurityUtil::getCurrentUserId).thenReturn(USER_ID);
+            when(userRepository.findById(USER_ID)).thenReturn(Optional.of(user));
+            when(signupValidator.findActivityRegion(REGION_ID)).thenReturn(region);
+            when(userRepository.saveAndFlush(user))
+                    .thenThrow(new DataIntegrityViolationException("duplicate entry"));
+            when(signupValidator.resolveDuplicateException(any(), any(), any(), any()))
+                    .thenReturn(new BusinessException(ErrorCode.DUPLICATE_NICKNAME));
+
+            assertThatThrownBy(() -> userProfileService.updateMyProfile(request))
+                    .isInstanceOf(BusinessException.class)
+                    .hasFieldOrPropertyWithValue("errorCode", ErrorCode.DUPLICATE_NICKNAME);
+
+            verify(profileImageStorageClient, never()).deleteObject(any());
+        }
+    }
+
+    @Test
+    @DisplayName("updateMyProfile still returns successfully when deleting the old image throws")
+    void updateMyProfile_doesNotFailUpdate_whenOldImageDeleteThrows() {
+        User user = existingUser();
+        ReflectionTestUtils.setField(user, "profileImageKey", "profiles/1/old.jpg");
+        Region region = Region.create("강남구", 2, "11680", null);
+        UserProfileUpdateRequest request = updateRequest("길동", "profiles/1/new.jpg");
+
+        try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
+            securityUtil.when(SecurityUtil::getCurrentUserId).thenReturn(USER_ID);
+            when(userRepository.findById(USER_ID)).thenReturn(Optional.of(user));
+            when(signupValidator.findActivityRegion(REGION_ID)).thenReturn(region);
+            when(userRepository.saveAndFlush(user)).thenReturn(user);
+            doThrow(new RuntimeException("S3 unavailable"))
+                    .when(profileImageStorageClient)
+                    .deleteObject("profiles/1/old.jpg");
+
+            UserProfileResponse response = userProfileService.updateMyProfile(request);
+
+            assertThat(response.nickname()).isEqualTo("길동");
+            assertThat(user.getProfileImageKey()).isEqualTo("profiles/1/new.jpg");
         }
     }
 
