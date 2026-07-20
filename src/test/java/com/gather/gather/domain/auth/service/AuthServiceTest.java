@@ -308,6 +308,7 @@ class AuthServiceTest {
         String email = "wrong@example.com";
         EmailVerification existing =
                 EmailVerification.create(email, "123456", LocalDateTime.now().plusMinutes(10));
+        when(emailVerificationRepository.existsByEmail(email)).thenReturn(true);
         when(emailVerificationRepository.findByEmailForUpdate(email))
                 .thenReturn(Optional.of(existing));
 
@@ -332,6 +333,7 @@ class AuthServiceTest {
         for (int i = 0; i < 5; i++) {
             existing.increaseAttempt();
         }
+        when(emailVerificationRepository.existsByEmail(email)).thenReturn(true);
         when(emailVerificationRepository.findByEmailForUpdate(email))
                 .thenReturn(Optional.of(existing));
 
@@ -344,6 +346,25 @@ class AuthServiceTest {
                         exception ->
                                 assertThat(exception.getErrorCode())
                                         .isEqualTo(ErrorCode.EMAIL_VERIFICATION_ATTEMPTS_EXCEEDED));
+    }
+
+    @Test
+    @DisplayName("발송된 적 없는 이메일이면 잠금 조회 없이 EMAIL_VERIFICATION_NOT_FOUND를 던진다")
+    void confirmEmailVerificationCode_unknownEmail_doesNotTakeLock() {
+        String email = "unknown@example.com";
+        when(emailVerificationRepository.existsByEmail(email)).thenReturn(false);
+
+        assertThatThrownBy(
+                        () ->
+                                authService.confirmEmailVerificationCode(
+                                        new EmailVerificationConfirmRequest(email, "123456")))
+                .isInstanceOfSatisfying(
+                        BusinessException.class,
+                        exception ->
+                                assertThat(exception.getErrorCode())
+                                        .isEqualTo(ErrorCode.EMAIL_VERIFICATION_NOT_FOUND));
+        // 없는 행에 FOR UPDATE를 걸면 빈 갭에 gap lock이 잡히므로 잠금 조회 자체가 일어나면 안 된다.
+        verify(emailVerificationRepository, never()).findByEmailForUpdate(any());
     }
 
     @Test

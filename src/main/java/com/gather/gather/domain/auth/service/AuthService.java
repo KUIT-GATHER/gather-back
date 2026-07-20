@@ -113,11 +113,16 @@ public class AuthService {
                 email, expiresAt, resendAvailableAt, "인증 코드가 발송되었습니다.");
     }
 
-    // 코드 입력 실패 시도(increaseAttempt)는 예외를 던져도 커밋되어야 하므로 BusinessException에 롤백하지 않는다.
-    @Transactional(noRollbackFor = BusinessException.class)
+    // 카운터를 증가시킨 뒤 던지는 오답 예외만 롤백하지 않아, 다른 BusinessException의 롤백 의미를 보존한다.
+    @Transactional(noRollbackFor = EmailVerificationAttemptFailureException.class)
     public EmailVerificationConfirmResponse confirmEmailVerificationCode(
             EmailVerificationConfirmRequest request) {
         String email = normalizeEmail(request.email());
+        // 없는 행을 FOR UPDATE로 조회하면 unique 인덱스의 빈 갭에 gap lock이 걸려, 같은 갭에 INSERT하려는
+        // 동시 발송 요청과 충돌한다. 인증 없이 호출 가능한 공개 엔드포인트이므로 send와 같은 선확인을 둔다.
+        if (!emailVerificationRepository.existsByEmail(email)) {
+            throw new BusinessException(ErrorCode.EMAIL_VERIFICATION_NOT_FOUND);
+        }
         EmailVerification emailVerification =
                 emailVerificationRepository
                         .findByEmailForUpdate(email)
@@ -136,9 +141,10 @@ public class AuthService {
         if (!emailVerification.getCode().equals(request.code())) {
             emailVerification.increaseAttempt();
             if (emailVerification.isAttemptExceeded(EMAIL_MAX_VERIFICATION_ATTEMPTS)) {
-                throw new BusinessException(ErrorCode.EMAIL_VERIFICATION_ATTEMPTS_EXCEEDED);
+                throw new EmailVerificationAttemptFailureException(
+                        ErrorCode.EMAIL_VERIFICATION_ATTEMPTS_EXCEEDED);
             }
-            throw new BusinessException(ErrorCode.INVALID_VERIFICATION_CODE);
+            throw new EmailVerificationAttemptFailureException(ErrorCode.INVALID_VERIFICATION_CODE);
         }
 
         emailVerification.verify(now);
@@ -315,6 +321,8 @@ public class AuthService {
                 || normalizedConstraintName.endsWith("." + EMAIL_VERIFICATION_UNIQUE_CONSTRAINT);
     }
 
+    // 제약 이름을 얻지 못했을 때의 차선책. email_verification의 unique 제약이 email 하나뿐이라는 전제에
+    // 기대므로, 이 테이블에 unique 컬럼을 추가하면 무관한 중복키까지 이메일 충돌로 오분류된다.
     private boolean hasMySqlDuplicateEntryError(Throwable exception) {
         Throwable cause = exception;
         while (cause != null) {
@@ -401,6 +409,13 @@ public class AuthService {
         return String.format(
                 "%0" + EMAIL_VERIFICATION_CODE_MIN_DIGITS + "d",
                 secureRandom.nextInt(EMAIL_VERIFICATION_CODE_BOUND));
+    }
+
+    private static final class EmailVerificationAttemptFailureException extends BusinessException {
+
+        private EmailVerificationAttemptFailureException(ErrorCode errorCode) {
+            super(errorCode);
+        }
     }
 
     private record FailedEmailDeliveryCompensation(

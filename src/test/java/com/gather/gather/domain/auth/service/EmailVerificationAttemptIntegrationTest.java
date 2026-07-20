@@ -55,4 +55,28 @@ class EmailVerificationAttemptIntegrationTest {
         EmailVerification reloaded = emailVerificationRepository.findByEmail(EMAIL).orElseThrow();
         assertThat(reloaded.getAttemptCount()).isEqualTo(1);
     }
+
+    @Test
+    @DisplayName("다섯 번째 오답으로 한도를 초과해도 시도 횟수 5가 커밋되어 남는다")
+    void fifthWrongCode_persistsAttemptCountWhenLimitIsExceeded() {
+        EmailVerification emailVerification =
+                EmailVerification.create(EMAIL, "123456", LocalDateTime.now().plusMinutes(10));
+        for (int i = 0; i < 4; i++) {
+            emailVerification.increaseAttempt();
+        }
+        emailVerificationRepository.saveAndFlush(emailVerification);
+
+        assertThatThrownBy(
+                        () ->
+                                authService.confirmEmailVerificationCode(
+                                        new EmailVerificationConfirmRequest(EMAIL, "000000")))
+                .isInstanceOfSatisfying(
+                        BusinessException.class,
+                        exception ->
+                                assertThat(exception.getErrorCode())
+                                        .isEqualTo(ErrorCode.EMAIL_VERIFICATION_ATTEMPTS_EXCEEDED));
+
+        EmailVerification reloaded = emailVerificationRepository.findByEmail(EMAIL).orElseThrow();
+        assertThat(reloaded.getAttemptCount()).isEqualTo(5);
+    }
 }
