@@ -10,5 +10,6 @@ CREATE TABLE posting_participation (
     created_at DATETIME(6) NOT NULL,
     updated_at DATETIME(6) NOT NULL,
     PRIMARY KEY (id),
-    CONSTRAINT fk_posting_participation_posting FOREIGN KEY (posting_id) REFERENCES volunteer_posting (id)
+    CONSTRAINT fk_posting_participation_posting FOREIGN KEY (posting_id) REFERENCES volunteer_posting (id),
+    INDEX idx_posting_participation_user (user_id)
 );
