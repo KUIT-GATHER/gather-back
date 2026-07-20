@@ -42,6 +42,9 @@ public class SecurityConfig {
         "/v3/api-docs/**"
     };
 
+    // ADMIN 권한 보유자만 접근 가능한 경로. anyRequest().authenticated()보다 먼저 평가되어야 한다.
+    private static final String[] ADMIN_ONLY_PATHS = {"/api/v1/admin/**"};
+
     private final TokenProvider tokenProvider;
     private final ObjectMapper objectMapper;
     private final CorsProperties corsProperties;
@@ -69,11 +72,16 @@ public class SecurityConfig {
                                         .permitAll()
                                         .requestMatchers(PERMIT_ALL_PATHS)
                                         .permitAll()
+                                        .requestMatchers(ADMIN_ONLY_PATHS)
+                                        .hasRole("ADMIN")
                                         .anyRequest()
                                         .authenticated())
                 .addFilterBefore(
                         new JwtAuthenticationFilter(tokenProvider),
                         UsernamePasswordAuthenticationFilter.class)
+                // 403(AccessDeniedException) 공통 JSON 핸들러는 PR#51(feature/posting-sync-admin-only)에서
+                // CustomAccessDeniedHandler로 추가 중 — 두 브랜치 중복 방지를 위해 여기서는 등록하지 않는다.
+                // PR#51이 develop에 머지되면 이 SecurityConfig도 그쪽 accessDeniedHandler 등록과 합쳐야 한다.
                 .exceptionHandling(
                         exception ->
                                 exception.authenticationEntryPoint(

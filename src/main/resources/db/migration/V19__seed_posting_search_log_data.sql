@@ -1,6 +1,6 @@
 -- 추천검색어 기능 초기 부트스트랩용 시드. PostingKeywordRecommendationService.aggregate()가 posting_search_log를
 -- 집계해서 posting_recommended_keyword를 채우는데, 실제 사용자 검색 로그가 쌓이기 전에는 추천검색어가 비어 보이므로
--- 키워드별 5건씩 넣어 다음 집계 배치(매일 새벽 5시)부터 top10에 포함되게 한다.
+-- 키워드별 10건씩 넣어 다음 집계 배치(매일 새벽 5시)부터 top10에 포함되게 한다.
 INSERT INTO posting_search_log (keyword, searched_at)
 VALUES
     ('유기견', CURRENT_TIMESTAMP(6)),
