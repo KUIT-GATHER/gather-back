@@ -20,4 +20,6 @@ public interface UserRepository extends JpaRepository<User, Long> {
     boolean existsByPhoneNumber(String phoneNumber);
 
     boolean existsByNickname(String nickname);
+
+    boolean existsByNicknameAndIdNot(String nickname, Long id);
 }

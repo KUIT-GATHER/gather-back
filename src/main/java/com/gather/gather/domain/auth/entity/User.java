@@ -188,4 +188,22 @@ public class User {
     public void changeProfileImageKey(String profileImageKey) {
         this.profileImageKey = profileImageKey;
     }
+
+    /** 마이페이지 프로필 편집. 회원가입과 동일한 필드 집합을 갱신하며, 이메일·전화번호·비밀번호는 이 화면의 편집 대상이 아니다. */
+    public void updateProfile(
+            String name,
+            String nickname,
+            String introduction,
+            LocalDate birthDate,
+            Gender gender,
+            Region activityRegion,
+            List<PostingCategory> interestCategories) {
+        this.name = name;
+        this.nickname = nickname;
+        this.introduction = introduction;
+        this.birthDate = birthDate;
+        this.gender = gender;
+        this.activityRegion = activityRegion;
+        this.interestCategories = new ArrayList<>(interestCategories);
+    }
 }
