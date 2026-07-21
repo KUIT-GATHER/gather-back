@@ -95,6 +95,11 @@ public class S3ObjectStorage implements ObjectStorage {
                 DeleteObjectRequest.builder().bucket(properties.bucket()).key(objectKey).build();
         try {
             s3Client.deleteObject(request);
+        } catch (S3Exception exception) {
+            if (exception.statusCode() == 404) {
+                return;
+            }
+            throw new BusinessException(ErrorCode.S3_OPERATION_FAILED, exception);
         } catch (SdkException exception) {
             throw new BusinessException(ErrorCode.S3_OPERATION_FAILED, exception);
         }

@@ -40,12 +40,26 @@ key를 덮어쓸 수 없으며, 프로필 반영 API는 서버가 발급하고 �
 `If-None-Match: *`는 Presigned URL의 필수 서명 헤더라 클라이언트가 빼면 서명 검증에서 거부됩니다.
 따라서 버킷 정책으로 조건부 쓰기를 따로 강제할 필요는 없습니다.
 
+## `412 Precondition Failed` 처리
+
+Presigned PUT 요청은 `If-None-Match: *` 헤더를 반드시 포함합니다. 동일한 URL로 두 번째 PUT을
+시도하면 S3가 `412 Precondition Failed`로 거절합니다. 프론트는 412를 받으면 기존 URL을 재시도하지
+않고, Presigned URL 발급 API를 다시 호출해 새 `uploadUrl`과 `objectKey`로 업로드해야 합니다.
+
 ## 운영 환경변수
 
 ```text
 GATHER_AWS_REGION
 GATHER_AWS_S3_BUCKET
 GATHER_AWS_S3_PUBLIC_BASE_URL
+```
+
+S3 API 호출에는 기본적으로 전체 호출 20초, 개별 시도 10초의 제한을 둡니다. 운영 환경에서 조정이
+필요하면 다음 선택 환경변수를 사용합니다.
+
+```text
+GATHER_AWS_S3_API_CALL_TIMEOUT_SECONDS
+GATHER_AWS_S3_API_CALL_ATTEMPT_TIMEOUT_SECONDS
 ```
 
 운영 EC2에는 `GatherBackendProfileImageRole`을 연결합니다.

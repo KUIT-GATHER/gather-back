@@ -18,12 +18,10 @@ import com.gather.gather.global.infra.s3.StoredObjectMetadata;
 import com.gather.gather.global.util.SecurityUtil;
 import java.time.Duration;
 import java.time.LocalDateTime;
-import java.util.Objects;
 import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import lombok.RequiredArgsConstructor;
-import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -40,7 +38,7 @@ public class ProfileImageService {
     private final S3Properties properties;
     private final ProfileImageUrlResolver profileImageUrlResolver;
     private final ProfileImageContentValidator profileImageContentValidator;
-    private final ApplicationEventPublisher eventPublisher;
+    private final ProfileImageApplyService profileImageApplyService;
 
     @Transactional(readOnly = true)
     public ProfileImageCurrentResponse getCurrentProfileImage() {
@@ -93,17 +91,12 @@ public class ProfileImageService {
                 properties.presignedUrlExpirationSeconds());
     }
 
-    @Transactional
     public ProfileImageUpdateResponse updateProfileImage(ProfileImageUpdateRequest request) {
         Long userId = SecurityUtil.getCurrentUserId();
-        User user =
-                userRepository
-                        .findByIdForUpdate(userId)
-                        .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
         ProfileImageFormat keyFormat = validateAndGetKeyFormat(request.objectKey(), userId);
         ProfileImageUpload upload =
                 profileImageUploadRepository
-                        .findByUserIdAndObjectKeyForUpdate(userId, request.objectKey())
+                        .findByUserIdAndObjectKey(userId, request.objectKey())
                         .orElseThrow(
                                 () -> new BusinessException(ErrorCode.INVALID_PROFILE_IMAGE_KEY));
         LocalDateTime now = LocalDateTime.now();
@@ -115,17 +108,7 @@ public class ProfileImageService {
             throw new BusinessException(ErrorCode.PROFILE_IMAGE_SIZE_MISMATCH);
         }
         profileImageContentValidator.validate(keyFormat, content);
-
-        String previousObjectKey = user.getProfileImageKey();
-        user.changeProfileImageKey(request.objectKey());
-        String deletionTarget =
-                Objects.equals(previousObjectKey, request.objectKey()) ? null : previousObjectKey;
-        upload.apply(deletionTarget, now);
-        if (deletionTarget != null) {
-            eventPublisher.publishEvent(new ProfileImageReplacedEvent(upload.getId()));
-        } else {
-            profileImageUploadRepository.delete(upload);
-        }
+        profileImageApplyService.apply(userId, request.objectKey(), keyFormat, metadata);
 
         return new ProfileImageUpdateResponse(profileImageUrlResolver.resolve(request.objectKey()));
     }

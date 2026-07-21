@@ -24,6 +24,8 @@ gather:
       bucket: test-profile-images
       public-base-url: https://test-profile-images.s3.ap-northeast-2.amazonaws.com
       presigned-url-expiration-seconds: 300
+      api-call-timeout-seconds: 20
+      api-call-attempt-timeout-seconds: 10
       max-image-size-bytes: 5242880
       object-prefix: profiles
       max-pending-uploads-per-user: 3

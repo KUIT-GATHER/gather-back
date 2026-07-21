@@ -41,6 +41,8 @@ class ProfileImageCleanupServiceTest {
                     "test-profile-images",
                     "https://test-profile-images.example",
                     300,
+                    20,
+                    10,
                     5L * 1024 * 1024,
                     "profiles",
                     3,

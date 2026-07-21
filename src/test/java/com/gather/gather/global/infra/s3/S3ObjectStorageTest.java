@@ -46,6 +46,8 @@ class S3ObjectStorageTest {
                     BUCKET,
                     "https://test-profile-images.example",
                     300,
+                    20,
+                    10,
                     5L * 1024 * 1024,
                     "profiles",
                     3,
@@ -153,6 +155,39 @@ class S3ObjectStorageTest {
     }
 
     @Test
+    @DisplayName("GetObject 404는 객체 없음 오류로 변환한다")
+    void getContent_maps404ToObjectNotFound() {
+        when(s3Client.getObjectAsBytes(any(GetObjectRequest.class)))
+                .thenThrow(S3Exception.builder().statusCode(404).message("not found").build());
+
+        assertBusinessException(
+                () -> objectStorage.getContent(OBJECT_KEY, "\"test-etag\""),
+                ErrorCode.PROFILE_IMAGE_OBJECT_NOT_FOUND);
+    }
+
+    @Test
+    @DisplayName("GetObject의 404 이외 S3 오류는 저장소 연동 오류로 변환한다")
+    void getContent_mapsOtherS3FailureToStorageFailure() {
+        when(s3Client.getObjectAsBytes(any(GetObjectRequest.class)))
+                .thenThrow(S3Exception.builder().statusCode(403).message("forbidden").build());
+
+        assertBusinessException(
+                () -> objectStorage.getContent(OBJECT_KEY, "\"test-etag\""),
+                ErrorCode.S3_OPERATION_FAILED);
+    }
+
+    @Test
+    @DisplayName("GetObject SDK 오류는 저장소 연동 오류로 변환한다")
+    void getContent_mapsClientFailureToStorageFailure() {
+        when(s3Client.getObjectAsBytes(any(GetObjectRequest.class)))
+                .thenThrow(SdkClientException.create("connection failed"));
+
+        assertBusinessException(
+                () -> objectStorage.getContent(OBJECT_KEY, "\"test-etag\""),
+                ErrorCode.S3_OPERATION_FAILED);
+    }
+
+    @Test
     @DisplayName("HeadObject 404는 객체 부재 오류로 변환한다")
     void getMetadata_maps404ToObjectNotFound() {
         when(s3Client.headObject(any(HeadObjectRequest.class)))
@@ -183,6 +218,35 @@ class S3ObjectStorageTest {
         verify(s3Client).deleteObject(captor.capture());
         assertThat(captor.getValue().bucket()).isEqualTo(BUCKET);
         assertThat(captor.getValue().key()).isEqualTo(OBJECT_KEY);
+    }
+
+    @Test
+    @DisplayName("DeleteObject 404는 이미 삭제된 상태로 간주한다")
+    void delete_ignoresNotFound() {
+        when(s3Client.deleteObject(any(DeleteObjectRequest.class)))
+                .thenThrow(S3Exception.builder().statusCode(404).message("not found").build());
+
+        objectStorage.delete(OBJECT_KEY);
+    }
+
+    @Test
+    @DisplayName("DeleteObject의 404 이외 S3 오류는 저장소 연동 오류로 변환한다")
+    void delete_mapsOtherS3FailureToStorageFailure() {
+        when(s3Client.deleteObject(any(DeleteObjectRequest.class)))
+                .thenThrow(S3Exception.builder().statusCode(403).message("forbidden").build());
+
+        assertBusinessException(
+                () -> objectStorage.delete(OBJECT_KEY), ErrorCode.S3_OPERATION_FAILED);
+    }
+
+    @Test
+    @DisplayName("DeleteObject SDK 오류는 저장소 연동 오류로 변환한다")
+    void delete_mapsClientFailureToStorageFailure() {
+        when(s3Client.deleteObject(any(DeleteObjectRequest.class)))
+                .thenThrow(SdkClientException.create("connection failed"));
+
+        assertBusinessException(
+                () -> objectStorage.delete(OBJECT_KEY), ErrorCode.S3_OPERATION_FAILED);
     }
 
     private void assertBusinessException(Runnable operation, ErrorCode errorCode) {

@@ -19,9 +19,9 @@ public class ProfileImageDeletionListener {
             profileImageCleanupService.deletePreviousObject(event.uploadId());
         } catch (RuntimeException exception) {
             log.warn(
-                    "기존 프로필 이미지 객체 삭제에 실패했습니다. 재시도 대상으로 유지합니다: uploadId={}, cause={}",
+                    "기존 프로필 이미지 객체 삭제에 실패했습니다. 재시도 대상으로 유지합니다: uploadId={}",
                     event.uploadId(),
-                    exception.getClass().getSimpleName());
+                    exception);
         }
     }
 }

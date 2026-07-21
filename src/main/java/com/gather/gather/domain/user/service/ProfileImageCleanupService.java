@@ -51,10 +51,7 @@ public class ProfileImageCleanupService {
                 profileImageUploadRepository.delete(upload);
                 cleanedCount++;
             } catch (RuntimeException exception) {
-                log.warn(
-                        "만료된 프로필 이미지 업로드 객체 삭제에 실패했습니다: uploadId={}, cause={}",
-                        upload.getId(),
-                        exception.getClass().getSimpleName());
+                log.warn("만료된 프로필 이미지 업로드 객체 삭제에 실패했습니다: uploadId={}", upload.getId(), exception);
             }
         }
         return cleanedCount;
@@ -80,10 +77,7 @@ public class ProfileImageCleanupService {
                 }
                 cleanedCount++;
             } catch (RuntimeException exception) {
-                log.warn(
-                        "기존 프로필 이미지 객체 재삭제에 실패했습니다: uploadId={}, cause={}",
-                        upload.getId(),
-                        exception.getClass().getSimpleName());
+                log.warn("기존 프로필 이미지 객체 재삭제에 실패했습니다: uploadId={}", upload.getId(), exception);
             }
         }
         return cleanedCount;

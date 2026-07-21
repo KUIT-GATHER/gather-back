@@ -63,6 +63,8 @@ class ProfileImageServiceTest {
                     "test-profile-images",
                     PUBLIC_BASE_URL,
                     300,
+                    20,
+                    10,
                     MAX_SIZE,
                     "profiles",
                     3,
@@ -87,7 +89,8 @@ class ProfileImageServiceTest {
                         PROPERTIES,
                         new ProfileImageUrlResolver(PROPERTIES),
                         new ProfileImageContentValidator(),
-                        eventPublisher);
+                        new ProfileImageApplyService(
+                                userRepository, profileImageUploadRepository, eventPublisher));
     }
 
     @Test
@@ -236,15 +239,17 @@ class ProfileImageServiceTest {
     }
 
     @Test
-    @DisplayName("사용자 행을 먼저 잠근 후 발급 건을 잠가 동시 교체 순서를 직렬화한다")
-    void updateProfileImage_locksUserBeforeUploadSession() {
+    @DisplayName("S3 검증을 마친 뒤 사용자와 발급 건을 순서대로 잠근다")
+    void updateProfileImage_validatesS3BeforeLockingUserAndUploadSession() {
         User user = user(null);
         ProfileImageUpload upload = issuedUpload(JPG_KEY, "image/jpeg", IMAGE_SIZE);
         prepareValidUpdate(user, upload, jpegBytes(IMAGE_SIZE));
 
         update(JPG_KEY);
 
-        InOrder inOrder = inOrder(userRepository, profileImageUploadRepository);
+        InOrder inOrder = inOrder(objectStorage, userRepository, profileImageUploadRepository);
+        inOrder.verify(objectStorage).getMetadata(JPG_KEY);
+        inOrder.verify(objectStorage).getContent(JPG_KEY, E_TAG);
         inOrder.verify(userRepository).findByIdForUpdate(USER_ID);
         inOrder.verify(profileImageUploadRepository)
                 .findByUserIdAndObjectKeyForUpdate(USER_ID, JPG_KEY);
@@ -253,8 +258,7 @@ class ProfileImageServiceTest {
     @Test
     @DisplayName("발급 기록이 없는 과거 key는 존재하는 S3 객체여도 반영하지 않는다")
     void updateProfileImage_rejectsUnissuedOrPreviousKey() {
-        when(userRepository.findByIdForUpdate(USER_ID)).thenReturn(Optional.of(user(null)));
-        when(profileImageUploadRepository.findByUserIdAndObjectKeyForUpdate(USER_ID, JPG_KEY))
+        when(profileImageUploadRepository.findByUserIdAndObjectKey(USER_ID, JPG_KEY))
                 .thenReturn(Optional.empty());
 
         assertBusinessException(() -> update(JPG_KEY), ErrorCode.INVALID_PROFILE_IMAGE_KEY);
@@ -267,11 +271,11 @@ class ProfileImageServiceTest {
     void updateProfileImage_rejectsAlreadyAppliedUpload() {
         ProfileImageUpload upload = issuedUpload(JPG_KEY, "image/jpeg", IMAGE_SIZE);
         upload.apply(null, LocalDateTime.now());
-        prepareSessionLookup(user(null), upload);
+        prepareInitialSessionLookup(upload);
 
         assertBusinessException(() -> update(JPG_KEY), ErrorCode.INVALID_PROFILE_IMAGE_KEY);
 
-        verifyNoInteractions(objectStorage);
+        verifyNoInteractions(userRepository, objectStorage);
     }
 
     @Test
@@ -279,11 +283,11 @@ class ProfileImageServiceTest {
     void updateProfileImage_rejectsExpiredUpload() {
         ProfileImageUpload upload =
                 upload(JPG_KEY, "image/jpeg", IMAGE_SIZE, LocalDateTime.now().minusSeconds(1));
-        prepareSessionLookup(user(null), upload);
+        prepareInitialSessionLookup(upload);
 
         assertBusinessException(() -> update(JPG_KEY), ErrorCode.PROFILE_IMAGE_UPLOAD_EXPIRED);
 
-        verifyNoInteractions(objectStorage);
+        verifyNoInteractions(userRepository, objectStorage);
     }
 
     @ParameterizedTest
@@ -296,8 +300,6 @@ class ProfileImageServiceTest {
             })
     @DisplayName("다른 사용자 prefix와 비정상 key는 발급 건 조회 전에 거부한다")
     void updateProfileImage_rejectsInvalidObjectKey(String objectKey) {
-        when(userRepository.findByIdForUpdate(USER_ID)).thenReturn(Optional.of(user(null)));
-
         assertBusinessException(() -> update(objectKey), ErrorCode.INVALID_PROFILE_IMAGE_KEY);
 
         verifyNoInteractions(profileImageUploadRepository, objectStorage);
@@ -307,7 +309,7 @@ class ProfileImageServiceTest {
     @DisplayName("요청 크기와 실제 S3 객체 크기가 다르면 반영하지 않는다")
     void updateProfileImage_rejectsSizeMismatch() {
         ProfileImageUpload upload = issuedUpload(JPG_KEY, "image/jpeg", IMAGE_SIZE);
-        prepareSessionLookup(user(null), upload);
+        prepareInitialSessionLookup(upload);
         when(objectStorage.getMetadata(JPG_KEY))
                 .thenReturn(new StoredObjectMetadata("image/jpeg", IMAGE_SIZE - 1, E_TAG));
 
@@ -317,11 +319,53 @@ class ProfileImageServiceTest {
     }
 
     @Test
+    @DisplayName("확장자와 S3 Content-Type이 다르면 반영하지 않는다")
+    void updateProfileImage_rejectsStoredContentTypeMismatch() {
+        ProfileImageUpload upload = issuedUpload(JPG_KEY, "image/jpeg", IMAGE_SIZE);
+        prepareInitialSessionLookup(upload);
+        when(objectStorage.getMetadata(JPG_KEY))
+                .thenReturn(new StoredObjectMetadata("image/png", IMAGE_SIZE, E_TAG));
+
+        assertBusinessException(() -> update(JPG_KEY), ErrorCode.INVALID_PROFILE_IMAGE_KEY);
+
+        verify(objectStorage, never()).getContent(anyString(), anyString());
+        verifyNoInteractions(userRepository);
+    }
+
+    @Test
+    @DisplayName("S3 객체 크기가 0이면 반영하지 않는다")
+    void updateProfileImage_rejectsEmptyStoredObject() {
+        ProfileImageUpload upload = issuedUpload(JPG_KEY, "image/jpeg", IMAGE_SIZE);
+        prepareInitialSessionLookup(upload);
+        when(objectStorage.getMetadata(JPG_KEY))
+                .thenReturn(new StoredObjectMetadata("image/jpeg", 0, E_TAG));
+
+        assertBusinessException(() -> update(JPG_KEY), ErrorCode.VALIDATION_ERROR);
+
+        verify(objectStorage, never()).getContent(anyString(), anyString());
+        verifyNoInteractions(userRepository);
+    }
+
+    @Test
+    @DisplayName("S3 객체가 최대 크기를 초과하면 반영하지 않는다")
+    void updateProfileImage_rejectsStoredObjectOverMaximumSize() {
+        ProfileImageUpload upload = issuedUpload(JPG_KEY, "image/jpeg", IMAGE_SIZE);
+        prepareInitialSessionLookup(upload);
+        when(objectStorage.getMetadata(JPG_KEY))
+                .thenReturn(new StoredObjectMetadata("image/jpeg", MAX_SIZE + 1, E_TAG));
+
+        assertBusinessException(() -> update(JPG_KEY), ErrorCode.PROFILE_IMAGE_SIZE_EXCEEDED);
+
+        verify(objectStorage, never()).getContent(anyString(), anyString());
+        verifyNoInteractions(userRepository);
+    }
+
+    @Test
     @DisplayName("메타데이터는 JPEG지만 실제 바이트 시그니처가 아니면 반영하지 않는다")
     void updateProfileImage_rejectsDisguisedBinary() {
         User user = user(null);
         ProfileImageUpload upload = issuedUpload(JPG_KEY, "image/jpeg", IMAGE_SIZE);
-        prepareValidUpdate(user, upload, new byte[IMAGE_SIZE]);
+        prepareValidObject(upload, new byte[IMAGE_SIZE]);
 
         assertBusinessException(() -> update(JPG_KEY), ErrorCode.INVALID_PROFILE_IMAGE_CONTENT);
 
@@ -334,12 +378,30 @@ class ProfileImageServiceTest {
     void updateProfileImage_rejectsContentChangedAfterHead() {
         User user = user(null);
         ProfileImageUpload upload = issuedUpload(JPG_KEY, "image/jpeg", IMAGE_SIZE);
-        prepareSessionLookup(user, upload);
+        prepareInitialSessionLookup(upload);
         when(objectStorage.getMetadata(JPG_KEY))
                 .thenReturn(new StoredObjectMetadata("image/jpeg", IMAGE_SIZE, E_TAG));
         when(objectStorage.getContent(JPG_KEY, E_TAG)).thenReturn(jpegBytes(IMAGE_SIZE - 1));
 
         assertBusinessException(() -> update(JPG_KEY), ErrorCode.PROFILE_IMAGE_SIZE_MISMATCH);
+
+        assertThat(user.getProfileImageKey()).isNull();
+    }
+
+    @Test
+    @DisplayName("S3 검증 중 다른 요청이 발급 건을 반영하면 잠금 획득 후 다시 거부한다")
+    void updateProfileImage_revalidatesUploadSessionAfterS3Validation() {
+        User user = user(null);
+        ProfileImageUpload initialUpload = issuedUpload(JPG_KEY, "image/jpeg", IMAGE_SIZE);
+        ProfileImageUpload concurrentlyAppliedUpload =
+                issuedUpload(JPG_KEY, "image/jpeg", IMAGE_SIZE);
+        concurrentlyAppliedUpload.apply(null, LocalDateTime.now());
+        prepareValidObject(initialUpload, jpegBytes(IMAGE_SIZE));
+        when(userRepository.findByIdForUpdate(USER_ID)).thenReturn(Optional.of(user));
+        when(profileImageUploadRepository.findByUserIdAndObjectKeyForUpdate(USER_ID, JPG_KEY))
+                .thenReturn(Optional.of(concurrentlyAppliedUpload));
+
+        assertBusinessException(() -> update(JPG_KEY), ErrorCode.INVALID_PROFILE_IMAGE_KEY);
 
         assertThat(user.getProfileImageKey()).isNull();
     }
@@ -393,6 +455,15 @@ class ProfileImageServiceTest {
 
     private void prepareValidUpdate(User user, ProfileImageUpload upload, byte[] content) {
         prepareSessionLookup(user, upload);
+        prepareStoredObject(upload, content);
+    }
+
+    private void prepareValidObject(ProfileImageUpload upload, byte[] content) {
+        prepareInitialSessionLookup(upload);
+        prepareStoredObject(upload, content);
+    }
+
+    private void prepareStoredObject(ProfileImageUpload upload, byte[] content) {
         when(objectStorage.getMetadata(upload.getObjectKey()))
                 .thenReturn(
                         new StoredObjectMetadata(
@@ -401,9 +472,15 @@ class ProfileImageServiceTest {
     }
 
     private void prepareSessionLookup(User user, ProfileImageUpload upload) {
+        prepareInitialSessionLookup(upload);
         when(userRepository.findByIdForUpdate(USER_ID)).thenReturn(Optional.of(user));
         when(profileImageUploadRepository.findByUserIdAndObjectKeyForUpdate(
                         USER_ID, upload.getObjectKey()))
+                .thenReturn(Optional.of(upload));
+    }
+
+    private void prepareInitialSessionLookup(ProfileImageUpload upload) {
+        when(profileImageUploadRepository.findByUserIdAndObjectKey(USER_ID, upload.getObjectKey()))
                 .thenReturn(Optional.of(upload));
     }
 

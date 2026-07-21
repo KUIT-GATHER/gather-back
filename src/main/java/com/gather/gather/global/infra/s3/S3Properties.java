@@ -13,6 +13,8 @@ public record S3Properties(
         @NotBlank String bucket,
         @NotBlank String publicBaseUrl,
         @Positive long presignedUrlExpirationSeconds,
+        @Positive long apiCallTimeoutSeconds,
+        @Positive long apiCallAttemptTimeoutSeconds,
         @Positive long maxImageSizeBytes,
         @NotBlank @Pattern(regexp = "[a-zA-Z0-9_-]+") String objectPrefix,
         @Positive int maxPendingUploadsPerUser,

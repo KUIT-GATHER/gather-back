@@ -16,6 +16,8 @@ public interface ProfileImageUploadRepository extends JpaRepository<ProfileImage
     long countByUserIdAndStatusAndExpiresAtAfter(
             Long userId, ProfileImageUploadStatus status, LocalDateTime now);
 
+    Optional<ProfileImageUpload> findByUserIdAndObjectKey(Long userId, String objectKey);
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query(
             """
