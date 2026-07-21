@@ -174,7 +174,12 @@ public class PostingController {
                         category));
     }
 
-    @Operation(summary = "봉사공고 상세 조회", description = "봉사공고 상세 정보를 조회합니다. 인증이 필요 없습니다.")
+    @Operation(
+            summary = "봉사공고 상세 조회",
+            description =
+                    "봉사공고 상세 정보를 조회합니다. 인증이 필요 없습니다. "
+                            + "Authorization 헤더로 유효한 토큰을 보내면 bookmarked 필드에 해당 사용자의 북마크 여부가 반영되고, "
+                            + "헤더가 없거나 비로그인 상태면 bookmarked는 항상 false입니다.")
     @ApiResponses({
         @io.swagger.v3.oas.annotations.responses.ApiResponse(
                 responseCode = "200",
