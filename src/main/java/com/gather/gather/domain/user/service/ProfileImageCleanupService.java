@@ -59,6 +59,7 @@ public class ProfileImageCleanupService {
 
     @Transactional
     public int retryPreviousObjectDeletions() {
+        // 아직 유효한 Presigned URL이 과거 key를 다시 만들 가능성이 사라진 뒤에만 삭제 대상을 정리한다.
         LocalDateTime safeBefore =
                 LocalDateTime.now().minusSeconds(properties.presignedUrlExpirationSeconds());
         List<ProfileImageUpload> uploads =

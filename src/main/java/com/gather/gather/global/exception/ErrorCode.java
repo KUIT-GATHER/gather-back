@@ -65,6 +65,7 @@ public enum ErrorCode {
             HttpStatus.TOO_MANY_REQUESTS, "처리되지 않은 프로필 이미지 업로드 요청이 너무 많습니다."),
     PROFILE_IMAGE_SIZE_MISMATCH(HttpStatus.BAD_REQUEST, "요청한 크기와 업로드된 이미지 크기가 다릅니다."),
     INVALID_PROFILE_IMAGE_CONTENT(HttpStatus.BAD_REQUEST, "실제 프로필 이미지 형식이 올바르지 않습니다."),
+    PROFILE_IMAGE_UPLOAD_CONFLICT(HttpStatus.CONFLICT, "업로드된 프로필 이미지가 변경되어 다시 시도해야 합니다."),
     S3_OPERATION_FAILED(HttpStatus.BAD_GATEWAY, "이미지 저장소 연동에 실패했습니다."),
 
     MEETING_MEMBER_REQUIRED(HttpStatus.FORBIDDEN, "모임에 가입해야 이용할 수 있습니다."),

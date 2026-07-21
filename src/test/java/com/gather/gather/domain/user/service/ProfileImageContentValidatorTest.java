@@ -33,6 +33,14 @@ class ProfileImageContentValidatorTest {
     }
 
     @Test
+    @DisplayName("JPEG 바이트를 PNG로 선언하면 매직바이트 불일치로 거부한다")
+    void validate_rejectsJpegDisguisedAsPng() {
+        assertThatThrownBy(() -> validator.validate(ProfileImageFormat.PNG, jpeg()))
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("errorCode", ErrorCode.INVALID_PROFILE_IMAGE_CONTENT);
+    }
+
+    @Test
     @DisplayName("WebP RIFF 길이와 chunk type이 일치하지 않으면 거부한다")
     void validate_rejectsMalformedWebp() {
         byte[] malformed = webp();

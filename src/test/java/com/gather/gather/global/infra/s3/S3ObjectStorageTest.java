@@ -177,6 +177,17 @@ class S3ObjectStorageTest {
     }
 
     @Test
+    @DisplayName("GetObject 412는 검증 이후 객체 변경 충돌로 변환한다")
+    void getContent_maps412ToUploadConflict() {
+        when(s3Client.getObjectAsBytes(any(GetObjectRequest.class)))
+                .thenThrow(S3Exception.builder().statusCode(412).message("precondition").build());
+
+        assertBusinessException(
+                () -> objectStorage.getContent(OBJECT_KEY, "\"test-etag\""),
+                ErrorCode.PROFILE_IMAGE_UPLOAD_CONFLICT);
+    }
+
+    @Test
     @DisplayName("GetObject SDK 오류는 저장소 연동 오류로 변환한다")
     void getContent_mapsClientFailureToStorageFailure() {
         when(s3Client.getObjectAsBytes(any(GetObjectRequest.class)))

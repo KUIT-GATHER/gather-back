@@ -246,6 +246,18 @@ public class ProfileImageController {
                                             value = UserSwaggerExamples.USER_NOT_FOUND)
                                 })),
         @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                responseCode = "409",
+                description = "검증 이후 업로드 객체가 변경됨",
+                content =
+                        @Content(
+                                mediaType = JSON,
+                                examples =
+                                        @ExampleObject(
+                                                name = "PROFILE_IMAGE_UPLOAD_CONFLICT",
+                                                value =
+                                                        UserSwaggerExamples
+                                                                .PROFILE_IMAGE_UPLOAD_CONFLICT))),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(
                 responseCode = "502",
                 description = "S3 연동 실패",
                 content =

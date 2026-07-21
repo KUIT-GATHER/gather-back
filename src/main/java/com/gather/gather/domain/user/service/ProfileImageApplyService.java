@@ -38,7 +38,11 @@ public class ProfileImageApplyService {
                         .orElseThrow(
                                 () -> new BusinessException(ErrorCode.INVALID_PROFILE_IMAGE_KEY));
         LocalDateTime now = LocalDateTime.now();
-        validateUploadSession(upload, keyFormat, metadata, now);
+        // S3 검증은 DB 락을 오래 점유하지 않도록 앞 단계에서 수행했으므로, 락 획득 후 상태를 다시 확인한다.
+        upload.validatePendingSession(now, keyFormat.contentType());
+        if (metadata.contentLength() != upload.getExpectedSize()) {
+            throw new BusinessException(ErrorCode.PROFILE_IMAGE_SIZE_MISMATCH);
+        }
 
         String previousObjectKey = user.getProfileImageKey();
         user.changeProfileImageKey(objectKey);
@@ -49,27 +53,6 @@ public class ProfileImageApplyService {
             eventPublisher.publishEvent(new ProfileImageReplacedEvent(upload.getId()));
         } else {
             profileImageUploadRepository.delete(upload);
-        }
-    }
-
-    private void validateUploadSession(
-            ProfileImageUpload upload,
-            ProfileImageFormat keyFormat,
-            StoredObjectMetadata metadata,
-            LocalDateTime now) {
-        if (!upload.isPending()) {
-            throw new BusinessException(ErrorCode.INVALID_PROFILE_IMAGE_KEY);
-        }
-        if (upload.isExpired(now)) {
-            throw new BusinessException(ErrorCode.PROFILE_IMAGE_UPLOAD_EXPIRED);
-        }
-        ProfileImageFormat issuedFormat =
-                ProfileImageFormat.fromContentType(upload.getContentType());
-        if (issuedFormat != keyFormat) {
-            throw new BusinessException(ErrorCode.INVALID_PROFILE_IMAGE_KEY);
-        }
-        if (metadata.contentLength() != upload.getExpectedSize()) {
-            throw new BusinessException(ErrorCode.PROFILE_IMAGE_SIZE_MISMATCH);
         }
     }
 }

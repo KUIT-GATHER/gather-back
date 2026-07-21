@@ -100,7 +100,7 @@ public class ProfileImageService {
                         .orElseThrow(
                                 () -> new BusinessException(ErrorCode.INVALID_PROFILE_IMAGE_KEY));
         LocalDateTime now = LocalDateTime.now();
-        validateUploadSession(upload, keyFormat, now);
+        upload.validatePendingSession(now, keyFormat.contentType());
         StoredObjectMetadata metadata = objectStorage.getMetadata(request.objectKey());
         validateStoredObject(metadata, keyFormat, upload);
         byte[] content = objectStorage.getContent(request.objectKey(), metadata.eTag());
@@ -128,21 +128,6 @@ public class ProfileImageService {
                         userId, ProfileImageUploadStatus.PENDING, now);
         if (pendingUploadCount >= properties.maxPendingUploadsPerUser()) {
             throw new BusinessException(ErrorCode.PROFILE_IMAGE_UPLOAD_LIMIT_EXCEEDED);
-        }
-    }
-
-    private void validateUploadSession(
-            ProfileImageUpload upload, ProfileImageFormat keyFormat, LocalDateTime now) {
-        if (!upload.isPending()) {
-            throw new BusinessException(ErrorCode.INVALID_PROFILE_IMAGE_KEY);
-        }
-        if (upload.isExpired(now)) {
-            throw new BusinessException(ErrorCode.PROFILE_IMAGE_UPLOAD_EXPIRED);
-        }
-        ProfileImageFormat issuedFormat =
-                ProfileImageFormat.fromContentType(upload.getContentType());
-        if (issuedFormat != keyFormat) {
-            throw new BusinessException(ErrorCode.INVALID_PROFILE_IMAGE_KEY);
         }
     }
 

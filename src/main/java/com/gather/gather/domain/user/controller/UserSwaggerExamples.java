@@ -45,6 +45,10 @@ final class UserSwaggerExamples {
             """
             { "success": false, "data": null, "error": { "code": "PROFILE_IMAGE_OBJECT_NOT_FOUND", "message": "업로드된 프로필 이미지 객체를 찾을 수 없습니다." } }
             """;
+    static final String PROFILE_IMAGE_UPLOAD_CONFLICT =
+            """
+            { "success": false, "data": null, "error": { "code": "PROFILE_IMAGE_UPLOAD_CONFLICT", "message": "업로드된 프로필 이미지가 변경되어 다시 시도해야 합니다." } }
+            """;
     static final String S3_OPERATION_FAILED =
             """
             { "success": false, "data": null, "error": { "code": "S3_OPERATION_FAILED", "message": "이미지 저장소 연동에 실패했습니다." } }

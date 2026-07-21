@@ -1,5 +1,7 @@
 package com.gather.gather.domain.user.entity;
 
+import com.gather.gather.global.exception.BusinessException;
+import com.gather.gather.global.exception.ErrorCode;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -89,7 +91,22 @@ public class ProfileImageUpload {
         return !expiresAt.isAfter(now);
     }
 
+    public void validatePendingSession(LocalDateTime now, String expectedContentType) {
+        if (!isPending()) {
+            throw new BusinessException(ErrorCode.INVALID_PROFILE_IMAGE_KEY);
+        }
+        if (isExpired(now)) {
+            throw new BusinessException(ErrorCode.PROFILE_IMAGE_UPLOAD_EXPIRED);
+        }
+        if (!contentType.equals(expectedContentType)) {
+            throw new BusinessException(ErrorCode.INVALID_PROFILE_IMAGE_KEY);
+        }
+    }
+
     public void apply(String previousObjectKey, LocalDateTime appliedAt) {
+        if (!isPending()) {
+            throw new BusinessException(ErrorCode.INVALID_PROFILE_IMAGE_KEY);
+        }
         this.status = ProfileImageUploadStatus.APPLIED;
         this.appliedAt = appliedAt;
         this.previousObjectKey = previousObjectKey;
