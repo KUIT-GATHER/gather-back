@@ -3,19 +3,26 @@ package com.gather.gather.domain.meeting.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.gather.gather.domain.meeting.dto.MeetingBookmarkResponse;
+import com.gather.gather.domain.meeting.dto.MeetingResponse;
 import com.gather.gather.domain.meeting.entity.Meeting;
 import com.gather.gather.domain.meeting.entity.MeetingBookmark;
+import com.gather.gather.domain.meeting.enums.MeetingStatus;
 import com.gather.gather.domain.meeting.repository.MeetingBookmarkRepository;
 import com.gather.gather.domain.meeting.repository.MeetingRepository;
+import com.gather.gather.domain.posting.entity.PostingCategory;
+import com.gather.gather.global.common.PageResponse;
 import com.gather.gather.global.exception.BusinessException;
 import com.gather.gather.global.exception.ErrorCode;
 import com.gather.gather.global.util.SecurityUtil;
+import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -25,6 +32,10 @@ import org.mockito.Mock;
 import org.mockito.MockedStatic;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 
 @ExtendWith(MockitoExtension.class)
 class MeetingBookmarkServiceTest {
@@ -146,6 +157,43 @@ class MeetingBookmarkServiceTest {
             assertThatThrownBy(() -> meetingBookmarkService.removeBookmark(MEETING_ID))
                     .isInstanceOf(BusinessException.class)
                     .hasFieldOrPropertyWithValue("errorCode", ErrorCode.MEETING_BOOKMARK_NOT_FOUND);
+        }
+    }
+
+    @Test
+    @DisplayName(
+            "getBookmarkedMeetings returns bookmarked meetings with resolved display status,"
+                    + " ignoring any sort on the given Pageable")
+    void getBookmarkedMeetings_returnsMeetingsWithDisplayStatus_ignoringRequestedSort() {
+        when(meeting.getId()).thenReturn(MEETING_ID);
+        when(meeting.getStatus()).thenReturn(MeetingStatus.RECRUITING);
+        when(meeting.isActivityEnded(any())).thenReturn(false);
+        when(meeting.isDeadlinePassed(any())).thenReturn(false);
+        when(meeting.isFull()).thenReturn(false);
+        Pageable requestedSortedPageable = PageRequest.of(0, 20, Sort.by("name"));
+
+        try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
+            securityUtil.when(SecurityUtil::getCurrentUserId).thenReturn(USER_ID);
+            when(meetingBookmarkRepository.findBookmarkedMeetings(
+                            eq(USER_ID),
+                            eq(PostingCategory.ENVIRONMENT),
+                            eq("정화"),
+                            argThat(p -> p.getSort().isUnsorted())))
+                    .thenReturn(new PageImpl<>(List.of(meeting), PageRequest.of(0, 20), 1));
+
+            PageResponse<MeetingResponse> response =
+                    meetingBookmarkService.getBookmarkedMeetings(
+                            PostingCategory.ENVIRONMENT, "정화", requestedSortedPageable);
+
+            assertThat(response.content()).hasSize(1);
+            assertThat(response.content().get(0).meetingId()).isEqualTo(MEETING_ID);
+            assertThat(response.content().get(0).status()).isEqualTo(MeetingStatus.RECRUITING);
+            verify(meetingBookmarkRepository)
+                    .findBookmarkedMeetings(
+                            eq(USER_ID),
+                            eq(PostingCategory.ENVIRONMENT),
+                            eq("정화"),
+                            argThat(p -> p.getSort().isUnsorted()));
         }
     }
 }

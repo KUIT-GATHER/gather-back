@@ -18,6 +18,9 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
@@ -159,12 +162,91 @@ class MeetingBookmarkRepositoryTest {
         assertThat(deletedCount).isZero();
     }
 
+    @Test
+    void findBookmarkedMeetings_returnsOnlyThatUsersBookmarks_orderedByBookmarkedAtDesc() {
+        Region region = region();
+        Meeting first = meetingRepository.save(meeting(region));
+        Meeting second = meetingRepository.save(meeting(region));
+        Meeting othersMeeting = meetingRepository.save(meeting(region));
+        Long userId = bookmarker(region).getId();
+        Long otherUserId = bookmarker(region).getId();
+        MeetingBookmark firstBookmark = MeetingBookmark.create(userId, first.getId());
+        MeetingBookmark secondBookmark = MeetingBookmark.create(userId, second.getId());
+        // 두 저장 호출 사이 실제 경과 시간에 의존하면 클럭 해상도에 따라 흔들릴 수 있어, 북마크 시각을 명시적으로 벌려
+        // "나중에 북마크한 것이 먼저 나온다"는 정렬 규칙만 결정적으로 검증한다.
+        ReflectionTestUtils.setField(
+                firstBookmark, "createdAt", LocalDateTime.of(2026, 7, 1, 0, 0));
+        ReflectionTestUtils.setField(
+                secondBookmark, "createdAt", LocalDateTime.of(2026, 7, 2, 0, 0));
+        meetingBookmarkRepository.saveAndFlush(firstBookmark);
+        meetingBookmarkRepository.saveAndFlush(secondBookmark);
+        meetingBookmarkRepository.saveAndFlush(
+                MeetingBookmark.create(otherUserId, othersMeeting.getId()));
+
+        Page<Meeting> page =
+                meetingBookmarkRepository.findBookmarkedMeetings(
+                        userId, null, null, PageRequest.of(0, 20));
+
+        assertThat(page.getContent())
+                .extracting(Meeting::getId)
+                .containsExactly(second.getId(), first.getId());
+    }
+
+    @Test
+    void findBookmarkedMeetings_filtersByCategory() {
+        Region region = region();
+        Meeting environment = meetingRepository.save(meeting(region, PostingCategory.ENVIRONMENT));
+        Meeting education = meetingRepository.save(meeting(region, PostingCategory.EDUCATION));
+        Long userId = bookmarker(region).getId();
+        meetingBookmarkRepository.saveAndFlush(MeetingBookmark.create(userId, environment.getId()));
+        meetingBookmarkRepository.saveAndFlush(MeetingBookmark.create(userId, education.getId()));
+
+        Page<Meeting> page =
+                meetingBookmarkRepository.findBookmarkedMeetings(
+                        userId, PostingCategory.EDUCATION, null, PageRequest.of(0, 20));
+
+        assertThat(page.getContent()).extracting(Meeting::getId).containsExactly(education.getId());
+    }
+
+    @Test
+    void findBookmarkedMeetings_excludesDeletedMeeting() {
+        Region region = region();
+        Meeting meeting = meetingRepository.save(meeting(region));
+        Long userId = bookmarker(region).getId();
+        meetingBookmarkRepository.saveAndFlush(MeetingBookmark.create(userId, meeting.getId()));
+        meeting.delete();
+        meetingRepository.saveAndFlush(meeting);
+
+        Page<Meeting> page =
+                meetingBookmarkRepository.findBookmarkedMeetings(
+                        userId, null, null, PageRequest.of(0, 20));
+
+        assertThat(page.getContent()).isEmpty();
+    }
+
+    @Test
+    void findBookmarkedMeetings_returnsEmptyPage_whenUserHasNoBookmarks() {
+        Region region = region();
+        meetingRepository.save(meeting(region));
+        Long userId = bookmarker(region).getId();
+
+        Page<Meeting> page =
+                meetingBookmarkRepository.findBookmarkedMeetings(
+                        userId, null, null, PageRequest.of(0, 20));
+
+        assertThat(page.getContent()).isEmpty();
+    }
+
     private Region region() {
         return regionRepository.save(
                 Region.create("테스트구", 2, "999" + (System.nanoTime() % 10000000L), null));
     }
 
     private Meeting meeting(Region region) {
+        return meeting(region, PostingCategory.ENVIRONMENT);
+    }
+
+    private Meeting meeting(Region region, PostingCategory category) {
         User host = userRepository.save(user("host", region));
         LocalDateTime now = LocalDateTime.now();
 
@@ -174,7 +256,7 @@ class MeetingBookmarkRepositoryTest {
                 10,
                 now.plusDays(3),
                 null,
-                PostingCategory.ENVIRONMENT,
+                category,
                 region.getId(),
                 host,
                 null,

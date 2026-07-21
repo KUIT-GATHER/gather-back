@@ -118,6 +118,16 @@ class JwtSecurityIntegrationTest {
     }
 
     @Test
+    @DisplayName(
+            "봉사공고 북마크 목록 조회(/api/v1/postings/bookmarks)는 /api/v1/postings/** permitAll"
+                    + " 와일드카드에 묻히지 않고 토큰 없이 요청하면 401 UNAUTHORIZED이다")
+    void bookmarkListPath_withoutToken_returns401Unauthorized() throws Exception {
+        mockMvc.perform(get("/api/v1/postings/bookmarks"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.error.code").value("UNAUTHORIZED"));
+    }
+
+    @Test
     @DisplayName("유효한 토큰이면 통과하고 principal은 Long userId, authority는 ROLE_USER이다")
     void validToken_authenticatesWithLongPrincipalAndRoleAuthority() throws Exception {
         String token = tokenProvider.createAccessToken(newUser(100L, UserRole.USER));

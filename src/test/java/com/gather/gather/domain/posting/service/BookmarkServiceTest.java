@@ -3,18 +3,30 @@ package com.gather.gather.domain.posting.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.gather.gather.domain.posting.dto.BookmarkResponse;
+import com.gather.gather.domain.posting.dto.PostingSummaryResponse;
 import com.gather.gather.domain.posting.entity.Bookmark;
+import com.gather.gather.domain.posting.entity.Posting;
+import com.gather.gather.domain.posting.entity.PostingCategory;
+import com.gather.gather.domain.posting.entity.PostingStatus;
 import com.gather.gather.domain.posting.repository.BookmarkRepository;
 import com.gather.gather.domain.posting.repository.PostingRepository;
+import com.gather.gather.domain.region.entity.Region;
+import com.gather.gather.domain.region.repository.RegionRepository;
+import com.gather.gather.global.common.PageResponse;
 import com.gather.gather.global.exception.BusinessException;
 import com.gather.gather.global.exception.ErrorCode;
 import com.gather.gather.global.util.SecurityUtil;
+import java.time.LocalDate;
+import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -24,6 +36,11 @@ import org.mockito.Mock;
 import org.mockito.MockedStatic;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.test.util.ReflectionTestUtils;
 
 @ExtendWith(MockitoExtension.class)
 class BookmarkServiceTest {
@@ -33,12 +50,14 @@ class BookmarkServiceTest {
 
     @Mock private BookmarkRepository bookmarkRepository;
     @Mock private PostingRepository postingRepository;
+    @Mock private RegionRepository regionRepository;
 
     private BookmarkService bookmarkService;
 
     @BeforeEach
     void setUp() {
-        bookmarkService = new BookmarkService(bookmarkRepository, postingRepository);
+        bookmarkService =
+                new BookmarkService(bookmarkRepository, postingRepository, regionRepository);
     }
 
     @Test
@@ -141,5 +160,54 @@ class BookmarkServiceTest {
 
             verify(bookmarkRepository, never()).delete(any());
         }
+    }
+
+    @Test
+    @DisplayName(
+            "getBookmarkedPostings returns bookmarked postings with resolved region names,"
+                    + " ignoring any sort on the given Pageable")
+    void getBookmarkedPostings_returnsPostingsWithRegionNames_ignoringRequestedSort() {
+        Posting posting = posting();
+        Region region = mock(Region.class);
+        when(region.getId()).thenReturn(1L);
+        when(region.getName()).thenReturn("동구");
+        Pageable requestedSortedPageable = PageRequest.of(0, 20, Sort.by("title"));
+
+        try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
+            securityUtil.when(SecurityUtil::getCurrentUserId).thenReturn(USER_ID);
+            when(bookmarkRepository.findBookmarkedPostings(
+                            eq(USER_ID),
+                            eq(PostingCategory.ENVIRONMENT),
+                            eq("정화"),
+                            argThat(p -> p.getSort().isUnsorted())))
+                    .thenReturn(new PageImpl<>(List.of(posting), PageRequest.of(0, 20), 1));
+            when(regionRepository.findAllById(any())).thenReturn(List.of(region));
+
+            PageResponse<PostingSummaryResponse> response =
+                    bookmarkService.getBookmarkedPostings(
+                            PostingCategory.ENVIRONMENT, "정화", requestedSortedPageable);
+
+            assertThat(response.content()).hasSize(1);
+            assertThat(response.content().get(0).regionName()).isEqualTo("동구");
+            verify(bookmarkRepository)
+                    .findBookmarkedPostings(
+                            eq(USER_ID),
+                            eq(PostingCategory.ENVIRONMENT),
+                            eq("정화"),
+                            argThat(p -> p.getSort().isUnsorted()));
+        }
+    }
+
+    private Posting posting() {
+        Posting posting =
+                Posting.builder()
+                        .title("동구 환경정화 봉사")
+                        .status(PostingStatus.RECRUITING)
+                        .activityDate(LocalDate.of(2026, 7, 15))
+                        .category(PostingCategory.ENVIRONMENT)
+                        .regionId(1L)
+                        .build();
+        ReflectionTestUtils.setField(posting, "id", POSTING_ID);
+        return posting;
     }
 }

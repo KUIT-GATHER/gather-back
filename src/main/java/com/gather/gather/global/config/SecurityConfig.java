@@ -73,6 +73,13 @@ public class SecurityConfig {
                 .authorizeHttpRequests(
                         authorize ->
                                 authorize
+                                        // "내 북마크 목록"은 인증이 필요하다 — 아래 PERMIT_ALL_GET_PATHS의
+                                        // "/api/v1/postings/**" 와일드카드보다 먼저 평가되어야 그 permitAll에
+                                        // 묻히지 않는다(/api/v1/meetings 단건 조회를 목록 조회보다 먼저 매칭하는
+                                        // 아래 규칙과 동일한 이유).
+                                        .requestMatchers(
+                                                HttpMethod.GET, "/api/v1/postings/bookmarks")
+                                        .authenticated()
                                         .requestMatchers(HttpMethod.GET, PERMIT_ALL_GET_PATHS)
                                         .permitAll()
                                         .requestMatchers(HttpMethod.GET, "/api/v1/meetings")
