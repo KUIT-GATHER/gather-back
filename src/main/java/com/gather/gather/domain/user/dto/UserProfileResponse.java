@@ -18,14 +18,9 @@ public record UserProfileResponse(
         @Schema(description = "성별", example = "MALE") Gender gender,
         @Schema(description = "활동 지역") RegionResponse activityRegion,
         @Schema(description = "관심 카테고리 목록", example = "[\"WELFARE\", \"EDUCATION\"]")
-                List<PostingCategory> interestCategories,
-        @Schema(
-                        description = "프로필 사진 공개 URL. 등록된 사진이 없으면 null.",
-                        example =
-                                "https://gather-profile-images.s3.ap-northeast-2.amazonaws.com/profiles/1/uuid.jpg")
-                String profileImageUrl) {
+                List<PostingCategory> interestCategories) {
 
-    public static UserProfileResponse of(User user, String profileImageUrl) {
+    public static UserProfileResponse of(User user) {
         return new UserProfileResponse(
                 user.getId(),
                 user.getName(),
@@ -34,7 +29,6 @@ public record UserProfileResponse(
                 user.getBirthDate(),
                 user.getGender(),
                 RegionResponse.from(user.getActivityRegion()),
-                user.getInterestCategories(),
-                profileImageUrl);
+                user.getInterestCategories());
     }
 }

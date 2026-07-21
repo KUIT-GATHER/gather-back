@@ -202,8 +202,4 @@ public class User {
         this.activityRegion = activityRegion;
         this.interestCategories = new ArrayList<>(interestCategories);
     }
-
-    public void updateProfileImageKey(String profileImageKey) {
-        this.profileImageKey = profileImageKey;
-    }
 }

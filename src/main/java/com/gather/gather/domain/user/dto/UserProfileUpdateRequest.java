@@ -33,10 +33,4 @@ public record UserProfileUpdateRequest(
                         description = "관심 카테고리 목록. 중복 없이 1개 이상입니다.",
                         example = "[\"WELFARE\", \"EDUCATION\"]")
                 @NotNull
-                List<PostingCategory> interestCategories,
-        @Schema(
-                        description =
-                                "새로 업로드한 프로필 사진의 S3 오브젝트 키. presigned URL로 업로드를 완료했을 때만 채우고,"
-                                        + " 사진을 바꾸지 않으면 null로 보냅니다.",
-                        example = "profiles/1/3f9a2b1c-....jpg")
-                String profileImageKey) {}
+                List<PostingCategory> interestCategories) {}
