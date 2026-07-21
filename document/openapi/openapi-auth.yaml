@@ -58,6 +58,7 @@ paths:
                 data:
                   email: test@example.com
                   expiresAt: '2026-06-28T12:10:00'
+                  resendAvailableAt: '2026-06-28T12:03:00'
                   message: 인증 코드가 발송되었습니다.
                 error: null
         '400':
@@ -84,6 +85,29 @@ paths:
                 error:
                   code: DUPLICATE_EMAIL
                   message: 이미 사용 중인 이메일입니다.
+        '429':
+          description: 재발송 쿨다운(3분) 이내 재요청 또는 당일 발송 한도(5회) 초과
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorApiResponse'
+              examples:
+                resendTooSoon:
+                  summary: 재발송 쿨다운 이내 재요청
+                  value:
+                    success: false
+                    data: null
+                    error:
+                      code: EMAIL_RESEND_TOO_SOON
+                      message: 인증 코드를 방금 발송했습니다. 잠시 후 다시 시도해주세요.
+                sendLimitExceeded:
+                  summary: 당일 발송 한도 초과
+                  value:
+                    success: false
+                    data: null
+                    error:
+                      code: EMAIL_SEND_LIMIT_EXCEEDED
+                      message: 하루 이메일 인증 발송 횟수를 초과했습니다. 내일 다시 시도해주세요.
         '500':
           description: 이메일 발송 실패
           content:
@@ -170,6 +194,18 @@ paths:
                 error:
                   code: EMAIL_VERIFICATION_NOT_FOUND
                   message: 이메일 인증 요청을 찾을 수 없습니다.
+        '429':
+          description: 인증 코드 입력 시도 횟수(5회) 초과. 코드를 재발송해야 합니다.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorApiResponse'
+              example:
+                success: false
+                data: null
+                error:
+                  code: EMAIL_VERIFICATION_ATTEMPTS_EXCEEDED
+                  message: 인증 코드 입력 가능 횟수를 초과했습니다. 코드를 다시 발송해주세요.
 
   /api/v1/auth/phone-numbers/availability:
     post:
@@ -1028,6 +1064,7 @@ components:
       required:
         - email
         - expiresAt
+        - resendAvailableAt
         - message
       properties:
         email:
@@ -1038,6 +1075,10 @@ components:
           type: string
           description: 인증 코드 만료 시각
           example: '2026-06-28T12:10:00'
+        resendAvailableAt:
+          type: string
+          description: 재발송 가능 시각. 이 시각 전에는 재발송이 거부됩니다.
+          example: '2026-06-28T12:03:00'
         message:
           type: string
           example: 인증 코드가 발송되었습니다.
@@ -1121,6 +1162,7 @@ components:
       properties:
         phoneNumber:
           type: string
+          maxLength: 20
           pattern: '^[0-9]+$'
           description: 중복 확인할 전화번호. 하이픈과 공백은 서버에서 제거 후 정규화합니다.
           example: '01012345678'
@@ -1190,6 +1232,7 @@ components:
           $ref: '#/components/schemas/Gender'
         phoneNumber:
           type: string
+          maxLength: 20
           pattern: '^[0-9]+$'
           description: 전화번호. 숫자만 전달합니다. 서버에서 하이픈과 공백을 제거해 정규화합니다.
           example: '01012345678'
@@ -1405,6 +1448,7 @@ components:
           $ref: '#/components/schemas/Gender'
         phoneNumber:
           type: string
+          maxLength: 20
           pattern: '^[0-9]+$'
           description: 전화번호. 숫자만 전달합니다. 서버에서 하이픈과 공백을 제거해 정규화합니다.
           example: '01012345678'
