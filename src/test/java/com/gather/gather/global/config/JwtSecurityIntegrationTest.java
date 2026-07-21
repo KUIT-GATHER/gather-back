@@ -3,6 +3,7 @@ package com.gather.gather.global.config;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -43,6 +44,9 @@ class JwtSecurityIntegrationTest {
 
     private static final String SECURED_PATH = "/test/secured";
     private static final String SYNC_PATH = "/api/v1/postings/sync";
+    private static final String PROFILE_IMAGE_PRESIGNED_PATH =
+            "/api/v1/users/me/profile-image/presigned-url";
+    private static final String PROFILE_IMAGE_PATH = "/api/v1/users/me/profile-image";
 
     @Autowired private MockMvc mockMvc;
     @Autowired private TokenProvider tokenProvider;
@@ -56,6 +60,47 @@ class JwtSecurityIntegrationTest {
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.data").doesNotExist())
+                .andExpect(jsonPath("$.error.code").value("UNAUTHORIZED"));
+    }
+
+    @Test
+    @DisplayName("프로필 이미지 Presigned URL 발급 API는 토큰 없이 요청하면 401이다")
+    void profileImagePresignedUrl_withoutToken_returns401Unauthorized() throws Exception {
+        mockMvc.perform(
+                        post(PROFILE_IMAGE_PRESIGNED_PATH)
+                                .contentType("application/json")
+                                .content(
+                                        """
+                                        {
+                                          "contentType": "image/jpeg",
+                                          "fileSize": 1024
+                                        }
+                                        """))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.error.code").value("UNAUTHORIZED"));
+    }
+
+    @Test
+    @DisplayName("프로필 이미지 조회 API는 토큰 없이 요청하면 401이다")
+    void profileImageGet_withoutToken_returns401Unauthorized() throws Exception {
+        mockMvc.perform(get(PROFILE_IMAGE_PATH))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.error.code").value("UNAUTHORIZED"));
+    }
+
+    @Test
+    @DisplayName("프로필 이미지 반영 API는 토큰 없이 요청하면 401이다")
+    void profileImageUpdate_withoutToken_returns401Unauthorized() throws Exception {
+        mockMvc.perform(
+                        patch(PROFILE_IMAGE_PATH)
+                                .contentType("application/json")
+                                .content(
+                                        """
+                                        {
+                                          "objectKey": "profiles/15/550e8400-e29b-41d4-a716-446655440000.jpg"
+                                        }
+                                        """))
+                .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.error.code").value("UNAUTHORIZED"));
     }
 
