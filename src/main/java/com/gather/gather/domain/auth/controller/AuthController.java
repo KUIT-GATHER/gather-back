@@ -66,6 +66,7 @@ public class AuthController {
                                                           "data": {
                                                             "email": "test@example.com",
                                                             "expiresAt": "2026-06-28T12:10:00",
+                                                            "resendAvailableAt": "2026-06-28T12:03:00",
                                                             "message": "인증 코드가 발송되었습니다."
                                                           },
                                                           "error": null
@@ -95,6 +96,24 @@ public class AuthController {
                                                 value =
                                                         AuthSwaggerExamples
                                                                 .DUPLICATE_EMAIL_EXAMPLE))),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                responseCode = "429",
+                description = "재발송 쿨다운 이내 재요청 또는 당일 발송 한도 초과",
+                content =
+                        @Content(
+                                mediaType = JSON,
+                                examples = {
+                                    @ExampleObject(
+                                            name = "EMAIL_RESEND_TOO_SOON",
+                                            value =
+                                                    AuthSwaggerExamples
+                                                            .EMAIL_RESEND_TOO_SOON_EXAMPLE),
+                                    @ExampleObject(
+                                            name = "EMAIL_SEND_LIMIT_EXCEEDED",
+                                            value =
+                                                    AuthSwaggerExamples
+                                                            .EMAIL_SEND_LIMIT_EXCEEDED_EXAMPLE)
+                                })),
         @io.swagger.v3.oas.annotations.responses.ApiResponse(
                 responseCode = "500",
                 description = "이메일 발송 실패",
@@ -168,7 +187,19 @@ public class AuthController {
                                                 name = "EMAIL_VERIFICATION_NOT_FOUND",
                                                 value =
                                                         AuthSwaggerExamples
-                                                                .EMAIL_VERIFICATION_NOT_FOUND_EXAMPLE)))
+                                                                .EMAIL_VERIFICATION_NOT_FOUND_EXAMPLE))),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                responseCode = "429",
+                description = "인증 코드 입력 시도 횟수 초과",
+                content =
+                        @Content(
+                                mediaType = JSON,
+                                examples =
+                                        @ExampleObject(
+                                                name = "EMAIL_VERIFICATION_ATTEMPTS_EXCEEDED",
+                                                value =
+                                                        AuthSwaggerExamples
+                                                                .EMAIL_VERIFICATION_ATTEMPTS_EXCEEDED_EXAMPLE)))
     })
     @PostMapping("/email-verifications/confirm")
     public ApiResponse<EmailVerificationConfirmResponse> confirmEmailVerificationCode(

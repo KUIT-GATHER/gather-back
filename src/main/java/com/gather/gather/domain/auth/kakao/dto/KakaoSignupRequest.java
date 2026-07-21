@@ -27,7 +27,9 @@ public record KakaoSignupRequest(
                 @PastOrPresent
                 LocalDate birthDate,
         @Schema(description = "성별", example = "MALE") @NotNull Gender gender,
-        @Schema(description = "전화번호. 하이픈과 공백은 서버에서 제거합니다.", example = "01012345678") @NotBlank
+        @Schema(description = "전화번호. 하이픈과 공백은 서버에서 제거합니다.", example = "01012345678")
+                @NotBlank
+                @Size(max = 20)
                 String phoneNumber,
         @Schema(description = "닉네임. 완성형 한글 2~10자 또는 영문 2~20자만 허용합니다.", example = "길동")
                 @NotBlank
