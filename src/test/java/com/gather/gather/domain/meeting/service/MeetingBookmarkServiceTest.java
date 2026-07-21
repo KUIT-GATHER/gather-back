@@ -120,33 +120,32 @@ class MeetingBookmarkServiceTest {
     @Test
     @DisplayName("removeBookmark deletes the bookmark when it exists")
     void removeBookmark_deletesBookmark_whenExists() {
-        MeetingBookmark bookmark = MeetingBookmark.create(USER_ID, MEETING_ID);
         try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
             securityUtil.when(SecurityUtil::getCurrentUserId).thenReturn(USER_ID);
-            when(meetingBookmarkRepository.findByUserIdAndMeetingId(USER_ID, MEETING_ID))
-                    .thenReturn(Optional.of(bookmark));
+            when(meetingBookmarkRepository.deleteByUserIdAndMeetingId(USER_ID, MEETING_ID))
+                    .thenReturn(1);
 
             MeetingBookmarkResponse response = meetingBookmarkService.removeBookmark(MEETING_ID);
 
             assertThat(response.meetingId()).isEqualTo(MEETING_ID);
             assertThat(response.bookmarked()).isFalse();
-            verify(meetingBookmarkRepository).delete(bookmark);
+            verify(meetingBookmarkRepository).deleteByUserIdAndMeetingId(USER_ID, MEETING_ID);
         }
     }
 
     @Test
-    @DisplayName("removeBookmark throws MEETING_BOOKMARK_NOT_FOUND when no bookmark exists")
+    @DisplayName(
+            "removeBookmark throws MEETING_BOOKMARK_NOT_FOUND when no bookmark exists, including"
+                    + " when a concurrent request already deleted it")
     void removeBookmark_throwsMeetingBookmarkNotFound_whenMissing() {
         try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
             securityUtil.when(SecurityUtil::getCurrentUserId).thenReturn(USER_ID);
-            when(meetingBookmarkRepository.findByUserIdAndMeetingId(USER_ID, MEETING_ID))
-                    .thenReturn(Optional.empty());
+            when(meetingBookmarkRepository.deleteByUserIdAndMeetingId(USER_ID, MEETING_ID))
+                    .thenReturn(0);
 
             assertThatThrownBy(() -> meetingBookmarkService.removeBookmark(MEETING_ID))
                     .isInstanceOf(BusinessException.class)
                     .hasFieldOrPropertyWithValue("errorCode", ErrorCode.MEETING_BOOKMARK_NOT_FOUND);
-
-            verify(meetingBookmarkRepository, never()).delete(any());
         }
     }
 }

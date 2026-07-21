@@ -111,6 +111,29 @@ class MeetingBookmarkRepositoryTest {
                 .isTrue();
     }
 
+    @Test
+    void deleteByUserIdAndMeetingId_deletesBookmark_andReturnsOne() {
+        Meeting meeting = meetingRepository.save(meeting());
+        meetingBookmarkRepository.saveAndFlush(MeetingBookmark.create(1L, meeting.getId()));
+
+        int deletedCount =
+                meetingBookmarkRepository.deleteByUserIdAndMeetingId(1L, meeting.getId());
+
+        assertThat(deletedCount).isEqualTo(1);
+        assertThat(meetingBookmarkRepository.existsByUserIdAndMeetingId(1L, meeting.getId()))
+                .isFalse();
+    }
+
+    @Test
+    void deleteByUserIdAndMeetingId_returnsZero_whenBookmarkDoesNotExist() {
+        Meeting meeting = meetingRepository.save(meeting());
+
+        int deletedCount =
+                meetingBookmarkRepository.deleteByUserIdAndMeetingId(1L, meeting.getId());
+
+        assertThat(deletedCount).isZero();
+    }
+
     private Meeting meeting() {
         Region region =
                 regionRepository.save(
@@ -141,7 +164,7 @@ class MeetingBookmarkRepositoryTest {
                 "010" + System.nanoTime() % 100000000L,
                 null,
                 null,
-                "host-" + System.nanoTime(),
+                "host-" + (System.nanoTime() % 10_000_000_000L),
                 null,
                 true,
                 true,

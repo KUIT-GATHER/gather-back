@@ -42,13 +42,10 @@ public class MeetingBookmarkService {
     public MeetingBookmarkResponse removeBookmark(Long meetingId) {
         Long userId = SecurityUtil.getCurrentUserId();
 
-        MeetingBookmark bookmark =
-                meetingBookmarkRepository
-                        .findByUserIdAndMeetingId(userId, meetingId)
-                        .orElseThrow(
-                                () -> new BusinessException(ErrorCode.MEETING_BOOKMARK_NOT_FOUND));
-
-        meetingBookmarkRepository.delete(bookmark);
+        int deletedCount = meetingBookmarkRepository.deleteByUserIdAndMeetingId(userId, meetingId);
+        if (deletedCount == 0) {
+            throw new BusinessException(ErrorCode.MEETING_BOOKMARK_NOT_FOUND);
+        }
         return MeetingBookmarkResponse.of(meetingId, false);
     }
 }
