@@ -39,106 +39,133 @@ class MeetingBookmarkRepositoryTest {
 
     @Test
     void existsByUserIdAndMeetingId_returnsTrue_whenBookmarkExists() {
-        Meeting meeting = meetingRepository.save(meeting());
-        meetingBookmarkRepository.save(MeetingBookmark.create(1L, meeting.getId()));
+        Region region = region();
+        Meeting meeting = meetingRepository.save(meeting(region));
+        Long userId = bookmarker(region).getId();
+        meetingBookmarkRepository.save(MeetingBookmark.create(userId, meeting.getId()));
 
-        assertThat(meetingBookmarkRepository.existsByUserIdAndMeetingId(1L, meeting.getId()))
+        assertThat(meetingBookmarkRepository.existsByUserIdAndMeetingId(userId, meeting.getId()))
                 .isTrue();
     }
 
     @Test
     void existsByUserIdAndMeetingId_returnsFalse_whenBookmarkDoesNotExist() {
-        Meeting meeting = meetingRepository.save(meeting());
+        Region region = region();
+        Meeting meeting = meetingRepository.save(meeting(region));
+        Long userId = bookmarker(region).getId();
 
-        assertThat(meetingBookmarkRepository.existsByUserIdAndMeetingId(1L, meeting.getId()))
+        assertThat(meetingBookmarkRepository.existsByUserIdAndMeetingId(userId, meeting.getId()))
                 .isFalse();
     }
 
     @Test
     void findByUserIdAndMeetingId_returnsBookmark_whenExists() {
-        Meeting meeting = meetingRepository.save(meeting());
+        Region region = region();
+        Meeting meeting = meetingRepository.save(meeting(region));
+        Long userId = bookmarker(region).getId();
         MeetingBookmark saved =
-                meetingBookmarkRepository.save(MeetingBookmark.create(1L, meeting.getId()));
+                meetingBookmarkRepository.save(MeetingBookmark.create(userId, meeting.getId()));
 
-        assertThat(meetingBookmarkRepository.findByUserIdAndMeetingId(1L, meeting.getId()))
+        assertThat(meetingBookmarkRepository.findByUserIdAndMeetingId(userId, meeting.getId()))
                 .contains(saved);
     }
 
     @Test
     void findByUserIdAndMeetingId_returnsEmpty_whenNotExists() {
-        Meeting meeting = meetingRepository.save(meeting());
+        Region region = region();
+        Meeting meeting = meetingRepository.save(meeting(region));
+        Long userId = bookmarker(region).getId();
 
-        assertThat(meetingBookmarkRepository.findByUserIdAndMeetingId(1L, meeting.getId()))
+        assertThat(meetingBookmarkRepository.findByUserIdAndMeetingId(userId, meeting.getId()))
                 .isEmpty();
     }
 
     @Test
     void save_throwsDataIntegrityViolationException_whenUserAndMeetingAlreadyBookmarked() {
-        Meeting meeting = meetingRepository.save(meeting());
-        meetingBookmarkRepository.saveAndFlush(MeetingBookmark.create(1L, meeting.getId()));
+        Region region = region();
+        Meeting meeting = meetingRepository.save(meeting(region));
+        Long userId = bookmarker(region).getId();
+        meetingBookmarkRepository.saveAndFlush(MeetingBookmark.create(userId, meeting.getId()));
 
         assertThatThrownBy(
                         () ->
                                 meetingBookmarkRepository.saveAndFlush(
-                                        MeetingBookmark.create(1L, meeting.getId())))
+                                        MeetingBookmark.create(userId, meeting.getId())))
                 .isInstanceOf(DataIntegrityViolationException.class);
     }
 
     @Test
     void save_allowsSameUserToBookmarkDifferentMeetings() {
-        Meeting first = meetingRepository.save(meeting());
-        Meeting second = meetingRepository.save(meeting());
+        Region region = region();
+        Meeting first = meetingRepository.save(meeting(region));
+        Meeting second = meetingRepository.save(meeting(region));
+        Long userId = bookmarker(region).getId();
 
-        meetingBookmarkRepository.saveAndFlush(MeetingBookmark.create(1L, first.getId()));
-        meetingBookmarkRepository.saveAndFlush(MeetingBookmark.create(1L, second.getId()));
+        meetingBookmarkRepository.saveAndFlush(MeetingBookmark.create(userId, first.getId()));
+        meetingBookmarkRepository.saveAndFlush(MeetingBookmark.create(userId, second.getId()));
 
-        assertThat(meetingBookmarkRepository.existsByUserIdAndMeetingId(1L, first.getId()))
+        assertThat(meetingBookmarkRepository.existsByUserIdAndMeetingId(userId, first.getId()))
                 .isTrue();
-        assertThat(meetingBookmarkRepository.existsByUserIdAndMeetingId(1L, second.getId()))
+        assertThat(meetingBookmarkRepository.existsByUserIdAndMeetingId(userId, second.getId()))
                 .isTrue();
     }
 
     @Test
     void save_allowsDifferentUsersToBookmarkSameMeeting() {
-        Meeting meeting = meetingRepository.save(meeting());
+        Region region = region();
+        Meeting meeting = meetingRepository.save(meeting(region));
+        Long firstUserId = bookmarker(region).getId();
+        Long secondUserId = bookmarker(region).getId();
 
-        meetingBookmarkRepository.saveAndFlush(MeetingBookmark.create(1L, meeting.getId()));
-        meetingBookmarkRepository.saveAndFlush(MeetingBookmark.create(2L, meeting.getId()));
+        meetingBookmarkRepository.saveAndFlush(
+                MeetingBookmark.create(firstUserId, meeting.getId()));
+        meetingBookmarkRepository.saveAndFlush(
+                MeetingBookmark.create(secondUserId, meeting.getId()));
 
-        assertThat(meetingBookmarkRepository.existsByUserIdAndMeetingId(1L, meeting.getId()))
+        assertThat(
+                        meetingBookmarkRepository.existsByUserIdAndMeetingId(
+                                firstUserId, meeting.getId()))
                 .isTrue();
-        assertThat(meetingBookmarkRepository.existsByUserIdAndMeetingId(2L, meeting.getId()))
+        assertThat(
+                        meetingBookmarkRepository.existsByUserIdAndMeetingId(
+                                secondUserId, meeting.getId()))
                 .isTrue();
     }
 
     @Test
     void deleteByUserIdAndMeetingId_deletesBookmark_andReturnsOne() {
-        Meeting meeting = meetingRepository.save(meeting());
-        meetingBookmarkRepository.saveAndFlush(MeetingBookmark.create(1L, meeting.getId()));
+        Region region = region();
+        Meeting meeting = meetingRepository.save(meeting(region));
+        Long userId = bookmarker(region).getId();
+        meetingBookmarkRepository.saveAndFlush(MeetingBookmark.create(userId, meeting.getId()));
 
         int deletedCount =
-                meetingBookmarkRepository.deleteByUserIdAndMeetingId(1L, meeting.getId());
+                meetingBookmarkRepository.deleteByUserIdAndMeetingId(userId, meeting.getId());
 
         assertThat(deletedCount).isEqualTo(1);
-        assertThat(meetingBookmarkRepository.existsByUserIdAndMeetingId(1L, meeting.getId()))
+        assertThat(meetingBookmarkRepository.existsByUserIdAndMeetingId(userId, meeting.getId()))
                 .isFalse();
     }
 
     @Test
     void deleteByUserIdAndMeetingId_returnsZero_whenBookmarkDoesNotExist() {
-        Meeting meeting = meetingRepository.save(meeting());
+        Region region = region();
+        Meeting meeting = meetingRepository.save(meeting(region));
+        Long userId = bookmarker(region).getId();
 
         int deletedCount =
-                meetingBookmarkRepository.deleteByUserIdAndMeetingId(1L, meeting.getId());
+                meetingBookmarkRepository.deleteByUserIdAndMeetingId(userId, meeting.getId());
 
         assertThat(deletedCount).isZero();
     }
 
-    private Meeting meeting() {
-        Region region =
-                regionRepository.save(
-                        Region.create("테스트구", 2, "999" + (System.nanoTime() % 10000000L), null));
-        User host = userRepository.save(host(region));
+    private Region region() {
+        return regionRepository.save(
+                Region.create("테스트구", 2, "999" + (System.nanoTime() % 10000000L), null));
+    }
+
+    private Meeting meeting(Region region) {
+        User host = userRepository.save(user("host", region));
         LocalDateTime now = LocalDateTime.now();
 
         return Meeting.create(
@@ -156,15 +183,19 @@ class MeetingBookmarkRepositoryTest {
                 now.plusDays(5).plusHours(2));
     }
 
-    private User host(Region region) {
+    private User bookmarker(Region region) {
+        return userRepository.save(user("guest", region));
+    }
+
+    private User user(String label, Region region) {
         return User.create(
-                "호스트",
+                label,
                 LocalDate.of(1995, 1, 1),
                 Gender.MALE,
                 "010" + System.nanoTime() % 100000000L,
                 null,
                 null,
-                "host-" + (System.nanoTime() % 10_000_000_000L),
+                label + "-" + (System.nanoTime() % 10_000_000_000L),
                 null,
                 true,
                 true,
