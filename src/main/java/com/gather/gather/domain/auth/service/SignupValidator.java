@@ -79,6 +79,13 @@ public class SignupValidator {
         }
     }
 
+    /** 마이페이지 프로필 수정처럼 본인 닉네임은 검사 대상에서 제외해야 하는 경우용. */
+    public void validateNicknameNotDuplicated(String nickname, Long excludeUserId) {
+        if (userRepository.existsByNicknameAndIdNot(nickname, excludeUserId)) {
+            throw new BusinessException(ErrorCode.DUPLICATE_NICKNAME);
+        }
+    }
+
     public Region findActivityRegion(Long activityRegionId) {
         Region region =
                 regionRepository
