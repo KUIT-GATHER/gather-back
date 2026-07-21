@@ -96,6 +96,39 @@ final class AuthSwaggerExamples {
               }
             }
             """;
+    static final String EMAIL_RESEND_TOO_SOON_EXAMPLE =
+            """
+            {
+              "success": false,
+              "data": null,
+              "error": {
+                "code": "EMAIL_RESEND_TOO_SOON",
+                "message": "인증 코드를 방금 발송했습니다. 잠시 후 다시 시도해주세요."
+              }
+            }
+            """;
+    static final String EMAIL_SEND_LIMIT_EXCEEDED_EXAMPLE =
+            """
+            {
+              "success": false,
+              "data": null,
+              "error": {
+                "code": "EMAIL_SEND_LIMIT_EXCEEDED",
+                "message": "하루 이메일 인증 발송 횟수를 초과했습니다. 내일 다시 시도해주세요."
+              }
+            }
+            """;
+    static final String EMAIL_VERIFICATION_ATTEMPTS_EXCEEDED_EXAMPLE =
+            """
+            {
+              "success": false,
+              "data": null,
+              "error": {
+                "code": "EMAIL_VERIFICATION_ATTEMPTS_EXCEEDED",
+                "message": "인증 코드 입력 가능 횟수를 초과했습니다. 코드를 다시 발송해주세요."
+              }
+            }
+            """;
     static final String PASSWORD_MISMATCH_EXAMPLE =
             """
             {
@@ -159,17 +192,6 @@ final class AuthSwaggerExamples {
               "error": {
                 "code": "REGION_NOT_FOUND",
                 "message": "활동 지역을 찾을 수 없습니다."
-              }
-            }
-            """;
-    static final String CATEGORY_NOT_FOUND_EXAMPLE =
-            """
-            {
-              "success": false,
-              "data": null,
-              "error": {
-                "code": "CATEGORY_NOT_FOUND",
-                "message": "관심 카테고리를 찾을 수 없습니다."
               }
             }
             """;

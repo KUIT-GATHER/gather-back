@@ -2,7 +2,6 @@ package com.gather.gather.domain.meeting.service;
 
 import com.gather.gather.domain.auth.entity.User;
 import com.gather.gather.domain.auth.repository.UserRepository;
-import com.gather.gather.domain.category.repository.CategoryRepository;
 import com.gather.gather.domain.meeting.dto.MeetingCreateRequest;
 import com.gather.gather.domain.meeting.dto.MeetingDetailResponse;
 import com.gather.gather.domain.meeting.dto.MeetingResponse;
@@ -12,14 +11,22 @@ import com.gather.gather.domain.meeting.enums.MeetingMemberStatus;
 import com.gather.gather.domain.meeting.enums.MeetingStatus;
 import com.gather.gather.domain.meeting.repository.MeetingMemberRepository;
 import com.gather.gather.domain.meeting.repository.MeetingRepository;
+import com.gather.gather.domain.posting.entity.Posting;
+import com.gather.gather.domain.posting.entity.PostingCategory;
+import com.gather.gather.domain.posting.repository.PostingRepository;
 import com.gather.gather.domain.region.repository.RegionRepository;
+import com.gather.gather.global.common.PageResponse;
 import com.gather.gather.global.exception.BusinessException;
 import com.gather.gather.global.exception.ErrorCode;
 import com.gather.gather.global.util.SecurityUtil;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -28,17 +35,32 @@ import org.springframework.transaction.annotation.Transactional;
 @Transactional(readOnly = true)
 public class MeetingService {
 
+    private static final Set<String> SORTABLE_PROPERTIES =
+            Set.of(
+                    "id",
+                    "name",
+                    "currentMemberCount",
+                    "maxMember",
+                    "regionId",
+                    "category",
+                    "status",
+                    "deadline",
+                    "activityStartAt",
+                    "activityEndAt",
+                    "createdAt",
+                    "updatedAt");
+
     private final MeetingRepository meetingRepository;
     private final MeetingMemberRepository meetingMemberRepository;
     private final UserRepository userRepository;
-    private final CategoryRepository categoryRepository;
     private final RegionRepository regionRepository;
+    private final PostingRepository postingRepository;
 
     @Transactional
     public MeetingResponse createMeeting(MeetingCreateRequest request) {
         validateMeetingTime(request.deadline(), request.activityStartAt(), request.activityEndAt());
-        validateCategoryExists(request.categoryId());
         validateRegionExists(request.regionId());
+        PostingCategory category = resolveCategory(request);
 
         Long userId = SecurityUtil.getCurrentUserId();
         User host = getUser(userId);
@@ -50,7 +72,7 @@ public class MeetingService {
                         request.maxMember(),
                         request.deadline(),
                         request.memo(),
-                        request.categoryId(),
+                        category,
                         request.regionId(),
                         host,
                         request.participationCondition(),
@@ -66,12 +88,23 @@ public class MeetingService {
         return MeetingResponse.from(savedMeeting, resolveDisplayStatus(savedMeeting));
     }
 
-    public List<MeetingResponse> getMeetings(
-            String keyword, Long regionId, Long categoryId, MeetingStatus status) {
-        return meetingRepository.searchMeetings(keyword, regionId, categoryId, null).stream()
-                .map(meeting -> MeetingResponse.from(meeting, resolveDisplayStatus(meeting)))
-                .filter(response -> status == null || response.status() == status)
-                .toList();
+    public PageResponse<MeetingResponse> getMeetings(
+            String keyword,
+            Long regionId,
+            PostingCategory category,
+            MeetingStatus status,
+            Pageable pageable) {
+        validateSort(pageable.getSort());
+
+        Page<MeetingResponse> responses =
+                meetingRepository
+                        .searchMeetings(keyword, regionId, category, status, pageable)
+                        .map(
+                                meeting ->
+                                        MeetingResponse.from(
+                                                meeting, resolveDisplayStatus(meeting)));
+
+        return PageResponse.from(responses);
     }
 
     public MeetingDetailResponse getMeeting(Long meetingId) {
@@ -107,6 +140,14 @@ public class MeetingService {
                 .map(MeetingMember::getMeeting)
                 .map(meeting -> MeetingResponse.from(meeting, resolveDisplayStatus(meeting)))
                 .toList();
+    }
+
+    private void validateSort(Sort sort) {
+        for (Sort.Order order : sort) {
+            if (!SORTABLE_PROPERTIES.contains(order.getProperty())) {
+                throw new BusinessException(ErrorCode.VALIDATION_ERROR);
+            }
+        }
     }
 
     private User getUser(Long userId) {
@@ -147,10 +188,21 @@ public class MeetingService {
         }
     }
 
-    private void validateCategoryExists(Long categoryId) {
-        if (!categoryRepository.existsById(categoryId)) {
-            throw new BusinessException(ErrorCode.CATEGORY_NOT_FOUND);
+    private PostingCategory resolveCategory(MeetingCreateRequest request) {
+        if (request.volunteerPostingId() != null) {
+            Posting posting =
+                    postingRepository
+                            .findById(request.volunteerPostingId())
+                            .orElseThrow(() -> new BusinessException(ErrorCode.POSTING_NOT_FOUND));
+
+            return posting.getCategory();
         }
+
+        if (request.category() == null) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR);
+        }
+
+        return request.category();
     }
 
     private void validateRegionExists(Long regionId) {

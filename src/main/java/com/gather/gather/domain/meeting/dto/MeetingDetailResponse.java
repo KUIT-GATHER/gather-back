@@ -2,6 +2,7 @@ package com.gather.gather.domain.meeting.dto;
 
 import com.gather.gather.domain.meeting.entity.Meeting;
 import com.gather.gather.domain.meeting.enums.MeetingStatus;
+import com.gather.gather.domain.posting.entity.PostingCategory;
 import java.time.LocalDateTime;
 
 public record MeetingDetailResponse(
@@ -11,7 +12,7 @@ public record MeetingDetailResponse(
         Integer currentMemberCount,
         Integer maxMember,
         Long regionId,
-        Long categoryId,
+        PostingCategory category,
         Long hostId,
         Long volunteerPostingId,
         String participationCondition,
@@ -29,7 +30,7 @@ public record MeetingDetailResponse(
                 meeting.getCurrentMemberCount(),
                 meeting.getMaxMember(),
                 meeting.getRegionId(),
-                meeting.getCategoryId(),
+                meeting.getCategory(),
                 meeting.getHost().getId(),
                 meeting.getVolunteerPostingId(),
                 meeting.getParticipationCondition(),

@@ -3,6 +3,7 @@ package com.gather.gather.domain.posting.repository;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.gather.gather.domain.posting.entity.Posting;
+import com.gather.gather.domain.posting.entity.PostingCategory;
 import com.gather.gather.domain.posting.entity.PostingStatus;
 import java.time.LocalDate;
 import java.util.List;
@@ -32,7 +33,7 @@ class PostingRepositoryTest {
 
         var result =
                 postingRepository.search(
-                        PostingStatus.RECRUITING, null, null, null, null, PAGEABLE);
+                        PostingStatus.RECRUITING, null, null, null, null, null, PAGEABLE);
 
         assertThat(result.getContent()).allMatch(p -> p.getStatus() == PostingStatus.RECRUITING);
     }
@@ -43,7 +44,7 @@ class PostingRepositoryTest {
 
         var result =
                 postingRepository.search(
-                        PostingStatus.RECRUITING, List.of(), null, null, null, PAGEABLE);
+                        PostingStatus.RECRUITING, List.of(), null, null, null, null, PAGEABLE);
 
         assertThat(result.getContent()).isEmpty();
     }
@@ -57,7 +58,27 @@ class PostingRepositoryTest {
 
         var result =
                 postingRepository.search(
-                        PostingStatus.RECRUITING, List.of(42L), null, null, null, PAGEABLE);
+                        PostingStatus.RECRUITING, List.of(42L), null, null, null, null, PAGEABLE);
+
+        assertThat(result.getContent())
+                .extracting(Posting::getId)
+                .containsExactly(matching.getId());
+    }
+
+    @Test
+    void search_filtersByCategory_whenProvided() {
+        Posting matching = postingRepository.save(postingWithCategory(PostingCategory.ENVIRONMENT));
+        postingRepository.save(postingWithCategory(PostingCategory.WELFARE));
+
+        var result =
+                postingRepository.search(
+                        PostingStatus.RECRUITING,
+                        null,
+                        null,
+                        null,
+                        null,
+                        PostingCategory.ENVIRONMENT,
+                        PAGEABLE);
 
         assertThat(result.getContent())
                 .extracting(Posting::getId)
@@ -80,6 +101,7 @@ class PostingRepositoryTest {
                         LocalDate.of(2026, 7, 1),
                         LocalDate.of(2026, 7, 31),
                         null,
+                        null,
                         PAGEABLE);
 
         assertThat(result.getContent()).extracting(Posting::getId).containsExactly(inRange.getId());
@@ -92,7 +114,7 @@ class PostingRepositoryTest {
 
         var result =
                 postingRepository.search(
-                        PostingStatus.RECRUITING, null, null, null, "환경", PAGEABLE);
+                        PostingStatus.RECRUITING, null, null, null, "환경", null, PAGEABLE);
 
         assertThat(result.getContent())
                 .extracting(Posting::getId)
@@ -106,7 +128,7 @@ class PostingRepositoryTest {
 
         var result =
                 postingRepository.search(
-                        PostingStatus.RECRUITING, null, null, null, "동구청", PAGEABLE);
+                        PostingStatus.RECRUITING, null, null, null, "동구청", null, PAGEABLE);
 
         assertThat(result.getContent())
                 .extracting(Posting::getId)
@@ -119,7 +141,7 @@ class PostingRepositoryTest {
 
         var result =
                 postingRepository.search(
-                        PostingStatus.RECRUITING, null, null, null, "존재하지않는키워드", PAGEABLE);
+                        PostingStatus.RECRUITING, null, null, null, "존재하지않는키워드", null, PAGEABLE);
 
         assertThat(result.getContent()).isEmpty();
     }
@@ -132,7 +154,7 @@ class PostingRepositoryTest {
                         .activityDate(LocalDate.of(2026, 7, 15))
                         .noticeStartDate(noticeStart)
                         .noticeEndDate(noticeEnd)
-                        .categoryId(1L)
+                        .category(PostingCategory.ENVIRONMENT)
                         .build());
     }
 
@@ -142,7 +164,16 @@ class PostingRepositoryTest {
                 .status(status)
                 .activityDate(activityDate)
                 .regionId(regionId)
-                .categoryId(1L)
+                .category(PostingCategory.ENVIRONMENT)
+                .build();
+    }
+
+    private Posting postingWithCategory(PostingCategory category) {
+        return Posting.builder()
+                .title("테스트 공고")
+                .status(PostingStatus.RECRUITING)
+                .activityDate(LocalDate.of(2026, 7, 15))
+                .category(category)
                 .build();
     }
 
@@ -153,7 +184,7 @@ class PostingRepositoryTest {
                         .recruitOrg(recruitOrg)
                         .status(PostingStatus.RECRUITING)
                         .activityDate(LocalDate.of(2026, 7, 15))
-                        .categoryId(1L)
+                        .category(PostingCategory.ENVIRONMENT)
                         .build());
     }
 }

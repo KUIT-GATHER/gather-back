@@ -1,13 +1,17 @@
 package com.gather.gather.global.config;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.gather.gather.domain.auth.entity.User;
 import com.gather.gather.domain.auth.entity.UserRole;
 import com.gather.gather.domain.auth.service.TokenProvider;
+import com.gather.gather.domain.posting.service.PostingSyncResult;
+import com.gather.gather.domain.posting.service.PostingSyncService;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 import java.util.Base64;
@@ -19,6 +23,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.HttpHeaders;
+import org.springframework.test.context.TestPropertySource;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -26,17 +32,22 @@ import org.springframework.test.web.servlet.MockMvc;
  * SecurityConfig + JwtAuthenticationFilter + CustomAuthenticationEntryPoint 통합 검증.
  *
  * <p>보호 경로로는 posting/sync 대신 테스트 전용 {@code /test/secured} ({@link
- * com.gather.gather.support.TestSecuredController})를 사용한다.
+ * com.gather.gather.support.TestSecuredController})를 사용한다. 단, ADMIN role 전용 인가(아래 sync 관련 3케이스)는 실제
+ * {@code POST /api/v1/postings/sync}로 검증한다 — {@code CustomAccessDeniedHandler}까지 포함한 전체 체인 검증이 목적이라
+ * 테스트 전용 컨트롤러로는 대체할 수 없다.
  */
 @SpringBootTest
 @AutoConfigureMockMvc
+@TestPropertySource(properties = "posting.sync.manual-endpoint-enabled=true")
 class JwtSecurityIntegrationTest {
 
     private static final String SECURED_PATH = "/test/secured";
+    private static final String SYNC_PATH = "/api/v1/postings/sync";
 
     @Autowired private MockMvc mockMvc;
     @Autowired private TokenProvider tokenProvider;
     @Autowired private JwtProperties jwtProperties;
+    @MockitoBean private PostingSyncService postingSyncService;
 
     @Test
     @DisplayName("보호 API에 토큰 없이 요청하면 401 UNAUTHORIZED이다")
@@ -99,6 +110,14 @@ class JwtSecurityIntegrationTest {
     }
 
     @Test
+    @DisplayName("활동 지역 권역 조회(/api/v1/regions/groups)는 토큰 없이 통과한다(401이 아니다)")
+    void permitAllPath_regionGroups_passesWithoutToken() throws Exception {
+        mockMvc.perform(get("/api/v1/regions/groups"))
+                .andExpect(
+                        result -> assertThat(result.getResponse().getStatus()).isNotEqualTo(401));
+    }
+
+    @Test
     @DisplayName("유효한 토큰이면 통과하고 principal은 Long userId, authority는 ROLE_USER이다")
     void validToken_authenticatesWithLongPrincipalAndRoleAuthority() throws Exception {
         String token = tokenProvider.createAccessToken(newUser(100L, UserRole.USER));
@@ -126,6 +145,70 @@ class JwtSecurityIntegrationTest {
     @DisplayName("Bearer가 아닌 Authorization 헤더(Basic)는 JWT 인증 시도로 보지 않아 401 UNAUTHORIZED이다")
     void nonBearerHeader_returns401Unauthorized() throws Exception {
         mockMvc.perform(get(SECURED_PATH).header(HttpHeaders.AUTHORIZATION, "Basic abc"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.error.code").value("UNAUTHORIZED"));
+    }
+
+    @Test
+    @DisplayName("ADMIN 전용 배치 트리거(/api/v1/postings/sync)에 토큰 없이 요청하면 401 UNAUTHORIZED이다")
+    void adminOnlySync_withoutToken_returns401Unauthorized() throws Exception {
+        mockMvc.perform(post(SYNC_PATH))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.error.code").value("UNAUTHORIZED"));
+    }
+
+    @Test
+    @DisplayName("ADMIN 전용 배치 트리거에 USER role 토큰으로 요청하면 403 FORBIDDEN이다")
+    void adminOnlySync_withUserRole_returns403Forbidden() throws Exception {
+        String token = tokenProvider.createAccessToken(newUser(100L, UserRole.USER));
+
+        mockMvc.perform(post(SYNC_PATH).header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.error.code").value("FORBIDDEN"));
+    }
+
+    @Test
+    @DisplayName("ADMIN 전용 배치 트리거에 ADMIN role 토큰으로 요청하면 200 OK이다")
+    void adminOnlySync_withAdminRole_returns200Ok() throws Exception {
+        when(postingSyncService.syncRecentPostings())
+                .thenReturn(new PostingSyncResult(0, 0, 0, 0, 0));
+        String token = tokenProvider.createAccessToken(newUser(200L, UserRole.ADMIN));
+
+        mockMvc.perform(post(SYNC_PATH).header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true));
+    }
+
+    @Test
+    @DisplayName("관리자 전용 API(/api/v1/admin/**)에 ADMIN 토큰으로 요청하면 통과한다")
+    void adminOnlyPath_withAdminToken_passes() throws Exception {
+        String token = tokenProvider.createAccessToken(newUser(200L, UserRole.ADMIN));
+
+        mockMvc.perform(
+                        post("/api/v1/admin/postings/keywords/aggregate")
+                                .header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true));
+    }
+
+    @Test
+    @DisplayName("관리자 전용 API에 USER 토큰으로 요청하면 403 FORBIDDEN이다")
+    void adminOnlyPath_withUserToken_returns403Forbidden() throws Exception {
+        String token = tokenProvider.createAccessToken(newUser(200L, UserRole.USER));
+
+        mockMvc.perform(
+                        post("/api/v1/admin/postings/keywords/aggregate")
+                                .header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.error.code").value("FORBIDDEN"));
+    }
+
+    @Test
+    @DisplayName("관리자 전용 API에 토큰 없이 요청하면 401 UNAUTHORIZED이다")
+    void adminOnlyPath_withoutToken_returns401Unauthorized() throws Exception {
+        mockMvc.perform(post("/api/v1/admin/postings/keywords/aggregate"))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.error.code").value("UNAUTHORIZED"));
     }

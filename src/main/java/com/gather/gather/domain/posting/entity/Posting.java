@@ -125,9 +125,9 @@ public class Posting {
     @Column(name = "region_id")
     private Long regionId;
 
-    /** category 테이블(연석 담당, 아직 미생성) 참조. 같은 이유로 ID만 보관. */
-    @Column(name = "category_id", nullable = false)
-    private Long categoryId;
+    @Enumerated(EnumType.STRING)
+    @Column(name = "category", nullable = false, length = 20)
+    private PostingCategory category;
 
     @Builder
     private Posting(
@@ -161,7 +161,7 @@ public class Posting {
             BigDecimal latitude,
             BigDecimal longitude,
             Long regionId,
-            Long categoryId) {
+            PostingCategory category) {
         this.extId = extId;
         this.title = title;
         this.status = status;
@@ -192,7 +192,7 @@ public class Posting {
         this.latitude = latitude;
         this.longitude = longitude;
         this.regionId = regionId;
-        this.categoryId = categoryId;
+        this.category = category;
         this.createdAt = LocalDateTime.now();
         this.updatedAt = this.createdAt;
     }
@@ -210,7 +210,7 @@ public class Posting {
             Boolean isAdult,
             Boolean isTeen,
             Long regionId,
-            Long categoryId) {
+            PostingCategory category) {
         this.title = title;
         this.status = status;
         this.recruitOrg = recruitOrg;
@@ -222,7 +222,7 @@ public class Posting {
         this.isAdult = isAdult;
         this.isTeen = isTeen;
         this.regionId = regionId;
-        this.categoryId = categoryId;
+        this.category = category;
         this.isActive = true;
         this.updatedAt = LocalDateTime.now();
     }

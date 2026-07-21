@@ -5,10 +5,18 @@ import com.gather.gather.domain.meeting.dto.MeetingDetailResponse;
 import com.gather.gather.domain.meeting.dto.MeetingResponse;
 import com.gather.gather.domain.meeting.enums.MeetingStatus;
 import com.gather.gather.domain.meeting.service.MeetingService;
+import com.gather.gather.domain.posting.entity.PostingCategory;
 import com.gather.gather.global.common.ApiResponse;
+import com.gather.gather.global.common.PageResponse;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -19,6 +27,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
+@Tag(name = "Meeting", description = "모임 API")
 @RestController
 @RequiredArgsConstructor
 @RequestMapping("/api/v1/meetings")
@@ -26,6 +35,7 @@ public class MeetingController {
 
     private final MeetingService meetingService;
 
+    @Operation(summary = "모임 생성", description = "로그인한 사용자가 새로운 모임을 생성합니다.")
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public ApiResponse<MeetingResponse> createMeeting(
@@ -33,26 +43,48 @@ public class MeetingController {
         return ApiResponse.success(meetingService.createMeeting(request));
     }
 
+    @Operation(
+            summary = "모임 목록 조회",
+            description =
+                    "모임을 페이지 단위로 조회합니다. 인증이 필요 없습니다. "
+                            + "keyword, regionId, category, status 조건으로 필터링할 수 있습니다.",
+            parameters = {
+                @Parameter(
+                        name = "sort",
+                        description =
+                                "정렬 기준 (property,direction). 예: createdAt,desc. "
+                                        + "허용 필드: id, name, currentMemberCount, maxMember, "
+                                        + "regionId, category, status, deadline, activityStartAt, "
+                                        + "activityEndAt, createdAt, updatedAt. 허용되지 않은 필드로 "
+                                        + "정렬을 요청하면 400 VALIDATION_ERROR가 반환됩니다.",
+                        example = "createdAt,desc")
+            })
     @GetMapping
-    public ApiResponse<List<MeetingResponse>> getMeetings(
+    public ApiResponse<PageResponse<MeetingResponse>> getMeetings(
             @RequestParam(required = false) String keyword,
             @RequestParam(required = false) Long regionId,
-            @RequestParam(required = false) Long categoryId,
-            @RequestParam(required = false) MeetingStatus status) {
+            @Parameter(description = "카테고리", example = "WELFARE") @RequestParam(required = false)
+                    PostingCategory category,
+            @RequestParam(required = false) MeetingStatus status,
+            @PageableDefault(size = 10, sort = "createdAt", direction = Sort.Direction.DESC)
+                    Pageable pageable) {
         return ApiResponse.success(
-                meetingService.getMeetings(keyword, regionId, categoryId, status));
+                meetingService.getMeetings(keyword, regionId, category, status, pageable));
     }
 
+    @Operation(summary = "내 모임 조회", description = "로그인한 사용자가 참여한 모임 목록을 조회합니다.")
     @GetMapping("/my")
     public ApiResponse<List<MeetingResponse>> getMyMeetings() {
         return ApiResponse.success(meetingService.getMyMeetings());
     }
 
+    @Operation(summary = "모임 참여", description = "로그인한 사용자가 특정 모임에 참여합니다.")
     @PostMapping("/{meetingId}/join")
     public ApiResponse<MeetingResponse> joinMeeting(@PathVariable Long meetingId) {
         return ApiResponse.success(meetingService.joinMeeting(meetingId));
     }
 
+    @Operation(summary = "모임 상세 조회", description = "meetingId에 해당하는 모임 상세 정보를 조회합니다. 인증이 필요 없습니다.")
     @GetMapping("/{meetingId}")
     public ApiResponse<MeetingDetailResponse> getMeeting(@PathVariable Long meetingId) {
         return ApiResponse.success(meetingService.getMeeting(meetingId));
