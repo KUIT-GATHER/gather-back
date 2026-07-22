@@ -5,10 +5,13 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 import java.time.LocalDateTime;
 
 public record MeetingCreateRequest(
-        @NotBlank(message = "모임 이름은 필수입니다.") String name,
+        @NotBlank(message = "모임 이름은 필수입니다.")
+                @Size(max = 100, message = "모임 이름은 100자 이하여야 합니다.")
+                String name,
         String description,
         @NotNull(message = "최대 인원은 필수입니다.") @Min(value = 2, message = "최대 인원은 2명 이상이어야 합니다.")
                 Integer maxMember,
