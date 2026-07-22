@@ -9,10 +9,12 @@ import com.gather.gather.global.exception.BusinessException;
 import com.gather.gather.global.exception.ErrorCode;
 import com.gather.gather.global.util.SecurityUtil;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class PostingParticipationService {
@@ -32,6 +34,10 @@ public class PostingParticipationService {
                         .findById(postingId)
                         .orElseThrow(() -> new BusinessException(ErrorCode.POSTING_NOT_FOUND));
 
+        if (posting.getExtId() == null) {
+            throw new BusinessException(ErrorCode.POSTING_APPLICATION_UNAVAILABLE);
+        }
+
         if (postingParticipationRepository.existsByUserIdAndPostingId(userId, postingId)) {
             throw new BusinessException(ErrorCode.PARTICIPATION_DUPLICATE);
         }
@@ -42,7 +48,8 @@ public class PostingParticipationService {
                     postingParticipationRepository.saveAndFlush(
                             PostingParticipation.create(userId, postingId));
         } catch (DataIntegrityViolationException exception) {
-            throw new BusinessException(ErrorCode.PARTICIPATION_DUPLICATE);
+            log.warn("봉사 신청 저장 중 유니크 제약 위반. userId={}, postingId={}", userId, postingId, exception);
+            throw new BusinessException(ErrorCode.PARTICIPATION_DUPLICATE, exception);
         }
 
         return PostingParticipationResponse.of(

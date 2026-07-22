@@ -84,6 +84,25 @@ class PostingParticipationServiceTest {
     }
 
     @Test
+    @DisplayName("apply throws POSTING_APPLICATION_UNAVAILABLE when the posting has no extId")
+    void apply_throwsPostingApplicationUnavailable_whenExtIdMissing() {
+        try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
+            securityUtil.when(SecurityUtil::getCurrentUserId).thenReturn(USER_ID);
+            when(postingRepository.findById(POSTING_ID))
+                    .thenReturn(Optional.of(postingWithoutExtId()));
+
+            assertThatThrownBy(() -> postingParticipationService.apply(POSTING_ID))
+                    .isInstanceOf(BusinessException.class)
+                    .hasFieldOrPropertyWithValue(
+                            "errorCode", ErrorCode.POSTING_APPLICATION_UNAVAILABLE);
+
+            verify(postingParticipationRepository, never())
+                    .existsByUserIdAndPostingId(any(), any());
+            verify(postingParticipationRepository, never()).saveAndFlush(any());
+        }
+    }
+
+    @Test
     @DisplayName("apply throws PARTICIPATION_DUPLICATE when already applied")
     void apply_throwsParticipationDuplicate_whenAlreadyApplied() {
         try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
@@ -110,18 +129,30 @@ class PostingParticipationServiceTest {
             when(postingRepository.findById(POSTING_ID)).thenReturn(Optional.of(posting()));
             when(postingParticipationRepository.existsByUserIdAndPostingId(USER_ID, POSTING_ID))
                     .thenReturn(false);
+            DataIntegrityViolationException dbException =
+                    new DataIntegrityViolationException("duplicate entry");
             when(postingParticipationRepository.saveAndFlush(any(PostingParticipation.class)))
-                    .thenThrow(new DataIntegrityViolationException("duplicate entry"));
+                    .thenThrow(dbException);
 
             assertThatThrownBy(() -> postingParticipationService.apply(POSTING_ID))
                     .isInstanceOf(BusinessException.class)
-                    .hasFieldOrPropertyWithValue("errorCode", ErrorCode.PARTICIPATION_DUPLICATE);
+                    .hasFieldOrPropertyWithValue("errorCode", ErrorCode.PARTICIPATION_DUPLICATE)
+                    .hasCause(dbException);
         }
     }
 
     private Posting posting() {
         return Posting.builder()
                 .extId(EXT_ID)
+                .title("테스트 공고")
+                .status(PostingStatus.RECRUITING)
+                .activityDate(LocalDate.of(2026, 7, 15))
+                .category(PostingCategory.ENVIRONMENT)
+                .build();
+    }
+
+    private Posting postingWithoutExtId() {
+        return Posting.builder()
                 .title("테스트 공고")
                 .status(PostingStatus.RECRUITING)
                 .activityDate(LocalDate.of(2026, 7, 15))

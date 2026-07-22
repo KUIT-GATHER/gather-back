@@ -73,6 +73,20 @@ class PostingParticipationControllerTest {
 
     @Test
     @DisplayName(
+            "POST /api/v1/postings/{id}/participations returns 409 when the posting has no"
+                    + " extId")
+    void apply_returns409_whenExtIdMissing() throws Exception {
+        when(postingParticipationService.apply(1L))
+                .thenThrow(new BusinessException(ErrorCode.POSTING_APPLICATION_UNAVAILABLE));
+
+        mockMvc.perform(post("/api/v1/postings/1/participations"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.error.code").value("POSTING_APPLICATION_UNAVAILABLE"));
+    }
+
+    @Test
+    @DisplayName(
             "POST /api/v1/postings/{id}/participations returns 400 when postingId is not"
                     + " numeric")
     void apply_returns400_whenPostingIdNotNumeric() throws Exception {
