@@ -36,4 +36,18 @@ public final class SecurityUtil {
         }
         throw new BusinessException(ErrorCode.UNAUTHORIZED);
     }
+
+    /**
+     * 인증이 선택적인 엔드포인트(예: 봉사공고 상세 조회)에서 로그인 여부에 따라 다른 응답을 만들 때 사용한다. 로그인하지 않았다면 예외 없이 {@code null}을
+     * 반환한다.
+     */
+    public static Long getCurrentUserIdOrNull() {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication == null
+                || !authentication.isAuthenticated()
+                || authentication instanceof AnonymousAuthenticationToken) {
+            return null;
+        }
+        return authentication.getPrincipal() instanceof Long userId ? userId : null;
+    }
 }

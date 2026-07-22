@@ -6,6 +6,7 @@ import com.gather.gather.domain.posting.dto.PostingSummaryResponse;
 import com.gather.gather.domain.posting.entity.Posting;
 import com.gather.gather.domain.posting.entity.PostingCategory;
 import com.gather.gather.domain.posting.entity.PostingStatus;
+import com.gather.gather.domain.posting.repository.BookmarkRepository;
 import com.gather.gather.domain.posting.repository.PostingLocationRepository;
 import com.gather.gather.domain.posting.repository.PostingRepository;
 import com.gather.gather.domain.region.entity.Region;
@@ -13,6 +14,7 @@ import com.gather.gather.domain.region.repository.RegionRepository;
 import com.gather.gather.global.common.PageResponse;
 import com.gather.gather.global.exception.BusinessException;
 import com.gather.gather.global.exception.ErrorCode;
+import com.gather.gather.global.util.SecurityUtil;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
@@ -56,6 +58,7 @@ public class PostingService {
     private final PostingLocationRepository postingLocationRepository;
     private final RegionRepository regionRepository;
     private final PostingSearchLogService postingSearchLogService;
+    private final BookmarkRepository bookmarkRepository;
 
     @Transactional(readOnly = true)
     public PageResponse<PostingSummaryResponse> getPostings(
@@ -108,7 +111,14 @@ public class PostingService {
                                 .map(Region::getName)
                                 .orElse(null)
                         : null;
-        return PostingResponse.from(posting, regionName, buildLocations(posting));
+        return PostingResponse.from(
+                posting, regionName, buildLocations(posting), isBookmarkedByCurrentUser(id));
+    }
+
+    /** 인증이 선택적인 엔드포인트이므로, 로그인하지 않은 사용자는 항상 false를 받는다. */
+    private boolean isBookmarkedByCurrentUser(Long postingId) {
+        Long userId = SecurityUtil.getCurrentUserIdOrNull();
+        return userId != null && bookmarkRepository.existsByUserIdAndPostingId(userId, postingId);
     }
 
     /**
