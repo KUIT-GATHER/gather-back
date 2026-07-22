@@ -23,6 +23,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Set;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -30,6 +31,7 @@ import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
@@ -55,6 +57,7 @@ public class MeetingService {
     private final UserRepository userRepository;
     private final RegionRepository regionRepository;
     private final PostingRepository postingRepository;
+    private final MeetingSearchLogService meetingSearchLogService;
 
     @Transactional
     public MeetingResponse createMeeting(MeetingCreateRequest request) {
@@ -104,6 +107,8 @@ public class MeetingService {
                                         MeetingResponse.from(
                                                 meeting, resolveDisplayStatus(meeting)));
 
+        logSearchKeywordSafely(keyword);
+
         return PageResponse.from(responses);
     }
 
@@ -140,6 +145,18 @@ public class MeetingService {
                 .map(MeetingMember::getMeeting)
                 .map(meeting -> MeetingResponse.from(meeting, resolveDisplayStatus(meeting)))
                 .toList();
+    }
+
+    private void logSearchKeywordSafely(String keyword) {
+        if (keyword == null || keyword.isBlank()) {
+            return;
+        }
+
+        try {
+            meetingSearchLogService.log(keyword);
+        } catch (RuntimeException e) {
+            log.warn("모임 검색어 로깅 실패. keyword 길이={}", keyword.length(), e);
+        }
     }
 
     private void validateSort(Sort sort) {
