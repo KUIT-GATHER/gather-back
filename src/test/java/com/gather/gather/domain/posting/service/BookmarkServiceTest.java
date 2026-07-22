@@ -57,7 +57,10 @@ class BookmarkServiceTest {
     @BeforeEach
     void setUp() {
         bookmarkService =
-                new BookmarkService(bookmarkRepository, postingRepository, regionRepository);
+                new BookmarkService(
+                        bookmarkRepository,
+                        postingRepository,
+                        new RegionNameResolver(regionRepository));
     }
 
     @Test
@@ -164,14 +167,14 @@ class BookmarkServiceTest {
 
     @Test
     @DisplayName(
-            "getBookmarkedPostings returns bookmarked postings with resolved region names,"
-                    + " ignoring any sort on the given Pageable")
-    void getBookmarkedPostings_returnsPostingsWithRegionNames_ignoringRequestedSort() {
+            "getBookmarkedPostings returns bookmarked postings with resolved region names when"
+                    + " the given Pageable is unsorted")
+    void getBookmarkedPostings_returnsPostingsWithRegionNames_whenUnsorted() {
         Posting posting = posting();
         Region region = mock(Region.class);
         when(region.getId()).thenReturn(1L);
         when(region.getName()).thenReturn("동구");
-        Pageable requestedSortedPageable = PageRequest.of(0, 20, Sort.by("title"));
+        Pageable unsortedPageable = PageRequest.of(0, 20);
 
         try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
             securityUtil.when(SecurityUtil::getCurrentUserId).thenReturn(USER_ID);
@@ -185,7 +188,7 @@ class BookmarkServiceTest {
 
             PageResponse<PostingSummaryResponse> response =
                     bookmarkService.getBookmarkedPostings(
-                            PostingCategory.ENVIRONMENT, "정화", requestedSortedPageable);
+                            PostingCategory.ENVIRONMENT, "정화", unsortedPageable);
 
             assertThat(response.content()).hasSize(1);
             assertThat(response.content().get(0).regionName()).isEqualTo("동구");
@@ -196,6 +199,18 @@ class BookmarkServiceTest {
                             eq("정화"),
                             argThat(p -> p.getSort().isUnsorted()));
         }
+    }
+
+    @Test
+    @DisplayName("getBookmarkedPostings throws VALIDATION_ERROR when the client requests a sort")
+    void getBookmarkedPostings_throwsValidationError_whenSortRequested() {
+        Pageable sortedPageable = PageRequest.of(0, 20, Sort.by("title"));
+
+        assertThatThrownBy(() -> bookmarkService.getBookmarkedPostings(null, null, sortedPageable))
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("errorCode", ErrorCode.VALIDATION_ERROR);
+
+        verify(bookmarkRepository, never()).findBookmarkedPostings(any(), any(), any(), any());
     }
 
     private Posting posting() {

@@ -17,9 +17,7 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Set;
-import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -56,6 +54,7 @@ public class PostingService {
     private final PostingLocationRepository postingLocationRepository;
     private final RegionRepository regionRepository;
     private final PostingSearchLogService postingSearchLogService;
+    private final RegionNameResolver regionNameResolver;
 
     @Transactional(readOnly = true)
     public PageResponse<PostingSummaryResponse> getPostings(
@@ -83,7 +82,7 @@ public class PostingService {
 
         logSearchKeywordSafely(keyword);
 
-        Map<Long, String> regionNames = findRegionNames(postings);
+        Map<Long, String> regionNames = regionNameResolver.resolve(postings);
 
         Page<PostingSummaryResponse> responses =
                 postings.map(
@@ -156,15 +155,5 @@ public class PostingService {
                 .findAllByPostingIdOrderByLocationSeq(posting.getId())
                 .forEach(location -> locations.add(PostingLocationResponse.from(location)));
         return locations;
-    }
-
-    private Map<Long, String> findRegionNames(Page<Posting> postings) {
-        Set<Long> regionIds =
-                postings.getContent().stream()
-                        .map(Posting::getRegionId)
-                        .filter(Objects::nonNull)
-                        .collect(Collectors.toSet());
-        return regionRepository.findAllById(regionIds).stream()
-                .collect(Collectors.toMap(Region::getId, Region::getName));
     }
 }

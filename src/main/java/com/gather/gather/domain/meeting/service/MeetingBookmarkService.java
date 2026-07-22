@@ -18,6 +18,7 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -58,10 +59,15 @@ public class MeetingBookmarkService {
         return MeetingBookmarkResponse.of(meetingId, false);
     }
 
-    /** 정렬은 항상 북마크한 시각(최신) 순으로 고정한다 — 클라이언트가 보낸 sort는 반영하지 않는다(페이지/사이즈만 사용). */
+    /**
+     * 정렬은 항상 북마크한 시각(최신) 순으로 고정한다 — 개인 북마크 목록에 별도 정렬 옵션을 둘 이유가 없고, 클라이언트 정렬을 그대로 JPQL에 흘려보내면 프로퍼티명이
+     * 검증되지 않아 깨진 쿼리로 이어질 수 있다. 그래서 sort를 조용히 무시하는 대신, sort가 지정된 요청은 400으로 명시적으로 거부한다(page/size만
+     * 받는다).
+     */
     @Transactional(readOnly = true)
     public PageResponse<MeetingResponse> getBookmarkedMeetings(
             PostingCategory category, String keyword, Pageable pageable) {
+        rejectSort(pageable.getSort());
         Long userId = SecurityUtil.getCurrentUserId();
         Pageable unsortedPageable =
                 PageRequest.of(pageable.getPageNumber(), pageable.getPageSize());
@@ -75,6 +81,12 @@ public class MeetingBookmarkService {
                         meeting -> MeetingResponse.from(meeting, resolveDisplayStatus(meeting)));
 
         return PageResponse.from(responses);
+    }
+
+    private void rejectSort(Sort sort) {
+        if (sort.isSorted()) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR);
+        }
     }
 
     /**

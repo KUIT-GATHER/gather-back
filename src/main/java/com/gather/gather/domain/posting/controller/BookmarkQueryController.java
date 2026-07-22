@@ -46,7 +46,8 @@ public class BookmarkQueryController {
             description =
                     "로그인한 사용자가 북마크한 봉사공고 목록을 북마크한 시각 최신순으로 페이지 단위 조회합니다. "
                             + "category를 지정하면 해당 봉사분야 북마크만, keyword를 지정하면 제목/모집기관명 부분일치로 "
-                            + "필터링합니다. 정렬 기준은 항상 북마크한 시각 최신순으로 고정되며 sort 파라미터는 지원하지 않습니다.")
+                            + "필터링합니다. 정렬 기준은 항상 북마크한 시각 최신순으로 고정되며, sort 파라미터를 지정해 요청하면 "
+                            + "400 VALIDATION_ERROR가 반환됩니다.")
     @ApiResponses({
         @io.swagger.v3.oas.annotations.responses.ApiResponse(
                 responseCode = "200",
@@ -83,6 +84,26 @@ public class BookmarkQueryController {
                                                             "size": 20
                                                           },
                                                           "error": null
+                                                        }
+                                                        """))),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                responseCode = "400",
+                description = "sort 파라미터를 지정한 요청 (지원하지 않음)",
+                content =
+                        @Content(
+                                mediaType = JSON,
+                                examples =
+                                        @ExampleObject(
+                                                name = "VALIDATION_ERROR",
+                                                value =
+                                                        """
+                                                        {
+                                                          "success": false,
+                                                          "data": null,
+                                                          "error": {
+                                                            "code": "VALIDATION_ERROR",
+                                                            "message": "요청 값이 올바르지 않습니다."
+                                                          }
                                                         }
                                                         """))),
         @io.swagger.v3.oas.annotations.responses.ApiResponse(

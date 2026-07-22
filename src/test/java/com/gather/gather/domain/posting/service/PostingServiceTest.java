@@ -56,7 +56,8 @@ class PostingServiceTest {
                         postingRepository,
                         postingLocationRepository,
                         regionRepository,
-                        postingSearchLogService);
+                        postingSearchLogService,
+                        new RegionNameResolver(regionRepository));
     }
 
     @Test

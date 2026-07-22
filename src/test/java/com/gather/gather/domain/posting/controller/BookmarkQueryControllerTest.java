@@ -1,8 +1,10 @@
 package com.gather.gather.domain.posting.controller;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -19,12 +21,14 @@ import java.time.LocalDate;
 import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -95,5 +99,34 @@ class BookmarkQueryControllerTest {
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.error.code").value("UNAUTHORIZED"));
+    }
+
+    @Test
+    @DisplayName("GET /api/v1/postings/bookmarks?page=1&size=5 binds page/size query params")
+    void getBookmarkedPostings_bindsPageableFromQueryParams() throws Exception {
+        Page<PostingSummaryResponse> emptyPage = new PageImpl<>(List.of(), PageRequest.of(1, 5), 0);
+        when(bookmarkService.getBookmarkedPostings(isNull(), isNull(), any()))
+                .thenReturn(PageResponse.from(emptyPage));
+
+        mockMvc.perform(get("/api/v1/postings/bookmarks").param("page", "1").param("size", "5"))
+                .andExpect(status().isOk());
+
+        ArgumentCaptor<Pageable> captor = ArgumentCaptor.forClass(Pageable.class);
+        verify(bookmarkService).getBookmarkedPostings(isNull(), isNull(), captor.capture());
+        assertThat(captor.getValue().getPageNumber()).isEqualTo(1);
+        assertThat(captor.getValue().getPageSize()).isEqualTo(5);
+    }
+
+    @Test
+    @DisplayName(
+            "GET /api/v1/postings/bookmarks?sort=... returns 400 when the service rejects sort")
+    void getBookmarkedPostings_returns400_whenServiceRejectsSort() throws Exception {
+        when(bookmarkService.getBookmarkedPostings(isNull(), isNull(), any()))
+                .thenThrow(new BusinessException(ErrorCode.VALIDATION_ERROR));
+
+        mockMvc.perform(get("/api/v1/postings/bookmarks").param("sort", "title,desc"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.error.code").value("VALIDATION_ERROR"));
     }
 }

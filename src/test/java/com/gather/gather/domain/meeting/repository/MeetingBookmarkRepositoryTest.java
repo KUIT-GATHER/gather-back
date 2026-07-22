@@ -237,6 +237,71 @@ class MeetingBookmarkRepositoryTest {
         assertThat(page.getContent()).isEmpty();
     }
 
+    @Test
+    void findBookmarkedMeetings_filtersByKeyword() {
+        Region region = region();
+        Meeting matching = meetingRepository.save(meeting(region, "동구 환경정화 모임"));
+        Meeting nonMatching = meetingRepository.save(meeting(region, "무관한 모임"));
+        Long userId = bookmarker(region).getId();
+        meetingBookmarkRepository.saveAndFlush(MeetingBookmark.create(userId, matching.getId()));
+        meetingBookmarkRepository.saveAndFlush(MeetingBookmark.create(userId, nonMatching.getId()));
+
+        Page<Meeting> page =
+                meetingBookmarkRepository.findBookmarkedMeetings(
+                        userId, null, "환경정화", PageRequest.of(0, 20));
+
+        assertThat(page.getContent()).extracting(Meeting::getId).containsExactly(matching.getId());
+    }
+
+    @Test
+    void findBookmarkedMeetings_filtersByCategoryAndKeywordTogether() {
+        Region region = region();
+        Meeting matching =
+                meetingRepository.save(meeting(region, "동구 환경정화 모임", PostingCategory.ENVIRONMENT));
+        Meeting wrongCategory =
+                meetingRepository.save(meeting(region, "동구 환경정화 모임", PostingCategory.EDUCATION));
+        Meeting wrongKeyword =
+                meetingRepository.save(meeting(region, "무관한 모임", PostingCategory.ENVIRONMENT));
+        Long userId = bookmarker(region).getId();
+        meetingBookmarkRepository.saveAndFlush(MeetingBookmark.create(userId, matching.getId()));
+        meetingBookmarkRepository.saveAndFlush(
+                MeetingBookmark.create(userId, wrongCategory.getId()));
+        meetingBookmarkRepository.saveAndFlush(
+                MeetingBookmark.create(userId, wrongKeyword.getId()));
+
+        Page<Meeting> page =
+                meetingBookmarkRepository.findBookmarkedMeetings(
+                        userId, PostingCategory.ENVIRONMENT, "환경정화", PageRequest.of(0, 20));
+
+        assertThat(page.getContent()).extracting(Meeting::getId).containsExactly(matching.getId());
+    }
+
+    @Test
+    void findBookmarkedMeetings_paginatesAcrossMultiplePages() {
+        Region region = region();
+        Long userId = bookmarker(region).getId();
+        for (int i = 0; i < 3; i++) {
+            Meeting meeting = meetingRepository.save(meeting(region));
+            meetingBookmarkRepository.saveAndFlush(MeetingBookmark.create(userId, meeting.getId()));
+        }
+
+        Page<Meeting> firstPage =
+                meetingBookmarkRepository.findBookmarkedMeetings(
+                        userId, null, null, PageRequest.of(0, 2));
+
+        assertThat(firstPage.getContent()).hasSize(2);
+        assertThat(firstPage.getTotalElements()).isEqualTo(3);
+        assertThat(firstPage.getTotalPages()).isEqualTo(2);
+
+        Page<Meeting> secondPage =
+                meetingBookmarkRepository.findBookmarkedMeetings(
+                        userId, null, null, PageRequest.of(1, 2));
+
+        assertThat(secondPage.getContent()).hasSize(1);
+        assertThat(secondPage.getTotalElements()).isEqualTo(3);
+        assertThat(secondPage.getTotalPages()).isEqualTo(2);
+    }
+
     private Region region() {
         return regionRepository.save(
                 Region.create("테스트구", 2, "999" + (System.nanoTime() % 10000000L), null));
@@ -247,11 +312,19 @@ class MeetingBookmarkRepositoryTest {
     }
 
     private Meeting meeting(Region region, PostingCategory category) {
+        return meeting(region, "테스트 모임", category);
+    }
+
+    private Meeting meeting(Region region, String name) {
+        return meeting(region, name, PostingCategory.ENVIRONMENT);
+    }
+
+    private Meeting meeting(Region region, String name, PostingCategory category) {
         User host = userRepository.save(user("host", region));
         LocalDateTime now = LocalDateTime.now();
 
         return Meeting.create(
-                "테스트 모임",
+                name,
                 "설명",
                 10,
                 now.plusDays(3),

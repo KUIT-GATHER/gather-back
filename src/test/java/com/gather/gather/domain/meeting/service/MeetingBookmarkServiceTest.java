@@ -162,15 +162,15 @@ class MeetingBookmarkServiceTest {
 
     @Test
     @DisplayName(
-            "getBookmarkedMeetings returns bookmarked meetings with resolved display status,"
-                    + " ignoring any sort on the given Pageable")
-    void getBookmarkedMeetings_returnsMeetingsWithDisplayStatus_ignoringRequestedSort() {
+            "getBookmarkedMeetings returns bookmarked meetings with resolved display status when"
+                    + " the given Pageable is unsorted")
+    void getBookmarkedMeetings_returnsMeetingsWithDisplayStatus_whenUnsorted() {
         when(meeting.getId()).thenReturn(MEETING_ID);
         when(meeting.getStatus()).thenReturn(MeetingStatus.RECRUITING);
         when(meeting.isActivityEnded(any())).thenReturn(false);
         when(meeting.isDeadlinePassed(any())).thenReturn(false);
         when(meeting.isFull()).thenReturn(false);
-        Pageable requestedSortedPageable = PageRequest.of(0, 20, Sort.by("name"));
+        Pageable unsortedPageable = PageRequest.of(0, 20);
 
         try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
             securityUtil.when(SecurityUtil::getCurrentUserId).thenReturn(USER_ID);
@@ -183,7 +183,7 @@ class MeetingBookmarkServiceTest {
 
             PageResponse<MeetingResponse> response =
                     meetingBookmarkService.getBookmarkedMeetings(
-                            PostingCategory.ENVIRONMENT, "정화", requestedSortedPageable);
+                            PostingCategory.ENVIRONMENT, "정화", unsortedPageable);
 
             assertThat(response.content()).hasSize(1);
             assertThat(response.content().get(0).meetingId()).isEqualTo(MEETING_ID);
@@ -195,5 +195,21 @@ class MeetingBookmarkServiceTest {
                             eq("정화"),
                             argThat(p -> p.getSort().isUnsorted()));
         }
+    }
+
+    @Test
+    @DisplayName("getBookmarkedMeetings throws VALIDATION_ERROR when the client requests a sort")
+    void getBookmarkedMeetings_throwsValidationError_whenSortRequested() {
+        Pageable sortedPageable = PageRequest.of(0, 20, Sort.by("name"));
+
+        assertThatThrownBy(
+                        () ->
+                                meetingBookmarkService.getBookmarkedMeetings(
+                                        null, null, sortedPageable))
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("errorCode", ErrorCode.VALIDATION_ERROR);
+
+        verify(meetingBookmarkRepository, never())
+                .findBookmarkedMeetings(any(), any(), any(), any());
     }
 }

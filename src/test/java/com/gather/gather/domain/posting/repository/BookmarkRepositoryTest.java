@@ -160,6 +160,47 @@ class BookmarkRepositoryTest {
         assertThat(page.getContent()).isEmpty();
     }
 
+    @Test
+    void findBookmarkedPostings_filtersByCategoryAndKeywordTogether() {
+        Posting matching =
+                postingRepository.save(posting("동구 환경정화 봉사", PostingCategory.ENVIRONMENT));
+        Posting wrongCategory =
+                postingRepository.save(posting("동구 환경정화 봉사", PostingCategory.EDUCATION));
+        Posting wrongKeyword =
+                postingRepository.save(posting("무관한 제목", PostingCategory.ENVIRONMENT));
+        bookmarkRepository.saveAndFlush(Bookmark.create(1L, matching.getId()));
+        bookmarkRepository.saveAndFlush(Bookmark.create(1L, wrongCategory.getId()));
+        bookmarkRepository.saveAndFlush(Bookmark.create(1L, wrongKeyword.getId()));
+
+        Page<Posting> page =
+                bookmarkRepository.findBookmarkedPostings(
+                        1L, PostingCategory.ENVIRONMENT, "환경정화", PageRequest.of(0, 20));
+
+        assertThat(page.getContent()).extracting(Posting::getId).containsExactly(matching.getId());
+    }
+
+    @Test
+    void findBookmarkedPostings_paginatesAcrossMultiplePages() {
+        for (int i = 0; i < 3; i++) {
+            Posting posting = postingRepository.save(posting());
+            bookmarkRepository.saveAndFlush(Bookmark.create(1L, posting.getId()));
+        }
+
+        Page<Posting> firstPage =
+                bookmarkRepository.findBookmarkedPostings(1L, null, null, PageRequest.of(0, 2));
+
+        assertThat(firstPage.getContent()).hasSize(2);
+        assertThat(firstPage.getTotalElements()).isEqualTo(3);
+        assertThat(firstPage.getTotalPages()).isEqualTo(2);
+
+        Page<Posting> secondPage =
+                bookmarkRepository.findBookmarkedPostings(1L, null, null, PageRequest.of(1, 2));
+
+        assertThat(secondPage.getContent()).hasSize(1);
+        assertThat(secondPage.getTotalElements()).isEqualTo(3);
+        assertThat(secondPage.getTotalPages()).isEqualTo(2);
+    }
+
     private Posting posting() {
         return posting("테스트 공고", PostingCategory.ENVIRONMENT);
     }
