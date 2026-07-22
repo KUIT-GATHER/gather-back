@@ -158,6 +158,37 @@ class PostingParticipationServiceTest {
         }
     }
 
+    @Test
+    @DisplayName("cancel deletes the caller's own participation")
+    void cancel_deletesParticipation_whenOwnedByCurrentUser() {
+        try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
+            securityUtil.when(SecurityUtil::getCurrentUserId).thenReturn(USER_ID);
+            PostingParticipation participation = PostingParticipation.create(USER_ID, POSTING_ID);
+            when(postingParticipationRepository.findByUserIdAndPostingId(USER_ID, POSTING_ID))
+                    .thenReturn(Optional.of(participation));
+
+            postingParticipationService.cancel(POSTING_ID);
+
+            verify(postingParticipationRepository).delete(participation);
+        }
+    }
+
+    @Test
+    @DisplayName("cancel throws PARTICIPATION_NOT_FOUND when no participation exists for the user")
+    void cancel_throwsParticipationNotFound_whenMissing() {
+        try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
+            securityUtil.when(SecurityUtil::getCurrentUserId).thenReturn(USER_ID);
+            when(postingParticipationRepository.findByUserIdAndPostingId(USER_ID, POSTING_ID))
+                    .thenReturn(Optional.empty());
+
+            assertThatThrownBy(() -> postingParticipationService.cancel(POSTING_ID))
+                    .isInstanceOf(BusinessException.class)
+                    .hasFieldOrPropertyWithValue("errorCode", ErrorCode.PARTICIPATION_NOT_FOUND);
+
+            verify(postingParticipationRepository, never()).delete(any());
+        }
+    }
+
     private Posting posting() {
         return Posting.builder()
                 .extId(EXT_ID)

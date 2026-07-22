@@ -1,6 +1,8 @@
 package com.gather.gather.domain.posting.controller;
 
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -106,5 +108,27 @@ class PostingParticipationControllerTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.error.code").value("VALIDATION_ERROR"));
+    }
+
+    @Test
+    @DisplayName("DELETE /api/v1/postings/{id}/participations returns 200 on cancel")
+    void cancel_returns200() throws Exception {
+        mockMvc.perform(delete("/api/v1/postings/1/participations"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true));
+    }
+
+    @Test
+    @DisplayName(
+            "DELETE /api/v1/postings/{id}/participations returns 404 when no participation exists")
+    void cancel_returns404_whenParticipationMissing() throws Exception {
+        doThrow(new BusinessException(ErrorCode.PARTICIPATION_NOT_FOUND))
+                .when(postingParticipationService)
+                .cancel(999L);
+
+        mockMvc.perform(delete("/api/v1/postings/999/participations"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.error.code").value("PARTICIPATION_NOT_FOUND"));
     }
 }

@@ -64,4 +64,17 @@ public class PostingParticipationService {
                 participation.getStatus(),
                 VOLUNTEER_1365_APPLICATION_URL_PREFIX + posting.getExtId());
     }
+
+    @Transactional
+    public void cancel(Long postingId) {
+        Long userId = SecurityUtil.getCurrentUserId();
+
+        PostingParticipation participation =
+                postingParticipationRepository
+                        .findByUserIdAndPostingId(userId, postingId)
+                        .orElseThrow(
+                                () -> new BusinessException(ErrorCode.PARTICIPATION_NOT_FOUND));
+
+        postingParticipationRepository.delete(participation);
+    }
 }

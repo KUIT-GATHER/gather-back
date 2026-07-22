@@ -9,6 +9,7 @@ import io.swagger.v3.oas.annotations.media.ExampleObject;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -141,5 +142,60 @@ public class PostingParticipationController {
     @PostMapping
     public ApiResponse<PostingParticipationResponse> apply(@PathVariable Long postingId) {
         return ApiResponse.success(postingParticipationService.apply(postingId));
+    }
+
+    @Operation(summary = "봉사 신청 취소", description = "로그인한 사용자가 자신의 봉사 신청 내역을 취소(삭제)한다.")
+    @ApiResponses({
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                responseCode = "200",
+                description = "봉사 신청 취소 성공",
+                content =
+                        @Content(
+                                mediaType = JSON,
+                                examples =
+                                        @ExampleObject(
+                                                value =
+                                                        """
+                                                        {
+                                                          "success": true,
+                                                          "data": null,
+                                                          "error": null
+                                                        }
+                                                        """))),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                responseCode = "401",
+                description = "인증되지 않은 요청",
+                content =
+                        @Content(
+                                mediaType = JSON,
+                                examples =
+                                        @ExampleObject(
+                                                name = "UNAUTHORIZED",
+                                                value = UNAUTHORIZED_EXAMPLE))),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                responseCode = "404",
+                description = "신청 내역을 찾을 수 없음",
+                content =
+                        @Content(
+                                mediaType = JSON,
+                                examples =
+                                        @ExampleObject(
+                                                name = "PARTICIPATION_NOT_FOUND",
+                                                value =
+                                                        """
+                                                        {
+                                                          "success": false,
+                                                          "data": null,
+                                                          "error": {
+                                                            "code": "PARTICIPATION_NOT_FOUND",
+                                                            "message": "신청 내역을 찾을 수 없습니다."
+                                                          }
+                                                        }
+                                                        """)))
+    })
+    @DeleteMapping
+    public ApiResponse<Void> cancel(@PathVariable Long postingId) {
+        postingParticipationService.cancel(postingId);
+        return ApiResponse.success(null);
     }
 }

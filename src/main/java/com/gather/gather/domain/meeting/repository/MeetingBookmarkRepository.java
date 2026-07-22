@@ -11,6 +11,8 @@ public interface MeetingBookmarkRepository extends JpaRepository<MeetingBookmark
 
     boolean existsByUserIdAndMeetingId(Long userId, Long meetingId);
 
+    boolean existsByUserId(Long userId);
+
     Optional<MeetingBookmark> findByUserIdAndMeetingId(Long userId, Long meetingId);
 
     @Modifying

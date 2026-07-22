@@ -8,5 +8,7 @@ public interface BookmarkRepository extends JpaRepository<Bookmark, Long> {
 
     boolean existsByUserIdAndPostingId(Long userId, Long postingId);
 
+    boolean existsByUserId(Long userId);
+
     Optional<Bookmark> findByUserIdAndPostingId(Long userId, Long postingId);
 }
