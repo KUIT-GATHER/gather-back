@@ -24,9 +24,11 @@ import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
@@ -86,14 +88,32 @@ public class MyPageService {
                                 Map.entry(
                                         participation,
                                         postingsById.get(participation.getPostingId())))
-                .filter(entry -> entry.getValue() != null)
                 .filter(
                         entry ->
-                                isWithinMonth(
-                                        entry.getValue().getActStartDate(), monthStart, monthEnd))
+                                isVisibleInMonth(
+                                        entry.getKey(), entry.getValue(), monthStart, monthEnd))
                 .sorted(Comparator.comparing(entry -> entry.getValue().getActStartDate()))
                 .map(entry -> MyPageActivityResponse.of(entry.getKey(), entry.getValue()))
                 .toList();
+    }
+
+    /**
+     * posting_participation은 posting_id에 FK가 걸려 있어 정상 운영 중에는 항상 posting이 존재하지만, 참여한 공고를 찾지 못하는
+     * 경우(데이터 정합성 이슈 등)를 대비해 방어적으로 로그를 남기고 캘린더에서 제외한다.
+     */
+    private boolean isVisibleInMonth(
+            PostingParticipation participation,
+            Posting posting,
+            LocalDate monthStart,
+            LocalDate monthEnd) {
+        if (posting == null) {
+            log.warn(
+                    "마이페이지 활동 조회 중 postingId={}에 해당하는 posting을 찾지 못함. participationId={}",
+                    participation.getPostingId(),
+                    participation.getId());
+            return false;
+        }
+        return isWithinMonth(posting.getActStartDate(), monthStart, monthEnd);
     }
 
     private boolean isWithinMonth(

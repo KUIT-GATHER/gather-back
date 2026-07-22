@@ -9,15 +9,19 @@ import com.gather.gather.domain.auth.repository.UserRepository;
 import com.gather.gather.domain.posting.entity.Posting;
 import com.gather.gather.domain.posting.entity.PostingCategory;
 import com.gather.gather.domain.posting.entity.PostingParticipation;
+import com.gather.gather.domain.posting.entity.PostingParticipationStatus;
 import com.gather.gather.domain.posting.entity.PostingStatus;
 import com.gather.gather.domain.region.entity.Region;
 import com.gather.gather.domain.region.repository.RegionRepository;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Optional;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
@@ -114,6 +118,79 @@ class PostingParticipationRepositoryTest {
                         postingParticipationRepository.existsByUserIdAndPostingId(
                                 secondUserId, posting.getId()))
                 .isTrue();
+    }
+
+    @Test
+    void findByUserIdAndPostingId_returnsParticipation_whenOwnedByUser() {
+        Posting posting = postingRepository.save(posting());
+        Long userId = applicant().getId();
+        PostingParticipation saved =
+                postingParticipationRepository.save(
+                        PostingParticipation.create(userId, posting.getId()));
+
+        Optional<PostingParticipation> found =
+                postingParticipationRepository.findByUserIdAndPostingId(userId, posting.getId());
+
+        assertThat(found).isPresent();
+        assertThat(found.get().getId()).isEqualTo(saved.getId());
+    }
+
+    @Test
+    void findByUserIdAndPostingId_returnsEmpty_whenParticipationBelongsToDifferentUser() {
+        Posting posting = postingRepository.save(posting());
+        Long ownerId = applicant().getId();
+        Long otherUserId = applicant().getId();
+        postingParticipationRepository.save(PostingParticipation.create(ownerId, posting.getId()));
+
+        Optional<PostingParticipation> found =
+                postingParticipationRepository.findByUserIdAndPostingId(
+                        otherUserId, posting.getId());
+
+        assertThat(found).isEmpty();
+    }
+
+    @Test
+    void findByUserIdAndStatusNotIn_excludesCompletedAndReviewedForTheSameUser() {
+        Long userId = applicant().getId();
+        Posting appliedPosting = postingRepository.save(posting());
+        Posting completedPosting = postingRepository.save(posting());
+        Posting reviewedPosting = postingRepository.save(posting());
+
+        PostingParticipation applied =
+                postingParticipationRepository.save(
+                        PostingParticipation.create(userId, appliedPosting.getId()));
+        PostingParticipation completed =
+                PostingParticipation.create(userId, completedPosting.getId());
+        ReflectionTestUtils.setField(completed, "status", PostingParticipationStatus.COMPLETED);
+        postingParticipationRepository.save(completed);
+        PostingParticipation reviewed =
+                PostingParticipation.create(userId, reviewedPosting.getId());
+        ReflectionTestUtils.setField(reviewed, "status", PostingParticipationStatus.REVIEWED);
+        postingParticipationRepository.save(reviewed);
+
+        List<PostingParticipation> result =
+                postingParticipationRepository.findByUserIdAndStatusNotIn(
+                        userId,
+                        Set.of(
+                                PostingParticipationStatus.COMPLETED,
+                                PostingParticipationStatus.REVIEWED));
+
+        assertThat(result).extracting(PostingParticipation::getId).containsExactly(applied.getId());
+    }
+
+    @Test
+    void findByUserIdAndStatusNotIn_doesNotReturnOtherUsersParticipations() {
+        Posting posting = postingRepository.save(posting());
+        Long userId = applicant().getId();
+        Long otherUserId = applicant().getId();
+        postingParticipationRepository.save(
+                PostingParticipation.create(otherUserId, posting.getId()));
+
+        List<PostingParticipation> result =
+                postingParticipationRepository.findByUserIdAndStatusNotIn(
+                        userId, Set.of(PostingParticipationStatus.COMPLETED));
+
+        assertThat(result).isEmpty();
     }
 
     private Posting posting() {

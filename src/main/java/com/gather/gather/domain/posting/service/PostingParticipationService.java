@@ -3,6 +3,7 @@ package com.gather.gather.domain.posting.service;
 import com.gather.gather.domain.posting.dto.PostingParticipationResponse;
 import com.gather.gather.domain.posting.entity.Posting;
 import com.gather.gather.domain.posting.entity.PostingParticipation;
+import com.gather.gather.domain.posting.entity.PostingParticipationStatus;
 import com.gather.gather.domain.posting.entity.PostingStatus;
 import com.gather.gather.domain.posting.repository.PostingParticipationRepository;
 import com.gather.gather.domain.posting.repository.PostingRepository;
@@ -74,6 +75,12 @@ public class PostingParticipationService {
                         .findByUserIdAndPostingId(userId, postingId)
                         .orElseThrow(
                                 () -> new BusinessException(ErrorCode.PARTICIPATION_NOT_FOUND));
+
+        // V23 마이그레이션 결정: 이력 보존을 위해 COMPLETED/REVIEWED 상태는 취소(삭제) 금지, APPLIED/CONFIRMED만 허용.
+        if (participation.getStatus() == PostingParticipationStatus.COMPLETED
+                || participation.getStatus() == PostingParticipationStatus.REVIEWED) {
+            throw new BusinessException(ErrorCode.PARTICIPATION_CANCEL_NOT_ALLOWED);
+        }
 
         postingParticipationRepository.delete(participation);
     }

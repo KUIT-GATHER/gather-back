@@ -1,6 +1,7 @@
 package com.gather.gather.domain.posting.controller;
 
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -116,6 +117,8 @@ class PostingParticipationControllerTest {
         mockMvc.perform(delete("/api/v1/postings/1/participations"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true));
+
+        verify(postingParticipationService).cancel(1L);
     }
 
     @Test
@@ -130,5 +133,20 @@ class PostingParticipationControllerTest {
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.error.code").value("PARTICIPATION_NOT_FOUND"));
+    }
+
+    @Test
+    @DisplayName(
+            "DELETE /api/v1/postings/{id}/participations returns 409 when cancel is not allowed"
+                    + " for the participation's status")
+    void cancel_returns409_whenCancelNotAllowed() throws Exception {
+        doThrow(new BusinessException(ErrorCode.PARTICIPATION_CANCEL_NOT_ALLOWED))
+                .when(postingParticipationService)
+                .cancel(1L);
+
+        mockMvc.perform(delete("/api/v1/postings/1/participations"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.error.code").value("PARTICIPATION_CANCEL_NOT_ALLOWED"));
     }
 }

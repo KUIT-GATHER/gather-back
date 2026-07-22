@@ -29,6 +29,7 @@ import org.mockito.Mock;
 import org.mockito.MockedStatic;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.test.util.ReflectionTestUtils;
 
 @ExtendWith(MockitoExtension.class)
 class PostingParticipationServiceTest {
@@ -187,6 +188,69 @@ class PostingParticipationServiceTest {
 
             verify(postingParticipationRepository, never()).delete(any());
         }
+    }
+
+    @Test
+    @DisplayName(
+            "cancel throws PARTICIPATION_CANCEL_NOT_ALLOWED when the participation is COMPLETED")
+    void cancel_throwsCancelNotAllowed_whenCompleted() {
+        try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
+            securityUtil.when(SecurityUtil::getCurrentUserId).thenReturn(USER_ID);
+            PostingParticipation participation =
+                    participationWithStatus(PostingParticipationStatus.COMPLETED);
+            when(postingParticipationRepository.findByUserIdAndPostingId(USER_ID, POSTING_ID))
+                    .thenReturn(Optional.of(participation));
+
+            assertThatThrownBy(() -> postingParticipationService.cancel(POSTING_ID))
+                    .isInstanceOf(BusinessException.class)
+                    .hasFieldOrPropertyWithValue(
+                            "errorCode", ErrorCode.PARTICIPATION_CANCEL_NOT_ALLOWED);
+
+            verify(postingParticipationRepository, never()).delete(any());
+        }
+    }
+
+    @Test
+    @DisplayName(
+            "cancel throws PARTICIPATION_CANCEL_NOT_ALLOWED when the participation is REVIEWED")
+    void cancel_throwsCancelNotAllowed_whenReviewed() {
+        try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
+            securityUtil.when(SecurityUtil::getCurrentUserId).thenReturn(USER_ID);
+            PostingParticipation participation =
+                    participationWithStatus(PostingParticipationStatus.REVIEWED);
+            when(postingParticipationRepository.findByUserIdAndPostingId(USER_ID, POSTING_ID))
+                    .thenReturn(Optional.of(participation));
+
+            assertThatThrownBy(() -> postingParticipationService.cancel(POSTING_ID))
+                    .isInstanceOf(BusinessException.class)
+                    .hasFieldOrPropertyWithValue(
+                            "errorCode", ErrorCode.PARTICIPATION_CANCEL_NOT_ALLOWED);
+
+            verify(postingParticipationRepository, never()).delete(any());
+        }
+    }
+
+    @Test
+    @DisplayName(
+            "cancel deletes a CONFIRMED participation (cancel is still allowed pre-completion)")
+    void cancel_deletesParticipation_whenConfirmed() {
+        try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
+            securityUtil.when(SecurityUtil::getCurrentUserId).thenReturn(USER_ID);
+            PostingParticipation participation =
+                    participationWithStatus(PostingParticipationStatus.CONFIRMED);
+            when(postingParticipationRepository.findByUserIdAndPostingId(USER_ID, POSTING_ID))
+                    .thenReturn(Optional.of(participation));
+
+            postingParticipationService.cancel(POSTING_ID);
+
+            verify(postingParticipationRepository).delete(participation);
+        }
+    }
+
+    private PostingParticipation participationWithStatus(PostingParticipationStatus status) {
+        PostingParticipation participation = PostingParticipation.create(USER_ID, POSTING_ID);
+        ReflectionTestUtils.setField(participation, "status", status);
+        return participation;
     }
 
     private Posting posting() {

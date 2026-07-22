@@ -88,6 +88,24 @@ class MyPageServiceTest {
 
     @Test
     @DisplayName(
+            "getHome returns hasBookmark=true when only a meeting bookmark exists (no posting"
+                    + " bookmark)")
+    void getHome_returnsHasBookmarkTrue_whenOnlyMeetingBookmarkExists() {
+        try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
+            securityUtil.when(SecurityUtil::getCurrentUserId).thenReturn(USER_ID);
+            when(userRepository.findById(USER_ID)).thenReturn(Optional.of(user()));
+            when(bookmarkRepository.existsByUserId(USER_ID)).thenReturn(false);
+            when(meetingBookmarkRepository.existsByUserId(USER_ID)).thenReturn(true);
+            when(profileImageUrlResolver.resolve(null)).thenReturn(null);
+
+            MyPageHomeResponse response = myPageService.getHome();
+
+            assertThat(response.hasBookmark()).isTrue();
+        }
+    }
+
+    @Test
+    @DisplayName(
             "getHome returns hasBookmark=false when neither posting nor meeting bookmarks exist")
     void getHome_returnsHasBookmarkFalse_whenNoBookmarksExist() {
         try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
@@ -158,14 +176,64 @@ class MyPageServiceTest {
                             eq(USER_ID), anyCollection()))
                     .thenReturn(List.of());
 
-            myPageService.getActivities(YearMonth.of(2026, 7));
+            List<MyPageActivityResponse> activities =
+                    myPageService.getActivities(YearMonth.of(2026, 7));
 
+            assertThat(activities).isEmpty();
             verify(postingParticipationRepository)
                     .findByUserIdAndStatusNotIn(
                             USER_ID,
                             Set.of(
                                     PostingParticipationStatus.COMPLETED,
                                     PostingParticipationStatus.REVIEWED));
+        }
+    }
+
+    @Test
+    @DisplayName(
+            "getActivities includes activities on the first and last day of the month (inclusive"
+                    + " boundaries)")
+    void getActivities_includesFirstAndLastDayOfMonth() {
+        Posting firstDayPosting = posting(201L, LocalDate.of(2026, 7, 1));
+        Posting lastDayPosting = posting(202L, LocalDate.of(2026, 7, 31));
+        PostingParticipation firstDayParticipation = PostingParticipation.create(USER_ID, 201L);
+        PostingParticipation lastDayParticipation = PostingParticipation.create(USER_ID, 202L);
+
+        try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
+            securityUtil.when(SecurityUtil::getCurrentUserId).thenReturn(USER_ID);
+            when(postingParticipationRepository.findByUserIdAndStatusNotIn(
+                            eq(USER_ID), anyCollection()))
+                    .thenReturn(List.of(firstDayParticipation, lastDayParticipation));
+            when(postingRepository.findAllById(List.of(201L, 202L)))
+                    .thenReturn(List.of(firstDayPosting, lastDayPosting));
+
+            List<MyPageActivityResponse> activities =
+                    myPageService.getActivities(YearMonth.of(2026, 7));
+
+            assertThat(activities)
+                    .extracting(MyPageActivityResponse::postingId)
+                    .containsExactlyInAnyOrder(201L, 202L);
+        }
+    }
+
+    @Test
+    @DisplayName("getActivities excludes a participation whose posting has no actStartDate yet")
+    void getActivities_excludesPostingWithNullActStartDate() {
+        Posting unscheduledPosting = posting(301L, null);
+        PostingParticipation participation = PostingParticipation.create(USER_ID, 301L);
+
+        try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
+            securityUtil.when(SecurityUtil::getCurrentUserId).thenReturn(USER_ID);
+            when(postingParticipationRepository.findByUserIdAndStatusNotIn(
+                            eq(USER_ID), anyCollection()))
+                    .thenReturn(List.of(participation));
+            when(postingRepository.findAllById(List.of(301L)))
+                    .thenReturn(List.of(unscheduledPosting));
+
+            List<MyPageActivityResponse> activities =
+                    myPageService.getActivities(YearMonth.of(2026, 7));
+
+            assertThat(activities).isEmpty();
         }
     }
 

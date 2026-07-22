@@ -191,6 +191,26 @@ public class PostingParticipationController {
                                                             "message": "신청 내역을 찾을 수 없습니다."
                                                           }
                                                         }
+                                                        """))),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                responseCode = "409",
+                description = "이력 보존을 위해 취소가 금지된 상태(완료/후기작성)",
+                content =
+                        @Content(
+                                mediaType = JSON,
+                                examples =
+                                        @ExampleObject(
+                                                name = "PARTICIPATION_CANCEL_NOT_ALLOWED",
+                                                value =
+                                                        """
+                                                        {
+                                                          "success": false,
+                                                          "data": null,
+                                                          "error": {
+                                                            "code": "PARTICIPATION_CANCEL_NOT_ALLOWED",
+                                                            "message": "이력 보존을 위해 완료되었거나 후기가 작성된 신청은 취소할 수 없습니다."
+                                                          }
+                                                        }
                                                         """)))
     })
     @DeleteMapping
