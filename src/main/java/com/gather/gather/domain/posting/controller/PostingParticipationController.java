@@ -92,11 +92,24 @@ public class PostingParticipationController {
                                                         """))),
         @io.swagger.v3.oas.annotations.responses.ApiResponse(
                 responseCode = "409",
-                description = "이미 신청한 봉사공고 또는 1365 신청 정보가 연동되지 않은 공고",
+                description = "마감된 공고 / 이미 신청한 공고 / 1365 신청 정보가 연동되지 않은 공고",
                 content =
                         @Content(
                                 mediaType = JSON,
                                 examples = {
+                                    @ExampleObject(
+                                            name = "POSTING_CLOSED",
+                                            value =
+                                                    """
+                                                    {
+                                                      "success": false,
+                                                      "data": null,
+                                                      "error": {
+                                                        "code": "POSTING_CLOSED",
+                                                        "message": "마감된 봉사공고입니다."
+                                                      }
+                                                    }
+                                                    """),
                                     @ExampleObject(
                                             name = "PARTICIPATION_DUPLICATE",
                                             value =

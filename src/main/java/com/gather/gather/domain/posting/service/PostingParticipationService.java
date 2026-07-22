@@ -3,6 +3,7 @@ package com.gather.gather.domain.posting.service;
 import com.gather.gather.domain.posting.dto.PostingParticipationResponse;
 import com.gather.gather.domain.posting.entity.Posting;
 import com.gather.gather.domain.posting.entity.PostingParticipation;
+import com.gather.gather.domain.posting.entity.PostingStatus;
 import com.gather.gather.domain.posting.repository.PostingParticipationRepository;
 import com.gather.gather.domain.posting.repository.PostingRepository;
 import com.gather.gather.global.exception.BusinessException;
@@ -34,6 +35,10 @@ public class PostingParticipationService {
                         .findById(postingId)
                         .orElseThrow(() -> new BusinessException(ErrorCode.POSTING_NOT_FOUND));
 
+        if (posting.getStatus() != PostingStatus.RECRUITING) {
+            throw new BusinessException(ErrorCode.POSTING_CLOSED);
+        }
+
         if (posting.getExtId() == null) {
             throw new BusinessException(ErrorCode.POSTING_APPLICATION_UNAVAILABLE);
         }
@@ -43,6 +48,8 @@ public class PostingParticipationService {
         }
 
         PostingParticipation participation;
+        // existsBy 사전 체크만으로는 동시 요청을 막지 못하므로, unique(user_id, posting_id) 제약 위반을
+        // 최종 방어선으로 삼아 레이스 컨디션에서도 중복 신청을 막는다.
         try {
             participation =
                     postingParticipationRepository.saveAndFlush(

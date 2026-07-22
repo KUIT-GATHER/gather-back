@@ -53,6 +53,7 @@ public enum ErrorCode {
     MEETING_BOOKMARK_NOT_FOUND(HttpStatus.NOT_FOUND, "북마크를 찾을 수 없습니다."),
 
     POSTING_NOT_FOUND(HttpStatus.NOT_FOUND, "봉사공고를 찾을 수 없습니다."),
+    POSTING_CLOSED(HttpStatus.CONFLICT, "마감된 봉사공고입니다."),
     BOOKMARK_DUPLICATE(HttpStatus.CONFLICT, "이미 북마크한 공고입니다."),
     BOOKMARK_NOT_FOUND(HttpStatus.NOT_FOUND, "북마크를 찾을 수 없습니다."),
     PARTICIPATION_DUPLICATE(HttpStatus.CONFLICT, "이미 신청한 봉사입니다."),

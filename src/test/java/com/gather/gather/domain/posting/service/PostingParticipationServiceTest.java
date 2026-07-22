@@ -79,7 +79,24 @@ class PostingParticipationServiceTest {
                     .isInstanceOf(BusinessException.class)
                     .hasFieldOrPropertyWithValue("errorCode", ErrorCode.POSTING_NOT_FOUND);
 
-            verify(postingParticipationRepository, never()).save(any());
+            verify(postingParticipationRepository, never()).saveAndFlush(any());
+        }
+    }
+
+    @Test
+    @DisplayName("apply throws POSTING_CLOSED when the posting is not recruiting")
+    void apply_throwsPostingClosed_whenPostingNotRecruiting() {
+        try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
+            securityUtil.when(SecurityUtil::getCurrentUserId).thenReturn(USER_ID);
+            when(postingRepository.findById(POSTING_ID)).thenReturn(Optional.of(closedPosting()));
+
+            assertThatThrownBy(() -> postingParticipationService.apply(POSTING_ID))
+                    .isInstanceOf(BusinessException.class)
+                    .hasFieldOrPropertyWithValue("errorCode", ErrorCode.POSTING_CLOSED);
+
+            verify(postingParticipationRepository, never())
+                    .existsByUserIdAndPostingId(any(), any());
+            verify(postingParticipationRepository, never()).saveAndFlush(any());
         }
     }
 
@@ -115,7 +132,7 @@ class PostingParticipationServiceTest {
                     .isInstanceOf(BusinessException.class)
                     .hasFieldOrPropertyWithValue("errorCode", ErrorCode.PARTICIPATION_DUPLICATE);
 
-            verify(postingParticipationRepository, never()).save(any());
+            verify(postingParticipationRepository, never()).saveAndFlush(any());
         }
     }
 
@@ -146,6 +163,16 @@ class PostingParticipationServiceTest {
                 .extId(EXT_ID)
                 .title("테스트 공고")
                 .status(PostingStatus.RECRUITING)
+                .activityDate(LocalDate.of(2026, 7, 15))
+                .category(PostingCategory.ENVIRONMENT)
+                .build();
+    }
+
+    private Posting closedPosting() {
+        return Posting.builder()
+                .extId(EXT_ID)
+                .title("테스트 공고")
+                .status(PostingStatus.CLOSED)
                 .activityDate(LocalDate.of(2026, 7, 15))
                 .category(PostingCategory.ENVIRONMENT)
                 .build();
