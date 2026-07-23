@@ -5,6 +5,7 @@ import com.gather.gather.domain.auth.repository.UserRepository;
 import com.gather.gather.domain.meeting.dto.MeetingCreateRequest;
 import com.gather.gather.domain.meeting.dto.MeetingDetailResponse;
 import com.gather.gather.domain.meeting.dto.MeetingResponse;
+import com.gather.gather.domain.meeting.dto.PostingMeetingResponse;
 import com.gather.gather.domain.meeting.entity.Meeting;
 import com.gather.gather.domain.meeting.entity.MeetingMember;
 import com.gather.gather.domain.meeting.enums.MeetingMemberStatus;
@@ -108,6 +109,25 @@ public class MeetingService {
                                                 meeting, resolveDisplayStatus(meeting)));
 
         logSearchKeywordSafely(keyword);
+
+        return PageResponse.from(responses);
+    }
+
+    public PageResponse<PostingMeetingResponse> getMeetingsByPosting(
+            Long postingId, Pageable pageable) {
+        validateSort(pageable.getSort());
+
+        if (!postingRepository.existsById(postingId)) {
+            throw new BusinessException(ErrorCode.POSTING_NOT_FOUND);
+        }
+
+        Page<PostingMeetingResponse> responses =
+                meetingRepository
+                        .findAllByVolunteerPostingIdAndDeletedAtIsNull(postingId, pageable)
+                        .map(
+                                meeting ->
+                                        PostingMeetingResponse.from(
+                                                meeting, resolveDisplayStatus(meeting)));
 
         return PageResponse.from(responses);
     }
