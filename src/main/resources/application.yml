@@ -32,6 +32,20 @@ spring:
 # 이메일 발송 방식. log = 서버 로그로만 인증코드 출력(기본), smtp = 실제 발송.
 # smtp 모드는 spring.mail.username/password 필요 (로컬: application-secret.yml, 운영: 환경변수).
 gather:
+  aws:
+    s3:
+      region: ${GATHER_AWS_REGION:ap-northeast-2}
+      bucket: ${GATHER_AWS_S3_BUCKET:gather-local-profile-images}
+      public-base-url: ${GATHER_AWS_S3_PUBLIC_BASE_URL:https://gather-local-profile-images.s3.ap-northeast-2.amazonaws.com}
+      presigned-url-expiration-seconds: ${GATHER_AWS_S3_PRESIGNED_URL_EXPIRATION_SECONDS:300}
+      api-call-timeout-seconds: ${GATHER_AWS_S3_API_CALL_TIMEOUT_SECONDS:20}
+      api-call-attempt-timeout-seconds: ${GATHER_AWS_S3_API_CALL_ATTEMPT_TIMEOUT_SECONDS:10}
+      max-image-size-bytes: ${GATHER_AWS_S3_MAX_IMAGE_SIZE_BYTES:5242880}
+      object-prefix: ${GATHER_AWS_S3_OBJECT_PREFIX:profiles}
+      max-pending-uploads-per-user: ${GATHER_AWS_S3_MAX_PENDING_UPLOADS_PER_USER:3}
+      cleanup-batch-size: ${GATHER_AWS_S3_CLEANUP_BATCH_SIZE:100}
+      cleanup-fixed-delay-milliseconds: ${GATHER_AWS_S3_CLEANUP_FIXED_DELAY_MILLISECONDS:3600000}
+      cleanup-scheduler-enabled: ${GATHER_AWS_S3_CLEANUP_SCHEDULER_ENABLED:true}
   auth:
     refresh-cookie:
       name: gather_refresh_token

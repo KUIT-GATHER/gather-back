@@ -3,7 +3,7 @@ package com.gather.gather.domain.posting.service;
 import com.gather.gather.domain.posting.entity.PostingRecommendedKeyword;
 import com.gather.gather.domain.posting.repository.PostingRecommendedKeywordRepository;
 import com.gather.gather.domain.posting.repository.PostingSearchLogRepository;
-import com.gather.gather.domain.posting.service.support.NoriKeywordTokenizer;
+import com.gather.gather.global.util.NoriKeywordTokenizer;
 import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.List;

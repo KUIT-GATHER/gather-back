@@ -43,4 +43,7 @@ public interface MeetingRepository extends JpaRepository<Meeting, Long> {
             @Param("category") PostingCategory category,
             @Param("status") MeetingStatus status,
             Pageable pageable);
+
+    Page<Meeting> findAllByVolunteerPostingIdAndDeletedAtIsNull(
+            Long volunteerPostingId, Pageable pageable);
 }

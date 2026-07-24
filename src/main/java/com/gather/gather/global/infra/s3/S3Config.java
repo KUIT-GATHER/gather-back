@@ -1,0 +1,44 @@
+package com.gather.gather.global.infra.s3;
+
+import java.time.Duration;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider;
+import software.amazon.awssdk.auth.credentials.DefaultCredentialsProvider;
+import software.amazon.awssdk.core.client.config.ClientOverrideConfiguration;
+import software.amazon.awssdk.regions.Region;
+import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.presigner.S3Presigner;
+
+@Configuration
+public class S3Config {
+
+    @Bean
+    public AwsCredentialsProvider awsCredentialsProvider() {
+        return DefaultCredentialsProvider.builder().build();
+    }
+
+    @Bean
+    public S3Client s3Client(S3Properties properties, AwsCredentialsProvider credentialsProvider) {
+        ClientOverrideConfiguration overrideConfiguration =
+                ClientOverrideConfiguration.builder()
+                        .apiCallTimeout(Duration.ofSeconds(properties.apiCallTimeoutSeconds()))
+                        .apiCallAttemptTimeout(
+                                Duration.ofSeconds(properties.apiCallAttemptTimeoutSeconds()))
+                        .build();
+        return S3Client.builder()
+                .region(Region.of(properties.region()))
+                .credentialsProvider(credentialsProvider)
+                .overrideConfiguration(overrideConfiguration)
+                .build();
+    }
+
+    @Bean
+    public S3Presigner s3Presigner(
+            S3Properties properties, AwsCredentialsProvider credentialsProvider) {
+        return S3Presigner.builder()
+                .region(Region.of(properties.region()))
+                .credentialsProvider(credentialsProvider)
+                .build();
+    }
+}

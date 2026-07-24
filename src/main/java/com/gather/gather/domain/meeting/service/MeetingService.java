@@ -5,8 +5,10 @@ import com.gather.gather.domain.auth.repository.UserRepository;
 import com.gather.gather.domain.meeting.dto.MeetingCreateRequest;
 import com.gather.gather.domain.meeting.dto.MeetingDetailResponse;
 import com.gather.gather.domain.meeting.dto.MeetingResponse;
+import com.gather.gather.domain.meeting.dto.PostingMeetingResponse;
 import com.gather.gather.domain.meeting.entity.Meeting;
 import com.gather.gather.domain.meeting.entity.MeetingMember;
+import com.gather.gather.domain.meeting.enums.MeetingMemberRole;
 import com.gather.gather.domain.meeting.enums.MeetingMemberStatus;
 import com.gather.gather.domain.meeting.enums.MeetingStatus;
 import com.gather.gather.domain.meeting.repository.MeetingMemberRepository;
@@ -21,8 +23,11 @@ import com.gather.gather.global.exception.ErrorCode;
 import com.gather.gather.global.util.SecurityUtil;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -30,6 +35,7 @@ import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
@@ -55,6 +61,7 @@ public class MeetingService {
     private final UserRepository userRepository;
     private final RegionRepository regionRepository;
     private final PostingRepository postingRepository;
+    private final MeetingSearchLogService meetingSearchLogService;
 
     @Transactional
     public MeetingResponse createMeeting(MeetingCreateRequest request) {
@@ -104,7 +111,52 @@ public class MeetingService {
                                         MeetingResponse.from(
                                                 meeting, resolveDisplayStatus(meeting)));
 
+        logSearchKeywordSafely(keyword);
+
         return PageResponse.from(responses);
+    }
+
+    public PageResponse<PostingMeetingResponse> getMeetingsByPosting(
+            Long postingId, Pageable pageable) {
+        validateSort(pageable.getSort());
+
+        if (!postingRepository.existsById(postingId)) {
+            throw new BusinessException(ErrorCode.POSTING_NOT_FOUND);
+        }
+
+        Page<Meeting> meetings =
+                meetingRepository.findAllByVolunteerPostingIdAndDeletedAtIsNull(
+                        postingId, pageable);
+        Map<Long, MeetingMemberRole> membershipRoles =
+                getMembershipRoles(SecurityUtil.getCurrentUserIdOrNull(), meetings.getContent());
+
+        Page<PostingMeetingResponse> responses =
+                meetings.map(
+                        meeting -> {
+                            MeetingMemberRole role = membershipRoles.get(meeting.getId());
+                            return PostingMeetingResponse.from(
+                                    meeting,
+                                    resolveDisplayStatus(meeting),
+                                    role != null,
+                                    role == MeetingMemberRole.HOST);
+                        });
+
+        return PageResponse.from(responses);
+    }
+
+    private Map<Long, MeetingMemberRole> getMembershipRoles(Long userId, List<Meeting> meetings) {
+        if (userId == null || meetings.isEmpty()) {
+            return Map.of();
+        }
+
+        List<Long> meetingIds = meetings.stream().map(Meeting::getId).toList();
+        return meetingMemberRepository
+                .findAllByUserIdAndStatusAndMeetingIdInFetchMeeting(
+                        userId, MeetingMemberStatus.APPROVED, meetingIds)
+                .stream()
+                .collect(
+                        Collectors.toMap(
+                                member -> member.getMeeting().getId(), MeetingMember::getRole));
     }
 
     public MeetingDetailResponse getMeeting(Long meetingId) {
@@ -140,6 +192,18 @@ public class MeetingService {
                 .map(MeetingMember::getMeeting)
                 .map(meeting -> MeetingResponse.from(meeting, resolveDisplayStatus(meeting)))
                 .toList();
+    }
+
+    private void logSearchKeywordSafely(String keyword) {
+        if (keyword == null || keyword.isBlank()) {
+            return;
+        }
+
+        try {
+            meetingSearchLogService.log(keyword);
+        } catch (RuntimeException e) {
+            log.warn("모임 검색어 로깅 실패. keyword 길이={}", keyword.length(), e);
+        }
     }
 
     private void validateSort(Sort sort) {
