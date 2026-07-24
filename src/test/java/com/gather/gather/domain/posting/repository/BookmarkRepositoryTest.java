@@ -7,6 +7,7 @@ import com.gather.gather.domain.posting.entity.Bookmark;
 import com.gather.gather.domain.posting.entity.Posting;
 import com.gather.gather.domain.posting.entity.PostingCategory;
 import com.gather.gather.domain.posting.entity.PostingStatus;
+import com.gather.gather.global.util.LikeKeywordEscaper;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import org.junit.jupiter.api.Test;
@@ -161,6 +162,64 @@ class BookmarkRepositoryTest {
     }
 
     @Test
+    void findBookmarkedPostings_filtersByKeyword_matchingRecruitOrgOnly() {
+        Posting matching =
+                postingRepository.save(posting("무관한 제목", "동구청 환경정화팀", PostingCategory.ENVIRONMENT));
+        Posting nonMatching =
+                postingRepository.save(posting("무관한 제목", "타 기관", PostingCategory.ENVIRONMENT));
+        bookmarkRepository.saveAndFlush(Bookmark.create(1L, matching.getId()));
+        bookmarkRepository.saveAndFlush(Bookmark.create(1L, nonMatching.getId()));
+
+        Page<Posting> page =
+                bookmarkRepository.findBookmarkedPostings(1L, null, "환경정화", PageRequest.of(0, 20));
+
+        assertThat(page.getContent()).extracting(Posting::getId).containsExactly(matching.getId());
+    }
+
+    @Test
+    void findBookmarkedPostings_treatsPercentAsLiteralInKeyword() {
+        Posting percentLiteral =
+                postingRepository.save(posting("100% 참여", PostingCategory.ENVIRONMENT));
+        Posting wildcardExpansion =
+                postingRepository.save(posting("1000000 참여", PostingCategory.ENVIRONMENT));
+        bookmarkRepository.saveAndFlush(Bookmark.create(1L, percentLiteral.getId()));
+        bookmarkRepository.saveAndFlush(Bookmark.create(1L, wildcardExpansion.getId()));
+
+        Page<Posting> page =
+                bookmarkRepository.findBookmarkedPostings(
+                        1L, null, LikeKeywordEscaper.escape("100%"), PageRequest.of(0, 20));
+
+        assertThat(page.getContent())
+                .extracting(Posting::getId)
+                .containsExactly(percentLiteral.getId());
+    }
+
+    @Test
+    void findBookmarkedPostings_ordersByIdDesc_asTiebreak_whenBookmarkedAtIsEqual() {
+        Posting first = postingRepository.save(posting());
+        Posting second = postingRepository.save(posting());
+        Bookmark firstBookmark = Bookmark.create(1L, first.getId());
+        Bookmark secondBookmark = Bookmark.create(1L, second.getId());
+        LocalDateTime sameInstant = LocalDateTime.of(2026, 7, 1, 0, 0);
+        ReflectionTestUtils.setField(firstBookmark, "createdAt", sameInstant);
+        ReflectionTestUtils.setField(secondBookmark, "createdAt", sameInstant);
+        bookmarkRepository.saveAndFlush(firstBookmark);
+        bookmarkRepository.saveAndFlush(secondBookmark);
+
+        Page<Posting> firstPage =
+                bookmarkRepository.findBookmarkedPostings(1L, null, null, PageRequest.of(0, 1));
+        Page<Posting> secondPage =
+                bookmarkRepository.findBookmarkedPostings(1L, null, null, PageRequest.of(1, 1));
+
+        assertThat(firstPage.getContent())
+                .extracting(Posting::getId)
+                .containsExactly(second.getId());
+        assertThat(secondPage.getContent())
+                .extracting(Posting::getId)
+                .containsExactly(first.getId());
+    }
+
+    @Test
     void findBookmarkedPostings_filtersByCategoryAndKeywordTogether() {
         Posting matching =
                 postingRepository.save(posting("동구 환경정화 봉사", PostingCategory.ENVIRONMENT));
@@ -206,8 +265,13 @@ class BookmarkRepositoryTest {
     }
 
     private Posting posting(String title, PostingCategory category) {
+        return posting(title, null, category);
+    }
+
+    private Posting posting(String title, String recruitOrg, PostingCategory category) {
         return Posting.builder()
                 .title(title)
+                .recruitOrg(recruitOrg)
                 .status(PostingStatus.RECRUITING)
                 .activityDate(LocalDate.of(2026, 7, 15))
                 .category(category)

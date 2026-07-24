@@ -24,9 +24,9 @@ public interface BookmarkRepository extends JpaRepository<Bookmark, Long> {
             where b.userId = :userId
               and (:category is null or p.category = :category)
               and (:keyword is null
-                   or p.title like concat('%', :keyword, '%')
-                   or p.recruitOrg like concat('%', :keyword, '%'))
-            order by b.createdAt desc
+                   or p.title like concat('%', :keyword, '%') escape '\\'
+                   or p.recruitOrg like concat('%', :keyword, '%') escape '\\')
+            order by b.createdAt desc, b.id desc
             """)
     Page<Posting> findBookmarkedPostings(
             @Param("userId") Long userId,

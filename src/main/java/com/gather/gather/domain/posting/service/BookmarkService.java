@@ -10,6 +10,7 @@ import com.gather.gather.domain.posting.repository.PostingRepository;
 import com.gather.gather.global.common.PageResponse;
 import com.gather.gather.global.exception.BusinessException;
 import com.gather.gather.global.exception.ErrorCode;
+import com.gather.gather.global.util.LikeKeywordEscaper;
 import com.gather.gather.global.util.SecurityUtil;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
@@ -76,7 +77,7 @@ public class BookmarkService {
 
         Page<Posting> postings =
                 bookmarkRepository.findBookmarkedPostings(
-                        userId, category, keyword, unsortedPageable);
+                        userId, category, LikeKeywordEscaper.escape(keyword), unsortedPageable);
 
         Map<Long, String> regionNames = regionNameResolver.resolve(postings);
 

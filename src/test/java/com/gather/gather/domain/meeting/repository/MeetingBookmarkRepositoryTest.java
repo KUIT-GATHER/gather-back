@@ -11,6 +11,7 @@ import com.gather.gather.domain.meeting.entity.MeetingBookmark;
 import com.gather.gather.domain.posting.entity.PostingCategory;
 import com.gather.gather.domain.region.entity.Region;
 import com.gather.gather.domain.region.repository.RegionRepository;
+import com.gather.gather.global.util.LikeKeywordEscaper;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -254,6 +255,75 @@ class MeetingBookmarkRepositoryTest {
     }
 
     @Test
+    void findBookmarkedMeetings_filtersByKeyword_matchingDescriptionOnly() {
+        Region region = region();
+        Meeting matching =
+                meetingRepository.save(
+                        meeting(region, "무관한 모임", "동구 환경정화 활동 설명", PostingCategory.ENVIRONMENT));
+        Meeting nonMatching =
+                meetingRepository.save(
+                        meeting(region, "무관한 모임", "타 활동 설명", PostingCategory.ENVIRONMENT));
+        Long userId = bookmarker(region).getId();
+        meetingBookmarkRepository.saveAndFlush(MeetingBookmark.create(userId, matching.getId()));
+        meetingBookmarkRepository.saveAndFlush(MeetingBookmark.create(userId, nonMatching.getId()));
+
+        Page<Meeting> page =
+                meetingBookmarkRepository.findBookmarkedMeetings(
+                        userId, null, "환경정화", PageRequest.of(0, 20));
+
+        assertThat(page.getContent()).extracting(Meeting::getId).containsExactly(matching.getId());
+    }
+
+    @Test
+    void findBookmarkedMeetings_treatsUnderscoreAsLiteralInKeyword() {
+        Region region = region();
+        Meeting underscoreLiteral = meetingRepository.save(meeting(region, "A_B 모임"));
+        Meeting wildcardExpansion = meetingRepository.save(meeting(region, "AXB 모임"));
+        Long userId = bookmarker(region).getId();
+        meetingBookmarkRepository.saveAndFlush(
+                MeetingBookmark.create(userId, underscoreLiteral.getId()));
+        meetingBookmarkRepository.saveAndFlush(
+                MeetingBookmark.create(userId, wildcardExpansion.getId()));
+
+        Page<Meeting> page =
+                meetingBookmarkRepository.findBookmarkedMeetings(
+                        userId, null, LikeKeywordEscaper.escape("A_B"), PageRequest.of(0, 20));
+
+        assertThat(page.getContent())
+                .extracting(Meeting::getId)
+                .containsExactly(underscoreLiteral.getId());
+    }
+
+    @Test
+    void findBookmarkedMeetings_ordersByIdDesc_asTiebreak_whenBookmarkedAtIsEqual() {
+        Region region = region();
+        Meeting first = meetingRepository.save(meeting(region));
+        Meeting second = meetingRepository.save(meeting(region));
+        Long userId = bookmarker(region).getId();
+        MeetingBookmark firstBookmark = MeetingBookmark.create(userId, first.getId());
+        MeetingBookmark secondBookmark = MeetingBookmark.create(userId, second.getId());
+        LocalDateTime sameInstant = LocalDateTime.of(2026, 7, 1, 0, 0);
+        ReflectionTestUtils.setField(firstBookmark, "createdAt", sameInstant);
+        ReflectionTestUtils.setField(secondBookmark, "createdAt", sameInstant);
+        meetingBookmarkRepository.saveAndFlush(firstBookmark);
+        meetingBookmarkRepository.saveAndFlush(secondBookmark);
+
+        Page<Meeting> firstPage =
+                meetingBookmarkRepository.findBookmarkedMeetings(
+                        userId, null, null, PageRequest.of(0, 1));
+        Page<Meeting> secondPage =
+                meetingBookmarkRepository.findBookmarkedMeetings(
+                        userId, null, null, PageRequest.of(1, 1));
+
+        assertThat(firstPage.getContent())
+                .extracting(Meeting::getId)
+                .containsExactly(second.getId());
+        assertThat(secondPage.getContent())
+                .extracting(Meeting::getId)
+                .containsExactly(first.getId());
+    }
+
+    @Test
     void findBookmarkedMeetings_filtersByCategoryAndKeywordTogether() {
         Region region = region();
         Meeting matching =
@@ -320,12 +390,17 @@ class MeetingBookmarkRepositoryTest {
     }
 
     private Meeting meeting(Region region, String name, PostingCategory category) {
+        return meeting(region, name, "설명", category);
+    }
+
+    private Meeting meeting(
+            Region region, String name, String description, PostingCategory category) {
         User host = userRepository.save(user("host", region));
         LocalDateTime now = LocalDateTime.now();
 
         return Meeting.create(
                 name,
-                "설명",
+                description,
                 10,
                 now.plusDays(3),
                 null,

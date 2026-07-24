@@ -33,9 +33,9 @@ public interface MeetingBookmarkRepository extends JpaRepository<MeetingBookmark
               and m.deletedAt is null
               and (:category is null or m.category = :category)
               and (:keyword is null
-                   or m.name like concat('%', :keyword, '%')
-                   or m.description like concat('%', :keyword, '%'))
-            order by b.createdAt desc
+                   or m.name like concat('%', :keyword, '%') escape '\\'
+                   or m.description like concat('%', :keyword, '%') escape '\\')
+            order by b.createdAt desc, b.id desc
             """)
     Page<Meeting> findBookmarkedMeetings(
             @Param("userId") Long userId,

@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -194,6 +195,26 @@ class MeetingBookmarkServiceTest {
                             eq(PostingCategory.ENVIRONMENT),
                             eq("정화"),
                             argThat(p -> p.getSort().isUnsorted()));
+        }
+    }
+
+    @Test
+    @DisplayName(
+            "getBookmarkedMeetings escapes LIKE wildcard characters in the keyword before"
+                    + " querying the repository")
+    void getBookmarkedMeetings_escapesLikeWildcardsInKeyword() {
+        Pageable unsortedPageable = PageRequest.of(0, 20);
+
+        try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
+            securityUtil.when(SecurityUtil::getCurrentUserId).thenReturn(USER_ID);
+            when(meetingBookmarkRepository.findBookmarkedMeetings(
+                            eq(USER_ID), isNull(), eq("A\\_B"), any()))
+                    .thenReturn(new PageImpl<>(List.of(), PageRequest.of(0, 20), 0));
+
+            meetingBookmarkService.getBookmarkedMeetings(null, "A_B", unsortedPageable);
+
+            verify(meetingBookmarkRepository)
+                    .findBookmarkedMeetings(eq(USER_ID), isNull(), eq("A\\_B"), any());
         }
     }
 

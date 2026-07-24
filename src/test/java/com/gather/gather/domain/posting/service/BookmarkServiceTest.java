@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.never;
@@ -198,6 +199,26 @@ class BookmarkServiceTest {
                             eq(PostingCategory.ENVIRONMENT),
                             eq("정화"),
                             argThat(p -> p.getSort().isUnsorted()));
+        }
+    }
+
+    @Test
+    @DisplayName(
+            "getBookmarkedPostings escapes LIKE wildcard characters in the keyword before"
+                    + " querying the repository")
+    void getBookmarkedPostings_escapesLikeWildcardsInKeyword() {
+        Pageable unsortedPageable = PageRequest.of(0, 20);
+
+        try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
+            securityUtil.when(SecurityUtil::getCurrentUserId).thenReturn(USER_ID);
+            when(bookmarkRepository.findBookmarkedPostings(
+                            eq(USER_ID), isNull(), eq("100\\%"), any()))
+                    .thenReturn(new PageImpl<>(List.of(), PageRequest.of(0, 20), 0));
+
+            bookmarkService.getBookmarkedPostings(null, "100%", unsortedPageable);
+
+            verify(bookmarkRepository)
+                    .findBookmarkedPostings(eq(USER_ID), isNull(), eq("100\\%"), any());
         }
     }
 

@@ -11,6 +11,7 @@ import com.gather.gather.domain.posting.entity.PostingCategory;
 import com.gather.gather.global.common.PageResponse;
 import com.gather.gather.global.exception.BusinessException;
 import com.gather.gather.global.exception.ErrorCode;
+import com.gather.gather.global.util.LikeKeywordEscaper;
 import com.gather.gather.global.util.SecurityUtil;
 import java.time.LocalDateTime;
 import lombok.RequiredArgsConstructor;
@@ -74,7 +75,7 @@ public class MeetingBookmarkService {
 
         Page<Meeting> meetings =
                 meetingBookmarkRepository.findBookmarkedMeetings(
-                        userId, category, keyword, unsortedPageable);
+                        userId, category, LikeKeywordEscaper.escape(keyword), unsortedPageable);
 
         Page<MeetingResponse> responses =
                 meetings.map(
