@@ -102,6 +102,26 @@ class PostingParticipationServiceTest {
     }
 
     @Test
+    @DisplayName(
+            "apply throws POSTING_CLOSED when the posting is RECRUITING but was deactivated by"
+                    + " expiry")
+    void apply_throwsPostingClosed_whenRecruitingButDeactivated() {
+        try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
+            securityUtil.when(SecurityUtil::getCurrentUserId).thenReturn(USER_ID);
+            when(postingRepository.findById(POSTING_ID))
+                    .thenReturn(Optional.of(deactivatedRecruitingPosting()));
+
+            assertThatThrownBy(() -> postingParticipationService.apply(POSTING_ID))
+                    .isInstanceOf(BusinessException.class)
+                    .hasFieldOrPropertyWithValue("errorCode", ErrorCode.POSTING_CLOSED);
+
+            verify(postingParticipationRepository, never())
+                    .existsByUserIdAndPostingId(any(), any());
+            verify(postingParticipationRepository, never()).saveAndFlush(any());
+        }
+    }
+
+    @Test
     @DisplayName("apply throws POSTING_APPLICATION_UNAVAILABLE when the posting has no extId")
     void apply_throwsPostingApplicationUnavailable_whenExtIdMissing() {
         try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
@@ -148,7 +168,9 @@ class PostingParticipationServiceTest {
             when(postingParticipationRepository.existsByUserIdAndPostingId(USER_ID, POSTING_ID))
                     .thenReturn(false);
             DataIntegrityViolationException dbException =
-                    new DataIntegrityViolationException("duplicate entry");
+                    new DataIntegrityViolationException(
+                            "Duplicate entry '1-10' for key"
+                                    + " 'uq_posting_participation_user_posting'");
             when(postingParticipationRepository.saveAndFlush(any(PostingParticipation.class)))
                     .thenThrow(dbException);
 
@@ -156,6 +178,27 @@ class PostingParticipationServiceTest {
                     .isInstanceOf(BusinessException.class)
                     .hasFieldOrPropertyWithValue("errorCode", ErrorCode.PARTICIPATION_DUPLICATE)
                     .hasCause(dbException);
+        }
+    }
+
+    @Test
+    @DisplayName(
+            "apply rethrows the original exception when a DataIntegrityViolationException is"
+                    + " unrelated to the participation unique constraint")
+    void apply_rethrowsOriginalException_whenIntegrityViolationIsNotUniqueConstraint() {
+        try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
+            securityUtil.when(SecurityUtil::getCurrentUserId).thenReturn(USER_ID);
+            when(postingRepository.findById(POSTING_ID)).thenReturn(Optional.of(posting()));
+            when(postingParticipationRepository.existsByUserIdAndPostingId(USER_ID, POSTING_ID))
+                    .thenReturn(false);
+            DataIntegrityViolationException dbException =
+                    new DataIntegrityViolationException(
+                            "Cannot add or update a child row: a foreign key constraint fails");
+            when(postingParticipationRepository.saveAndFlush(any(PostingParticipation.class)))
+                    .thenThrow(dbException);
+
+            assertThatThrownBy(() -> postingParticipationService.apply(POSTING_ID))
+                    .isSameAs(dbException);
         }
     }
 
@@ -260,6 +303,7 @@ class PostingParticipationServiceTest {
                 .status(PostingStatus.RECRUITING)
                 .activityDate(LocalDate.of(2026, 7, 15))
                 .category(PostingCategory.ENVIRONMENT)
+                .isActive(true)
                 .build();
     }
 
@@ -270,6 +314,7 @@ class PostingParticipationServiceTest {
                 .status(PostingStatus.CLOSED)
                 .activityDate(LocalDate.of(2026, 7, 15))
                 .category(PostingCategory.ENVIRONMENT)
+                .isActive(true)
                 .build();
     }
 
@@ -279,6 +324,19 @@ class PostingParticipationServiceTest {
                 .status(PostingStatus.RECRUITING)
                 .activityDate(LocalDate.of(2026, 7, 15))
                 .category(PostingCategory.ENVIRONMENT)
+                .isActive(true)
+                .build();
+    }
+
+    /** status=RECRUITING이지만 활동 종료일이 지나 deactivateExpired()로 isActive만 false가 된 공고. */
+    private Posting deactivatedRecruitingPosting() {
+        return Posting.builder()
+                .extId(EXT_ID)
+                .title("테스트 공고")
+                .status(PostingStatus.RECRUITING)
+                .activityDate(LocalDate.of(2026, 7, 15))
+                .category(PostingCategory.ENVIRONMENT)
+                .isActive(false)
                 .build();
     }
 }

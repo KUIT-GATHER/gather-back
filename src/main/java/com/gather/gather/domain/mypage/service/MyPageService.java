@@ -113,13 +113,20 @@ public class MyPageService {
                     participation.getId());
             return false;
         }
-        return isWithinMonth(posting.getActStartDate(), monthStart, monthEnd);
+        return isWithinMonth(
+                posting.getActStartDate(), posting.getActEndDate(), monthStart, monthEnd);
     }
 
+    /** 종료일이 없는 단일 일정은 시작일과 동일한 것으로 간주하고, 활동 기간과 조회 월의 겹침 여부로 판단한다. */
     private boolean isWithinMonth(
-            LocalDate actStartDate, LocalDate monthStart, LocalDate monthEnd) {
-        return actStartDate != null
-                && !actStartDate.isBefore(monthStart)
-                && !actStartDate.isAfter(monthEnd);
+            LocalDate actStartDate,
+            LocalDate actEndDate,
+            LocalDate monthStart,
+            LocalDate monthEnd) {
+        if (actStartDate == null) {
+            return false;
+        }
+        LocalDate effectiveEndDate = actEndDate != null ? actEndDate : actStartDate;
+        return !actStartDate.isAfter(monthEnd) && !effectiveEndDate.isBefore(monthStart);
     }
 }

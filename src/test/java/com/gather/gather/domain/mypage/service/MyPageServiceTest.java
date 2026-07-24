@@ -217,6 +217,39 @@ class MyPageServiceTest {
     }
 
     @Test
+    @DisplayName(
+            "getActivities includes a multi-day activity in every month it spans, and excludes it"
+                    + " from months outside that range")
+    void getActivities_includesMultiDayActivityInEveryOverlappingMonth() {
+        Posting multiDayPosting =
+                posting(401L, LocalDate.of(2026, 7, 30), LocalDate.of(2026, 8, 2));
+        PostingParticipation participation = PostingParticipation.create(USER_ID, 401L);
+
+        try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
+            securityUtil.when(SecurityUtil::getCurrentUserId).thenReturn(USER_ID);
+            when(postingParticipationRepository.findByUserIdAndStatusNotIn(
+                            eq(USER_ID), anyCollection()))
+                    .thenReturn(List.of(participation));
+            when(postingRepository.findAllById(List.of(401L))).thenReturn(List.of(multiDayPosting));
+
+            List<MyPageActivityResponse> julyActivities =
+                    myPageService.getActivities(YearMonth.of(2026, 7));
+            List<MyPageActivityResponse> augustActivities =
+                    myPageService.getActivities(YearMonth.of(2026, 8));
+            List<MyPageActivityResponse> septemberActivities =
+                    myPageService.getActivities(YearMonth.of(2026, 9));
+
+            assertThat(julyActivities)
+                    .extracting(MyPageActivityResponse::postingId)
+                    .containsExactly(401L);
+            assertThat(augustActivities)
+                    .extracting(MyPageActivityResponse::postingId)
+                    .containsExactly(401L);
+            assertThat(septemberActivities).isEmpty();
+        }
+    }
+
+    @Test
     @DisplayName("getActivities excludes a participation whose posting has no actStartDate yet")
     void getActivities_excludesPostingWithNullActStartDate() {
         Posting unscheduledPosting = posting(301L, null);
@@ -259,12 +292,17 @@ class MyPageServiceTest {
     }
 
     private Posting posting(Long id, LocalDate actStartDate) {
+        return posting(id, actStartDate, null);
+    }
+
+    private Posting posting(Long id, LocalDate actStartDate, LocalDate actEndDate) {
         Posting createdPosting =
                 Posting.builder()
                         .title("테스트 공고 " + id)
                         .status(PostingStatus.RECRUITING)
                         .activityDate(actStartDate)
                         .actStartDate(actStartDate)
+                        .actEndDate(actEndDate)
                         .category(PostingCategory.ENVIRONMENT)
                         .build();
         ReflectionTestUtils.setField(createdPosting, "id", id);

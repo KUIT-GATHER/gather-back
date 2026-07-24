@@ -2,6 +2,7 @@ package com.gather.gather.global.config;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -47,6 +48,9 @@ class JwtSecurityIntegrationTest {
     private static final String PROFILE_IMAGE_PRESIGNED_PATH =
             "/api/v1/users/me/profile-image/presigned-url";
     private static final String PROFILE_IMAGE_PATH = "/api/v1/users/me/profile-image";
+    private static final String MYPAGE_HOME_PATH = "/api/v1/mypage/home";
+    private static final String MYPAGE_ACTIVITIES_PATH = "/api/v1/mypage/activities";
+    private static final String PARTICIPATION_PATH = "/api/v1/postings/1/participations";
 
     @Autowired private MockMvc mockMvc;
     @Autowired private TokenProvider tokenProvider;
@@ -100,6 +104,38 @@ class JwtSecurityIntegrationTest {
                                           "objectKey": "profiles/15/550e8400-e29b-41d4-a716-446655440000.jpg"
                                         }
                                         """))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.error.code").value("UNAUTHORIZED"));
+    }
+
+    @Test
+    @DisplayName("마이페이지 홈 조회 API는 토큰 없이 요청하면 401이다")
+    void myPageHome_withoutToken_returns401Unauthorized() throws Exception {
+        mockMvc.perform(get(MYPAGE_HOME_PATH))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.error.code").value("UNAUTHORIZED"));
+    }
+
+    @Test
+    @DisplayName("마이페이지 활동 캘린더 조회 API는 토큰 없이 요청하면 401이다")
+    void myPageActivities_withoutToken_returns401Unauthorized() throws Exception {
+        mockMvc.perform(get(MYPAGE_ACTIVITIES_PATH).param("yearMonth", "2026-07"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.error.code").value("UNAUTHORIZED"));
+    }
+
+    @Test
+    @DisplayName("봉사 신청 API는 토큰 없이 요청하면 401이다")
+    void participationApply_withoutToken_returns401Unauthorized() throws Exception {
+        mockMvc.perform(post(PARTICIPATION_PATH))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.error.code").value("UNAUTHORIZED"));
+    }
+
+    @Test
+    @DisplayName("봉사 신청 취소 API는 토큰 없이 요청하면 401이다")
+    void participationCancel_withoutToken_returns401Unauthorized() throws Exception {
+        mockMvc.perform(delete(PARTICIPATION_PATH))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.error.code").value("UNAUTHORIZED"));
     }

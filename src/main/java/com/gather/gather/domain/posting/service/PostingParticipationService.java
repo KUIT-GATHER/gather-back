@@ -10,8 +10,10 @@ import com.gather.gather.domain.posting.repository.PostingRepository;
 import com.gather.gather.global.exception.BusinessException;
 import com.gather.gather.global.exception.ErrorCode;
 import com.gather.gather.global.util.SecurityUtil;
+import java.util.Locale;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.hibernate.exception.ConstraintViolationException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -23,6 +25,10 @@ public class PostingParticipationService {
 
     private static final String VOLUNTEER_1365_APPLICATION_URL_PREFIX =
             "https://1365.go.kr/vols/P9210/partcptn/timeCptn.do?type=show&progrmRegistNo=";
+
+    /** V23 마이그레이션에서 정의한 (user_id, posting_id) 복합 유니크 제약. */
+    private static final String PARTICIPATION_UNIQUE_CONSTRAINT =
+            "uq_posting_participation_user_posting";
 
     private final PostingParticipationRepository postingParticipationRepository;
     private final PostingRepository postingRepository;
@@ -36,7 +42,8 @@ public class PostingParticipationService {
                         .findById(postingId)
                         .orElseThrow(() -> new BusinessException(ErrorCode.POSTING_NOT_FOUND));
 
-        if (posting.getStatus() != PostingStatus.RECRUITING) {
+        if (posting.getStatus() != PostingStatus.RECRUITING
+                || !Boolean.TRUE.equals(posting.getIsActive())) {
             throw new BusinessException(ErrorCode.POSTING_CLOSED);
         }
 
@@ -56,6 +63,9 @@ public class PostingParticipationService {
                     postingParticipationRepository.saveAndFlush(
                             PostingParticipation.create(userId, postingId));
         } catch (DataIntegrityViolationException exception) {
+            if (!isParticipationUniqueConstraintViolation(exception)) {
+                throw exception;
+            }
             log.warn("봉사 신청 저장 중 유니크 제약 위반. userId={}, postingId={}", userId, postingId, exception);
             throw new BusinessException(ErrorCode.PARTICIPATION_DUPLICATE, exception);
         }
@@ -83,5 +93,45 @@ public class PostingParticipationService {
         }
 
         postingParticipationRepository.delete(participation);
+    }
+
+    // 테이블에는 (user_id, posting_id) 유니크 제약 외에도 user/posting FK가 걸려 있어, 그 위반까지 전부
+    // 중복 신청으로 오응답하지 않도록 실제 위반된 제약 이름을 확인한다.
+    private boolean isParticipationUniqueConstraintViolation(
+            DataIntegrityViolationException exception) {
+        String constraintName = findConstraintName(exception);
+        if (constraintName != null) {
+            return constraintName
+                    .replace("`", "")
+                    .replace("\"", "")
+                    .toLowerCase(Locale.ROOT)
+                    .contains(PARTICIPATION_UNIQUE_CONSTRAINT);
+        }
+        return hasConstraintNameInMessage(exception);
+    }
+
+    private String findConstraintName(Throwable exception) {
+        Throwable cause = exception;
+        while (cause != null) {
+            if (cause instanceof ConstraintViolationException constraintViolationException
+                    && constraintViolationException.getConstraintName() != null) {
+                return constraintViolationException.getConstraintName();
+            }
+            cause = cause.getCause();
+        }
+        return null;
+    }
+
+    private boolean hasConstraintNameInMessage(Throwable exception) {
+        Throwable cause = exception;
+        while (cause != null) {
+            String message = cause.getMessage();
+            if (message != null
+                    && message.toLowerCase(Locale.ROOT).contains(PARTICIPATION_UNIQUE_CONSTRAINT)) {
+                return true;
+            }
+            cause = cause.getCause();
+        }
+        return false;
     }
 }
