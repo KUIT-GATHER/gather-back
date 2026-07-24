@@ -44,7 +44,9 @@ class PostingMeetingControllerTest {
                         PostingCategory.ENVIRONMENT,
                         12,
                         20,
-                        MeetingStatus.RECRUITING);
+                        MeetingStatus.RECRUITING,
+                        true,
+                        false);
 
         when(meetingService.getMeetingsByPosting(eq(10L), any(Pageable.class)))
                 .thenReturn(new PageResponse<>(List.of(response), 1, 1, 0, 10));
@@ -60,6 +62,8 @@ class PostingMeetingControllerTest {
                 .andExpect(jsonPath("$.data.content[0].currentMemberCount").value(12))
                 .andExpect(jsonPath("$.data.content[0].maxMember").value(20))
                 .andExpect(jsonPath("$.data.content[0].status").value("RECRUITING"))
+                .andExpect(jsonPath("$.data.content[0].member").value(true))
+                .andExpect(jsonPath("$.data.content[0].host").value(false))
                 .andExpect(jsonPath("$.data.totalElements").value(1))
                 .andExpect(jsonPath("$.data.totalPages").value(1))
                 .andExpect(jsonPath("$.data.page").value(0))
