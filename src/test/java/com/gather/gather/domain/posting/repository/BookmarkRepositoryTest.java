@@ -7,11 +7,16 @@ import com.gather.gather.domain.posting.entity.Bookmark;
 import com.gather.gather.domain.posting.entity.Posting;
 import com.gather.gather.domain.posting.entity.PostingCategory;
 import com.gather.gather.domain.posting.entity.PostingStatus;
+import com.gather.gather.global.util.LikeKeywordEscaper;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
@@ -91,12 +96,185 @@ class BookmarkRepositoryTest {
         assertThat(bookmarkRepository.existsByUserIdAndPostingId(2L, posting.getId())).isTrue();
     }
 
+    @Test
+    void findBookmarkedPostings_returnsOnlyThatUsersBookmarks_orderedByBookmarkedAtDesc() {
+        Posting first = postingRepository.save(posting());
+        Posting second = postingRepository.save(posting());
+        Posting othersPosting = postingRepository.save(posting());
+        Bookmark firstBookmark = Bookmark.create(1L, first.getId());
+        Bookmark secondBookmark = Bookmark.create(1L, second.getId());
+        // 두 저장 호출 사이 실제 경과 시간에 의존하면 클럭 해상도에 따라 흔들릴 수 있어, 북마크 시각을 명시적으로 벌려
+        // "나중에 북마크한 것이 먼저 나온다"는 정렬 규칙만 결정적으로 검증한다.
+        ReflectionTestUtils.setField(
+                firstBookmark, "createdAt", LocalDateTime.of(2026, 7, 1, 0, 0));
+        ReflectionTestUtils.setField(
+                secondBookmark, "createdAt", LocalDateTime.of(2026, 7, 2, 0, 0));
+        bookmarkRepository.saveAndFlush(firstBookmark);
+        bookmarkRepository.saveAndFlush(secondBookmark);
+        bookmarkRepository.saveAndFlush(Bookmark.create(2L, othersPosting.getId()));
+
+        Page<Posting> page =
+                bookmarkRepository.findBookmarkedPostings(1L, null, null, PageRequest.of(0, 20));
+
+        assertThat(page.getContent())
+                .extracting(Posting::getId)
+                .containsExactly(second.getId(), first.getId());
+    }
+
+    @Test
+    void findBookmarkedPostings_filtersByCategory() {
+        Posting environment =
+                postingRepository.save(posting("테스트 공고", PostingCategory.ENVIRONMENT));
+        Posting education = postingRepository.save(posting("테스트 공고", PostingCategory.EDUCATION));
+        bookmarkRepository.saveAndFlush(Bookmark.create(1L, environment.getId()));
+        bookmarkRepository.saveAndFlush(Bookmark.create(1L, education.getId()));
+
+        Page<Posting> page =
+                bookmarkRepository.findBookmarkedPostings(
+                        1L, PostingCategory.EDUCATION, null, PageRequest.of(0, 20));
+
+        assertThat(page.getContent()).extracting(Posting::getId).containsExactly(education.getId());
+    }
+
+    @Test
+    void findBookmarkedPostings_filtersByKeyword() {
+        Posting matching =
+                postingRepository.save(posting("동구 환경정화 봉사", PostingCategory.ENVIRONMENT));
+        Posting nonMatching =
+                postingRepository.save(posting("무관한 제목", PostingCategory.ENVIRONMENT));
+        bookmarkRepository.saveAndFlush(Bookmark.create(1L, matching.getId()));
+        bookmarkRepository.saveAndFlush(Bookmark.create(1L, nonMatching.getId()));
+
+        Page<Posting> page =
+                bookmarkRepository.findBookmarkedPostings(1L, null, "환경정화", PageRequest.of(0, 20));
+
+        assertThat(page.getContent()).extracting(Posting::getId).containsExactly(matching.getId());
+    }
+
+    @Test
+    void findBookmarkedPostings_returnsEmptyPage_whenUserHasNoBookmarks() {
+        postingRepository.save(posting());
+
+        Page<Posting> page =
+                bookmarkRepository.findBookmarkedPostings(1L, null, null, PageRequest.of(0, 20));
+
+        assertThat(page.getContent()).isEmpty();
+    }
+
+    @Test
+    void findBookmarkedPostings_filtersByKeyword_matchingRecruitOrgOnly() {
+        Posting matching =
+                postingRepository.save(posting("무관한 제목", "동구청 환경정화팀", PostingCategory.ENVIRONMENT));
+        Posting nonMatching =
+                postingRepository.save(posting("무관한 제목", "타 기관", PostingCategory.ENVIRONMENT));
+        bookmarkRepository.saveAndFlush(Bookmark.create(1L, matching.getId()));
+        bookmarkRepository.saveAndFlush(Bookmark.create(1L, nonMatching.getId()));
+
+        Page<Posting> page =
+                bookmarkRepository.findBookmarkedPostings(1L, null, "환경정화", PageRequest.of(0, 20));
+
+        assertThat(page.getContent()).extracting(Posting::getId).containsExactly(matching.getId());
+    }
+
+    @Test
+    void findBookmarkedPostings_treatsPercentAsLiteralInKeyword() {
+        Posting percentLiteral =
+                postingRepository.save(posting("100% 참여", PostingCategory.ENVIRONMENT));
+        Posting wildcardExpansion =
+                postingRepository.save(posting("1000000 참여", PostingCategory.ENVIRONMENT));
+        bookmarkRepository.saveAndFlush(Bookmark.create(1L, percentLiteral.getId()));
+        bookmarkRepository.saveAndFlush(Bookmark.create(1L, wildcardExpansion.getId()));
+
+        Page<Posting> page =
+                bookmarkRepository.findBookmarkedPostings(
+                        1L, null, LikeKeywordEscaper.escape("100%"), PageRequest.of(0, 20));
+
+        assertThat(page.getContent())
+                .extracting(Posting::getId)
+                .containsExactly(percentLiteral.getId());
+    }
+
+    @Test
+    void findBookmarkedPostings_ordersByIdDesc_asTiebreak_whenBookmarkedAtIsEqual() {
+        Posting first = postingRepository.save(posting());
+        Posting second = postingRepository.save(posting());
+        Bookmark firstBookmark = Bookmark.create(1L, first.getId());
+        Bookmark secondBookmark = Bookmark.create(1L, second.getId());
+        LocalDateTime sameInstant = LocalDateTime.of(2026, 7, 1, 0, 0);
+        ReflectionTestUtils.setField(firstBookmark, "createdAt", sameInstant);
+        ReflectionTestUtils.setField(secondBookmark, "createdAt", sameInstant);
+        bookmarkRepository.saveAndFlush(firstBookmark);
+        bookmarkRepository.saveAndFlush(secondBookmark);
+
+        Page<Posting> firstPage =
+                bookmarkRepository.findBookmarkedPostings(1L, null, null, PageRequest.of(0, 1));
+        Page<Posting> secondPage =
+                bookmarkRepository.findBookmarkedPostings(1L, null, null, PageRequest.of(1, 1));
+
+        assertThat(firstPage.getContent())
+                .extracting(Posting::getId)
+                .containsExactly(second.getId());
+        assertThat(secondPage.getContent())
+                .extracting(Posting::getId)
+                .containsExactly(first.getId());
+    }
+
+    @Test
+    void findBookmarkedPostings_filtersByCategoryAndKeywordTogether() {
+        Posting matching =
+                postingRepository.save(posting("동구 환경정화 봉사", PostingCategory.ENVIRONMENT));
+        Posting wrongCategory =
+                postingRepository.save(posting("동구 환경정화 봉사", PostingCategory.EDUCATION));
+        Posting wrongKeyword =
+                postingRepository.save(posting("무관한 제목", PostingCategory.ENVIRONMENT));
+        bookmarkRepository.saveAndFlush(Bookmark.create(1L, matching.getId()));
+        bookmarkRepository.saveAndFlush(Bookmark.create(1L, wrongCategory.getId()));
+        bookmarkRepository.saveAndFlush(Bookmark.create(1L, wrongKeyword.getId()));
+
+        Page<Posting> page =
+                bookmarkRepository.findBookmarkedPostings(
+                        1L, PostingCategory.ENVIRONMENT, "환경정화", PageRequest.of(0, 20));
+
+        assertThat(page.getContent()).extracting(Posting::getId).containsExactly(matching.getId());
+    }
+
+    @Test
+    void findBookmarkedPostings_paginatesAcrossMultiplePages() {
+        for (int i = 0; i < 3; i++) {
+            Posting posting = postingRepository.save(posting());
+            bookmarkRepository.saveAndFlush(Bookmark.create(1L, posting.getId()));
+        }
+
+        Page<Posting> firstPage =
+                bookmarkRepository.findBookmarkedPostings(1L, null, null, PageRequest.of(0, 2));
+
+        assertThat(firstPage.getContent()).hasSize(2);
+        assertThat(firstPage.getTotalElements()).isEqualTo(3);
+        assertThat(firstPage.getTotalPages()).isEqualTo(2);
+
+        Page<Posting> secondPage =
+                bookmarkRepository.findBookmarkedPostings(1L, null, null, PageRequest.of(1, 2));
+
+        assertThat(secondPage.getContent()).hasSize(1);
+        assertThat(secondPage.getTotalElements()).isEqualTo(3);
+        assertThat(secondPage.getTotalPages()).isEqualTo(2);
+    }
+
     private Posting posting() {
+        return posting("테스트 공고", PostingCategory.ENVIRONMENT);
+    }
+
+    private Posting posting(String title, PostingCategory category) {
+        return posting(title, null, category);
+    }
+
+    private Posting posting(String title, String recruitOrg, PostingCategory category) {
         return Posting.builder()
-                .title("테스트 공고")
+                .title(title)
+                .recruitOrg(recruitOrg)
                 .status(PostingStatus.RECRUITING)
                 .activityDate(LocalDate.of(2026, 7, 15))
-                .category(PostingCategory.ENVIRONMENT)
+                .category(category)
                 .build();
     }
 }

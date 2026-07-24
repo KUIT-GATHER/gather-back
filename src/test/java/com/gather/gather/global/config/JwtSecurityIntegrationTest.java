@@ -44,6 +44,8 @@ class JwtSecurityIntegrationTest {
 
     private static final String SECURED_PATH = "/test/secured";
     private static final String SYNC_PATH = "/api/v1/postings/sync";
+    private static final String POSTING_BOOKMARKS_PATH = "/api/v1/postings/bookmarks";
+    private static final String MEETING_BOOKMARKS_PATH = "/api/v1/meetings/bookmarks";
     private static final String PROFILE_IMAGE_PRESIGNED_PATH =
             "/api/v1/users/me/profile-image/presigned-url";
     private static final String PROFILE_IMAGE_PATH = "/api/v1/users/me/profile-image";
@@ -160,6 +162,48 @@ class JwtSecurityIntegrationTest {
         mockMvc.perform(get("/api/v1/regions/groups"))
                 .andExpect(
                         result -> assertThat(result.getResponse().getStatus()).isNotEqualTo(401));
+    }
+
+    @Test
+    @DisplayName(
+            "봉사공고 북마크 목록 조회(/api/v1/postings/bookmarks)는 /api/v1/postings/** permitAll"
+                    + " 와일드카드에 묻히지 않고 토큰 없이 요청하면 401 UNAUTHORIZED이다")
+    void bookmarkListPath_withoutToken_returns401Unauthorized() throws Exception {
+        mockMvc.perform(get(POSTING_BOOKMARKS_PATH))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.error.code").value("UNAUTHORIZED"));
+    }
+
+    @Test
+    @DisplayName("봉사공고 북마크 목록 조회에 유효한 토큰으로 요청하면 200 OK이다")
+    void bookmarkListPath_withValidToken_returns200Ok() throws Exception {
+        String token = tokenProvider.createAccessToken(newUser(100L, UserRole.USER));
+
+        mockMvc.perform(
+                        get(POSTING_BOOKMARKS_PATH)
+                                .header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true));
+    }
+
+    @Test
+    @DisplayName("모임 북마크 목록 조회(/api/v1/meetings/bookmarks)는 토큰 없이 요청하면 401 UNAUTHORIZED이다")
+    void meetingBookmarkListPath_withoutToken_returns401Unauthorized() throws Exception {
+        mockMvc.perform(get(MEETING_BOOKMARKS_PATH))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.error.code").value("UNAUTHORIZED"));
+    }
+
+    @Test
+    @DisplayName("모임 북마크 목록 조회에 유효한 토큰으로 요청하면 200 OK이다")
+    void meetingBookmarkListPath_withValidToken_returns200Ok() throws Exception {
+        String token = tokenProvider.createAccessToken(newUser(100L, UserRole.USER));
+
+        mockMvc.perform(
+                        get(MEETING_BOOKMARKS_PATH)
+                                .header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true));
     }
 
     @Test
