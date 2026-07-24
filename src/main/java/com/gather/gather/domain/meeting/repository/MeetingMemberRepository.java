@@ -41,4 +41,19 @@ public interface MeetingMemberRepository extends JpaRepository<MeetingMember, Lo
             """)
     List<MeetingMember> findAllByUserIdAndStatusFetchMeeting(
             @Param("userId") Long userId, @Param("status") MeetingMemberStatus status);
+
+    @Query(
+            """
+            SELECT mm
+            FROM MeetingMember mm
+            JOIN FETCH mm.meeting m
+            WHERE mm.user.id = :userId
+              AND mm.status = :status
+              AND m.id IN :meetingIds
+              AND m.deletedAt IS NULL
+            """)
+    List<MeetingMember> findAllByUserIdAndStatusAndMeetingIdInFetchMeeting(
+            @Param("userId") Long userId,
+            @Param("status") MeetingMemberStatus status,
+            @Param("meetingIds") List<Long> meetingIds);
 }
