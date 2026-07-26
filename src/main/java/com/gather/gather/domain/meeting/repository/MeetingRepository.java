@@ -17,6 +17,10 @@ public interface MeetingRepository extends JpaRepository<Meeting, Long> {
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query(
+            "select m from Meeting m where m.id = :id and m.deletedAt is null")
+    Optional<Meeting> findByIdForUpdate(Long id);
+
+    @Query(
             """
             SELECT m
             FROM Meeting m

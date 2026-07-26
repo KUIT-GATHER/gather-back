@@ -1,4 +1,7 @@
 package com.gather.gather.domain.meeting.entity;
 
-public class MeetingImageUploadStatus {
+public enum MeetingImageUploadStatus {
+    PENDING,
+    APPLIED,
+    SUPERSEDED
 }
