@@ -49,7 +49,9 @@ public class MeetingImageApplyService {
                     meetingImageUploadRepository
                             .findByMeetingIdAndObjectKeyForUpdate(meetingId, image.objectKey())
                             .orElseThrow(
-                                    () -> new BusinessException(ErrorCode.INVALID_MEETING_IMAGE_KEY));
+                                    () ->
+                                            new BusinessException(
+                                                    ErrorCode.INVALID_MEETING_IMAGE_KEY));
             upload.validatePendingSession(now, image.contentType());
             if (image.contentLength() != upload.getExpectedSize()) {
                 throw new BusinessException(ErrorCode.MEETING_IMAGE_SIZE_MISMATCH);
@@ -69,7 +71,8 @@ public class MeetingImageApplyService {
                         .map(
                                 key ->
                                         meetingImageUploadRepository
-                                                .findByMeetingIdAndObjectKeyForUpdate(meetingId, key)
+                                                .findByMeetingIdAndObjectKeyForUpdate(
+                                                        meetingId, key)
                                                 .map(
                                                         upload -> {
                                                             upload.supersede();

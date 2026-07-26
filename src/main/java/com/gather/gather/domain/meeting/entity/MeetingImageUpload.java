@@ -85,7 +85,13 @@ public class MeetingImageUpload {
             LocalDateTime expiresAt,
             LocalDateTime createdAt) {
         return new MeetingImageUpload(
-                meetingId, issuerUserId, objectKey, contentType, expectedSize, expiresAt, createdAt);
+                meetingId,
+                issuerUserId,
+                objectKey,
+                contentType,
+                expectedSize,
+                expiresAt,
+                createdAt);
     }
 
     public boolean isPending() {

@@ -11,7 +11,7 @@ public class MeetingImageContentValidator {
 
     private static final byte[] JPEG_SIGNATURE = {(byte) 0xFF, (byte) 0xD8, (byte) 0xFF};
     private static final byte[] PNG_SIGNATURE = {
-            (byte) 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A
+        (byte) 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A
     };
     private static final byte[] RIFF = "RIFF".getBytes(StandardCharsets.US_ASCII);
     private static final byte[] WEBP = "WEBP".getBytes(StandardCharsets.US_ASCII);
@@ -43,7 +43,9 @@ public class MeetingImageContentValidator {
                                 | ((content[7] & 0xFF) << 24));
         String chunkType = new String(content, 12, 4, StandardCharsets.US_ASCII);
         return declaredSize + 8 == content.length
-                && (chunkType.equals("VP8 ") || chunkType.equals("VP8L") || chunkType.equals("VP8X"));
+                && (chunkType.equals("VP8 ")
+                        || chunkType.equals("VP8L")
+                        || chunkType.equals("VP8X"));
     }
 
     private boolean startsWith(byte[] content, byte[] signature) {
@@ -53,6 +55,7 @@ public class MeetingImageContentValidator {
     }
 
     private boolean matchesAt(byte[] content, byte[] expected, int offset) {
-        return Arrays.equals(Arrays.copyOfRange(content, offset, offset + expected.length), expected);
+        return Arrays.equals(
+                Arrays.copyOfRange(content, offset, offset + expected.length), expected);
     }
 }

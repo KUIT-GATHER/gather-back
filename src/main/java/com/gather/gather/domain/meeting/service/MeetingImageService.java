@@ -23,7 +23,6 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Set;
 import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -108,7 +107,8 @@ public class MeetingImageService {
     }
 
     /**
-     * 업로드된 이미지 세트를 모임에 반영한다. objectKeys 에는 이번에 새로 업로드한 key와, 유지할 기존 live key를 섞어 순서대로 담을 수 있다(최대 3장).
+     * 업로드된 이미지 세트를 모임에 반영한다. objectKeys 에는 이번에 새로 업로드한 key와, 유지할 기존 live key를 섞어 순서대로 담을 수 있다(최대
+     * 3장).
      */
     public MeetingImageUpdateResponse updateImages(
             Long meetingId, MeetingImageUpdateRequest request) {
@@ -137,7 +137,9 @@ public class MeetingImageService {
                     meetingImageUploadRepository
                             .findByMeetingIdAndObjectKey(meetingId, key)
                             .orElseThrow(
-                                    () -> new BusinessException(ErrorCode.INVALID_MEETING_IMAGE_KEY));
+                                    () ->
+                                            new BusinessException(
+                                                    ErrorCode.INVALID_MEETING_IMAGE_KEY));
             upload.validatePendingSession(LocalDateTime.now(), format.contentType());
             StoredObjectMetadata metadata = objectStorage.getMetadata(key);
             validateStoredObject(metadata, format, upload);
@@ -147,13 +149,13 @@ public class MeetingImageService {
             }
             imageContentValidator.validate(format, content);
             verified.add(
-                    VerifiedMeetingImage.uploaded(key, format.contentType(), metadata.contentLength()));
+                    VerifiedMeetingImage.uploaded(
+                            key, format.contentType(), metadata.contentLength()));
         }
 
         meetingImageApplyService.apply(meetingId, userId, verified);
 
-        List<String> urls =
-                verified.stream().map(v -> urlResolver.resolve(v.objectKey())).toList();
+        List<String> urls = verified.stream().map(v -> urlResolver.resolve(v.objectKey())).toList();
         return new MeetingImageUpdateResponse(urls);
     }
 
@@ -207,8 +209,11 @@ public class MeetingImageService {
     }
 
     private void validateStoredObject(
-            StoredObjectMetadata metadata, MeetingImageFormat keyFormat, MeetingImageUpload upload) {
-        MeetingImageFormat storedFormat = MeetingImageFormat.fromContentType(metadata.contentType());
+            StoredObjectMetadata metadata,
+            MeetingImageFormat keyFormat,
+            MeetingImageUpload upload) {
+        MeetingImageFormat storedFormat =
+                MeetingImageFormat.fromContentType(metadata.contentType());
         if (storedFormat != keyFormat) {
             throw new BusinessException(ErrorCode.INVALID_MEETING_IMAGE_KEY);
         }
