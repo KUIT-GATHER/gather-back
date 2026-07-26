@@ -39,4 +39,14 @@ public interface PostRepository extends JpaRepository<Post, Long> {
             """)
     List<Post> findVisiblePosts(
             @Param("meetingId") Long meetingId, @Param("types") Collection<PostType> types);
+
+    /** 회원 탈퇴 시 소프트 삭제 대상 게시글을 조회한다. */
+    @Query(
+            """
+            SELECT p
+            FROM Post p
+            WHERE p.user.id = :userId
+              AND p.deletedAt IS NULL
+            """)
+    List<Post> findAllByUserIdAndDeletedAtIsNull(@Param("userId") Long userId);
 }

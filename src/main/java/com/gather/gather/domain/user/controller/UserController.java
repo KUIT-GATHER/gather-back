@@ -1,5 +1,7 @@
 package com.gather.gather.domain.user.controller;
 
+import com.gather.gather.domain.auth.service.RefreshTokenCookieProvider;
+import com.gather.gather.domain.auth.service.UserWithdrawalService;
 import com.gather.gather.domain.user.dto.UserProfileResponse;
 import com.gather.gather.domain.user.dto.UserProfileUpdateRequest;
 import com.gather.gather.domain.user.service.UserProfileService;
@@ -9,8 +11,11 @@ import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.ExampleObject;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpHeaders;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -26,6 +31,8 @@ public class UserController {
     private static final String JSON = "application/json";
 
     private final UserProfileService userProfileService;
+    private final UserWithdrawalService userWithdrawalService;
+    private final RefreshTokenCookieProvider refreshTokenCookieProvider;
 
     @Operation(summary = "내 프로필 조회", description = "로그인한 사용자의 마이페이지 프로필을 조회합니다.")
     @ApiResponses({
@@ -143,5 +150,13 @@ public class UserController {
     public ApiResponse<UserProfileResponse> updateMyProfile(
             @Valid @RequestBody UserProfileUpdateRequest request) {
         return ApiResponse.success(userProfileService.updateMyProfile(request));
+    }
+
+    @Operation(summary = "회원 탈퇴", description = "현재 로그인한 사용자를 탈퇴 처리하고 refresh token 쿠키를 제거합니다.")
+    @DeleteMapping
+    public ApiResponse<Void> deleteMyAccount(HttpServletResponse response) {
+        response.addHeader(HttpHeaders.SET_COOKIE, refreshTokenCookieProvider.clear().toString());
+        userWithdrawalService.withdraw();
+        return ApiResponse.success(null);
     }
 }

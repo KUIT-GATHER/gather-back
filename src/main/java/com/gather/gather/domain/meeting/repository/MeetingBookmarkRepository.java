@@ -26,6 +26,11 @@ public interface MeetingBookmarkRepository extends JpaRepository<MeetingBookmark
     int deleteByUserIdAndMeetingId(
             @Param("userId") Long userId, @Param("meetingId") Long meetingId);
 
+    /** 회원 탈퇴 시 북마크를 전량 정리한다. */
+    @Modifying
+    @Query("DELETE FROM MeetingBookmark b WHERE b.userId = :userId")
+    int deleteAllByUserId(@Param("userId") Long userId);
+
     /** MeetingBookmark는 Meeting과 연관관계 없이 FK id만 보관하므로 명시적 ON 절로 조인한다. */
     @Query(
             """

@@ -54,6 +54,8 @@ public enum ErrorCode {
     INVALID_MEETING_TIME(HttpStatus.BAD_REQUEST, "모임 시간이 올바르지 않습니다."),
     MEETING_BOOKMARK_DUPLICATE(HttpStatus.CONFLICT, "이미 북마크한 모임입니다."),
     MEETING_BOOKMARK_NOT_FOUND(HttpStatus.NOT_FOUND, "북마크를 찾을 수 없습니다."),
+    WITHDRAWAL_BLOCKED_MEETING_HOST(
+            HttpStatus.CONFLICT, "모임장으로 있는 모임이 있어 탈퇴할 수 없습니다. 모임장을 위임하거나 모임을 종료해주세요."),
 
     POSTING_NOT_FOUND(HttpStatus.NOT_FOUND, "봉사공고를 찾을 수 없습니다."),
     POSTING_CLOSED(HttpStatus.CONFLICT, "마감된 봉사공고입니다."),

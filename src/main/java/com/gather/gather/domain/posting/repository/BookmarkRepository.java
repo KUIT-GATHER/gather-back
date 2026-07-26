@@ -7,6 +7,7 @@ import java.util.Optional;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -17,6 +18,11 @@ public interface BookmarkRepository extends JpaRepository<Bookmark, Long> {
     boolean existsByUserId(Long userId);
 
     Optional<Bookmark> findByUserIdAndPostingId(Long userId, Long postingId);
+
+    /** 회원 탈퇴 시 북마크를 전량 정리한다. */
+    @Modifying
+    @Query("DELETE FROM Bookmark b WHERE b.userId = :userId")
+    int deleteAllByUserId(@Param("userId") Long userId);
 
     /** Bookmark는 Posting과 연관관계 없이 FK id만 보관하므로(Bookmark.java 참고) 명시적 ON 절로 조인한다. */
     @Query(

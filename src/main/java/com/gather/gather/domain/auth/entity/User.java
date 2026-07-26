@@ -189,6 +189,16 @@ public class User {
         this.profileImageKey = profileImageKey;
     }
 
+    /**
+     * 회원 탈퇴 상태 전이.
+     *
+     * <p>PII 익명화(전화번호/이메일/닉네임 훼손)와 재가입 허용 정책은 아직 팀 내 확정 전이라 이 메서드에는 포함하지 않았다. 정책이 정해지면 이 메서드 안에서 함께
+     * 처리한다.
+     */
+    public void withdraw() {
+        this.status = UserStatus.WITHDRAWN;
+    }
+
     /** 마이페이지 프로필 편집. 회원가입과 동일한 필드 집합을 갱신하며, 이메일·전화번호·비밀번호는 이 화면의 편집 대상이 아니다. */
     public void updateProfile(
             String name,
