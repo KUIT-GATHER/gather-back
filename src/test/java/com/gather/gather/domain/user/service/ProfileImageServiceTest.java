@@ -67,6 +67,7 @@ class ProfileImageServiceTest {
                     10,
                     MAX_SIZE,
                     "profiles",
+                    "meetings",
                     3,
                     100,
                     3_600_000,

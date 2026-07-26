@@ -17,6 +17,7 @@ public record S3Properties(
         @Positive long apiCallAttemptTimeoutSeconds,
         @Positive long maxImageSizeBytes,
         @NotBlank @Pattern(regexp = "[a-zA-Z0-9_-]+") String objectPrefix,
+        @NotBlank @Pattern(regexp = "[a-zA-Z0-9_-]+") String meetingObjectPrefix,
         @Positive int maxPendingUploadsPerUser,
         @Positive int cleanupBatchSize,
         @Positive long cleanupFixedDelayMilliseconds,

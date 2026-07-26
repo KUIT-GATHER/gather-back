@@ -28,6 +28,7 @@ gather:
       api-call-attempt-timeout-seconds: 10
       max-image-size-bytes: 5242880
       object-prefix: profiles
+      meeting-object-prefix: meetings
       max-pending-uploads-per-user: 3
       cleanup-batch-size: 100
       cleanup-fixed-delay-milliseconds: 3600000
