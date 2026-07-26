@@ -2,9 +2,11 @@ package com.gather.gather.domain.meeting.repository;
 
 import com.gather.gather.domain.meeting.entity.MeetingMember;
 import com.gather.gather.domain.meeting.enums.MeetingMemberStatus;
+import jakarta.persistence.LockModeType;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -41,6 +43,20 @@ public interface MeetingMemberRepository extends JpaRepository<MeetingMember, Lo
             ORDER BY mm.createdAt ASC
             """)
     List<MeetingMember> findPendingByMeetingIdFetchUser(@Param("meetingId") Long meetingId);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query(
+            """
+            SELECT mm
+            FROM MeetingMember mm
+            JOIN FETCH mm.user
+            JOIN FETCH mm.meeting
+            WHERE mm.id = :joinRequestId
+              AND mm.meeting.id = :meetingId
+              AND mm.status = com.gather.gather.domain.meeting.enums.MeetingMemberStatus.PENDING
+            """)
+    Optional<MeetingMember> findPendingByIdAndMeetingIdForUpdate(
+            @Param("joinRequestId") Long joinRequestId, @Param("meetingId") Long meetingId);
 
     @Query(
             """

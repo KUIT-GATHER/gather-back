@@ -91,7 +91,6 @@ public class MeetingMember {
 
     public void approve() {
         this.status = MeetingMemberStatus.APPROVED;
-        this.joinedAt = LocalDateTime.now();
     }
 
     public void reject() {

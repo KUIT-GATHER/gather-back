@@ -21,6 +21,7 @@ import com.gather.gather.domain.posting.repository.PostingRepository;
 import com.gather.gather.domain.region.repository.RegionRepository;
 import com.gather.gather.global.exception.BusinessException;
 import com.gather.gather.global.exception.ErrorCode;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.AfterEach;
@@ -97,7 +98,9 @@ class MeetingJoinApprovalServiceTest {
         when(meeting.getHost()).thenReturn(host);
         when(host.getId()).thenReturn(HOST_ID);
         when(meeting.isFull()).thenReturn(false);
-        when(meetingMemberRepository.findById(JOIN_REQUEST_ID)).thenReturn(Optional.of(member));
+        when(meetingMemberRepository.findPendingByIdAndMeetingIdForUpdate(
+                        JOIN_REQUEST_ID, MEETING_ID))
+                .thenReturn(Optional.of(member));
 
         MeetingJoinRequestResponse response =
                 meetingService.approveJoinRequest(MEETING_ID, JOIN_REQUEST_ID);
@@ -119,13 +122,93 @@ class MeetingJoinApprovalServiceTest {
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.MEETING_HOST_ONLY);
 
-        verify(meetingMemberRepository, never()).findById(JOIN_REQUEST_ID);
+        verify(meetingMemberRepository, never())
+                .findPendingByIdAndMeetingIdForUpdate(JOIN_REQUEST_ID, MEETING_ID);
+    }
+
+    @Test
+    @DisplayName("모집이 종료된 모임의 가입 신청은 승인할 수 없다")
+    void approveJoinRequest_rejectsClosedMeeting() {
+        setAuthenticatedUser(HOST_ID);
+        when(meetingRepository.findByIdAndDeletedAtIsNullForUpdate(MEETING_ID))
+                .thenReturn(Optional.of(meeting));
+        when(meeting.getHost()).thenReturn(host);
+        when(host.getId()).thenReturn(HOST_ID);
+        when(meeting.getStatus()).thenReturn(MeetingStatus.CLOSED);
+
+        assertThatThrownBy(() -> meetingService.approveJoinRequest(MEETING_ID, JOIN_REQUEST_ID))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.MEETING_CLOSED);
+
+        verify(meeting, never()).increaseMemberCount();
+        verify(meetingMemberRepository, never())
+                .findPendingByIdAndMeetingIdForUpdate(JOIN_REQUEST_ID, MEETING_ID);
+    }
+
+    @Test
+    @DisplayName("정원이 가득 찬 모임의 가입 신청은 승인할 수 없다")
+    void approveJoinRequest_rejectsFullMeeting() {
+        setAuthenticatedUser(HOST_ID);
+        when(meetingRepository.findByIdAndDeletedAtIsNullForUpdate(MEETING_ID))
+                .thenReturn(Optional.of(meeting));
+        when(meeting.getHost()).thenReturn(host);
+        when(host.getId()).thenReturn(HOST_ID);
+        when(meeting.isFull()).thenReturn(true);
+
+        assertThatThrownBy(() -> meetingService.approveJoinRequest(MEETING_ID, JOIN_REQUEST_ID))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.MEETING_CLOSED);
+
+        verify(meeting, never()).increaseMemberCount();
+        verify(meetingMemberRepository, never())
+                .findPendingByIdAndMeetingIdForUpdate(JOIN_REQUEST_ID, MEETING_ID);
+    }
+
+    @Test
+    @DisplayName("가입 승인 후에도 실제 신청 시간은 유지된다")
+    void approveJoinRequest_keepsRequestedAt() {
+        setAuthenticatedUser(HOST_ID);
+        MeetingMember member = pendingMember();
+        LocalDateTime requestedAt = member.getJoinedAt();
+        when(meetingRepository.findByIdAndDeletedAtIsNullForUpdate(MEETING_ID))
+                .thenReturn(Optional.of(meeting));
+        when(meeting.getHost()).thenReturn(host);
+        when(host.getId()).thenReturn(HOST_ID);
+        when(meeting.isFull()).thenReturn(false);
+        when(meetingMemberRepository.findPendingByIdAndMeetingIdForUpdate(
+                        JOIN_REQUEST_ID, MEETING_ID))
+                .thenReturn(Optional.of(member));
+
+        MeetingJoinRequestResponse response =
+                meetingService.approveJoinRequest(MEETING_ID, JOIN_REQUEST_ID);
+
+        assertThat(response.requestedAt()).isEqualTo(requestedAt);
+    }
+
+    @Test
+    @DisplayName("가입 거절도 비관적 락으로 승인 대기 신청을 조회한다")
+    void rejectJoinRequest_usesPendingRequestLock() {
+        setAuthenticatedUser(HOST_ID);
+        MeetingMember member = pendingMember();
+        when(meetingRepository.findByIdAndDeletedAtIsNullForUpdate(MEETING_ID))
+                .thenReturn(Optional.of(meeting));
+        when(meeting.getHost()).thenReturn(host);
+        when(host.getId()).thenReturn(HOST_ID);
+        when(meetingMemberRepository.findPendingByIdAndMeetingIdForUpdate(
+                        JOIN_REQUEST_ID, MEETING_ID))
+                .thenReturn(Optional.of(member));
+
+        MeetingJoinRequestResponse response =
+                meetingService.rejectJoinRequest(MEETING_ID, JOIN_REQUEST_ID);
+
+        assertThat(response.status()).isEqualTo(MeetingMemberStatus.REJECTED);
+        verify(meeting, never()).increaseMemberCount();
     }
 
     private MeetingMember pendingMember() {
-        MeetingMember member = MeetingMember.createMember(user, meeting);
-        when(meeting.getId()).thenReturn(MEETING_ID);
-        return member;
+        return MeetingMember.createMember(user, meeting);
     }
 
     private void setAuthenticatedUser(Long userId) {

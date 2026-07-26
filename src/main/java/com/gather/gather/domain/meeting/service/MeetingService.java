@@ -206,12 +206,9 @@ public class MeetingService {
         Long userId = SecurityUtil.getCurrentUserId();
         Meeting meeting = getMeetingEntityForUpdate(meetingId);
         validateHost(meeting, userId);
+        validateApprovableMeeting(meeting);
 
-        MeetingMember member = getPendingJoinRequest(meetingId, joinRequestId);
-        if (meeting.isFull()) {
-            throw new BusinessException(ErrorCode.MEETING_FULL);
-        }
-
+        MeetingMember member = getPendingJoinRequestForUpdate(meetingId, joinRequestId);
         member.approve();
         meeting.increaseMemberCount();
         return MeetingJoinRequestResponse.from(member);
@@ -219,10 +216,10 @@ public class MeetingService {
 
     @Transactional
     public MeetingJoinRequestResponse rejectJoinRequest(Long meetingId, Long joinRequestId) {
-        Meeting meeting = getMeetingEntity(meetingId);
+        Meeting meeting = getMeetingEntityForUpdate(meetingId);
         validateHost(meeting, SecurityUtil.getCurrentUserId());
 
-        MeetingMember member = getPendingJoinRequest(meetingId, joinRequestId);
+        MeetingMember member = getPendingJoinRequestForUpdate(meetingId, joinRequestId);
         member.reject();
         return MeetingJoinRequestResponse.from(member);
     }
@@ -302,20 +299,16 @@ public class MeetingService {
                         });
     }
 
-    private MeetingMember getPendingJoinRequest(Long meetingId, Long joinRequestId) {
-        MeetingMember member =
-                meetingMemberRepository
-                        .findById(joinRequestId)
-                        .orElseThrow(
-                                () ->
-                                        new BusinessException(
-                                                ErrorCode.MEETING_JOIN_REQUEST_NOT_FOUND));
+    private MeetingMember getPendingJoinRequestForUpdate(Long meetingId, Long joinRequestId) {
+        return meetingMemberRepository
+                .findPendingByIdAndMeetingIdForUpdate(joinRequestId, meetingId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.MEETING_JOIN_REQUEST_NOT_FOUND));
+    }
 
-        if (!member.getMeeting().getId().equals(meetingId)
-                || member.getStatus() != MeetingMemberStatus.PENDING) {
-            throw new BusinessException(ErrorCode.MEETING_JOIN_REQUEST_NOT_FOUND);
+    private void validateApprovableMeeting(Meeting meeting) {
+        if (resolveDisplayStatus(meeting) != MeetingStatus.RECRUITING) {
+            throw new BusinessException(ErrorCode.MEETING_CLOSED);
         }
-        return member;
     }
 
     private void validateHost(Meeting meeting, Long userId) {
