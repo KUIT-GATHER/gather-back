@@ -4,6 +4,8 @@ import com.gather.gather.domain.auth.entity.User;
 import com.gather.gather.domain.auth.repository.UserRepository;
 import com.gather.gather.domain.meeting.dto.MeetingCreateRequest;
 import com.gather.gather.domain.meeting.dto.MeetingDetailResponse;
+import com.gather.gather.domain.meeting.dto.MeetingJoinRequestResponse;
+import com.gather.gather.domain.meeting.dto.MeetingJoinResponse;
 import com.gather.gather.domain.meeting.dto.MeetingResponse;
 import com.gather.gather.domain.meeting.dto.PostingMeetingResponse;
 import com.gather.gather.domain.meeting.entity.Meeting;
@@ -175,22 +177,61 @@ public class MeetingService {
     }
 
     @Transactional
-    public MeetingResponse joinMeeting(Long meetingId) {
+    public MeetingJoinResponse joinMeeting(Long meetingId) {
         Long userId = SecurityUtil.getCurrentUserId();
         User user = getUser(userId);
         Meeting meeting = getMeetingEntityForUpdate(meetingId);
 
         validateJoinableMeeting(meeting, userId);
 
+        MeetingMember member =
+                meetingMemberRepository
+                        .findByMeeting_IdAndUser_Id(meetingId, userId)
+                        .map(
+                                existingMember -> {
+                                    existingMember.requestAgain();
+                                    return existingMember;
+                                })
+                        .orElseGet(() -> MeetingMember.createMember(user, meeting));
+
         try {
-            meetingMemberRepository.saveAndFlush(MeetingMember.createMember(user, meeting));
+            MeetingMember savedMember = meetingMemberRepository.saveAndFlush(member);
+            return MeetingJoinResponse.from(savedMember);
         } catch (DataIntegrityViolationException exception) {
-            throw new BusinessException(ErrorCode.MEETING_ALREADY_JOINED);
+            throw new BusinessException(ErrorCode.MEETING_JOIN_REQUEST_DUPLICATE);
         }
+    }
 
+    public List<MeetingJoinRequestResponse> getPendingJoinRequests(Long meetingId) {
+        Meeting meeting = getMeetingEntity(meetingId);
+        validateHost(meeting, SecurityUtil.getCurrentUserId());
+
+        return meetingMemberRepository.findPendingByMeetingIdFetchUser(meetingId).stream()
+                .map(MeetingJoinRequestResponse::from)
+                .toList();
+    }
+
+    @Transactional
+    public MeetingJoinRequestResponse approveJoinRequest(Long meetingId, Long joinRequestId) {
+        Long userId = SecurityUtil.getCurrentUserId();
+        Meeting meeting = getMeetingEntityForUpdate(meetingId);
+        validateHost(meeting, userId);
+        validateApprovableMeeting(meeting);
+
+        MeetingMember member = getPendingJoinRequestForUpdate(meetingId, joinRequestId);
+        member.approve();
         meeting.increaseMemberCount();
+        return MeetingJoinRequestResponse.from(member);
+    }
 
-        return MeetingResponse.from(meeting, resolveDisplayStatus(meeting));
+    @Transactional
+    public MeetingJoinRequestResponse rejectJoinRequest(Long meetingId, Long joinRequestId) {
+        Meeting meeting = getMeetingEntityForUpdate(meetingId);
+        validateHost(meeting, SecurityUtil.getCurrentUserId());
+
+        MeetingMember member = getPendingJoinRequestForUpdate(meetingId, joinRequestId);
+        member.reject();
+        return MeetingJoinRequestResponse.from(member);
     }
 
     public List<MeetingResponse> getMyMeetings() {
@@ -253,12 +294,36 @@ public class MeetingService {
             throw new BusinessException(ErrorCode.MEETING_FULL);
         }
 
-        boolean alreadyJoined =
-                meetingMemberRepository.existsByMeeting_IdAndUser_IdAndStatus(
-                        meeting.getId(), userId, MeetingMemberStatus.APPROVED);
+        meetingMemberRepository
+                .findByMeeting_IdAndUser_Id(meeting.getId(), userId)
+                .filter(
+                        member ->
+                                member.getStatus() == MeetingMemberStatus.APPROVED
+                                        || member.getStatus() == MeetingMemberStatus.PENDING)
+                .ifPresent(
+                        member -> {
+                            throw new BusinessException(
+                                    member.getStatus() == MeetingMemberStatus.PENDING
+                                            ? ErrorCode.MEETING_JOIN_REQUEST_DUPLICATE
+                                            : ErrorCode.MEETING_ALREADY_JOINED);
+                        });
+    }
 
-        if (alreadyJoined) {
-            throw new BusinessException(ErrorCode.MEETING_ALREADY_JOINED);
+    private MeetingMember getPendingJoinRequestForUpdate(Long meetingId, Long joinRequestId) {
+        return meetingMemberRepository
+                .findPendingByIdAndMeetingIdForUpdate(joinRequestId, meetingId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.MEETING_JOIN_REQUEST_NOT_FOUND));
+    }
+
+    private void validateApprovableMeeting(Meeting meeting) {
+        if (resolveDisplayStatus(meeting) != MeetingStatus.RECRUITING) {
+            throw new BusinessException(ErrorCode.MEETING_CLOSED);
+        }
+    }
+
+    private void validateHost(Meeting meeting, Long userId) {
+        if (!meeting.getHost().getId().equals(userId)) {
+            throw new BusinessException(ErrorCode.MEETING_HOST_ONLY);
         }
     }
 
