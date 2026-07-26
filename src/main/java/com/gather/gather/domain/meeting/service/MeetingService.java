@@ -11,6 +11,7 @@ import com.gather.gather.domain.meeting.entity.MeetingMember;
 import com.gather.gather.domain.meeting.enums.MeetingMemberRole;
 import com.gather.gather.domain.meeting.enums.MeetingMemberStatus;
 import com.gather.gather.domain.meeting.enums.MeetingStatus;
+import com.gather.gather.domain.meeting.repository.MeetingBookmarkRepository;
 import com.gather.gather.domain.meeting.repository.MeetingMemberRepository;
 import com.gather.gather.domain.meeting.repository.MeetingRepository;
 import com.gather.gather.domain.posting.entity.Posting;
@@ -57,6 +58,7 @@ public class MeetingService {
                     "updatedAt");
 
     private final MeetingRepository meetingRepository;
+    private final MeetingBookmarkRepository meetingBookmarkRepository;
     private final MeetingMemberRepository meetingMemberRepository;
     private final UserRepository userRepository;
     private final RegionRepository regionRepository;
@@ -161,7 +163,15 @@ public class MeetingService {
 
     public MeetingDetailResponse getMeeting(Long meetingId) {
         Meeting meeting = getMeetingEntity(meetingId);
-        return MeetingDetailResponse.from(meeting, resolveDisplayStatus(meeting));
+        return MeetingDetailResponse.from(
+                meeting, resolveDisplayStatus(meeting), isBookmarkedByCurrentUser(meetingId));
+    }
+
+    /** 인증이 선택적인 상세 조회이므로 비로그인 사용자는 항상 false를 받는다. */
+    private boolean isBookmarkedByCurrentUser(Long meetingId) {
+        Long userId = SecurityUtil.getCurrentUserIdOrNull();
+        return userId != null
+                && meetingBookmarkRepository.existsByUserIdAndMeetingId(userId, meetingId);
     }
 
     @Transactional
