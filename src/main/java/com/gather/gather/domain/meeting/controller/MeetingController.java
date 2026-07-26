@@ -2,6 +2,8 @@ package com.gather.gather.domain.meeting.controller;
 
 import com.gather.gather.domain.meeting.dto.MeetingCreateRequest;
 import com.gather.gather.domain.meeting.dto.MeetingDetailResponse;
+import com.gather.gather.domain.meeting.dto.MeetingJoinRequestResponse;
+import com.gather.gather.domain.meeting.dto.MeetingJoinResponse;
 import com.gather.gather.domain.meeting.dto.MeetingResponse;
 import com.gather.gather.domain.meeting.enums.MeetingStatus;
 import com.gather.gather.domain.meeting.service.MeetingKeywordRecommendationService;
@@ -20,6 +22,7 @@ import org.springframework.data.domain.Sort;
 import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -89,10 +92,31 @@ public class MeetingController {
         return ApiResponse.success(meetingService.getMyMeetings());
     }
 
-    @Operation(summary = "모임 참여", description = "로그인한 사용자가 특정 모임에 참여합니다.")
+    @Operation(summary = "모임 가입 신청", description = "로그인한 사용자가 특정 모임에 가입을 신청합니다.")
     @PostMapping("/{meetingId}/join")
-    public ApiResponse<MeetingResponse> joinMeeting(@PathVariable Long meetingId) {
+    public ApiResponse<MeetingJoinResponse> joinMeeting(@PathVariable Long meetingId) {
         return ApiResponse.success(meetingService.joinMeeting(meetingId));
+    }
+
+    @Operation(summary = "가입 신청 목록 조회", description = "모임장이 승인 대기 중인 가입 신청 목록을 조회합니다.")
+    @GetMapping("/{meetingId}/join-requests")
+    public ApiResponse<List<MeetingJoinRequestResponse>> getPendingJoinRequests(
+            @PathVariable Long meetingId) {
+        return ApiResponse.success(meetingService.getPendingJoinRequests(meetingId));
+    }
+
+    @Operation(summary = "모임 가입 승인", description = "모임장이 가입 신청을 승인합니다.")
+    @PatchMapping("/{meetingId}/join-requests/{joinRequestId}/approve")
+    public ApiResponse<MeetingJoinRequestResponse> approveJoinRequest(
+            @PathVariable Long meetingId, @PathVariable Long joinRequestId) {
+        return ApiResponse.success(meetingService.approveJoinRequest(meetingId, joinRequestId));
+    }
+
+    @Operation(summary = "모임 가입 거절", description = "모임장이 가입 신청을 거절합니다.")
+    @PatchMapping("/{meetingId}/join-requests/{joinRequestId}/reject")
+    public ApiResponse<MeetingJoinRequestResponse> rejectJoinRequest(
+            @PathVariable Long meetingId, @PathVariable Long joinRequestId) {
+        return ApiResponse.success(meetingService.rejectJoinRequest(meetingId, joinRequestId));
     }
 
     @Operation(summary = "모임 상세 조회", description = "meetingId에 해당하는 모임 상세 정보를 조회합니다. 인증이 필요 없습니다.")

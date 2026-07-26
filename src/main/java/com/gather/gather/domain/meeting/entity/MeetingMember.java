@@ -81,7 +81,20 @@ public class MeetingMember {
 
     public static MeetingMember createMember(User user, Meeting meeting) {
         return new MeetingMember(
-                MeetingMemberRole.MEMBER, user, meeting, MeetingMemberStatus.APPROVED);
+                MeetingMemberRole.MEMBER, user, meeting, MeetingMemberStatus.PENDING);
+    }
+
+    public void requestAgain() {
+        this.status = MeetingMemberStatus.PENDING;
+        this.joinedAt = LocalDateTime.now();
+    }
+
+    public void approve() {
+        this.status = MeetingMemberStatus.APPROVED;
+    }
+
+    public void reject() {
+        this.status = MeetingMemberStatus.REJECTED;
     }
 
     public void leave() {
