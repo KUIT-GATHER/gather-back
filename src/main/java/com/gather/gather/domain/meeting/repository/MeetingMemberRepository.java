@@ -9,6 +9,8 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 public interface MeetingMemberRepository extends JpaRepository<MeetingMember, Long> {
+    Optional<MeetingMember> findByMeeting_IdAndUser_Id(Long meetingId, Long userId);
+
     boolean existsByMeeting_IdAndUser_IdAndStatus(
             Long meetingId, Long userId, MeetingMemberStatus status);
 
@@ -28,6 +30,17 @@ public interface MeetingMemberRepository extends JpaRepository<MeetingMember, Lo
             """)
     List<MeetingMember> findAllByMeetingIdAndStatusFetchUser(
             @Param("meetingId") Long meetingId, @Param("status") MeetingMemberStatus status);
+
+    @Query(
+            """
+            SELECT mm
+            FROM MeetingMember mm
+            JOIN FETCH mm.user
+            WHERE mm.meeting.id = :meetingId
+              AND mm.status = com.gather.gather.domain.meeting.enums.MeetingMemberStatus.PENDING
+            ORDER BY mm.createdAt ASC
+            """)
+    List<MeetingMember> findPendingByMeetingIdFetchUser(@Param("meetingId") Long meetingId);
 
     @Query(
             """
