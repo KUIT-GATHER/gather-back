@@ -20,9 +20,11 @@ public record MeetingDetailResponse(
         MeetingStatus status,
         LocalDateTime deadline,
         LocalDateTime activityStartAt,
-        LocalDateTime activityEndAt) {
+        LocalDateTime activityEndAt,
+        boolean bookmarked) {
 
-    public static MeetingDetailResponse from(Meeting meeting, MeetingStatus displayStatus) {
+    public static MeetingDetailResponse from(
+            Meeting meeting, MeetingStatus displayStatus, boolean bookmarked) {
         return new MeetingDetailResponse(
                 meeting.getId(),
                 meeting.getName(),
@@ -38,6 +40,7 @@ public record MeetingDetailResponse(
                 displayStatus,
                 meeting.getDeadline(),
                 meeting.getActivityStartAt(),
-                meeting.getActivityEndAt());
+                meeting.getActivityEndAt(),
+                bookmarked);
     }
 }
