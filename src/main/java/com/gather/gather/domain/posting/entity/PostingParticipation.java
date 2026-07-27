@@ -59,4 +59,8 @@ public class PostingParticipation {
     public static PostingParticipation create(Long userId, Long postingId) {
         return new PostingParticipation(userId, postingId, PostingParticipationStatus.APPLIED);
     }
+
+    public void complete() {
+        this.status = PostingParticipationStatus.COMPLETED;
+    }
 }

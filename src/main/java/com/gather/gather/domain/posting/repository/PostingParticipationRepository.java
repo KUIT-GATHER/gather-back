@@ -15,4 +15,9 @@ public interface PostingParticipationRepository extends JpaRepository<PostingPar
 
     List<PostingParticipation> findByUserIdAndStatusNotIn(
             Long userId, Collection<PostingParticipationStatus> excludedStatuses);
+
+    List<PostingParticipation> findByStatusIn(Collection<PostingParticipationStatus> statuses);
+
+    List<PostingParticipation> findByUserIdAndStatusIn(
+            Long userId, Collection<PostingParticipationStatus> statuses);
 }
