@@ -91,6 +91,10 @@ public class SecurityConfig {
                                                 new RegexRequestMatcher(
                                                         "^/api/v1/meetings/[0-9]+$", "GET"))
                                         .permitAll()
+                                        .requestMatchers(
+                                                org.springframework.http.HttpMethod.GET,
+                                                "/api/v1/meetings/*/images")
+                                        .permitAll()
                                         .requestMatchers(PERMIT_ALL_PATHS)
                                         .permitAll()
                                         .requestMatchers(HttpMethod.POST, ADMIN_ONLY_SYNC_PATH)

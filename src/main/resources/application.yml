@@ -46,6 +46,7 @@ gather:
       cleanup-batch-size: ${GATHER_AWS_S3_CLEANUP_BATCH_SIZE:100}
       cleanup-fixed-delay-milliseconds: ${GATHER_AWS_S3_CLEANUP_FIXED_DELAY_MILLISECONDS:3600000}
       cleanup-scheduler-enabled: ${GATHER_AWS_S3_CLEANUP_SCHEDULER_ENABLED:true}
+      meeting-object-prefix: ${GATHER_AWS_S3_MEETING_OBJECT_PREFIX:meetings}
   auth:
     refresh-cookie:
       name: gather_refresh_token

@@ -50,6 +50,7 @@ class S3ObjectStorageTest {
                     10,
                     5L * 1024 * 1024,
                     "profiles",
+                    "meetings",
                     3,
                     100,
                     3_600_000,
