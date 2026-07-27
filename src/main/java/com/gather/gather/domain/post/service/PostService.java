@@ -22,6 +22,7 @@ import java.util.EnumSet;
 import java.util.List;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -46,6 +47,7 @@ public class PostService {
     private final MeetingRepository meetingRepository;
     private final MeetingMemberRepository meetingMemberRepository;
     private final UserRepository userRepository;
+    private final ApplicationEventPublisher eventPublisher;
 
     public List<PostSummaryResponse> getPosts(Long meetingId, PostType typeFilter) {
         Long userId = SecurityUtil.getCurrentUserId();
@@ -96,7 +98,11 @@ public class PostService {
                         request.type(),
                         request.recruitCapacity());
 
-        return PostResponse.from(postRepository.save(post));
+        Post savedPost = postRepository.save(post);
+        if (request.type() == PostType.REVIEW) {
+            eventPublisher.publishEvent(new ReviewPostedEvent(userId, savedPost.getId()));
+        }
+        return PostResponse.from(savedPost);
     }
 
     @Transactional

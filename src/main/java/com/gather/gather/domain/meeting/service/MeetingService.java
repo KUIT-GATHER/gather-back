@@ -33,6 +33,7 @@ import java.util.Set;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -68,6 +69,7 @@ public class MeetingService {
     private final RegionRepository regionRepository;
     private final PostingRepository postingRepository;
     private final MeetingSearchLogService meetingSearchLogService;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Transactional
     public MeetingResponse createMeeting(MeetingCreateRequest request) {
@@ -98,6 +100,7 @@ public class MeetingService {
         MeetingMember hostMember = MeetingMember.createHost(host, savedMeeting);
         meetingMemberRepository.save(hostMember);
 
+        eventPublisher.publishEvent(new MeetingCreatedEvent(userId, savedMeeting.getId()));
         return MeetingResponse.from(savedMeeting, resolveDisplayStatus(savedMeeting));
     }
 
@@ -251,6 +254,9 @@ public class MeetingService {
         MeetingMember member = getPendingJoinRequestForUpdate(meetingId, joinRequestId);
         member.approve();
         meeting.increaseMemberCount();
+        eventPublisher.publishEvent(
+                new MeetingJoinedEvent(
+                        member.getUser().getId(), meeting.getHost().getId(), meetingId));
         return MeetingJoinRequestResponse.from(member);
     }
 

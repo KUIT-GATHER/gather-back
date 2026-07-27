@@ -16,6 +16,7 @@ import com.gather.gather.domain.auth.repository.EmailVerificationRepository;
 import com.gather.gather.domain.auth.repository.RefreshTokenRepository;
 import com.gather.gather.domain.auth.repository.UserRepository;
 import com.gather.gather.domain.region.entity.Region;
+import com.gather.gather.domain.user.service.InterestCategoriesUpdatedEvent;
 import com.gather.gather.global.exception.BusinessException;
 import com.gather.gather.global.exception.ErrorCode;
 import java.security.SecureRandom;
@@ -25,6 +26,7 @@ import java.util.Locale;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.hibernate.exception.ConstraintViolationException;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -56,6 +58,7 @@ public class AuthService {
     private final TokenIssuer tokenIssuer;
     private final SignupValidator signupValidator;
     private final LoginPolicy loginPolicy;
+    private final ApplicationEventPublisher eventPublisher;
     private final SecureRandom secureRandom = new SecureRandom();
 
     @Transactional
@@ -189,12 +192,18 @@ public class AuthService {
                         activityRegion,
                         request.interestCategories());
 
+        User savedUser;
         try {
-            return SignupResponse.from(userRepository.saveAndFlush(user));
+            savedUser = userRepository.saveAndFlush(user);
         } catch (DataIntegrityViolationException exception) {
             throw signupValidator.resolveDuplicateException(
                     exception, email, phoneNumber, nickname);
         }
+
+        eventPublisher.publishEvent(
+                new InterestCategoriesUpdatedEvent(
+                        savedUser.getId(), request.interestCategories().size()));
+        return SignupResponse.from(savedUser);
     }
 
     @Transactional

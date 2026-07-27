@@ -10,6 +10,7 @@ import com.gather.gather.global.exception.BusinessException;
 import com.gather.gather.global.exception.ErrorCode;
 import com.gather.gather.global.util.SecurityUtil;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -21,6 +22,7 @@ public class UserProfileService {
 
     private final UserRepository userRepository;
     private final SignupValidator signupValidator;
+    private final ApplicationEventPublisher eventPublisher;
 
     public UserProfileResponse getMyProfile() {
         return UserProfileResponse.of(findCurrentUser());
@@ -56,6 +58,9 @@ public class UserProfileService {
                     exception, user.getEmail(), user.getPhoneNumber(), request.nickname());
         }
 
+        eventPublisher.publishEvent(
+                new InterestCategoriesUpdatedEvent(
+                        user.getId(), request.interestCategories().size()));
         return UserProfileResponse.of(user);
     }
 
