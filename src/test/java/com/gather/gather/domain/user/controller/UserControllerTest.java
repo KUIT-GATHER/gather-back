@@ -1,13 +1,20 @@
 package com.gather.gather.domain.user.controller;
 
+import static org.hamcrest.Matchers.containsString;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.gather.gather.domain.auth.entity.Gender;
+import com.gather.gather.domain.auth.service.RefreshTokenCookieProvider;
+import com.gather.gather.domain.auth.service.UserWithdrawalService;
 import com.gather.gather.domain.posting.entity.PostingCategory;
 import com.gather.gather.domain.region.dto.RegionResponse;
 import com.gather.gather.domain.user.dto.UserProfileResponse;
@@ -21,7 +28,9 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.http.ResponseCookie;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -32,6 +41,8 @@ class UserControllerTest {
     @Autowired private MockMvc mockMvc;
 
     @MockitoBean private UserProfileService userProfileService;
+    @MockitoBean private UserWithdrawalService userWithdrawalService;
+    @MockitoBean private RefreshTokenCookieProvider refreshTokenCookieProvider;
 
     @Test
     @DisplayName("GET /api/v1/users/me returns the current user's profile")
@@ -115,6 +126,38 @@ class UserControllerTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.error.code").value("VALIDATION_ERROR"));
+    }
+
+    @Test
+    @DisplayName("DELETE /api/v1/users/me withdraws the account and expires the refresh cookie")
+    void withdrawMyAccount_returns200AndClearsCookie() throws Exception {
+        when(refreshTokenCookieProvider.clear())
+                .thenReturn(
+                        ResponseCookie.from("gather_refresh_token", "")
+                                .path("/api/v1/auth")
+                                .maxAge(0)
+                                .build());
+
+        mockMvc.perform(delete("/api/v1/users/me"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(header().string(HttpHeaders.SET_COOKIE, containsString("Max-Age=0")));
+
+        verify(userWithdrawalService).withdrawMyAccount();
+    }
+
+    @Test
+    @DisplayName("DELETE /api/v1/users/me returns 404 when the user no longer exists")
+    void withdrawMyAccount_returns404_whenUserNotFound() throws Exception {
+        when(refreshTokenCookieProvider.clear())
+                .thenReturn(ResponseCookie.from("gather_refresh_token", "").maxAge(0).build());
+        doThrow(new BusinessException(ErrorCode.USER_NOT_FOUND))
+                .when(userWithdrawalService)
+                .withdrawMyAccount();
+
+        mockMvc.perform(delete("/api/v1/users/me"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error.code").value("USER_NOT_FOUND"));
     }
 
     private UserProfileResponse sampleProfile() {
