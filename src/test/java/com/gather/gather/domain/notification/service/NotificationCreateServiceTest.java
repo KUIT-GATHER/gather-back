@@ -1,7 +1,9 @@
 package com.gather.gather.domain.notification.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -12,6 +14,8 @@ import com.gather.gather.domain.notification.enums.NotificationCategory;
 import com.gather.gather.domain.notification.enums.NotificationTargetType;
 import com.gather.gather.domain.notification.enums.NotificationType;
 import com.gather.gather.domain.notification.repository.NotificationRepository;
+import com.gather.gather.global.exception.BusinessException;
+import com.gather.gather.global.exception.ErrorCode;
 import java.util.Optional;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -48,5 +52,25 @@ class NotificationCreateServiceTest {
         assertThat(notification.getCategory()).isEqualTo(NotificationCategory.ACTIVITY);
         assertThat(notification.getTargetId()).isEqualTo(10L);
         verify(notificationRepository).save(notification);
+    }
+
+    @Test
+    @DisplayName("수신자가 존재하지 않으면 알림을 저장하지 않는다")
+    void create_rejectsMissingRecipient() {
+        when(userRepository.findById(1L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(
+                        () ->
+                                notificationCreateService.create(
+                                        1L,
+                                        NotificationType.VOLUNTEER_SCHEDULE,
+                                        "[공고명] 봉사가 내일 진행돼요.",
+                                        NotificationTargetType.POSTING,
+                                        10L))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.USER_NOT_FOUND);
+
+        verify(notificationRepository, never()).save(any(Notification.class));
     }
 }

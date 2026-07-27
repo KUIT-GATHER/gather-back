@@ -83,7 +83,14 @@ public class Notification {
             String message,
             NotificationTargetType targetType,
             Long targetId) {
+        validateTarget(targetType, targetId);
         return new Notification(user, type, message, targetType, targetId);
+    }
+
+    private static void validateTarget(NotificationTargetType targetType, Long targetId) {
+        if (targetType != NotificationTargetType.MY_PAGE && targetId == null) {
+            throw new IllegalArgumentException("이동 대상 ID가 필요한 알림입니다.");
+        }
     }
 
     public boolean isRead() {
@@ -97,6 +104,8 @@ public class Notification {
     }
 
     public void delete() {
-        deletedAt = LocalDateTime.now();
+        if (deletedAt == null) {
+            deletedAt = LocalDateTime.now();
+        }
     }
 }

@@ -19,6 +19,10 @@ public class NotificationCreateService {
     private final NotificationRepository notificationRepository;
     private final UserRepository userRepository;
 
+    /**
+     * 현재 호출자의 트랜잭션에 참여해 알림을 생성한다. 핵심 비즈니스 처리와 알림 실패를 분리해야 하는 연동에서는 AFTER_COMMIT 이벤트 또는 별도 트랜잭션과 예외
+     * 격리 정책을 사용해야 한다.
+     */
     @Transactional
     public Notification create(
             Long recipientUserId,
