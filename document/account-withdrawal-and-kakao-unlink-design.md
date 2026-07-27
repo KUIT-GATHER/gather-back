@@ -245,7 +245,8 @@ public record UserWithdrawnEvent(Long userId) {}
 
 ### 7-3. 동시성
 
-- 탈퇴 API 중복 호출 / 중복 웹훅 / 두 경로 동시 발생: 모두 **이미 WITHDRAWN이면 no-op**이므로 멱등하다. 별도 락을 두지 않는다.
+- 탈퇴 API 중복 호출 / 중복 웹훅 / 두 경로 동시 발생: 모두 **이미 WITHDRAWN이면 no-op**이므로 멱등하다.
+- ~~별도 락을 두지 않는다.~~ → **구현에서 뒤집힘(2026-07-27).** no-op 판정은 순차 실행에서만 멱등하고, 동시 요청은 둘 다 `ACTIVE`를 읽어 `UserWithdrawnEvent`가 두 번 발행된다. 구독자의 모임장 승계 같은 처리가 중복 실행되므로 `AccountTerminationService`는 `UserRepository.findByIdForUpdate`로 상태 검사와 갱신 사이를 잠근다(`ProfileImageService` 선례).
 - 스케줄러는 ShedLock이 없으므로 **단일 인스턴스 전제**다(프로젝트 전체 관례와 동일).
 
 ---
