@@ -12,8 +12,16 @@ import static org.mockito.Mockito.when;
 import com.gather.gather.domain.auth.entity.Gender;
 import com.gather.gather.domain.auth.entity.User;
 import com.gather.gather.domain.auth.repository.UserRepository;
+import com.gather.gather.domain.badge.entity.Badge;
+import com.gather.gather.domain.badge.entity.BadgeCode;
+import com.gather.gather.domain.badge.entity.UserBadge;
+import com.gather.gather.domain.badge.repository.BadgeRepository;
+import com.gather.gather.domain.badge.repository.UserBadgeRepository;
 import com.gather.gather.domain.meeting.repository.MeetingBookmarkRepository;
+import com.gather.gather.domain.mypage.dto.MyPageActivityRecordResponse;
 import com.gather.gather.domain.mypage.dto.MyPageActivityResponse;
+import com.gather.gather.domain.mypage.dto.MyPageActivitySummaryResponse;
+import com.gather.gather.domain.mypage.dto.MyPageBadgeSummaryResponse;
 import com.gather.gather.domain.mypage.dto.MyPageHomeResponse;
 import com.gather.gather.domain.posting.entity.Posting;
 import com.gather.gather.domain.posting.entity.PostingCategory;
@@ -53,6 +61,8 @@ class MyPageServiceTest {
     @Mock private PostingParticipationRepository postingParticipationRepository;
     @Mock private PostingRepository postingRepository;
     @Mock private ProfileImageUrlResolver profileImageUrlResolver;
+    @Mock private BadgeRepository badgeRepository;
+    @Mock private UserBadgeRepository userBadgeRepository;
 
     private MyPageService myPageService;
 
@@ -65,7 +75,9 @@ class MyPageServiceTest {
                         meetingBookmarkRepository,
                         postingParticipationRepository,
                         postingRepository,
-                        profileImageUrlResolver);
+                        profileImageUrlResolver,
+                        badgeRepository,
+                        userBadgeRepository);
     }
 
     @Test
@@ -268,6 +280,152 @@ class MyPageServiceTest {
 
             assertThat(activities).isEmpty();
         }
+    }
+
+    @Test
+    @DisplayName("getActivitySummary counts completed participations per category and totals them")
+    void getActivitySummary_groupsCompletedParticipationsByCategory() {
+        Posting environmentPosting = posting(501L, LocalDate.of(2026, 7, 1));
+        Posting welfarePosting =
+                Posting.builder()
+                        .title("복지 공고")
+                        .status(PostingStatus.RECRUITING)
+                        .activityDate(LocalDate.of(2026, 7, 2))
+                        .actStartDate(LocalDate.of(2026, 7, 2))
+                        .category(PostingCategory.WELFARE)
+                        .build();
+        ReflectionTestUtils.setField(welfarePosting, "id", 502L);
+
+        PostingParticipation completed1 = completedParticipation(501L);
+        PostingParticipation completed2 = completedParticipation(502L);
+
+        try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
+            securityUtil.when(SecurityUtil::getCurrentUserId).thenReturn(USER_ID);
+            when(postingParticipationRepository.findByUserIdAndStatusIn(
+                            eq(USER_ID), anyCollection()))
+                    .thenReturn(List.of(completed1, completed2));
+            when(postingRepository.findAllById(List.of(501L, 502L)))
+                    .thenReturn(List.of(environmentPosting, welfarePosting));
+
+            MyPageActivitySummaryResponse response = myPageService.getActivitySummary();
+
+            assertThat(response.totalCompletedCount()).isEqualTo(2);
+            assertThat(response.categoryBlocks())
+                    .filteredOn(block -> block.category() == PostingCategory.ENVIRONMENT)
+                    .extracting(MyPageActivitySummaryResponse.CategoryBlock::count)
+                    .containsExactly(1L);
+            assertThat(response.categoryBlocks())
+                    .filteredOn(block -> block.category() == PostingCategory.CULTURE)
+                    .extracting(MyPageActivitySummaryResponse.CategoryBlock::count)
+                    .containsExactly(0L);
+        }
+    }
+
+    @Test
+    @DisplayName("getActivityRecords filters by category and sorts by actStartDate descending")
+    void getActivityRecords_filtersByCategoryAndSortsDescending() {
+        Posting olderEnvironment = posting(601L, LocalDate.of(2026, 6, 1));
+        Posting newerEnvironment = posting(602L, LocalDate.of(2026, 7, 1));
+        Posting welfarePosting =
+                Posting.builder()
+                        .title("복지 공고")
+                        .status(PostingStatus.RECRUITING)
+                        .activityDate(LocalDate.of(2026, 7, 10))
+                        .actStartDate(LocalDate.of(2026, 7, 10))
+                        .category(PostingCategory.WELFARE)
+                        .build();
+        ReflectionTestUtils.setField(welfarePosting, "id", 603L);
+
+        try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
+            securityUtil.when(SecurityUtil::getCurrentUserId).thenReturn(USER_ID);
+            when(postingParticipationRepository.findByUserIdAndStatusIn(
+                            eq(USER_ID), anyCollection()))
+                    .thenReturn(
+                            List.of(
+                                    completedParticipation(601L),
+                                    completedParticipation(602L),
+                                    completedParticipation(603L)));
+            when(postingRepository.findAllById(List.of(601L, 602L, 603L)))
+                    .thenReturn(List.of(olderEnvironment, newerEnvironment, welfarePosting));
+
+            List<MyPageActivityRecordResponse> records =
+                    myPageService.getActivityRecords(PostingCategory.ENVIRONMENT);
+
+            assertThat(records)
+                    .extracting(MyPageActivityRecordResponse::postingId)
+                    .containsExactly(602L, 601L);
+        }
+    }
+
+    @Test
+    @DisplayName("getBadges returns earned/total counts and achievedAt only for earned badges")
+    void getBadges_returnsProgressAndAchievedAtForEarnedBadgesOnly() {
+        Badge firstBadge = badge(1L, BadgeCode.FIRST_VOLUNTEER_COMPLETE);
+        Badge secondBadge = badge(2L, BadgeCode.VOLUNTEER_5_COMPLETE);
+        UserBadge earned = UserBadge.create(USER_ID, 1L);
+
+        try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
+            securityUtil.when(SecurityUtil::getCurrentUserId).thenReturn(USER_ID);
+            when(badgeRepository.findAllByOrderByDisplayOrderAsc())
+                    .thenReturn(List.of(firstBadge, secondBadge));
+            when(userBadgeRepository.findByUserId(USER_ID)).thenReturn(List.of(earned));
+
+            MyPageBadgeSummaryResponse response = myPageService.getBadges();
+
+            assertThat(response.earnedCount()).isEqualTo(1);
+            assertThat(response.totalCount()).isEqualTo(2);
+            assertThat(response.progressRate()).isEqualTo(0.5);
+            assertThat(response.badges())
+                    .filteredOn(card -> card.badgeId().equals(1L))
+                    .extracting(card -> card.achievedAt() != null)
+                    .containsExactly(true);
+            assertThat(response.badges())
+                    .filteredOn(card -> card.badgeId().equals(2L))
+                    .extracting(card -> card.achievedAt() != null)
+                    .containsExactly(false);
+        }
+    }
+
+    @Test
+    @DisplayName("getBadges returns zero counts when no badges are seeded yet")
+    void getBadges_returnsZeroCounts_whenBadgeTableEmpty() {
+        try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
+            securityUtil.when(SecurityUtil::getCurrentUserId).thenReturn(USER_ID);
+            when(badgeRepository.findAllByOrderByDisplayOrderAsc()).thenReturn(List.of());
+            when(userBadgeRepository.findByUserId(USER_ID)).thenReturn(List.of());
+
+            MyPageBadgeSummaryResponse response = myPageService.getBadges();
+
+            assertThat(response.earnedCount()).isZero();
+            assertThat(response.totalCount()).isZero();
+            assertThat(response.progressRate()).isZero();
+            assertThat(response.badges()).isEmpty();
+        }
+    }
+
+    private PostingParticipation completedParticipation(Long postingId) {
+        PostingParticipation participation = PostingParticipation.create(USER_ID, postingId);
+        participation.complete();
+        return participation;
+    }
+
+    /** Badge는 Flyway 시드 데이터로만 채워지고 앱 코드에서 생성하지 않아 public 팩토리가 없다 - 테스트 전용으로 리플렉션 생성한다. */
+    private Badge badge(Long id, BadgeCode code) {
+        Badge createdBadge;
+        try {
+            var constructor = Badge.class.getDeclaredConstructor();
+            constructor.setAccessible(true);
+            createdBadge = constructor.newInstance();
+        } catch (ReflectiveOperationException exception) {
+            throw new IllegalStateException("테스트용 Badge 생성 실패", exception);
+        }
+        ReflectionTestUtils.setField(createdBadge, "id", id);
+        ReflectionTestUtils.setField(createdBadge, "code", code);
+        ReflectionTestUtils.setField(createdBadge, "name", code.name());
+        ReflectionTestUtils.setField(createdBadge, "description", "설명");
+        ReflectionTestUtils.setField(createdBadge, "targetDescription", "목표");
+        ReflectionTestUtils.setField(createdBadge, "displayOrder", id.intValue());
+        return createdBadge;
     }
 
     private User user() {

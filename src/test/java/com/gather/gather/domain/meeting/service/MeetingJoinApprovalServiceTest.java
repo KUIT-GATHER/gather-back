@@ -32,6 +32,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 
@@ -49,6 +50,7 @@ class MeetingJoinApprovalServiceTest {
     @Mock private RegionRepository regionRepository;
     @Mock private PostingRepository postingRepository;
     @Mock private MeetingSearchLogService meetingSearchLogService;
+    @Mock private ApplicationEventPublisher eventPublisher;
 
     @InjectMocks private MeetingService meetingService;
 

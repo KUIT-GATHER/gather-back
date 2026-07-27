@@ -48,6 +48,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -62,6 +63,7 @@ class AuthServiceTest {
     @Mock private PasswordEncoder passwordEncoder;
     @Mock private EmailSender emailSender;
     @Mock private TokenProvider tokenProvider;
+    @Mock private ApplicationEventPublisher eventPublisher;
 
     private AuthService authService;
 
@@ -79,7 +81,8 @@ class AuthServiceTest {
                         tokenProvider,
                         new TokenIssuer(tokenProvider, refreshTokenRepository),
                         new SignupValidator(userRepository, regionRepository),
-                        new LoginPolicy());
+                        new LoginPolicy(),
+                        eventPublisher);
     }
 
     @Test

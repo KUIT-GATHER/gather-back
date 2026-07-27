@@ -30,6 +30,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.MockedStatic;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.test.util.ReflectionTestUtils;
 
@@ -41,12 +42,14 @@ class UserProfileServiceTest {
 
     @Mock private UserRepository userRepository;
     @Mock private SignupValidator signupValidator;
+    @Mock private ApplicationEventPublisher eventPublisher;
 
     private UserProfileService userProfileService;
 
     @BeforeEach
     void setUp() {
-        userProfileService = new UserProfileService(userRepository, signupValidator);
+        userProfileService =
+                new UserProfileService(userRepository, signupValidator, eventPublisher);
     }
 
     @Test
