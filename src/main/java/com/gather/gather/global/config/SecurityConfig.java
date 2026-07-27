@@ -39,6 +39,8 @@ public class SecurityConfig {
         "/health",
         "/api/v1/auth/**",
         "/api/v1/categories",
+        // 카카오 서버가 어드민 키로 인증해 호출한다. JWT가 없으므로 등록하지 않으면 401로 막혀 웹훅이 유실된다.
+        "/api/v1/webhooks/kakao/unlink",
         "/swagger-ui/**",
         "/swagger-ui.html",
         "/v3/api-docs/",
