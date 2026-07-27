@@ -49,7 +49,8 @@ public class MeetingImageService {
 
     @Transactional(readOnly = true)
     public MeetingImageListResponse getImages(Long meetingId) {
-        if (!meetingRepository.existsById(meetingId)) {
+        // Medium: 상세 조회와 동일하게 소프트딜리트된 모임은 404 처리.
+        if (meetingRepository.findByIdAndDeletedAtIsNull(meetingId).isEmpty()) {
             throw new BusinessException(ErrorCode.MEETING_NOT_FOUND);
         }
         List<String> urls =
@@ -69,7 +70,7 @@ public class MeetingImageService {
 
         Meeting meeting =
                 meetingRepository
-                        .findByIdForUpdate(meetingId)
+                        .findByIdAndDeletedAtIsNullForUpdate(meetingId)
                         .orElseThrow(() -> new BusinessException(ErrorCode.MEETING_NOT_FOUND));
         if (!meeting.getHost().getId().equals(userId)) {
             throw new BusinessException(ErrorCode.MEETING_IMAGE_FORBIDDEN);
@@ -106,10 +107,6 @@ public class MeetingImageService {
                 properties.presignedUrlExpirationSeconds());
     }
 
-    /**
-     * 업로드된 이미지 세트를 모임에 반영한다. objectKeys 에는 이번에 새로 업로드한 key와, 유지할 기존 live key를 섞어 순서대로 담을 수 있다(최대
-     * 3장).
-     */
     public MeetingImageUpdateResponse updateImages(
             Long meetingId, MeetingImageUpdateRequest request) {
         Long userId = SecurityUtil.getCurrentUserId();
@@ -129,7 +126,6 @@ public class MeetingImageService {
         for (String key : keys) {
             MeetingImageFormat format = validateAndGetKeyFormat(key, meetingId);
             if (meetingImageRepository.existsByMeetingIdAndObjectKey(meetingId, key)) {
-                // 이미 반영된 기존 이미지는 재검증 불필요.
                 verified.add(VerifiedMeetingImage.kept(key, format.contentType()));
                 continue;
             }
@@ -141,9 +137,17 @@ public class MeetingImageService {
                                             new BusinessException(
                                                     ErrorCode.INVALID_MEETING_IMAGE_KEY));
             upload.validatePendingSession(LocalDateTime.now(), format.contentType());
-            StoredObjectMetadata metadata = objectStorage.getMetadata(key);
-            validateStoredObject(metadata, format, upload);
-            byte[] content = objectStorage.getContent(key, metadata.eTag());
+
+            StoredObjectMetadata metadata;
+            byte[] content;
+            try {
+                metadata = objectStorage.getMetadata(key);
+                validateStoredObject(metadata, format, upload);
+                content = objectStorage.getContent(key, metadata.eTag());
+            } catch (BusinessException e) {
+                // Medium: 공용 S3 계층의 profile 전용 오류 코드를 모임 이미지 계약으로 변환.
+                throw new BusinessException(mapStorageError(e.getErrorCode()));
+            }
             if (content.length != metadata.contentLength()) {
                 throw new BusinessException(ErrorCode.MEETING_IMAGE_SIZE_MISMATCH);
             }
@@ -157,6 +161,15 @@ public class MeetingImageService {
 
         List<String> urls = verified.stream().map(v -> urlResolver.resolve(v.objectKey())).toList();
         return new MeetingImageUpdateResponse(urls);
+    }
+
+    // ⚠️ 아래 두 case의 문자열은 실제 ErrorCode의 profile 전용 코드명과 일치해야 한다(오타 시 매핑만 안 될 뿐 컴파일은 됨).
+    private ErrorCode mapStorageError(ErrorCode code) {
+        return switch (code.name()) {
+            case "PROFILE_IMAGE_OBJECT_NOT_FOUND" -> ErrorCode.MEETING_IMAGE_OBJECT_NOT_FOUND;
+            case "PROFILE_IMAGE_UPLOAD_CONFLICT" -> ErrorCode.MEETING_IMAGE_UPLOAD_CONFLICT;
+            default -> code;
+        };
     }
 
     private void validateKeyList(List<String> keys) {

@@ -10,31 +10,20 @@ import java.time.LocalDateTime;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
-import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+/** 실제 정리 로직(트랜잭션). @Scheduled는 프록시 우회를 피하기 위해 별도 Bean(Scheduler)에서 호출한다. */
 @Slf4j
 @Service
 @RequiredArgsConstructor
-@ConditionalOnProperty(
-        prefix = "gather.aws.s3",
-        name = "cleanup-scheduler-enabled",
-        havingValue = "true")
 public class MeetingImageCleanupService {
 
     private final MeetingImageUploadRepository meetingImageUploadRepository;
     private final ObjectStorage objectStorage;
     private final S3Properties properties;
-
-    @Scheduled(fixedDelayString = "${gather.aws.s3.cleanup-fixed-delay-milliseconds}")
-    public void cleanup() {
-        deleteExpiredPendingUploads();
-        deleteSupersededObjects();
-    }
 
     /** 반영되지 않고 만료된 발급 건: S3 객체와 추적 행을 제거한다. */
     @Transactional
@@ -59,13 +48,13 @@ public class MeetingImageCleanupService {
         return count;
     }
 
-    /** 교체로 밀려난 객체: S3 삭제에 성공하면 추적 행을 제거하고, 실패하면 다음 배치가 재시도한다. */
+    /** 교체로 밀려나고 URL이 만료된 객체: S3 삭제 성공 시 추적 행 제거, 실패 시 다음 배치 재시도. */
     @Transactional
     public int deleteSupersededObjects() {
         Pageable page = PageRequest.of(0, properties.cleanupBatchSize());
         List<MeetingImageUpload> superseded =
                 meetingImageUploadRepository.findDeletionPendingForUpdate(
-                        MeetingImageUploadStatus.SUPERSEDED, page);
+                        MeetingImageUploadStatus.SUPERSEDED, LocalDateTime.now(), page);
         int count = 0;
         for (MeetingImageUpload upload : superseded) {
             try {

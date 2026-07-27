@@ -15,10 +15,8 @@ import org.springframework.data.repository.query.Param;
 public interface MeetingRepository extends JpaRepository<Meeting, Long> {
     Optional<Meeting> findByIdAndDeletedAtIsNull(Long id);
 
+    // 가입 승인/거절 등 동시성 직렬화가 필요한 흐름에서 사용. 비관 락 필수(PR #95 보완분).
     @Lock(LockModeType.PESSIMISTIC_WRITE)
-    @Query("select m from Meeting m where m.id = :id and m.deletedAt is null")
-    Optional<Meeting> findByIdForUpdate(Long id);
-
     @Query(
             """
             SELECT m

@@ -39,14 +39,17 @@ public interface MeetingImageUploadRepository extends JpaRepository<MeetingImage
     List<MeetingImageUpload> findExpiredForUpdate(
             MeetingImageUploadStatus status, LocalDateTime now, Pageable pageable);
 
+    // Blocker 4: Presigned URL 만료(expiresAt <= now) 이후에만 삭제 대상으로 조회해,
+    // 아직 유효한 옛 URL로 같은 key를 재업로드하는 orphan 시나리오를 막는다.
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query(
             """
             select u from MeetingImageUpload u
             where u.status = :status
               and u.objectDeleted = false
+              and u.expiresAt <= :now
             order by u.id
             """)
     List<MeetingImageUpload> findDeletionPendingForUpdate(
-            MeetingImageUploadStatus status, Pageable pageable);
+            MeetingImageUploadStatus status, LocalDateTime now, Pageable pageable);
 }
