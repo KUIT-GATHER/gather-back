@@ -36,7 +36,7 @@ class KakaoApiClientTest {
     private static final String REDIRECT_URI = "https://gathernow.kr/login/kakao/callback";
     private static final String ADMIN_KEY = "test-kakao-admin-key-0123456789a";
     private static final String APP_ID = "1234567";
-    private static final Long PROVIDER_USER_ID = 4242L;
+    private static final String PROVIDER_USER_ID = "4242";
     private static final String SIGNUP_TOKEN_SECRET =
             "z9tOf6reUdkTRI0KFFiydLKdxpayBBxVWSAm7EJTgKXolFCFvnQ4qViBrdh6y7yP";
 
@@ -257,7 +257,7 @@ class KakaoApiClientTest {
     void unlink_sendsAdminKeyAndTargetId() {
         MultiValueMap<String, String> expectedForm = new LinkedMultiValueMap<>();
         expectedForm.add("target_id_type", "user_id");
-        expectedForm.add("target_id", String.valueOf(PROVIDER_USER_ID));
+        expectedForm.add("target_id", PROVIDER_USER_ID);
 
         apiServer
                 .expect(requestTo(API_BASE_URL + "/v1/user/unlink"))

@@ -12,6 +12,7 @@ import com.gather.gather.domain.auth.entity.RefreshToken;
 import com.gather.gather.domain.auth.entity.User;
 import com.gather.gather.domain.auth.entity.UserStatus;
 import com.gather.gather.domain.auth.entity.WithdrawalReason;
+import com.gather.gather.domain.auth.kakao.client.KakaoApiClient;
 import com.gather.gather.domain.auth.repository.RefreshTokenRepository;
 import com.gather.gather.domain.auth.repository.UserRepository;
 import com.gather.gather.domain.region.entity.Region;
@@ -25,6 +26,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.HttpHeaders;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.context.event.ApplicationEvents;
 import org.springframework.test.context.event.RecordApplicationEvents;
 import org.springframework.test.web.servlet.MockMvc;
@@ -41,6 +43,9 @@ import org.springframework.transaction.annotation.Transactional;
 class AccountWithdrawalIntegrationTest {
 
     private static final String WITHDRAWAL_PATH = "/api/v1/users/me";
+
+    // 테스트 사용자는 카카오 연동이 없어 호출될 일이 없지만, 연동이 있는 픽스처가 추가되는 순간 실제 카카오로 나가는 것을 막는다.
+    @MockitoBean private KakaoApiClient kakaoApiClient;
 
     @Autowired private MockMvc mockMvc;
     @Autowired private TokenProvider tokenProvider;

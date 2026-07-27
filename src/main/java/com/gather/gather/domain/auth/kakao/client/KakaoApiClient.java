@@ -170,10 +170,10 @@ public class KakaoApiClient {
      *
      * <p>다른 호출과 달리 예외를 던지지 않는다. 이 시점엔 탈퇴가 이미 커밋돼 되돌릴 수 없고, 실패를 500으로 올리면 탈퇴에 성공한 사용자가 에러 화면을 보게 된다.
      */
-    public KakaoUnlinkResult unlink(Long providerUserId) {
+    public KakaoUnlinkResult unlink(String providerUserId) {
         MultiValueMap<String, String> form = new LinkedMultiValueMap<>();
         form.add("target_id_type", "user_id");
-        form.add("target_id", String.valueOf(providerUserId));
+        form.add("target_id", providerUserId);
 
         try {
             HttpStatusCode status =
