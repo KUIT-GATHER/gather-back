@@ -66,7 +66,7 @@ class AccountTerminationServiceTest {
     @DisplayName("탈퇴 처리하면 상태 전이·토큰 삭제·이벤트 발행이 모두 수행된다")
     void terminate_transitionsAndPublishes() {
         User user = activeUser();
-        when(userRepository.findById(USER_ID)).thenReturn(Optional.of(user));
+        when(userRepository.findByIdForUpdate(USER_ID)).thenReturn(Optional.of(user));
 
         LocalDateTime before = LocalDateTime.now();
         accountTerminationService.terminate(USER_ID, WithdrawalReason.SELF);
@@ -86,7 +86,7 @@ class AccountTerminationServiceTest {
     @DisplayName("웹훅 경로는 탈퇴 사유가 KAKAO_UNLINK로 기록된다")
     void terminate_recordsGivenReason() {
         User user = activeUser();
-        when(userRepository.findById(USER_ID)).thenReturn(Optional.of(user));
+        when(userRepository.findByIdForUpdate(USER_ID)).thenReturn(Optional.of(user));
 
         accountTerminationService.terminate(USER_ID, WithdrawalReason.KAKAO_UNLINK);
 
@@ -99,7 +99,7 @@ class AccountTerminationServiceTest {
         User user = activeUser();
         LocalDateTime firstWithdrawnAt = LocalDateTime.of(2026, 7, 20, 12, 0);
         user.withdraw(WithdrawalReason.SELF, firstWithdrawnAt);
-        when(userRepository.findById(USER_ID)).thenReturn(Optional.of(user));
+        when(userRepository.findByIdForUpdate(USER_ID)).thenReturn(Optional.of(user));
 
         accountTerminationService.terminate(USER_ID, WithdrawalReason.KAKAO_UNLINK);
 
@@ -112,7 +112,7 @@ class AccountTerminationServiceTest {
     @Test
     @DisplayName("사용자가 없으면 USER_NOT_FOUND를 던진다")
     void terminate_userNotFound_throws() {
-        when(userRepository.findById(USER_ID)).thenReturn(Optional.empty());
+        when(userRepository.findByIdForUpdate(USER_ID)).thenReturn(Optional.empty());
 
         assertThatThrownBy(
                         () -> accountTerminationService.terminate(USER_ID, WithdrawalReason.SELF))

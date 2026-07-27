@@ -31,12 +31,15 @@ public class AccountTerminationService {
     /**
      * 이미 WITHDRAWN이면 아무것도 하지 않는다. Access Token이 최대 30분 잔존해 탈퇴 API가 다시 호출될 수 있고, 웹훅도 중복 수신될 수 있어 두
      * 경로 모두 멱등해야 한다.
+     *
+     * <p>상태 검사와 갱신 사이를 비관적 락으로 막는다. 락이 없으면 동시 요청이 둘 다 ACTIVE를 읽어 이벤트가 두 번 발행되고, 구독자의 모임장 승계 같은 처리가
+     * 중복 실행된다.
      */
     @Transactional
     public void terminate(Long userId, WithdrawalReason reason) {
         User user =
                 userRepository
-                        .findById(userId)
+                        .findByIdForUpdate(userId)
                         .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
 
         if (user.getStatus() == UserStatus.WITHDRAWN) {

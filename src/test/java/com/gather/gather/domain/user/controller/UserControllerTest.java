@@ -147,17 +147,16 @@ class UserControllerTest {
     }
 
     @Test
-    @DisplayName("DELETE /api/v1/users/me returns 404 when the user no longer exists")
+    @DisplayName("DELETE /api/v1/users/me returns 404 and keeps the session when the user is gone")
     void withdrawMyAccount_returns404_whenUserNotFound() throws Exception {
-        when(refreshTokenCookieProvider.clear())
-                .thenReturn(ResponseCookie.from("gather_refresh_token", "").maxAge(0).build());
         doThrow(new BusinessException(ErrorCode.USER_NOT_FOUND))
                 .when(userWithdrawalService)
                 .withdrawMyAccount();
 
         mockMvc.perform(delete("/api/v1/users/me"))
                 .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.error.code").value("USER_NOT_FOUND"));
+                .andExpect(jsonPath("$.error.code").value("USER_NOT_FOUND"))
+                .andExpect(header().doesNotExist(HttpHeaders.SET_COOKIE));
     }
 
     private UserProfileResponse sampleProfile() {

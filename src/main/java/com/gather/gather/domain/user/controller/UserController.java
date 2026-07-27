@@ -195,8 +195,9 @@ public class UserController {
     })
     @DeleteMapping
     public ApiResponse<Void> withdrawMyAccount(HttpServletResponse response) {
-        response.addHeader(HttpHeaders.SET_COOKIE, refreshTokenCookieProvider.clear().toString());
         userWithdrawalService.withdrawMyAccount();
+        // 탈퇴가 실패하면 로그인 상태를 유지해야 하므로 쿠키 만료는 성공 뒤에만 내보낸다.
+        response.addHeader(HttpHeaders.SET_COOKIE, refreshTokenCookieProvider.clear().toString());
         return ApiResponse.success(null);
     }
 }
