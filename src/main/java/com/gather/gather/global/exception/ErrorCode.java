@@ -46,6 +46,9 @@ public enum ErrorCode {
     USER_NOT_FOUND(HttpStatus.NOT_FOUND, "사용자를 찾을 수 없습니다."),
     MEETING_NOT_FOUND(HttpStatus.NOT_FOUND, "모임을 찾을 수 없습니다."),
     MEETING_ALREADY_JOINED(HttpStatus.CONFLICT, "이미 참여한 모임입니다."),
+    MEETING_JOIN_REQUEST_DUPLICATE(HttpStatus.CONFLICT, "이미 가입을 신청한 모임입니다."),
+    MEETING_JOIN_REQUEST_NOT_FOUND(HttpStatus.NOT_FOUND, "가입 신청을 찾을 수 없습니다."),
+    MEETING_HOST_ONLY(HttpStatus.FORBIDDEN, "모임장만 가입 신청을 처리할 수 있습니다."),
     MEETING_FULL(HttpStatus.CONFLICT, "모임 인원이 가득 찼습니다."),
     MEETING_CLOSED(HttpStatus.CONFLICT, "마감된 모임입니다."),
     INVALID_MEETING_TIME(HttpStatus.BAD_REQUEST, "모임 시간이 올바르지 않습니다."),
@@ -53,14 +56,46 @@ public enum ErrorCode {
     MEETING_BOOKMARK_NOT_FOUND(HttpStatus.NOT_FOUND, "북마크를 찾을 수 없습니다."),
 
     POSTING_NOT_FOUND(HttpStatus.NOT_FOUND, "봉사공고를 찾을 수 없습니다."),
+    POSTING_CLOSED(HttpStatus.CONFLICT, "마감된 봉사공고입니다."),
     BOOKMARK_DUPLICATE(HttpStatus.CONFLICT, "이미 북마크한 공고입니다."),
     BOOKMARK_NOT_FOUND(HttpStatus.NOT_FOUND, "북마크를 찾을 수 없습니다."),
+    PARTICIPATION_DUPLICATE(HttpStatus.CONFLICT, "이미 신청한 봉사입니다."),
+    PARTICIPATION_NOT_FOUND(HttpStatus.NOT_FOUND, "신청 내역을 찾을 수 없습니다."),
+    PARTICIPATION_CANCEL_NOT_ALLOWED(
+            HttpStatus.CONFLICT, "이력 보존을 위해 완료되었거나 후기가 작성된 신청은 취소할 수 없습니다."),
+    POSTING_APPLICATION_UNAVAILABLE(HttpStatus.CONFLICT, "1365 신청 정보가 연동되지 않아 신청할 수 없는 공고입니다."),
+
+    UNSUPPORTED_PROFILE_IMAGE_TYPE(HttpStatus.BAD_REQUEST, "지원하지 않는 프로필 이미지 형식입니다."),
+    PROFILE_IMAGE_SIZE_EXCEEDED(HttpStatus.BAD_REQUEST, "프로필 이미지의 허용 크기를 초과했습니다."),
+    INVALID_PROFILE_IMAGE_KEY(HttpStatus.BAD_REQUEST, "올바르지 않은 프로필 이미지 경로입니다."),
+    PROFILE_IMAGE_OBJECT_NOT_FOUND(HttpStatus.NOT_FOUND, "업로드된 프로필 이미지 객체를 찾을 수 없습니다."),
+    PROFILE_IMAGE_UPLOAD_EXPIRED(HttpStatus.BAD_REQUEST, "프로필 이미지 업로드 요청이 만료되었습니다."),
+    PROFILE_IMAGE_UPLOAD_LIMIT_EXCEEDED(
+            HttpStatus.TOO_MANY_REQUESTS, "처리되지 않은 프로필 이미지 업로드 요청이 너무 많습니다."),
+    PROFILE_IMAGE_SIZE_MISMATCH(HttpStatus.BAD_REQUEST, "요청한 크기와 업로드된 이미지 크기가 다릅니다."),
+    INVALID_PROFILE_IMAGE_CONTENT(HttpStatus.BAD_REQUEST, "실제 프로필 이미지 형식이 올바르지 않습니다."),
+    PROFILE_IMAGE_UPLOAD_CONFLICT(HttpStatus.CONFLICT, "업로드된 프로필 이미지가 변경되어 다시 시도해야 합니다."),
+    S3_OPERATION_FAILED(HttpStatus.BAD_GATEWAY, "이미지 저장소 연동에 실패했습니다."),
 
     MEETING_MEMBER_REQUIRED(HttpStatus.FORBIDDEN, "모임에 가입해야 이용할 수 있습니다."),
     POST_NOT_FOUND(HttpStatus.NOT_FOUND, "게시글을 찾을 수 없습니다."),
     POST_FORBIDDEN(HttpStatus.FORBIDDEN, "게시글에 대한 권한이 없습니다."),
     POST_ACCESS_DENIED(HttpStatus.FORBIDDEN, "가입하지 않은 모임의 게시글은 열람할 수 없습니다."),
     NOTICE_HOST_ONLY(HttpStatus.FORBIDDEN, "공지는 모임장만 작성할 수 있습니다."),
+
+    UNSUPPORTED_MEETING_IMAGE_TYPE(HttpStatus.BAD_REQUEST, "지원하지 않는 모임 이미지 형식입니다."),
+    MEETING_IMAGE_SIZE_EXCEEDED(HttpStatus.BAD_REQUEST, "모임 이미지의 허용 크기를 초과했습니다."),
+    INVALID_MEETING_IMAGE_KEY(HttpStatus.BAD_REQUEST, "올바르지 않은 모임 이미지 경로입니다."),
+    MEETING_IMAGE_UPLOAD_EXPIRED(HttpStatus.BAD_REQUEST, "모임 이미지 업로드 요청이 만료되었습니다."),
+    MEETING_IMAGE_UPLOAD_LIMIT_EXCEEDED(
+            HttpStatus.TOO_MANY_REQUESTS, "처리되지 않은 모임 이미지 업로드 요청이 너무 많습니다."),
+    MEETING_IMAGE_SIZE_MISMATCH(HttpStatus.BAD_REQUEST, "요청한 크기와 업로드된 이미지 크기가 다릅니다."),
+    INVALID_MEETING_IMAGE_CONTENT(HttpStatus.BAD_REQUEST, "실제 모임 이미지 형식이 올바르지 않습니다."),
+    MEETING_IMAGE_FORBIDDEN(HttpStatus.FORBIDDEN, "모임 이미지는 모임장만 변경할 수 있습니다."),
+    MEETING_IMAGE_COUNT_EXCEEDED(HttpStatus.BAD_REQUEST, "모임 이미지는 최대 3장까지 등록할 수 있습니다."),
+    MEETING_IMAGE_CONFLICT(HttpStatus.CONFLICT, "다른 요청이 모임 이미지를 변경했습니다. 다시 시도해주세요."),
+    MEETING_IMAGE_OBJECT_NOT_FOUND(HttpStatus.NOT_FOUND, "업로드된 모임 이미지 객체를 찾을 수 없습니다."),
+    MEETING_IMAGE_UPLOAD_CONFLICT(HttpStatus.CONFLICT, "이미 업로드된 모임 이미지 객체입니다."),
     ;
 
     private final HttpStatus status;

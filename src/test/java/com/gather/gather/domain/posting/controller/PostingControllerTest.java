@@ -271,7 +271,8 @@ class PostingControllerTest {
                         PostingCategory.ENVIRONMENT,
                         List.of(new PostingLocationResponse(1, "동구 일대", null, null)),
                         null,
-                        null);
+                        null,
+                        true);
         when(postingService.getPosting(1L)).thenReturn(response);
 
         mockMvc.perform(get("/api/v1/postings/1"))
@@ -280,7 +281,8 @@ class PostingControllerTest {
                 .andExpect(jsonPath("$.data.id").value(1))
                 .andExpect(jsonPath("$.data.regionName").value("동구"))
                 .andExpect(jsonPath("$.data.locations").isArray())
-                .andExpect(jsonPath("$.data.locations.length()").value(1));
+                .andExpect(jsonPath("$.data.locations.length()").value(1))
+                .andExpect(jsonPath("$.data.bookmarked").value(true));
     }
 
     @Test

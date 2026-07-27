@@ -4,11 +4,16 @@ import com.gather.gather.domain.auth.entity.User;
 import com.gather.gather.domain.auth.repository.UserRepository;
 import com.gather.gather.domain.meeting.dto.MeetingCreateRequest;
 import com.gather.gather.domain.meeting.dto.MeetingDetailResponse;
+import com.gather.gather.domain.meeting.dto.MeetingJoinRequestResponse;
+import com.gather.gather.domain.meeting.dto.MeetingJoinResponse;
 import com.gather.gather.domain.meeting.dto.MeetingResponse;
+import com.gather.gather.domain.meeting.dto.PostingMeetingResponse;
 import com.gather.gather.domain.meeting.entity.Meeting;
 import com.gather.gather.domain.meeting.entity.MeetingMember;
+import com.gather.gather.domain.meeting.enums.MeetingMemberRole;
 import com.gather.gather.domain.meeting.enums.MeetingMemberStatus;
 import com.gather.gather.domain.meeting.enums.MeetingStatus;
+import com.gather.gather.domain.meeting.repository.MeetingBookmarkRepository;
 import com.gather.gather.domain.meeting.repository.MeetingMemberRepository;
 import com.gather.gather.domain.meeting.repository.MeetingRepository;
 import com.gather.gather.domain.posting.entity.Posting;
@@ -21,8 +26,11 @@ import com.gather.gather.global.exception.ErrorCode;
 import com.gather.gather.global.util.SecurityUtil;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -30,6 +38,7 @@ import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
@@ -51,10 +60,12 @@ public class MeetingService {
                     "updatedAt");
 
     private final MeetingRepository meetingRepository;
+    private final MeetingBookmarkRepository meetingBookmarkRepository;
     private final MeetingMemberRepository meetingMemberRepository;
     private final UserRepository userRepository;
     private final RegionRepository regionRepository;
     private final PostingRepository postingRepository;
+    private final MeetingSearchLogService meetingSearchLogService;
 
     @Transactional
     public MeetingResponse createMeeting(MeetingCreateRequest request) {
@@ -104,31 +115,123 @@ public class MeetingService {
                                         MeetingResponse.from(
                                                 meeting, resolveDisplayStatus(meeting)));
 
+        logSearchKeywordSafely(keyword);
+
         return PageResponse.from(responses);
+    }
+
+    public PageResponse<PostingMeetingResponse> getMeetingsByPosting(
+            Long postingId, Pageable pageable) {
+        validateSort(pageable.getSort());
+
+        if (!postingRepository.existsById(postingId)) {
+            throw new BusinessException(ErrorCode.POSTING_NOT_FOUND);
+        }
+
+        Page<Meeting> meetings =
+                meetingRepository.findAllByVolunteerPostingIdAndDeletedAtIsNull(
+                        postingId, pageable);
+        Map<Long, MeetingMemberRole> membershipRoles =
+                getMembershipRoles(SecurityUtil.getCurrentUserIdOrNull(), meetings.getContent());
+
+        Page<PostingMeetingResponse> responses =
+                meetings.map(
+                        meeting -> {
+                            MeetingMemberRole role = membershipRoles.get(meeting.getId());
+                            return PostingMeetingResponse.from(
+                                    meeting,
+                                    resolveDisplayStatus(meeting),
+                                    role != null,
+                                    role == MeetingMemberRole.HOST);
+                        });
+
+        return PageResponse.from(responses);
+    }
+
+    private Map<Long, MeetingMemberRole> getMembershipRoles(Long userId, List<Meeting> meetings) {
+        if (userId == null || meetings.isEmpty()) {
+            return Map.of();
+        }
+
+        List<Long> meetingIds = meetings.stream().map(Meeting::getId).toList();
+        return meetingMemberRepository
+                .findAllByUserIdAndStatusAndMeetingIdInFetchMeeting(
+                        userId, MeetingMemberStatus.APPROVED, meetingIds)
+                .stream()
+                .collect(
+                        Collectors.toMap(
+                                member -> member.getMeeting().getId(), MeetingMember::getRole));
     }
 
     public MeetingDetailResponse getMeeting(Long meetingId) {
         Meeting meeting = getMeetingEntity(meetingId);
-        return MeetingDetailResponse.from(meeting, resolveDisplayStatus(meeting));
+        return MeetingDetailResponse.from(
+                meeting, resolveDisplayStatus(meeting), isBookmarkedByCurrentUser(meetingId));
+    }
+
+    /** 인증이 선택적인 상세 조회이므로 비로그인 사용자는 항상 false를 받는다. */
+    private boolean isBookmarkedByCurrentUser(Long meetingId) {
+        Long userId = SecurityUtil.getCurrentUserIdOrNull();
+        return userId != null
+                && meetingBookmarkRepository.existsByUserIdAndMeetingId(userId, meetingId);
     }
 
     @Transactional
-    public MeetingResponse joinMeeting(Long meetingId) {
+    public MeetingJoinResponse joinMeeting(Long meetingId) {
         Long userId = SecurityUtil.getCurrentUserId();
         User user = getUser(userId);
         Meeting meeting = getMeetingEntityForUpdate(meetingId);
 
         validateJoinableMeeting(meeting, userId);
 
+        MeetingMember member =
+                meetingMemberRepository
+                        .findByMeeting_IdAndUser_Id(meetingId, userId)
+                        .map(
+                                existingMember -> {
+                                    existingMember.requestAgain();
+                                    return existingMember;
+                                })
+                        .orElseGet(() -> MeetingMember.createMember(user, meeting));
+
         try {
-            meetingMemberRepository.saveAndFlush(MeetingMember.createMember(user, meeting));
+            MeetingMember savedMember = meetingMemberRepository.saveAndFlush(member);
+            return MeetingJoinResponse.from(savedMember);
         } catch (DataIntegrityViolationException exception) {
-            throw new BusinessException(ErrorCode.MEETING_ALREADY_JOINED);
+            throw new BusinessException(ErrorCode.MEETING_JOIN_REQUEST_DUPLICATE);
         }
+    }
 
+    public List<MeetingJoinRequestResponse> getPendingJoinRequests(Long meetingId) {
+        Meeting meeting = getMeetingEntity(meetingId);
+        validateHost(meeting, SecurityUtil.getCurrentUserId());
+
+        return meetingMemberRepository.findPendingByMeetingIdFetchUser(meetingId).stream()
+                .map(MeetingJoinRequestResponse::from)
+                .toList();
+    }
+
+    @Transactional
+    public MeetingJoinRequestResponse approveJoinRequest(Long meetingId, Long joinRequestId) {
+        Long userId = SecurityUtil.getCurrentUserId();
+        Meeting meeting = getMeetingEntityForUpdate(meetingId);
+        validateHost(meeting, userId);
+        validateApprovableMeeting(meeting);
+
+        MeetingMember member = getPendingJoinRequestForUpdate(meetingId, joinRequestId);
+        member.approve();
         meeting.increaseMemberCount();
+        return MeetingJoinRequestResponse.from(member);
+    }
 
-        return MeetingResponse.from(meeting, resolveDisplayStatus(meeting));
+    @Transactional
+    public MeetingJoinRequestResponse rejectJoinRequest(Long meetingId, Long joinRequestId) {
+        Meeting meeting = getMeetingEntityForUpdate(meetingId);
+        validateHost(meeting, SecurityUtil.getCurrentUserId());
+
+        MeetingMember member = getPendingJoinRequestForUpdate(meetingId, joinRequestId);
+        member.reject();
+        return MeetingJoinRequestResponse.from(member);
     }
 
     public List<MeetingResponse> getMyMeetings() {
@@ -140,6 +243,18 @@ public class MeetingService {
                 .map(MeetingMember::getMeeting)
                 .map(meeting -> MeetingResponse.from(meeting, resolveDisplayStatus(meeting)))
                 .toList();
+    }
+
+    private void logSearchKeywordSafely(String keyword) {
+        if (keyword == null || keyword.isBlank()) {
+            return;
+        }
+
+        try {
+            meetingSearchLogService.log(keyword);
+        } catch (RuntimeException e) {
+            log.warn("모임 검색어 로깅 실패. keyword 길이={}", keyword.length(), e);
+        }
     }
 
     private void validateSort(Sort sort) {
@@ -179,12 +294,36 @@ public class MeetingService {
             throw new BusinessException(ErrorCode.MEETING_FULL);
         }
 
-        boolean alreadyJoined =
-                meetingMemberRepository.existsByMeeting_IdAndUser_IdAndStatus(
-                        meeting.getId(), userId, MeetingMemberStatus.APPROVED);
+        meetingMemberRepository
+                .findByMeeting_IdAndUser_Id(meeting.getId(), userId)
+                .filter(
+                        member ->
+                                member.getStatus() == MeetingMemberStatus.APPROVED
+                                        || member.getStatus() == MeetingMemberStatus.PENDING)
+                .ifPresent(
+                        member -> {
+                            throw new BusinessException(
+                                    member.getStatus() == MeetingMemberStatus.PENDING
+                                            ? ErrorCode.MEETING_JOIN_REQUEST_DUPLICATE
+                                            : ErrorCode.MEETING_ALREADY_JOINED);
+                        });
+    }
 
-        if (alreadyJoined) {
-            throw new BusinessException(ErrorCode.MEETING_ALREADY_JOINED);
+    private MeetingMember getPendingJoinRequestForUpdate(Long meetingId, Long joinRequestId) {
+        return meetingMemberRepository
+                .findPendingByIdAndMeetingIdForUpdate(joinRequestId, meetingId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.MEETING_JOIN_REQUEST_NOT_FOUND));
+    }
+
+    private void validateApprovableMeeting(Meeting meeting) {
+        if (resolveDisplayStatus(meeting) != MeetingStatus.RECRUITING) {
+            throw new BusinessException(ErrorCode.MEETING_CLOSED);
+        }
+    }
+
+    private void validateHost(Meeting meeting, Long userId) {
+        if (!meeting.getHost().getId().equals(userId)) {
+            throw new BusinessException(ErrorCode.MEETING_HOST_ONLY);
         }
     }
 

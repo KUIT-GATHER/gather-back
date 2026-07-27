@@ -6,6 +6,7 @@ import com.gather.gather.domain.posting.dto.PostingSummaryResponse;
 import com.gather.gather.domain.posting.entity.Posting;
 import com.gather.gather.domain.posting.entity.PostingCategory;
 import com.gather.gather.domain.posting.entity.PostingStatus;
+import com.gather.gather.domain.posting.repository.BookmarkRepository;
 import com.gather.gather.domain.posting.repository.PostingLocationRepository;
 import com.gather.gather.domain.posting.repository.PostingRepository;
 import com.gather.gather.domain.region.entity.Region;
@@ -13,13 +14,12 @@ import com.gather.gather.domain.region.repository.RegionRepository;
 import com.gather.gather.global.common.PageResponse;
 import com.gather.gather.global.exception.BusinessException;
 import com.gather.gather.global.exception.ErrorCode;
+import com.gather.gather.global.util.SecurityUtil;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Set;
-import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -56,6 +56,8 @@ public class PostingService {
     private final PostingLocationRepository postingLocationRepository;
     private final RegionRepository regionRepository;
     private final PostingSearchLogService postingSearchLogService;
+    private final RegionNameResolver regionNameResolver;
+    private final BookmarkRepository bookmarkRepository;
 
     @Transactional(readOnly = true)
     public PageResponse<PostingSummaryResponse> getPostings(
@@ -83,7 +85,7 @@ public class PostingService {
 
         logSearchKeywordSafely(keyword);
 
-        Map<Long, String> regionNames = findRegionNames(postings);
+        Map<Long, String> regionNames = regionNameResolver.resolve(postings);
 
         Page<PostingSummaryResponse> responses =
                 postings.map(
@@ -108,7 +110,14 @@ public class PostingService {
                                 .map(Region::getName)
                                 .orElse(null)
                         : null;
-        return PostingResponse.from(posting, regionName, buildLocations(posting));
+        return PostingResponse.from(
+                posting, regionName, buildLocations(posting), isBookmarkedByCurrentUser(id));
+    }
+
+    /** 인증이 선택적인 엔드포인트이므로, 로그인하지 않은 사용자는 항상 false를 받는다. */
+    private boolean isBookmarkedByCurrentUser(Long postingId) {
+        Long userId = SecurityUtil.getCurrentUserIdOrNull();
+        return userId != null && bookmarkRepository.existsByUserIdAndPostingId(userId, postingId);
     }
 
     /**
@@ -156,15 +165,5 @@ public class PostingService {
                 .findAllByPostingIdOrderByLocationSeq(posting.getId())
                 .forEach(location -> locations.add(PostingLocationResponse.from(location)));
         return locations;
-    }
-
-    private Map<Long, String> findRegionNames(Page<Posting> postings) {
-        Set<Long> regionIds =
-                postings.getContent().stream()
-                        .map(Posting::getRegionId)
-                        .filter(Objects::nonNull)
-                        .collect(Collectors.toSet());
-        return regionRepository.findAllById(regionIds).stream()
-                .collect(Collectors.toMap(Region::getId, Region::getName));
     }
 }

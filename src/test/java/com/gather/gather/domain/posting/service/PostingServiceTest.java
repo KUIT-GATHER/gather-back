@@ -6,6 +6,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -17,6 +18,7 @@ import com.gather.gather.domain.posting.entity.Posting;
 import com.gather.gather.domain.posting.entity.PostingCategory;
 import com.gather.gather.domain.posting.entity.PostingLocation;
 import com.gather.gather.domain.posting.entity.PostingStatus;
+import com.gather.gather.domain.posting.repository.BookmarkRepository;
 import com.gather.gather.domain.posting.repository.PostingLocationRepository;
 import com.gather.gather.domain.posting.repository.PostingRepository;
 import com.gather.gather.domain.region.entity.Region;
@@ -24,6 +26,7 @@ import com.gather.gather.domain.region.repository.RegionRepository;
 import com.gather.gather.global.common.PageResponse;
 import com.gather.gather.global.exception.BusinessException;
 import com.gather.gather.global.exception.ErrorCode;
+import com.gather.gather.global.util.SecurityUtil;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
@@ -32,6 +35,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
+import org.mockito.MockedStatic;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
@@ -46,6 +50,7 @@ class PostingServiceTest {
     @Mock private PostingLocationRepository postingLocationRepository;
     @Mock private RegionRepository regionRepository;
     @Mock private PostingSearchLogService postingSearchLogService;
+    @Mock private BookmarkRepository bookmarkRepository;
 
     private PostingService postingService;
 
@@ -56,7 +61,9 @@ class PostingServiceTest {
                         postingRepository,
                         postingLocationRepository,
                         regionRepository,
-                        postingSearchLogService);
+                        postingSearchLogService,
+                        new RegionNameResolver(regionRepository),
+                        bookmarkRepository);
     }
 
     @Test
@@ -418,6 +425,66 @@ class PostingServiceTest {
         assertThat(response.locations().get(0).locationSeq()).isEqualTo(1);
         assertThat(response.locations().get(1).locationSeq()).isEqualTo(2);
         assertThat(response.locations().get(2).locationSeq()).isEqualTo(3);
+        assertThat(response.bookmarked()).isFalse();
+    }
+
+    @Test
+    @DisplayName("getPosting returns bookmarked true when the current user has bookmarked it")
+    void getPosting_returnsBookmarkedTrue_whenCurrentUserHasBookmarked() {
+        Long userId = 1L;
+        Posting posting = postingWithId(1L, "동구 환경정화 봉사", 2L, PostingCategory.ENVIRONMENT);
+        when(postingRepository.findById(1L)).thenReturn(Optional.of(posting));
+        when(regionRepository.findById(2L)).thenReturn(Optional.of(regionWithId(2L, "동구")));
+        when(postingLocationRepository.findAllByPostingIdOrderByLocationSeq(1L))
+                .thenReturn(List.of());
+        when(bookmarkRepository.existsByUserIdAndPostingId(userId, 1L)).thenReturn(true);
+
+        try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
+            securityUtil.when(SecurityUtil::getCurrentUserIdOrNull).thenReturn(userId);
+
+            PostingResponse response = postingService.getPosting(1L);
+
+            assertThat(response.bookmarked()).isTrue();
+        }
+    }
+
+    @Test
+    @DisplayName("getPosting returns bookmarked false when the current user has not bookmarked it")
+    void getPosting_returnsBookmarkedFalse_whenCurrentUserHasNotBookmarked() {
+        Long userId = 1L;
+        Posting posting = postingWithId(1L, "동구 환경정화 봉사", 2L, PostingCategory.ENVIRONMENT);
+        when(postingRepository.findById(1L)).thenReturn(Optional.of(posting));
+        when(regionRepository.findById(2L)).thenReturn(Optional.of(regionWithId(2L, "동구")));
+        when(postingLocationRepository.findAllByPostingIdOrderByLocationSeq(1L))
+                .thenReturn(List.of());
+        when(bookmarkRepository.existsByUserIdAndPostingId(userId, 1L)).thenReturn(false);
+
+        try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
+            securityUtil.when(SecurityUtil::getCurrentUserIdOrNull).thenReturn(userId);
+
+            PostingResponse response = postingService.getPosting(1L);
+
+            assertThat(response.bookmarked()).isFalse();
+        }
+    }
+
+    @Test
+    @DisplayName("getPosting returns bookmarked false without querying bookmarks when anonymous")
+    void getPosting_returnsBookmarkedFalse_whenAnonymous() {
+        Posting posting = postingWithId(1L, "동구 환경정화 봉사", 2L, PostingCategory.ENVIRONMENT);
+        when(postingRepository.findById(1L)).thenReturn(Optional.of(posting));
+        when(regionRepository.findById(2L)).thenReturn(Optional.of(regionWithId(2L, "동구")));
+        when(postingLocationRepository.findAllByPostingIdOrderByLocationSeq(1L))
+                .thenReturn(List.of());
+
+        try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
+            securityUtil.when(SecurityUtil::getCurrentUserIdOrNull).thenReturn(null);
+
+            PostingResponse response = postingService.getPosting(1L);
+
+            assertThat(response.bookmarked()).isFalse();
+        }
+        verify(bookmarkRepository, never()).existsByUserIdAndPostingId(any(), any());
     }
 
     @Test

@@ -3,19 +3,27 @@ package com.gather.gather.domain.meeting.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.gather.gather.domain.meeting.dto.MeetingBookmarkResponse;
+import com.gather.gather.domain.meeting.dto.MeetingResponse;
 import com.gather.gather.domain.meeting.entity.Meeting;
 import com.gather.gather.domain.meeting.entity.MeetingBookmark;
+import com.gather.gather.domain.meeting.enums.MeetingStatus;
 import com.gather.gather.domain.meeting.repository.MeetingBookmarkRepository;
 import com.gather.gather.domain.meeting.repository.MeetingRepository;
+import com.gather.gather.domain.posting.entity.PostingCategory;
+import com.gather.gather.global.common.PageResponse;
 import com.gather.gather.global.exception.BusinessException;
 import com.gather.gather.global.exception.ErrorCode;
 import com.gather.gather.global.util.SecurityUtil;
+import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -25,6 +33,10 @@ import org.mockito.Mock;
 import org.mockito.MockedStatic;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 
 @ExtendWith(MockitoExtension.class)
 class MeetingBookmarkServiceTest {
@@ -147,5 +159,78 @@ class MeetingBookmarkServiceTest {
                     .isInstanceOf(BusinessException.class)
                     .hasFieldOrPropertyWithValue("errorCode", ErrorCode.MEETING_BOOKMARK_NOT_FOUND);
         }
+    }
+
+    @Test
+    @DisplayName(
+            "getBookmarkedMeetings returns bookmarked meetings with resolved display status when"
+                    + " the given Pageable is unsorted")
+    void getBookmarkedMeetings_returnsMeetingsWithDisplayStatus_whenUnsorted() {
+        when(meeting.getId()).thenReturn(MEETING_ID);
+        when(meeting.getStatus()).thenReturn(MeetingStatus.RECRUITING);
+        when(meeting.isActivityEnded(any())).thenReturn(false);
+        when(meeting.isDeadlinePassed(any())).thenReturn(false);
+        when(meeting.isFull()).thenReturn(false);
+        Pageable unsortedPageable = PageRequest.of(0, 20);
+
+        try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
+            securityUtil.when(SecurityUtil::getCurrentUserId).thenReturn(USER_ID);
+            when(meetingBookmarkRepository.findBookmarkedMeetings(
+                            eq(USER_ID),
+                            eq(PostingCategory.ENVIRONMENT),
+                            eq("정화"),
+                            argThat(p -> p.getSort().isUnsorted())))
+                    .thenReturn(new PageImpl<>(List.of(meeting), PageRequest.of(0, 20), 1));
+
+            PageResponse<MeetingResponse> response =
+                    meetingBookmarkService.getBookmarkedMeetings(
+                            PostingCategory.ENVIRONMENT, "정화", unsortedPageable);
+
+            assertThat(response.content()).hasSize(1);
+            assertThat(response.content().get(0).meetingId()).isEqualTo(MEETING_ID);
+            assertThat(response.content().get(0).status()).isEqualTo(MeetingStatus.RECRUITING);
+            verify(meetingBookmarkRepository)
+                    .findBookmarkedMeetings(
+                            eq(USER_ID),
+                            eq(PostingCategory.ENVIRONMENT),
+                            eq("정화"),
+                            argThat(p -> p.getSort().isUnsorted()));
+        }
+    }
+
+    @Test
+    @DisplayName(
+            "getBookmarkedMeetings escapes LIKE wildcard characters in the keyword before"
+                    + " querying the repository")
+    void getBookmarkedMeetings_escapesLikeWildcardsInKeyword() {
+        Pageable unsortedPageable = PageRequest.of(0, 20);
+
+        try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
+            securityUtil.when(SecurityUtil::getCurrentUserId).thenReturn(USER_ID);
+            when(meetingBookmarkRepository.findBookmarkedMeetings(
+                            eq(USER_ID), isNull(), eq("A\\_B"), any()))
+                    .thenReturn(new PageImpl<>(List.of(), PageRequest.of(0, 20), 0));
+
+            meetingBookmarkService.getBookmarkedMeetings(null, "A_B", unsortedPageable);
+
+            verify(meetingBookmarkRepository)
+                    .findBookmarkedMeetings(eq(USER_ID), isNull(), eq("A\\_B"), any());
+        }
+    }
+
+    @Test
+    @DisplayName("getBookmarkedMeetings throws VALIDATION_ERROR when the client requests a sort")
+    void getBookmarkedMeetings_throwsValidationError_whenSortRequested() {
+        Pageable sortedPageable = PageRequest.of(0, 20, Sort.by("name"));
+
+        assertThatThrownBy(
+                        () ->
+                                meetingBookmarkService.getBookmarkedMeetings(
+                                        null, null, sortedPageable))
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("errorCode", ErrorCode.VALIDATION_ERROR);
+
+        verify(meetingBookmarkRepository, never())
+                .findBookmarkedMeetings(any(), any(), any(), any());
     }
 }
