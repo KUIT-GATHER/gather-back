@@ -16,6 +16,7 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import lombok.AccessLevel;
@@ -27,6 +28,9 @@ import lombok.NoArgsConstructor;
 @Table(name = "users")
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class User {
+
+    // 닉네임은 한글/영문만, 전화번호는 숫자만 허용하므로 사용자가 만들 수 없는 값이다 — 익명화 후 충돌하지 않는다.
+    public static final String ANONYMIZED_PREFIX = "wd_";
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -68,6 +72,12 @@ public class User {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     private UserStatus status;
+
+    private LocalDateTime withdrawnAt;
+
+    @Enumerated(EnumType.STRING)
+    @Column(length = 20)
+    private WithdrawalReason withdrawalReason;
 
     @Column(nullable = false)
     private boolean emailVerified;
@@ -205,5 +215,26 @@ public class User {
         this.gender = gender;
         this.activityRegion = activityRegion;
         this.interestCategories = new ArrayList<>(interestCategories);
+    }
+
+    /**
+     * 탈퇴 시점에는 개인정보를 그대로 남긴다. 재가입 유예를 강제하려면 원 소유자를 식별할 수단이 필요한데, 즉시 익명화하면 그 수단이 사라진다. 실제 훼손은 유예가 지난
+     * 뒤 {@link #anonymize()}가 수행한다.
+     */
+    public void withdraw(WithdrawalReason reason, LocalDateTime withdrawnAt) {
+        this.status = UserStatus.WITHDRAWN;
+        this.withdrawalReason = reason;
+        this.withdrawnAt = withdrawnAt;
+    }
+
+    /**
+     * 유니크 제약이 걸린 컬럼만 훼손해 같은 값으로 재가입할 수 있게 한다. 이메일은 MySQL이 NULL 중복을 허용하므로 NULL로 비운다.
+     *
+     * <p>완료 여부는 별도 컬럼 없이 {@code phone_number}의 접두사로 판정하므로 세 컬럼을 한 번에 갱신해야 한다.
+     */
+    public void anonymize() {
+        this.phoneNumber = ANONYMIZED_PREFIX + id;
+        this.nickname = ANONYMIZED_PREFIX + id;
+        this.email = null;
     }
 }
