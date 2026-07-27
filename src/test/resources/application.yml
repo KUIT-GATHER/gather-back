@@ -34,6 +34,9 @@ gather:
       cleanup-fixed-delay-milliseconds: 3600000
       cleanup-scheduler-enabled: false
   auth:
+    # 익명화는 되돌릴 수 없으므로 테스트 실행 중에는 배치가 절대 돌지 않게 막는다.
+    withdrawal:
+      scheduler-enabled: false
     refresh-cookie:
       name: gather_refresh_token
       secure: false

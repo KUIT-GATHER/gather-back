@@ -48,6 +48,8 @@ gather:
       cleanup-scheduler-enabled: ${GATHER_AWS_S3_CLEANUP_SCHEDULER_ENABLED:true}
       meeting-object-prefix: ${GATHER_AWS_S3_MEETING_OBJECT_PREFIX:meetings}
   auth:
+    withdrawal:
+      scheduler-enabled: ${GATHER_WITHDRAWAL_SCHEDULER_ENABLED:true}
     refresh-cookie:
       name: gather_refresh_token
       secure: ${GATHER_REFRESH_COOKIE_SECURE:false}
