@@ -15,6 +15,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import java.time.LocalDate;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Pageable;
@@ -52,28 +53,52 @@ public class MeetingController {
             summary = "모임 목록 조회",
             description =
                     "모임을 페이지 단위로 조회합니다. 인증이 필요 없습니다. "
-                            + "keyword, regionId, category, status 조건으로 필터링할 수 있습니다.",
+                            + "regionId는 상위 지역(시/도) 선택 시 하위 시군구 모임까지 포함합니다. "
+                            + "activityStartDate/activityEndDate는 선택 기간과 모임 활동기간(activityStartAt~activityEndAt)이 "
+                            + "겹치는 모임을 조회합니다. status=RECRUITING이면 마감 전·정원 미달·활동 종료 전의 "
+                            + "실제 가입 가능한 모임만 반환합니다. postingBasedFirst=true면 공고 기반 모임을 먼저 배치하고 "
+                            + "자유 모임을 뒤에 두며, 그룹 내부 정렬은 sort를 따릅니다(기본 createdAt,desc).",
             parameters = {
                 @Parameter(
                         name = "sort",
                         description =
-                                "정렬 기준 (property,direction). 예: createdAt,desc. "
-                                        + "허용 필드: id, name, currentMemberCount, maxMember, "
-                                        + "regionId, category, status, deadline, activityStartAt, "
-                                        + "activityEndAt, createdAt, updatedAt.",
+                                "정렬 기준 (property,direction). 예: createdAt,desc(최신순), "
+                                        + "currentMemberCount,desc(인기순), deadline,asc(마감임박). "
+                                        + "허용 필드: id, name, currentMemberCount, maxMember, regionId, "
+                                        + "category, status, deadline, activityStartAt, activityEndAt, "
+                                        + "createdAt, updatedAt.",
                         example = "createdAt,desc")
             })
     @GetMapping
     public ApiResponse<PageResponse<MeetingResponse>> getMeetings(
             @RequestParam(required = false) String keyword,
-            @RequestParam(required = false) Long regionId,
+            @Parameter(description = "지역 ID (상위 시/도 선택 시 하위 시군구 모임 포함)")
+                    @RequestParam(required = false)
+                    Long regionId,
             @Parameter(description = "카테고리", example = "WELFARE") @RequestParam(required = false)
                     PostingCategory category,
-            @RequestParam(required = false) MeetingStatus status,
+            @Parameter(description = "모집 상태. RECRUITING이면 실제 가입 가능한 모임만 반환")
+                    @RequestParam(required = false)
+                    MeetingStatus status,
+            @Parameter(description = "활동 기간 시작일 (yyyy-MM-dd)") @RequestParam(required = false)
+                    LocalDate activityStartDate,
+            @Parameter(description = "활동 기간 종료일 (yyyy-MM-dd)") @RequestParam(required = false)
+                    LocalDate activityEndDate,
+            @Parameter(description = "true면 공고 기반 모임을 우선 정렬", example = "true")
+                    @RequestParam(required = false)
+                    Boolean postingBasedFirst,
             @PageableDefault(size = 10, sort = "createdAt", direction = Sort.Direction.DESC)
                     Pageable pageable) {
         return ApiResponse.success(
-                meetingService.getMeetings(keyword, regionId, category, status, pageable));
+                meetingService.getMeetings(
+                        keyword,
+                        regionId,
+                        category,
+                        status,
+                        activityStartDate,
+                        activityEndDate,
+                        postingBasedFirst,
+                        pageable));
     }
 
     @Operation(
