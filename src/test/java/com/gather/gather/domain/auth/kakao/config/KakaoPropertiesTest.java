@@ -17,6 +17,8 @@ class KakaoPropertiesTest {
     private static final String REDIRECT_URI = "https://gathernow.kr/login/kakao/callback";
     private static final String SIGNUP_TOKEN_SECRET =
             Base64.getEncoder().encodeToString(new byte[32]);
+    private static final String ADMIN_KEY = "test-kakao-admin-key-0123456789abcdef";
+    private static final String APP_ID = "1234567";
 
     @Test
     @DisplayName("정상 설정은 생성되고 toString에서 비밀값을 마스킹한다")
@@ -144,6 +146,38 @@ class KakaoPropertiesTest {
                 .hasMessageContaining("1 이상");
     }
 
+    @Test
+    @DisplayName("어드민 키가 없으면 기동 설정 검증에 실패한다")
+    void constructor_withoutAdminKey_throwsIllegalStateException() {
+        assertThatThrownBy(() -> propertiesWith(" ", APP_ID))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("KAKAO_ADMIN_KEY");
+    }
+
+    @Test
+    @DisplayName("어드민 키가 32자 미만이면 기동 설정 검증에 실패한다 (자리표시자가 운영에 나가는 것을 막는다)")
+    void constructor_withShortAdminKey_throwsIllegalStateException() {
+        assertThatThrownBy(() -> propertiesWith("short-admin-key", APP_ID))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("최소 32자");
+    }
+
+    @Test
+    @DisplayName("앱 ID가 없으면 기동 설정 검증에 실패한다")
+    void constructor_withoutAppId_throwsIllegalStateException() {
+        assertThatThrownBy(() -> propertiesWith(ADMIN_KEY, null))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("KAKAO_APP_ID");
+    }
+
+    @Test
+    @DisplayName("toString은 어드민 키를 가리고 비밀값이 아닌 앱 ID는 남긴다")
+    void toString_masksAdminKeyButKeepsAppId() {
+        assertThat(propertiesWith(ADMIN_KEY, APP_ID).toString())
+                .doesNotContain(ADMIN_KEY)
+                .contains("adminKey=****", "appId=" + APP_ID);
+    }
+
     private KakaoProperties properties(
             String restApiKey,
             String clientSecret,
@@ -153,9 +187,24 @@ class KakaoPropertiesTest {
         return new KakaoProperties(
                 restApiKey,
                 clientSecret,
+                ADMIN_KEY,
+                APP_ID,
                 redirectUris,
                 signupTokenSecret,
                 expirationSeconds,
+                "https://kauth.kakao.com",
+                "https://kapi.kakao.com");
+    }
+
+    private KakaoProperties propertiesWith(String adminKey, String appId) {
+        return new KakaoProperties(
+                REST_API_KEY,
+                CLIENT_SECRET,
+                adminKey,
+                appId,
+                List.of(REDIRECT_URI),
+                SIGNUP_TOKEN_SECRET,
+                900,
                 "https://kauth.kakao.com",
                 "https://kapi.kakao.com");
     }

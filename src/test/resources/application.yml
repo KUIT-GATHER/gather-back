@@ -58,6 +58,9 @@ jwt:
 kakao:
   rest-api-key: test-kakao-rest-api-key
   client-secret: test-kakao-client-secret
+  # admin-key는 32자 이상이어야 KakaoProperties 검증을 통과한다(웹훅 발신자 검증 기준이라 자리표시자를 거른다).
+  admin-key: test-kakao-admin-key-0123456789abcdef
+  app-id: "1234567"
   signup-token-secret: z9tOf6reUdkTRI0KFFiydLKdxpayBBxVWSAm7EJTgKXolFCFvnQ4qViBrdh6y7yP
   signup-token-expiration-seconds: 900
   redirect-uris:

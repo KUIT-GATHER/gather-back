@@ -40,7 +40,9 @@ public class KakaoApiClient {
 
     private static final String TOKEN_PATH = "/oauth/token";
     private static final String USER_INFO_PATH = "/v2/user/me";
+    private static final String UNLINK_PATH = "/v1/user/unlink";
     private static final String BEARER_PREFIX = "Bearer ";
+    private static final String ADMIN_KEY_PREFIX = "KakaoAK ";
 
     // 사용자가 응답을 기다리는 동기 엔드포인트라 카카오 지연이 그대로 사용자 대기로 이어진다.
     private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(3);
@@ -50,6 +52,7 @@ public class KakaoApiClient {
     private final RestClient apiClient;
     private final String restApiKey;
     private final String clientSecret;
+    private final String adminKey;
 
     @Autowired
     public KakaoApiClient(RestClient.Builder restClientBuilder, KakaoProperties properties) {
@@ -73,6 +76,7 @@ public class KakaoApiClient {
         this.apiClient = apiClient;
         this.restApiKey = properties.restApiKey();
         this.clientSecret = properties.clientSecret();
+        this.adminKey = properties.adminKey();
     }
 
     private static ClientHttpRequestFactory timeoutRequestFactory() {
@@ -159,6 +163,53 @@ public class KakaoApiClient {
             throw new BusinessException(ErrorCode.INTERNAL_SERVER_ERROR);
         }
         return response;
+    }
+
+    /**
+     * 카카오 연결을 끊는다. 어드민 키로 인증하므로 사용자 Access Token이 필요 없고, 사용자가 카카오에서 직접 끊은 경우에는 호출할 일이 없다.
+     *
+     * <p>다른 호출과 달리 예외를 던지지 않는다. 이 시점엔 탈퇴가 이미 커밋돼 되돌릴 수 없고, 실패를 500으로 올리면 탈퇴에 성공한 사용자가 에러 화면을 보게 된다.
+     */
+    public KakaoUnlinkResult unlink(Long providerUserId) {
+        MultiValueMap<String, String> form = new LinkedMultiValueMap<>();
+        form.add("target_id_type", "user_id");
+        form.add("target_id", String.valueOf(providerUserId));
+
+        try {
+            HttpStatusCode status =
+                    apiClient
+                            .post()
+                            .uri(UNLINK_PATH)
+                            .header(HttpHeaders.AUTHORIZATION, ADMIN_KEY_PREFIX + adminKey)
+                            .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+                            .body(form)
+                            // 상태 코드로 재시도 여부를 판단해야 하므로 기본 예외 변환을 끈다.
+                            .retrieve()
+                            .onStatus(HttpStatusCode::isError, this::logUnlinkFailure)
+                            .toBodilessEntity()
+                            .getStatusCode();
+
+            if (status.is2xxSuccessful()) {
+                return KakaoUnlinkResult.SUCCESS;
+            }
+            // 요청 제한은 4xx지만 시간이 지나면 풀리므로 재시도 대상이다.
+            if (status.is5xxServerError()
+                    || status.value() == HttpStatus.TOO_MANY_REQUESTS.value()) {
+                return KakaoUnlinkResult.TRANSIENT_FAILURE;
+            }
+            return KakaoUnlinkResult.PERMANENT_FAILURE;
+        } catch (RestClientException exception) {
+            log.error("카카오 연결 해제 호출에 실패했습니다. providerUserId={}", providerUserId, exception);
+            return KakaoUnlinkResult.TRANSIENT_FAILURE;
+        }
+    }
+
+    private void logUnlinkFailure(HttpRequest request, ClientHttpResponse response)
+            throws IOException {
+        log.warn(
+                "카카오 연결 해제가 거부됐습니다. status={}, body={}",
+                response.getStatusCode(),
+                readBody(response));
     }
 
     private <T> T call(Supplier<T> apiCall, String operation) {
