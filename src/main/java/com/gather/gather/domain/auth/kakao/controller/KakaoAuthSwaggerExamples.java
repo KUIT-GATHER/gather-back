@@ -85,6 +85,17 @@ final class KakaoAuthSwaggerExamples {
               }
             }
             """;
+    static final String WITHDRAWN_PHONE_NUMBER_COOLDOWN_EXAMPLE =
+            """
+            {
+              "success": false,
+              "data": null,
+              "error": {
+                "code": "WITHDRAWN_PHONE_NUMBER_COOLDOWN",
+                "message": "탈퇴 후 7일간 재가입할 수 없습니다."
+              }
+            }
+            """;
     static final String DUPLICATE_NICKNAME_EXAMPLE =
             """
             {

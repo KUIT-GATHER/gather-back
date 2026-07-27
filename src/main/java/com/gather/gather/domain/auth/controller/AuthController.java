@@ -209,7 +209,10 @@ public class AuthController {
 
     @Operation(
             summary = "전화번호 중복 확인",
-            description = "회원가입 기본 정보 단계에서 입력한 전화번호가 이미 가입에 사용되었는지 확인합니다.")
+            description =
+                    "회원가입 기본 정보 단계에서 입력한 전화번호가 이미 가입에 사용되었는지 확인합니다. "
+                            + "사용할 수 없으면 reason이 함께 내려가며, WITHDRAWN_COOLDOWN은 탈퇴 후 유예 기간이라 "
+                            + "기다리면 다시 쓸 수 있다는 뜻입니다.")
     @ApiResponses({
         @io.swagger.v3.oas.annotations.responses.ApiResponse(
                 responseCode = "200",
@@ -227,7 +230,8 @@ public class AuthController {
                                                       "success": true,
                                                       "data": {
                                                         "phoneNumber": "01012345678",
-                                                        "available": true
+                                                        "available": true,
+                                                        "reason": null
                                                       },
                                                       "error": null
                                                     }
@@ -241,7 +245,23 @@ public class AuthController {
                                                       "success": true,
                                                       "data": {
                                                         "phoneNumber": "01012345678",
-                                                        "available": false
+                                                        "available": false,
+                                                        "reason": "IN_USE"
+                                                      },
+                                                      "error": null
+                                                    }
+                                                    """),
+                                    @ExampleObject(
+                                            name = "withdrawnCooldown",
+                                            summary = "탈퇴자가 점유 중이라 유예가 끝나면 다시 쓸 수 있는 전화번호",
+                                            value =
+                                                    """
+                                                    {
+                                                      "success": true,
+                                                      "data": {
+                                                        "phoneNumber": "01012345678",
+                                                        "available": false,
+                                                        "reason": "WITHDRAWN_COOLDOWN"
                                                       },
                                                       "error": null
                                                     }
@@ -348,6 +368,12 @@ public class AuthController {
                                             value =
                                                     AuthSwaggerExamples
                                                             .DUPLICATE_PHONE_NUMBER_EXAMPLE),
+                                    @ExampleObject(
+                                            name = "WITHDRAWN_PHONE_NUMBER_COOLDOWN",
+                                            summary = "탈퇴 후 유예 기간. 기다리면 같은 번호로 재가입할 수 있습니다.",
+                                            value =
+                                                    AuthSwaggerExamples
+                                                            .WITHDRAWN_PHONE_NUMBER_COOLDOWN_EXAMPLE),
                                     @ExampleObject(
                                             name = "DUPLICATE_NICKNAME",
                                             value = AuthSwaggerExamples.DUPLICATE_NICKNAME_EXAMPLE)

@@ -199,6 +199,8 @@ public class KakaoAuthController {
                     가입 토큰은 Authorization이 아니라 X-Signup-Token 헤더로 보냅니다.
                     전화번호가 이미 가입에 사용된 경우 DUPLICATE_PHONE_NUMBER(409)로 실패합니다. 이는 기존 일반 계정과
                     동일인이라는 뜻이므로, 입력 오류가 아니라 기존 계정 로그인 안내로 처리하세요.
+                    탈퇴한 계정이 그 번호를 쥐고 있으면 WITHDRAWN_PHONE_NUMBER_COOLDOWN(409)이며, 유예가 끝나면
+                    같은 번호로 다시 가입할 수 있으므로 대기 안내로 처리하세요.
                     """)
     @ApiResponses({
         @io.swagger.v3.oas.annotations.responses.ApiResponse(
@@ -301,6 +303,12 @@ public class KakaoAuthController {
                                             value =
                                                     KakaoAuthSwaggerExamples
                                                             .DUPLICATE_PHONE_NUMBER_EXAMPLE),
+                                    @ExampleObject(
+                                            name = "WITHDRAWN_PHONE_NUMBER_COOLDOWN",
+                                            summary = "탈퇴 후 유예 기간. 기다리면 같은 번호로 재가입할 수 있습니다.",
+                                            value =
+                                                    KakaoAuthSwaggerExamples
+                                                            .WITHDRAWN_PHONE_NUMBER_COOLDOWN_EXAMPLE),
                                     @ExampleObject(
                                             name = "DUPLICATE_NICKNAME",
                                             value =
