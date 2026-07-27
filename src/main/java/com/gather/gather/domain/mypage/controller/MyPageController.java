@@ -1,8 +1,12 @@
 package com.gather.gather.domain.mypage.controller;
 
+import com.gather.gather.domain.mypage.dto.MyPageActivityRecordResponse;
 import com.gather.gather.domain.mypage.dto.MyPageActivityResponse;
+import com.gather.gather.domain.mypage.dto.MyPageActivitySummaryResponse;
+import com.gather.gather.domain.mypage.dto.MyPageBadgeSummaryResponse;
 import com.gather.gather.domain.mypage.dto.MyPageHomeResponse;
 import com.gather.gather.domain.mypage.service.MyPageService;
+import com.gather.gather.domain.posting.entity.PostingCategory;
 import com.gather.gather.global.common.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -125,5 +129,75 @@ public class MyPageController {
                     @DateTimeFormat(pattern = "yyyy-MM")
                     YearMonth yearMonth) {
         return ApiResponse.success(myPageService.getActivities(yearMonth));
+    }
+
+    @Operation(
+            summary = "활동기록 - 활동 현황",
+            description =
+                    "총 활동 완료 횟수와 분야별 완료 횟수 블럭을 조회한다. 시간 인증 관련 지표는 산출 기준 미정으로 이번 스프린트 응답에서 제외한다.")
+    @ApiResponses({
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                responseCode = "200",
+                description = "활동 현황 조회 성공"),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                responseCode = "401",
+                description = "인증되지 않은 요청",
+                content =
+                        @Content(
+                                mediaType = JSON,
+                                examples =
+                                        @ExampleObject(
+                                                name = "UNAUTHORIZED",
+                                                value = UNAUTHORIZED_EXAMPLE)))
+    })
+    @GetMapping("/activities/summary")
+    public ApiResponse<MyPageActivitySummaryResponse> getActivitySummary() {
+        return ApiResponse.success(myPageService.getActivitySummary());
+    }
+
+    @Operation(
+            summary = "활동기록 상세 - 봉사 카드 목록",
+            description = "완료된 봉사 참여를 최신순으로 조회한다. category를 지정하면 해당 분야만 반환한다(미지정 시 전체).")
+    @ApiResponses({
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                responseCode = "200",
+                description = "활동기록 목록 조회 성공"),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                responseCode = "401",
+                description = "인증되지 않은 요청",
+                content =
+                        @Content(
+                                mediaType = JSON,
+                                examples =
+                                        @ExampleObject(
+                                                name = "UNAUTHORIZED",
+                                                value = UNAUTHORIZED_EXAMPLE)))
+    })
+    @GetMapping("/activities/records")
+    public ApiResponse<List<MyPageActivityRecordResponse>> getActivityRecords(
+            @Parameter(description = "분야 필터(미지정 시 전체)") @RequestParam(required = false)
+                    PostingCategory category) {
+        return ApiResponse.success(myPageService.getActivityRecords(category));
+    }
+
+    @Operation(summary = "활동 뱃지 화면", description = "총 획득 뱃지 수, 전체 달성률, 뱃지 카드 목록(미획득 포함)을 조회한다.")
+    @ApiResponses({
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                responseCode = "200",
+                description = "뱃지 조회 성공"),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                responseCode = "401",
+                description = "인증되지 않은 요청",
+                content =
+                        @Content(
+                                mediaType = JSON,
+                                examples =
+                                        @ExampleObject(
+                                                name = "UNAUTHORIZED",
+                                                value = UNAUTHORIZED_EXAMPLE)))
+    })
+    @GetMapping("/badges")
+    public ApiResponse<MyPageBadgeSummaryResponse> getBadges() {
+        return ApiResponse.success(myPageService.getBadges());
     }
 }
