@@ -39,7 +39,7 @@ public class MeetingHomeService {
     private final PostingRepository postingRepository;
 
     public MeetingHomeResponse getMeetingHome(Long meetingId) {
-        Long userId = SecurityUtil.getCurrentUserId();
+        Long userId = SecurityUtil.getCurrentUserIdOrNull();
 
         Meeting meeting =
                 meetingRepository

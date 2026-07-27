@@ -24,7 +24,9 @@ import com.gather.gather.global.common.PageResponse;
 import com.gather.gather.global.exception.BusinessException;
 import com.gather.gather.global.exception.ErrorCode;
 import com.gather.gather.global.util.SecurityUtil;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -104,19 +106,47 @@ public class MeetingService {
             Long regionId,
             PostingCategory category,
             MeetingStatus status,
+            LocalDate activityStartDate,
+            LocalDate activityEndDate,
+            Boolean postingBasedFirst,
             Pageable pageable) {
         validateSort(pageable.getSort());
 
+        // 지역: 상위(시·도) 선택 시 하위 시군구·읍면동까지 포함(봉사공고와 동일 정책).
+        boolean hasRegionFilter = regionId != null;
+        List<Long> regionIds =
+                hasRegionFilter ? regionRepository.findIdsIncludingChildren(regionId) : List.of();
+        // hasRegionFilter=false면 무시되지만 empty-IN 방지를 위해 더미값을 넣는다.
+        // regionId가 유효하지 않아 빈 리스트면 IN(-1)로 결과 0건이 된다.
+        List<Long> regionIdParam = regionIds.isEmpty() ? List.of(-1L) : regionIds;
+
+        boolean recruitingOnly = status == MeetingStatus.RECRUITING;
+        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime activityStartAt =
+                activityStartDate == null ? null : activityStartDate.atStartOfDay();
+        LocalDateTime activityEndAt =
+                activityEndDate == null ? null : activityEndDate.atTime(LocalTime.MAX);
+
         Page<MeetingResponse> responses =
                 meetingRepository
-                        .searchMeetings(keyword, regionId, category, status, pageable)
+                        .searchMeetings(
+                                keyword,
+                                hasRegionFilter,
+                                regionIdParam,
+                                category,
+                                status,
+                                recruitingOnly,
+                                now,
+                                activityStartAt,
+                                activityEndAt,
+                                postingBasedFirst,
+                                pageable)
                         .map(
                                 meeting ->
                                         MeetingResponse.from(
                                                 meeting, resolveDisplayStatus(meeting)));
 
         logSearchKeywordSafely(keyword);
-
         return PageResponse.from(responses);
     }
 
@@ -240,8 +270,12 @@ public class MeetingService {
         return meetingMemberRepository
                 .findAllByUserIdAndStatusFetchMeeting(userId, MeetingMemberStatus.APPROVED)
                 .stream()
-                .map(MeetingMember::getMeeting)
-                .map(meeting -> MeetingResponse.from(meeting, resolveDisplayStatus(meeting)))
+                .map(
+                        member ->
+                                MeetingResponse.from(
+                                        member.getMeeting(),
+                                        resolveDisplayStatus(member.getMeeting()),
+                                        member.getRole())) // ← HOST/MEMBER
                 .toList();
     }
 

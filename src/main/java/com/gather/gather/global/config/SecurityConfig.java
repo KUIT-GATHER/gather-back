@@ -74,7 +74,7 @@ public class SecurityConfig {
                                         // "내 북마크 목록"은 인증이 필요하다. requestMatchers는 등록 순서대로
                                         // 첫 매치가 적용되므로, 아래 PERMIT_ALL_GET_PATHS의
                                         // "/api/v1/postings/**" 와일드카드보다 반드시 먼저 등록해야 그 permitAll에
-                                        // 묻히지 않는다. (아래 /api/v1/meetings 관련 두 규칙은 둘 다 permitAll이라
+                                        // 묻히지 않는다. (아래 /api/v1/meetings 관련 규칙들은 모두 permitAll이라
                                         // 서로 순서가 바뀌어도 결과가 같음 — 이 규칙과는 상황이 다르다.)
                                         .requestMatchers(
                                                 HttpMethod.GET, "/api/v1/postings/bookmarks")
@@ -87,13 +87,19 @@ public class SecurityConfig {
                                                 HttpMethod.GET,
                                                 "/api/v1/meetings/keywords/recommended")
                                         .permitAll()
+                                        // 모임 상세 조회(비로그인 공개)
                                         .requestMatchers(
                                                 new RegexRequestMatcher(
                                                         "^/api/v1/meetings/[0-9]+$", "GET"))
                                         .permitAll()
+                                        // 모임 홈 조회(비로그인 공개)
                                         .requestMatchers(
-                                                org.springframework.http.HttpMethod.GET,
-                                                "/api/v1/meetings/*/images")
+                                                new RegexRequestMatcher(
+                                                        "^/api/v1/meetings/[0-9]+/home$", "GET"))
+                                        .permitAll()
+                                        // 모임 이미지 조회(비로그인 공개)
+                                        .requestMatchers(
+                                                HttpMethod.GET, "/api/v1/meetings/*/images")
                                         .permitAll()
                                         .requestMatchers(PERMIT_ALL_PATHS)
                                         .permitAll()
