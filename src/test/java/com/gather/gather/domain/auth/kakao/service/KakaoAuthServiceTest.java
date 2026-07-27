@@ -428,7 +428,7 @@ class KakaoAuthServiceTest {
         return new KakaoProperties(
                 "test-rest-api-key",
                 "test-client-secret",
-                "test-kakao-admin-key-0123456789abcdef",
+                "test-kakao-admin-key-0123456789a",
                 "1234567",
                 List.of(REDIRECT_URI),
                 SIGNUP_TOKEN_SECRET,

@@ -41,7 +41,7 @@ class SocialSignupTokenProviderTest {
         return new KakaoProperties(
                 "test-rest-api-key",
                 "test-client-secret",
-                "test-kakao-admin-key-0123456789abcdef",
+                "test-kakao-admin-key-0123456789a",
                 "1234567",
                 List.of("https://gathernow.kr/login/kakao/callback"),
                 SIGNUP_TOKEN_SECRET,

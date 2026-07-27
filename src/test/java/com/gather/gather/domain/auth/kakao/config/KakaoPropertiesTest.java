@@ -17,7 +17,7 @@ class KakaoPropertiesTest {
     private static final String REDIRECT_URI = "https://gathernow.kr/login/kakao/callback";
     private static final String SIGNUP_TOKEN_SECRET =
             Base64.getEncoder().encodeToString(new byte[32]);
-    private static final String ADMIN_KEY = "test-kakao-admin-key-0123456789abcdef";
+    private static final String ADMIN_KEY = "test-kakao-admin-key-0123456789a";
     private static final String APP_ID = "1234567";
 
     @Test
@@ -155,11 +155,15 @@ class KakaoPropertiesTest {
     }
 
     @Test
-    @DisplayName("어드민 키가 32자 미만이면 기동 설정 검증에 실패한다 (자리표시자가 운영에 나가는 것을 막는다)")
-    void constructor_withShortAdminKey_throwsIllegalStateException() {
+    @DisplayName("어드민 키가 32자가 아니면 기동 설정 검증에 실패한다 (자리표시자가 운영에 나가는 것을 막는다)")
+    void constructor_withWrongLengthAdminKey_throwsIllegalStateException() {
         assertThatThrownBy(() -> propertiesWith("short-admin-key", APP_ID))
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("최소 32자");
+                .hasMessageContaining("32자여야");
+        // 길이 하한만 두면 example 파일의 긴 자리표시자가 그대로 통과한다.
+        assertThatThrownBy(() -> propertiesWith(ADMIN_KEY + "-extra", APP_ID))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("32자여야");
     }
 
     @Test

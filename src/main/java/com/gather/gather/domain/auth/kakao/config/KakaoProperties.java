@@ -33,8 +33,9 @@ public record KakaoProperties(
     // 가입 토큰도 HS256으로 서명하므로 jwt.secret과 동일한 최소 길이 요건을 적용한다(RFC 7518).
     private static final int MIN_SECRET_BYTE_LENGTH = 32;
 
-    // 어드민 키는 연결 해제 웹훅의 발신자 검증 기준이기도 하다. 자리표시자가 운영에 나가면 웹훅 인증이 조용히 무력화되므로 길이로 한 번 거른다.
-    private static final int MIN_ADMIN_KEY_LENGTH = 32;
+    // 어드민 키는 연결 해제 웹훅의 발신자 검증 기준이기도 하다. 자리표시자가 운영에 나가면 웹훅 인증이 조용히 무력화되므로 길이로 거른다.
+    // 카카오디벨로퍼스에서 확인한 대표 어드민 키 길이(2026-07-27). "이상"으로 두면 긴 자리표시자가 그대로 통과한다.
+    private static final int ADMIN_KEY_LENGTH = 32;
 
     public KakaoProperties {
         requireConfigured(restApiKey, "kakao.rest-api-key", "KAKAO_REST_API_KEY");
@@ -72,13 +73,13 @@ public record KakaoProperties(
     }
 
     private static void validateAdminKey(String adminKey) {
-        if (adminKey.length() < MIN_ADMIN_KEY_LENGTH) {
+        if (adminKey.length() != ADMIN_KEY_LENGTH) {
             throw new IllegalStateException(
-                    "kakao.admin-key는 최소 "
-                            + MIN_ADMIN_KEY_LENGTH
-                            + "자 이상이어야 합니다. 현재 "
+                    "kakao.admin-key는 "
+                            + ADMIN_KEY_LENGTH
+                            + "자여야 합니다. 현재 "
                             + adminKey.length()
-                            + "자입니다. 로컬은 임의의 더미 값이어도 되지만 길이 요건은 동일합니다.");
+                            + "자입니다. 로컬은 임의의 더미 값이어도 되지만 길이는 맞춰야 합니다.");
         }
     }
 

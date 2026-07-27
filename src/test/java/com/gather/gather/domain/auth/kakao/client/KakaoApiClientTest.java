@@ -34,7 +34,7 @@ class KakaoApiClientTest {
     private static final String AUTH_BASE_URL = "http://localhost/kauth";
     private static final String API_BASE_URL = "http://localhost/kapi";
     private static final String REDIRECT_URI = "https://gathernow.kr/login/kakao/callback";
-    private static final String ADMIN_KEY = "test-kakao-admin-key-0123456789abcdef";
+    private static final String ADMIN_KEY = "test-kakao-admin-key-0123456789a";
     private static final String APP_ID = "1234567";
     private static final Long PROVIDER_USER_ID = 4242L;
     private static final String SIGNUP_TOKEN_SECRET =
