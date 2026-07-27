@@ -167,7 +167,7 @@ class AuthControllerTest {
     @DisplayName("전화번호 중복 확인에서 전화번호가 20자이면 검증을 통과한다")
     void checkPhoneNumberAvailability_withMaxLengthPhoneNumber_returnsOk() throws Exception {
         when(authService.checkPhoneNumberAvailability(any(PhoneNumberAvailabilityRequest.class)))
-                .thenReturn(new PhoneNumberAvailabilityResponse("01012345678901234567", true));
+                .thenReturn(PhoneNumberAvailabilityResponse.available("01012345678901234567"));
 
         mockMvc.perform(
                         post("/api/v1/auth/phone-numbers/availability")

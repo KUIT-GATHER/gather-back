@@ -15,13 +15,14 @@ public interface UserRepository extends JpaRepository<User, Long> {
 
     Optional<User> findByEmail(String email);
 
+    // 번호를 쥔 계정의 상태에 따라 안내가 달라져야 해서 존재 여부만으로는 부족하다(탈퇴자면 재가입 유예 안내).
+    Optional<User> findByPhoneNumber(String phoneNumber);
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select u from User u where u.id = :id")
     Optional<User> findByIdForUpdate(Long id);
 
     boolean existsByEmail(String email);
-
-    boolean existsByPhoneNumber(String phoneNumber);
 
     boolean existsByNickname(String nickname);
 

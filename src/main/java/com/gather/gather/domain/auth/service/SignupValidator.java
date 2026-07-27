@@ -1,5 +1,8 @@
 package com.gather.gather.domain.auth.service;
 
+import com.gather.gather.domain.auth.dto.PhoneNumberUnavailableReason;
+import com.gather.gather.domain.auth.entity.User;
+import com.gather.gather.domain.auth.entity.UserStatus;
 import com.gather.gather.domain.auth.repository.UserRepository;
 import com.gather.gather.domain.posting.entity.PostingCategory;
 import com.gather.gather.domain.region.entity.Region;
@@ -67,10 +70,34 @@ public class SignupValidator {
         }
     }
 
+    /** 일반 가입과 소셜 가입이 공유하므로 재가입 유예 분기도 여기 한 곳만 고치면 양쪽에 적용된다. */
     public void validatePhoneNumberNotDuplicated(String phoneNumber) {
-        if (userRepository.existsByPhoneNumber(phoneNumber)) {
-            throw new BusinessException(ErrorCode.DUPLICATE_PHONE_NUMBER);
-        }
+        userRepository
+                .findByPhoneNumber(phoneNumber)
+                .ifPresent(
+                        holder -> {
+                            throw new BusinessException(phoneNumberConflictError(holder));
+                        });
+    }
+
+    /**
+     * 탈퇴자가 번호를 쥐고 있는 경우는 "이미 사용 중"과 달리 기다리면 풀리므로 구분한다. 가입 시 오류와 가용성 응답이 어긋나지 않도록 판정을 여기 한 곳에 두고 양쪽이
+     * 같이 쓴다.
+     *
+     * <p>유예가 끝났는데 아직 익명화 배치가 돌지 않은 구간도 탈퇴자 점유로 본다. 번호가 남아 있는 한 가입은 unique 제약에 걸려 실패하므로, 통과시키는 것보다
+     * 안내 가능한 결과를 주는 편이 낫다.
+     */
+    public PhoneNumberUnavailableReason phoneNumberUnavailableReason(User holder) {
+        return holder.getStatus() == UserStatus.WITHDRAWN
+                ? PhoneNumberUnavailableReason.WITHDRAWN_COOLDOWN
+                : PhoneNumberUnavailableReason.IN_USE;
+    }
+
+    private ErrorCode phoneNumberConflictError(User holder) {
+        return phoneNumberUnavailableReason(holder)
+                        == PhoneNumberUnavailableReason.WITHDRAWN_COOLDOWN
+                ? ErrorCode.WITHDRAWN_PHONE_NUMBER_COOLDOWN
+                : ErrorCode.DUPLICATE_PHONE_NUMBER;
     }
 
     public void validateNicknameNotDuplicated(String nickname) {

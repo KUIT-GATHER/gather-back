@@ -155,8 +155,14 @@ public class AuthService {
     public PhoneNumberAvailabilityResponse checkPhoneNumberAvailability(
             PhoneNumberAvailabilityRequest request) {
         String phoneNumber = signupValidator.normalizePhoneNumber(request.phoneNumber());
-        return new PhoneNumberAvailabilityResponse(
-                phoneNumber, !userRepository.existsByPhoneNumber(phoneNumber));
+        return userRepository
+                .findByPhoneNumber(phoneNumber)
+                .map(
+                        holder ->
+                                PhoneNumberAvailabilityResponse.unavailable(
+                                        phoneNumber,
+                                        signupValidator.phoneNumberUnavailableReason(holder)))
+                .orElseGet(() -> PhoneNumberAvailabilityResponse.available(phoneNumber));
     }
 
     @Transactional

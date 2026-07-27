@@ -16,12 +16,16 @@ import static org.mockito.Mockito.when;
 import com.gather.gather.domain.auth.dto.EmailVerificationConfirmRequest;
 import com.gather.gather.domain.auth.dto.EmailVerificationSendRequest;
 import com.gather.gather.domain.auth.dto.LoginRequest;
+import com.gather.gather.domain.auth.dto.PhoneNumberAvailabilityRequest;
+import com.gather.gather.domain.auth.dto.PhoneNumberAvailabilityResponse;
+import com.gather.gather.domain.auth.dto.PhoneNumberUnavailableReason;
 import com.gather.gather.domain.auth.dto.SignupRequest;
 import com.gather.gather.domain.auth.entity.EmailVerification;
 import com.gather.gather.domain.auth.entity.Gender;
 import com.gather.gather.domain.auth.entity.RefreshToken;
 import com.gather.gather.domain.auth.entity.User;
 import com.gather.gather.domain.auth.entity.UserStatus;
+import com.gather.gather.domain.auth.entity.WithdrawalReason;
 import com.gather.gather.domain.auth.repository.EmailVerificationRepository;
 import com.gather.gather.domain.auth.repository.RefreshTokenRepository;
 import com.gather.gather.domain.auth.repository.UserRepository;
@@ -780,6 +784,48 @@ class AuthServiceTest {
 
     private static LoginRequest loginRequest() {
         return new LoginRequest("test@example.com", "password123!");
+    }
+
+    @Test
+    @DisplayName("쓰는 사람이 없는 번호는 사용 가능하고 이유가 비어 있다")
+    void checkPhoneNumberAvailability_whenUnused_returnsAvailable() {
+        when(userRepository.findByPhoneNumber("01012345678")).thenReturn(Optional.empty());
+
+        PhoneNumberAvailabilityResponse response =
+                authService.checkPhoneNumberAvailability(
+                        new PhoneNumberAvailabilityRequest("010-1234-5678"));
+
+        assertThat(response.phoneNumber()).isEqualTo("01012345678");
+        assertThat(response.available()).isTrue();
+        assertThat(response.reason()).isNull();
+    }
+
+    @Test
+    @DisplayName("활성 회원이 쓰는 번호는 IN_USE 이유와 함께 사용 불가다")
+    void checkPhoneNumberAvailability_whenActiveUserHolds_returnsInUse() {
+        when(userRepository.findByPhoneNumber("01012345678")).thenReturn(Optional.of(activeUser()));
+
+        PhoneNumberAvailabilityResponse response =
+                authService.checkPhoneNumberAvailability(
+                        new PhoneNumberAvailabilityRequest("01012345678"));
+
+        assertThat(response.available()).isFalse();
+        assertThat(response.reason()).isEqualTo(PhoneNumberUnavailableReason.IN_USE);
+    }
+
+    @Test
+    @DisplayName("탈퇴자가 쥔 번호는 나중에 풀린다는 뜻의 WITHDRAWN_COOLDOWN을 돌려준다")
+    void checkPhoneNumberAvailability_whenWithdrawnUserHolds_returnsCooldown() {
+        User withdrawn = activeUser();
+        withdrawn.withdraw(WithdrawalReason.SELF, LocalDateTime.now().minusDays(2));
+        when(userRepository.findByPhoneNumber("01012345678")).thenReturn(Optional.of(withdrawn));
+
+        PhoneNumberAvailabilityResponse response =
+                authService.checkPhoneNumberAvailability(
+                        new PhoneNumberAvailabilityRequest("01012345678"));
+
+        assertThat(response.available()).isFalse();
+        assertThat(response.reason()).isEqualTo(PhoneNumberUnavailableReason.WITHDRAWN_COOLDOWN);
     }
 
     private static SignupRequest signupRequest(
