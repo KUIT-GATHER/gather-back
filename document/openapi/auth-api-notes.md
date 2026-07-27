@@ -188,6 +188,8 @@
 ### 3-10. 카카오 로그인 — `POST /api/v1/auth/kakao/login`
 
 - 요청 body: `{ authorizationCode, redirectUri }`. `redirectUri`는 인가 요청에 쓴 값 그대로이며, 서버 허용 목록과 **문자열까지 정확히 일치**해야 합니다(trailing slash 하나만 달라도 400).
+- **OAuth `state` 검증은 프론트 책임입니다.** 카카오 인가 요청 시 난수를 만들어 `state`에 실어 보내고 `sessionStorage`에 저장한 뒤, 콜백에서 쿼리의 `state`와 **문자열 일치를 확인한 경우에만** 이 엔드포인트를 호출하세요. 불일치하면 호출하지 말고 로그인을 처음부터 다시 시작시키고, 확인 후에는 `sessionStorage` 값을 삭제하세요(`localStorage`는 탭 간 공유돼 1회용 성질이 깨지므로 쓰지 마세요). 이 검증이 없으면 공격자가 자신의 인가코드로 사용자를 공격자 계정에 로그인시킬 수 있습니다(로그인 CSRF).
+- `state`는 **서버로 보내지 않습니다.** 요청 body는 위의 `{ authorizationCode, redirectUri }` 그대로이며, 이 항목 때문에 API 계약이 바뀌지는 않습니다. 서버 측 이중 검증안은 설계만 해두고 보류했습니다 — 배경과 재검토 조건은 [kakao-oauth-state-design.md](../kakao-oauth-state-design.md) 참고.
 - 성공은 항상 `200`이고 `data.signupStatus`로 분기합니다. **둘 다 정상 응답이며 `ADDITIONAL_INFO_REQUIRED`는 에러가 아닙니다.**
   - `LOGIN_COMPLETED`(기존 회원): `data = { signupStatus, accessToken, tokenType: "Bearer" }` + Refresh Token 쿠키. 일반 로그인과 동일하게 처리하면 됩니다.
   - `ADDITIONAL_INFO_REQUIRED`(신규 회원): `data = { signupStatus, signupToken, profile: { nickname } }`. 쿠키는 내려가지 않습니다. `signupToken`을 메모리에 보관하고 추가정보 화면으로 이동하세요. `profile.nickname`은 초깃값 용도이며 `null`일 수 있습니다.
