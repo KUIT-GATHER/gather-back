@@ -15,6 +15,7 @@ import com.gather.gather.domain.posting.dto.PostingSummaryResponse;
 import com.gather.gather.domain.posting.entity.PostingCategory;
 import com.gather.gather.domain.posting.entity.PostingStatus;
 import com.gather.gather.domain.posting.service.PostingKeywordRecommendationService;
+import com.gather.gather.domain.posting.service.PostingRecommendationService;
 import com.gather.gather.domain.posting.service.PostingService;
 import com.gather.gather.global.common.PageResponse;
 import com.gather.gather.global.exception.BusinessException;
@@ -40,6 +41,8 @@ class PostingControllerTest {
     @MockitoBean private PostingService postingService;
 
     @MockitoBean private PostingKeywordRecommendationService postingKeywordRecommendationService;
+
+    @MockitoBean private PostingRecommendationService postingRecommendationService;
 
     @Test
     @DisplayName("GET /api/v1/postings returns 200 with a page of postings")

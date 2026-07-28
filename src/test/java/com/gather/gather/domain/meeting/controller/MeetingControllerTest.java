@@ -6,6 +6,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.gather.gather.domain.meeting.service.MeetingKeywordRecommendationService;
+import com.gather.gather.domain.meeting.service.MeetingRecommendationService;
 import com.gather.gather.domain.meeting.service.MeetingService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -25,6 +26,8 @@ class MeetingControllerTest {
     @MockitoBean private MeetingService meetingService;
 
     @MockitoBean private MeetingKeywordRecommendationService meetingKeywordRecommendationService;
+
+    @MockitoBean private MeetingRecommendationService meetingRecommendationService;
 
     @Test
     @DisplayName("POST /api/v1/meetings returns 400 when name exceeds 100 characters")
