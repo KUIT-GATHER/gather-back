@@ -22,8 +22,9 @@ public class CategoryDeadlineScoreCalculator {
     /**
      * @param category 대상(봉사공고/모임)의 카테고리
      * @param preferredCategories 사용자의 선호 카테고리(비로그인·미설정이면 빈 Set)
-     * @param deadline 마감 시각(null이면 근접도 점수 0). 이미 지난 마감(now 이후가 아닌 경우)은 마감 당일과 동일하게 최대 근접도 점수(1.0)로
-     *     clamp된다 — 호출부가 이미 모집중 상태로 필터링한 후보만 넘긴다는 전제이므로, 지난 마감을 별도 감점하지 않는다.
+     * @param deadline 마감 시각(null이면 근접도 점수 0). 근접도 점수는 항상 0~1로 clamp된다: 이미 지난 마감(now 이전)은 마감 당일과
+     *     동일하게 최댓값(1.0)으로, deadlineWindowDays보다 먼 마감은 최솟값(0.0)으로 clamp된다 — 호출부가 이미 모집중 상태로 필터링한 후보만
+     *     넘긴다는 전제이므로, 지난 마감을 별도 감점하지 않는다.
      * @param now 기준 시각
      */
     public double score(

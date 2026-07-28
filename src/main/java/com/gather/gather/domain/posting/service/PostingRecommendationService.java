@@ -100,7 +100,11 @@ public class PostingRecommendationService {
         return scoreCalculator.score(posting.getCategory(), preferredCategories, deadline, now);
     }
 
-    /** 진행 상태와 무관하게(APPLIED/CONFIRMED/COMPLETED/REVIEWED) 이미 참여 이력이 있는 공고는 추천에서 제외한다. */
+    /**
+     * 진행 상태와 무관하게(APPLIED/CONFIRMED/COMPLETED/REVIEWED) 이미 참여 이력이 있는 공고는 추천에서 제외한다. userId가 인증된 값인데
+     * 실제 회원이 없는 경우(탈퇴 직후 등)는 이 메서드 호출 이전에 이미 {@link #getRecommendedPostings}에서 {@code
+     * preferredCategoryResolver.resolve(userId)}가 경고 로그를 남기므로, 여기서 별도로 다시 확인·로깅하지 않는다.
+     */
     private Set<Long> resolveAppliedPostingIds(Long userId) {
         if (userId == null) {
             return Set.of();

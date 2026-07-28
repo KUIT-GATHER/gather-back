@@ -101,7 +101,11 @@ public class MeetingRecommendationService {
                 .toList();
     }
 
-    /** 이미 가입(APPROVED)했거나 가입 신청 중(PENDING)인 모임은 추천에서 제외한다. */
+    /**
+     * 이미 가입(APPROVED)했거나 가입 신청 중(PENDING)인 모임은 추천에서 제외한다. userId가 인증된 값인데 실제 회원이 없는 경우(탈퇴 직후 등)는 이
+     * 메서드 호출 이전에 이미 {@link #getRecommendedMeetings}에서 {@code
+     * preferredCategoryResolver.resolve(userId)}가 경고 로그를 남기므로, 여기서 별도로 다시 확인·로깅하지 않는다.
+     */
     private Set<Long> resolveJoinedMeetingIds(Long userId, List<Meeting> candidates) {
         if (userId == null || candidates.isEmpty()) {
             return Set.of();
