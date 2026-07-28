@@ -9,8 +9,10 @@ public enum KakaoUnlinkResult {
     SUCCESS,
 
     /** 재시도해도 결과가 달라지지 않는다. social_account row를 정리한다. */
-    PERMANENT_FAILURE,
+    ALREADY_UNLINKED,
+
+    NOT_LINKED,
 
     /** 카카오 장애·요청 제한·네트워크 오류. row를 남겨 스케줄러가 다시 시도한다. */
-    TRANSIENT_FAILURE
+    RETRYABLE_FAILURE
 }

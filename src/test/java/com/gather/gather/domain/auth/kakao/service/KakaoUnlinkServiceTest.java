@@ -67,7 +67,7 @@ class KakaoUnlinkServiceTest {
     @Test
     @DisplayName("영구 실패(4xx)는 다시 시도해도 소용없으므로 연동 정보를 지운다")
     void unlinkIfLinked_whenPermanentFailure_deletesSocialAccount() {
-        givenLinkedAccount(KakaoUnlinkResult.PERMANENT_FAILURE);
+        givenLinkedAccount(KakaoUnlinkResult.ALREADY_UNLINKED);
 
         kakaoUnlinkService.unlinkIfLinked(USER_ID);
 
@@ -77,7 +77,7 @@ class KakaoUnlinkServiceTest {
     @Test
     @DisplayName("일시 실패(5xx·네트워크)는 연동 정보를 남겨 재처리 대상으로 둔다")
     void unlinkIfLinked_whenTransientFailure_keepsSocialAccount() {
-        givenLinkedAccount(KakaoUnlinkResult.TRANSIENT_FAILURE);
+        givenLinkedAccount(KakaoUnlinkResult.RETRYABLE_FAILURE);
 
         kakaoUnlinkService.unlinkIfLinked(USER_ID);
 

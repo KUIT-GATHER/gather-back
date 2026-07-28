@@ -1,5 +1,8 @@
 package com.gather.gather.domain.auth.kakao.client;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.gather.gather.domain.auth.kakao.config.KakaoProperties;
 import com.gather.gather.domain.auth.kakao.dto.KakaoTokenResponse;
 import com.gather.gather.domain.auth.kakao.dto.KakaoUserResponse;
@@ -26,14 +29,6 @@ import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 
-/**
- * 카카오 로그인 연동 클라이언트(토큰 교환, 사용자 정보 조회).
- *
- * <p>카카오의 4xx와 5xx를 구분해 서로 다른 {@link BusinessException}으로 변환한다. 인가 코드 재사용(KOE320)은 사용자가 콜백 화면을
- * 새로고침하거나 뒤로가기만 해도 발생하는 일상적인 흐름이라, 500으로 올리면 정상 사용이 서버 에러 알림을 울리게 된다.
- *
- * <p>카카오 Access Token과 client_secret은 어떤 경로로도 로그에 남기지 않는다.
- */
 @Slf4j
 @Component
 public class KakaoApiClient {
@@ -43,8 +38,6 @@ public class KakaoApiClient {
     private static final String UNLINK_PATH = "/v1/user/unlink";
     private static final String BEARER_PREFIX = "Bearer ";
     private static final String ADMIN_KEY_PREFIX = "KakaoAK ";
-
-    // 사용자가 응답을 기다리는 동기 엔드포인트라 카카오 지연이 그대로 사용자 대기로 이어진다.
     private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(3);
     private static final Duration READ_TIMEOUT = Duration.ofSeconds(5);
 
@@ -53,9 +46,13 @@ public class KakaoApiClient {
     private final String restApiKey;
     private final String clientSecret;
     private final String adminKey;
+    private final ObjectMapper objectMapper;
 
     @Autowired
-    public KakaoApiClient(RestClient.Builder restClientBuilder, KakaoProperties properties) {
+    public KakaoApiClient(
+            RestClient.Builder restClientBuilder,
+            KakaoProperties properties,
+            ObjectMapper objectMapper) {
         this(
                 restClientBuilder
                         .clone()
@@ -67,16 +64,25 @@ public class KakaoApiClient {
                         .baseUrl(properties.apiBaseUrl())
                         .requestFactory(timeoutRequestFactory())
                         .build(),
-                properties);
+                properties,
+                objectMapper);
     }
 
-    // 테스트가 MockRestServiceServer로 만든 RestClient를 주입할 수 있도록 분리한 생성자.
     KakaoApiClient(RestClient authClient, RestClient apiClient, KakaoProperties properties) {
+        this(authClient, apiClient, properties, new ObjectMapper());
+    }
+
+    KakaoApiClient(
+            RestClient authClient,
+            RestClient apiClient,
+            KakaoProperties properties,
+            ObjectMapper objectMapper) {
         this.authClient = authClient;
         this.apiClient = apiClient;
         this.restApiKey = properties.restApiKey();
         this.clientSecret = properties.clientSecret();
         this.adminKey = properties.adminKey();
+        this.objectMapper = objectMapper;
     }
 
     private static ClientHttpRequestFactory timeoutRequestFactory() {
@@ -87,14 +93,12 @@ public class KakaoApiClient {
                                 .withReadTimeout(READ_TIMEOUT));
     }
 
-    /** 인가 코드를 카카오 Access Token으로 교환한다. redirectUri는 인가 요청·콘솔 등록값과 정확히 같아야 한다(불일치 시 KOE006). */
     public String requestAccessToken(String authorizationCode, String redirectUri) {
         MultiValueMap<String, String> form = new LinkedMultiValueMap<>();
         form.add("grant_type", "authorization_code");
         form.add("client_id", restApiKey);
         form.add("redirect_uri", redirectUri);
         form.add("code", authorizationCode);
-        // Client Secret이 활성화돼 있어 필수다. 누락 시 KOE010.
         form.add("client_secret", clientSecret);
 
         KakaoTokenResponse response =
@@ -119,18 +123,16 @@ public class KakaoApiClient {
                                                 HttpStatusCode::is5xxServerError,
                                                 this::rejectAsServerError)
                                         .body(KakaoTokenResponse.class),
-                        "토큰 교환");
-
+                        "token exchange");
         if (response == null
                 || response.accessToken() == null
                 || response.accessToken().isBlank()) {
-            log.error("카카오 토큰 교환 응답에 access_token이 없습니다.");
+            log.error("Kakao token response does not contain an access token.");
             throw new BusinessException(ErrorCode.INTERNAL_SERVER_ERROR);
         }
         return response.accessToken();
     }
 
-    /** 카카오 Access Token으로 회원번호와 닉네임을 조회한다. */
     public KakaoUserResponse getUserInfo(String kakaoAccessToken) {
         KakaoUserResponse response =
                 call(
@@ -155,69 +157,70 @@ public class KakaoApiClient {
                                                 HttpStatusCode::is5xxServerError,
                                                 this::rejectAsServerError)
                                         .body(KakaoUserResponse.class),
-                        "사용자 정보 조회");
-
-        // 회원번호는 사용자 식별의 유일한 근거이므로 없으면 진행할 수 없다.
+                        "user-info request");
         if (response == null || response.id() == null) {
-            log.error("카카오 사용자 정보 응답에 회원번호가 없습니다.");
+            log.error("Kakao user-info response does not contain an id.");
             throw new BusinessException(ErrorCode.INTERNAL_SERVER_ERROR);
         }
         return response;
     }
 
-    /**
-     * 카카오 연결을 끊는다. 어드민 키로 인증하므로 사용자 Access Token이 필요 없고, 사용자가 카카오에서 직접 끊은 경우에는 호출할 일이 없다.
-     *
-     * <p>다른 호출과 달리 예외를 던지지 않는다. 이 시점엔 탈퇴가 이미 커밋돼 되돌릴 수 없고, 실패를 500으로 올리면 탈퇴에 성공한 사용자가 에러 화면을 보게 된다.
-     */
     public KakaoUnlinkResult unlink(String providerUserId) {
         MultiValueMap<String, String> form = new LinkedMultiValueMap<>();
         form.add("target_id_type", "user_id");
         form.add("target_id", providerUserId);
 
         try {
-            HttpStatusCode status =
+            KakaoUnlinkResponse response =
                     apiClient
                             .post()
                             .uri(UNLINK_PATH)
                             .header(HttpHeaders.AUTHORIZATION, ADMIN_KEY_PREFIX + adminKey)
                             .contentType(MediaType.APPLICATION_FORM_URLENCODED)
                             .body(form)
-                            // 상태 코드로 재시도 여부를 판단해야 하므로 기본 예외 변환을 끈다.
-                            .retrieve()
-                            .onStatus(HttpStatusCode::isError, this::logUnlinkFailure)
-                            .toBodilessEntity()
-                            .getStatusCode();
-
-            if (status.is2xxSuccessful()) {
-                return KakaoUnlinkResult.SUCCESS;
-            }
-            // 요청 제한은 4xx지만 시간이 지나면 풀리므로 재시도 대상이다.
-            if (status.is5xxServerError()
-                    || status.value() == HttpStatus.TOO_MANY_REQUESTS.value()) {
-                return KakaoUnlinkResult.TRANSIENT_FAILURE;
-            }
-            return KakaoUnlinkResult.PERMANENT_FAILURE;
+                            .exchange(
+                                    (request, clientResponse) ->
+                                            new KakaoUnlinkResponse(
+                                                    clientResponse.getStatusCode(),
+                                                    readBody(clientResponse)));
+            return classifyUnlinkResponse(response);
         } catch (RestClientException exception) {
-            log.error("카카오 연결 해제 호출에 실패했습니다. providerUserId={}", providerUserId, exception);
-            return KakaoUnlinkResult.TRANSIENT_FAILURE;
+            log.error("Kakao unlink request failed. providerUserId={}", providerUserId, exception);
+            return KakaoUnlinkResult.RETRYABLE_FAILURE;
         }
     }
 
-    private void logUnlinkFailure(HttpRequest request, ClientHttpResponse response)
-            throws IOException {
-        log.warn(
-                "카카오 연결 해제가 거부됐습니다. status={}, body={}",
-                response.getStatusCode(),
-                readBody(response));
+    private KakaoUnlinkResult classifyUnlinkResponse(KakaoUnlinkResponse response) {
+        if (response.status().is2xxSuccessful()) {
+            return KakaoUnlinkResult.SUCCESS;
+        }
+
+        Integer errorCode = parseKakaoErrorCode(response.body());
+        log.warn("Kakao unlink rejected. status={}, code={}", response.status().value(), errorCode);
+        if (response.status().value() == HttpStatus.BAD_REQUEST.value()
+                && Integer.valueOf(-101).equals(errorCode)) {
+            return KakaoUnlinkResult.ALREADY_UNLINKED;
+        }
+
+        return KakaoUnlinkResult.RETRYABLE_FAILURE;
+    }
+
+    private Integer parseKakaoErrorCode(String body) {
+        try {
+            JsonNode root = objectMapper.readTree(body);
+            return root != null && root.path("code").canConvertToInt()
+                    ? root.path("code").intValue()
+                    : null;
+        } catch (JsonProcessingException exception) {
+            return null;
+        }
     }
 
     private <T> T call(Supplier<T> apiCall, String operation) {
         try {
             return apiCall.get();
         } catch (RestClientException exception) {
-            // 네트워크 실패·타임아웃·응답 파싱 실패. 카카오 측 문제이므로 500.
-            log.error("카카오 {} 호출에 실패했습니다.", operation, exception);
+            log.error("Kakao {} failed.", operation, exception);
             throw new BusinessException(ErrorCode.INTERNAL_SERVER_ERROR);
         }
     }
@@ -225,7 +228,7 @@ public class KakaoApiClient {
     private void rejectAsBadRequest(HttpRequest request, ClientHttpResponse response)
             throws IOException {
         log.warn(
-                "카카오가 요청을 거부했습니다. status={}, body={}",
+                "Kakao rejected the request. status={}, body={}",
                 response.getStatusCode(),
                 readBody(response));
         throw new BusinessException(ErrorCode.VALIDATION_ERROR);
@@ -234,7 +237,7 @@ public class KakaoApiClient {
     private void rejectAsRateLimited(HttpRequest request, ClientHttpResponse response)
             throws IOException {
         log.error(
-                "카카오 API 요청 제한이 발생했습니다. status={}, path={}, body={}",
+                "Kakao rate limit response. status={}, path={}, body={}",
                 response.getStatusCode(),
                 request.getURI().getPath(),
                 readBody(response));
@@ -244,18 +247,19 @@ public class KakaoApiClient {
     private void rejectAsServerError(HttpRequest request, ClientHttpResponse response)
             throws IOException {
         log.error(
-                "카카오 API가 5xx를 반환했습니다. status={}, body={}",
+                "Kakao server error. status={}, body={}",
                 response.getStatusCode(),
                 readBody(response));
         throw new BusinessException(ErrorCode.INTERNAL_SERVER_ERROR);
     }
 
-    // 카카오 에러 응답 본문(error_code 등)은 원인 파악에 필요하고 토큰을 담지 않으므로 로그에 남긴다.
     private String readBody(ClientHttpResponse response) {
         try {
             return new String(response.getBody().readAllBytes(), StandardCharsets.UTF_8);
         } catch (IOException exception) {
-            return "<본문 읽기 실패>";
+            return "<unavailable>";
         }
     }
+
+    private record KakaoUnlinkResponse(HttpStatusCode status, String body) {}
 }

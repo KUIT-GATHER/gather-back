@@ -159,9 +159,12 @@ public class AuthService {
                 .findByPhoneNumber(phoneNumber)
                 .map(
                         holder ->
-                                PhoneNumberAvailabilityResponse.unavailable(
-                                        phoneNumber,
-                                        signupValidator.phoneNumberUnavailableReason(holder)))
+                                signupValidator.isPhoneNumberAvailable(holder)
+                                        ? PhoneNumberAvailabilityResponse.available(phoneNumber)
+                                        : PhoneNumberAvailabilityResponse.unavailable(
+                                                phoneNumber,
+                                                signupValidator.phoneNumberUnavailableReason(
+                                                        holder)))
                 .orElseGet(() -> PhoneNumberAvailabilityResponse.available(phoneNumber));
     }
 
@@ -278,10 +281,10 @@ public class AuthService {
     }
 
     private void validateDuplicates(String email, String phoneNumber, String nickname) {
+        signupValidator.preparePhoneNumberForSignup(phoneNumber);
         if (userRepository.existsByEmail(email)) {
             throw new BusinessException(ErrorCode.DUPLICATE_EMAIL);
         }
-        signupValidator.validatePhoneNumberNotDuplicated(phoneNumber);
         signupValidator.validateNicknameNotDuplicated(nickname);
     }
 

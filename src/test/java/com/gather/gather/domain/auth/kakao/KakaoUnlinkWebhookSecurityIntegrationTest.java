@@ -1,10 +1,12 @@
 package com.gather.gather.domain.auth.kakao;
 
+import static org.mockito.Mockito.doThrow;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.gather.gather.domain.auth.kakao.service.KakaoUnlinkWebhookService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -12,6 +14,7 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 /**
@@ -33,6 +36,7 @@ class KakaoUnlinkWebhookSecurityIntegrationTest {
     private static final String UNKNOWN_KAKAO_USER_ID = "999999999999";
 
     @Autowired private MockMvc mockMvc;
+    @MockitoSpyBean private KakaoUnlinkWebhookService kakaoUnlinkWebhookService;
 
     @Test
     @DisplayName("어드민 키가 맞으면 JWT 없이도 200이다")
@@ -98,6 +102,22 @@ class KakaoUnlinkWebhookSecurityIntegrationTest {
                                 .param("app_id", APP_ID)
                                 .param("user_id", UNKNOWN_KAKAO_USER_ID)
                                 .param("referrer_type", "SOMETHING_KAKAO_ADDED_LATER"))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void webhook_afterAuthenticationInternalFailure_returns200() throws Exception {
+        doThrow(new IllegalStateException("database unavailable"))
+                .when(kakaoUnlinkWebhookService)
+                .handleUnlink("KakaoAK " + ADMIN_KEY, APP_ID, UNKNOWN_KAKAO_USER_ID);
+
+        mockMvc.perform(
+                        post(WEBHOOK_PATH)
+                                .header(HttpHeaders.AUTHORIZATION, "KakaoAK " + ADMIN_KEY)
+                                .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+                                .param("app_id", APP_ID)
+                                .param("user_id", UNKNOWN_KAKAO_USER_ID)
+                                .param("referrer_type", "UNLINK_FROM_APPS"))
                 .andExpect(status().isOk());
     }
 }

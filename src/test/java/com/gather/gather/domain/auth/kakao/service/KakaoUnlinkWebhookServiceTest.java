@@ -68,7 +68,6 @@ class KakaoUnlinkWebhookServiceTest {
 
     private SocialAccount linkedAccount(UserStatus status) {
         User user = mock(User.class);
-        when(user.getStatus()).thenReturn(status);
         when(user.getId()).thenReturn(USER_ID);
         return SocialAccount.create(user, SocialProvider.KAKAO, KAKAO_USER_ID);
     }
@@ -143,7 +142,7 @@ class KakaoUnlinkWebhookServiceTest {
 
         kakaoUnlinkWebhookService.handleUnlink(AUTHORIZATION, APP_ID, KAKAO_USER_ID);
 
-        verifyNoInteractions(accountTerminationService);
-        verify(socialAccountRepository, never()).delete(any());
+        verify(accountTerminationService).terminate(USER_ID, WithdrawalReason.KAKAO_UNLINK);
+        verify(socialAccountRepository).delete(any(SocialAccount.class));
     }
 }

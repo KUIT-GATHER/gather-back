@@ -3,6 +3,7 @@ package com.gather.gather.domain.auth.service;
 import com.gather.gather.domain.auth.entity.SocialAccount;
 import com.gather.gather.domain.auth.entity.User;
 import com.gather.gather.domain.auth.entity.UserStatus;
+import com.gather.gather.domain.auth.kakao.client.KakaoUnlinkResult;
 import com.gather.gather.domain.auth.kakao.service.KakaoUnlinkService;
 import com.gather.gather.domain.auth.repository.SocialAccountRepository;
 import com.gather.gather.domain.auth.repository.UserRepository;
@@ -14,13 +15,11 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-/** 탈퇴 계정의 뒤처리. 유예가 끝난 계정을 익명화하고, 실패해 남아 있는 카카오 연결 해제를 다시 시도한다. */
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class WithdrawnAccountCleanupService {
 
-    // 한 번에 처리할 양. 유예가 7일이라 하루 배치가 밀려도 다음 회차가 이어받으면 된다.
     private static final int BATCH_SIZE = 100;
 
     private final UserRepository userRepository;
@@ -39,37 +38,47 @@ public class WithdrawnAccountCleanupService {
         return targets.size();
     }
 
-    /**
-     * 트랜잭션을 걸지 않는다. 카카오 호출이 포함돼 있어 한 트랜잭션으로 묶으면 배치 전체가 커넥션을 오래 붙들고, 한 건이 실패할 때 이미 처리한 건까지 되돌아간다.
-     */
-    public int retryPendingUnlinks() {
+    public UnlinkRetrySummary retryPendingUnlinks() {
         List<SocialAccount> pending =
                 socialAccountRepository.findByUserStatus(
                         UserStatus.WITHDRAWN, PageRequest.of(0, BATCH_SIZE));
-
         LocalDateTime now = LocalDateTime.now();
-        int processedCount = 0;
+        int resolvedCount = 0;
+        int noLinkedAccountCount = 0;
+        int retryPendingCount = 0;
+        int failedCount = 0;
+        int forcedDeletionCount = 0;
         for (SocialAccount account : pending) {
             User user = account.getUser();
             try {
                 if (isGraceExpired(user, now)) {
-                    // 카카오 쪽 연결은 남은 채 우리 기록만 사라지는 상태가 된다. 정합성이 어긋나므로 추적 가능해야 한다.
-                    log.error("유예 기간이 지나도 카카오 연결 해제가 되지 않아 연동 정보만 삭제합니다. userId={}", user.getId());
+                    log.error(
+                            "Kakao unlink was not confirmed before the grace period ended. userId={}",
+                            user.getId());
                     socialAccountRepository.delete(account);
-                } else {
-                    kakaoUnlinkService.unlinkIfLinked(user.getId());
+                    forcedDeletionCount++;
+                    continue;
                 }
-                processedCount++;
+                KakaoUnlinkResult result = kakaoUnlinkService.unlinkIfLinked(user.getId());
+                switch (result) {
+                    case SUCCESS, ALREADY_UNLINKED -> resolvedCount++;
+                    case NOT_LINKED -> noLinkedAccountCount++;
+                    case RETRYABLE_FAILURE -> retryPendingCount++;
+                }
             } catch (RuntimeException exception) {
-                // 한 건의 실패가 나머지를 막지 않아야 한다. 남은 row는 다음 회차가 다시 집는다.
-                log.warn("카카오 연결 해제 재시도에 실패했습니다. userId={}", user.getId(), exception);
+                failedCount++;
+                log.warn("Kakao unlink retry failed. userId={}", user.getId(), exception);
             }
         }
-        return processedCount;
+        return new UnlinkRetrySummary(
+                resolvedCount,
+                noLinkedAccountCount,
+                retryPendingCount,
+                failedCount,
+                forcedDeletionCount);
     }
 
     private boolean isGraceExpired(User user, LocalDateTime now) {
-        // withdrawnAt이 없는 과거 탈퇴 계정은 유예 시작 시점을 알 수 없어 강제 삭제하지 않고 재시도만 한다.
         return user.getWithdrawnAt() != null
                 && withdrawalPolicy.isGracePeriodOver(user.getWithdrawnAt(), now);
     }

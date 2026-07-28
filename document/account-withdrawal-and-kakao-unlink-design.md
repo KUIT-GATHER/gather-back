@@ -5,6 +5,14 @@
 
 ---
 
+## 2026-07-28 implementation amendments
+
+- Rejoin becomes available exactly at `withdrawnAt + 7 days`; the daily cleanup job is only a privacy-cleanup safety net. Availability checks never mutate data. Signup locks the phone-number holder, anonymizes an eligible withdrawn holder, flushes it, and then creates the new account in the same transaction.
+- Kakao unlink treats only a 2xx response and `HTTP 400` with response `code = -101` as resolved. Every other response, including malformed or unknown 4xx responses, retains `social_account` for retry. The seven-day forced deletion remains an observable recovery limit.
+- An authenticated Kakao webhook returns 200 after an internal processing failure so Kakao does not retry indefinitely. Its transactional work rolls back before the outer HTTP layer logs `appId`, Kakao user id, referrer type, and cause. No durable retry queue is introduced in this scope; structured error logs are the manual recovery path.
+- A valid unlink webhook removes the local social-account row even for an already withdrawn user. Account termination remains idempotent and does not re-publish the withdrawal event.
+- Meeting-host transfer and one-member meeting disband remain an external integration contract with `origin/feature/user-withdrawal-cleanup`: choose the earliest approved member (then `meeting_member.id`), update host and roles atomically, disband when no other approved member exists, isolate AFTER_COMMIT work in a new transaction, and prevent listener failures from failing withdrawal.
+
 ## 1. 기능 목표
 
 Gather 계정을 종료하는 두 개의 진입점을 만들고, 종료 처리 로직을 한 곳에서 공유한다.
@@ -44,7 +52,7 @@ Gather 계정을 종료하는 두 개의 진입점을 만들고, 종료 처리 �
 2. 서버: `status = WITHDRAWN`, `withdrawn_at = now`, `withdrawal_reason = SELF`, Refresh Token 전량 삭제
 3. 커밋 후: 카카오 unlink 호출 → 성공 시 `social_account` 삭제
 4. 응답 200 + Refresh Token 쿠키 만료. 프론트가 Access Token 폐기
-5. 7일 후 스케줄러가 익명화 → 같은 전화번호로 재가입 가능
+5. `withdrawnAt + 7일`부터 가입 요청이 기존 계정을 잠금·익명화·flush한 뒤 같은 전화번호로 재가입 가능. 스케줄러 익명화는 개인정보 정리 안전망
 
 ### S2. 본인 탈퇴 (일반 회원)
 
@@ -270,13 +278,14 @@ WITHDRAWN_PHONE_NUMBER_COOLDOWN(HttpStatus.CONFLICT, "탈퇴 후 7일간 재가�
 | 상황 | 처리 |
 |---|---|
 | 5xx · 타임아웃 · 네트워크 오류 | **일시 실패.** `social_account` row 유지 → 스케줄러가 재시도 |
-| 4xx | **영구 실패로 간주**하고 row 삭제 |
+| HTTP 400 + `code = -101` | 이미 연결 해제됨으로 간주하고 row 삭제 |
+| 그 외 모든 오류 | 재시도 대상으로 row 유지 |
 | 7일 경과해도 남은 row | **강제 삭제 + error 로그** (익명화 스케줄러가 함께 처리) |
 
 ⚠️ **구현 시점에 반드시 해결할 것 2건**
 
-1. **카카오 unlink API의 정확한 오류 코드를 확인하지 못했다.** "이미 연결 해제된 사용자"를 어떤 코드로 주는지 문서 확인이 필요하다. 확인 전까지는 보수적으로 **5xx만 재시도**하고 4xx는 전부 영구 실패로 처리한다(7일 안전망이 받아낸다).
-2. **7일 강제 삭제 건은 카카오 쪽 연결이 남은 채 우리 기록만 사라진다.** 사용자가 카카오 설정에서 직접 끊으면 웹훅이 오지만 이미 WITHDRAWN이라 no-op이다. 실질 피해는 없으나 정합성이 어긋난 상태이므로 error 로그로 추적 가능해야 한다.
+1. `HTTP 400`의 `code = -101`만 이미 연결 해제된 사용자로 확정한다. 401/403, 429, 5xx, `code = -1`, 본문 파싱 실패와 미분류 오류는 모두 재시도한다. 이 방식은 잘못된 관리 키나 카카오 내부 오류에서 복구용 `provider_user_id`를 보존한다.
+2. **7일 강제 삭제 건은 카카오 쪽 연결이 남은 채 우리 기록만 사라질 수 있다.** 사용자 재가입 허용 시점은 배치와 무관하게 `withdrawnAt + 7일`이며, 배치는 개인정보 정리와 unlink 재시도의 안전망이다. 사용자가 카카오 설정에서 직접 끊어 보낸 웹훅은 WITHDRAWN 상태여도 local `social_account`를 삭제한다.
 
 ### 8-3. 로깅
 

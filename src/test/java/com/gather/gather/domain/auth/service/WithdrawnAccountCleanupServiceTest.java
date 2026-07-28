@@ -16,6 +16,7 @@ import com.gather.gather.domain.auth.entity.SocialProvider;
 import com.gather.gather.domain.auth.entity.User;
 import com.gather.gather.domain.auth.entity.UserStatus;
 import com.gather.gather.domain.auth.entity.WithdrawalReason;
+import com.gather.gather.domain.auth.kakao.client.KakaoUnlinkResult;
 import com.gather.gather.domain.auth.kakao.service.KakaoUnlinkService;
 import com.gather.gather.domain.auth.repository.SocialAccountRepository;
 import com.gather.gather.domain.auth.repository.UserRepository;
@@ -111,8 +112,9 @@ class WithdrawnAccountCleanupServiceTest {
     @DisplayName("유예 기간 안이면 카카오 연결 해제를 다시 시도한다")
     void retryPendingUnlinks_withinGracePeriod_retriesUnlink() {
         givenPendingUnlink(socialAccountOf(withdrawnUser(LocalDateTime.now().minusDays(3))));
+        when(kakaoUnlinkService.unlinkIfLinked(USER_ID)).thenReturn(KakaoUnlinkResult.SUCCESS);
 
-        assertThat(cleanupService().retryPendingUnlinks()).isEqualTo(1);
+        assertThat(cleanupService().retryPendingUnlinks().resolvedCount()).isEqualTo(1);
 
         verify(kakaoUnlinkService).unlinkIfLinked(USER_ID);
         verify(socialAccountRepository, never()).delete(any());
@@ -124,7 +126,7 @@ class WithdrawnAccountCleanupServiceTest {
         SocialAccount account = socialAccountOf(withdrawnUser(LocalDateTime.now().minusDays(8)));
         givenPendingUnlink(account);
 
-        assertThat(cleanupService().retryPendingUnlinks()).isEqualTo(1);
+        assertThat(cleanupService().retryPendingUnlinks().forcedDeletionCount()).isEqualTo(1);
 
         verifyNoInteractions(kakaoUnlinkService);
         verify(socialAccountRepository).delete(account);
@@ -136,8 +138,9 @@ class WithdrawnAccountCleanupServiceTest {
         User legacyUser = withdrawnUser(null);
         ReflectionTestUtils.setField(legacyUser, "status", UserStatus.WITHDRAWN);
         givenPendingUnlink(socialAccountOf(legacyUser));
+        when(kakaoUnlinkService.unlinkIfLinked(USER_ID)).thenReturn(KakaoUnlinkResult.SUCCESS);
 
-        assertThat(cleanupService().retryPendingUnlinks()).isEqualTo(1);
+        assertThat(cleanupService().retryPendingUnlinks().resolvedCount()).isEqualTo(1);
 
         verify(kakaoUnlinkService).unlinkIfLinked(USER_ID);
         verify(socialAccountRepository, never()).delete(any());
@@ -155,8 +158,9 @@ class WithdrawnAccountCleanupServiceTest {
         doThrow(new IllegalStateException("kakao down"))
                 .when(kakaoUnlinkService)
                 .unlinkIfLinked(USER_ID);
+        when(kakaoUnlinkService.unlinkIfLinked(8L)).thenReturn(KakaoUnlinkResult.SUCCESS);
 
-        assertThat(cleanupService().retryPendingUnlinks()).isEqualTo(1);
+        assertThat(cleanupService().retryPendingUnlinks().failedCount()).isEqualTo(1);
 
         verify(kakaoUnlinkService).unlinkIfLinked(8L);
     }
@@ -168,7 +172,7 @@ class WithdrawnAccountCleanupServiceTest {
                         eq(UserStatus.WITHDRAWN), any(Pageable.class)))
                 .thenReturn(List.of());
 
-        assertThat(cleanupService().retryPendingUnlinks()).isZero();
+        assertThat(cleanupService().retryPendingUnlinks().attemptedCount()).isZero();
 
         verify(kakaoUnlinkService, never()).unlinkIfLinked(anyLong());
     }

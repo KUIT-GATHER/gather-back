@@ -82,7 +82,8 @@ class AuthServiceTest {
                         emailSender,
                         tokenProvider,
                         new TokenIssuer(tokenProvider, refreshTokenRepository),
-                        new SignupValidator(userRepository, regionRepository),
+                        new SignupValidator(
+                                userRepository, regionRepository, new WithdrawalPolicy()),
                         new LoginPolicy());
     }
 
@@ -826,6 +827,21 @@ class AuthServiceTest {
 
         assertThat(response.available()).isFalse();
         assertThat(response.reason()).isEqualTo(PhoneNumberUnavailableReason.WITHDRAWN_COOLDOWN);
+    }
+
+    @Test
+    void checkPhoneNumberAvailability_atSevenDays_returnsAvailableWithoutMutation() {
+        User withdrawn = activeUser();
+        withdrawn.withdraw(WithdrawalReason.SELF, LocalDateTime.now().minusDays(7));
+        when(userRepository.findByPhoneNumber("01012345678")).thenReturn(Optional.of(withdrawn));
+
+        PhoneNumberAvailabilityResponse response =
+                authService.checkPhoneNumberAvailability(
+                        new PhoneNumberAvailabilityRequest("01012345678"));
+
+        assertThat(response.available()).isTrue();
+        assertThat(response.reason()).isNull();
+        assertThat(withdrawn.getPhoneNumber()).isEqualTo("01012345678");
     }
 
     private static SignupRequest signupRequest(

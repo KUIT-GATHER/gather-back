@@ -279,7 +279,34 @@ class KakaoApiClientTest {
                 .expect(requestTo(API_BASE_URL + "/v1/user/unlink"))
                 .andRespond(withStatus(HttpStatus.BAD_REQUEST).body("{\"code\":-101}"));
 
-        assertThat(client.unlink(PROVIDER_USER_ID)).isEqualTo(KakaoUnlinkResult.PERMANENT_FAILURE);
+        assertThat(client.unlink(PROVIDER_USER_ID)).isEqualTo(KakaoUnlinkResult.ALREADY_UNLINKED);
+    }
+
+    @Test
+    void unlink_whenInternalErrorCodeIsReturned_keepsRetryableResult() {
+        apiServer
+                .expect(requestTo(API_BASE_URL + "/v1/user/unlink"))
+                .andRespond(withStatus(HttpStatus.BAD_REQUEST).body("{\"code\":-1}"));
+
+        assertThat(client.unlink(PROVIDER_USER_ID)).isEqualTo(KakaoUnlinkResult.RETRYABLE_FAILURE);
+    }
+
+    @Test
+    void unlink_whenUnauthorizedOrForbidden_keepsRetryableResult() {
+        apiServer
+                .expect(requestTo(API_BASE_URL + "/v1/user/unlink"))
+                .andRespond(withStatus(HttpStatus.UNAUTHORIZED).body("{\"code\":-9}"));
+
+        assertThat(client.unlink(PROVIDER_USER_ID)).isEqualTo(KakaoUnlinkResult.RETRYABLE_FAILURE);
+    }
+
+    @Test
+    void unlink_whenErrorBodyIsMalformed_keepsRetryableResult() {
+        apiServer
+                .expect(requestTo(API_BASE_URL + "/v1/user/unlink"))
+                .andRespond(withStatus(HttpStatus.FORBIDDEN).body("not-json"));
+
+        assertThat(client.unlink(PROVIDER_USER_ID)).isEqualTo(KakaoUnlinkResult.RETRYABLE_FAILURE);
     }
 
     @Test
@@ -287,7 +314,7 @@ class KakaoApiClientTest {
     void unlink_when5xx_returnsTransientFailure() {
         apiServer.expect(requestTo(API_BASE_URL + "/v1/user/unlink")).andRespond(withServerError());
 
-        assertThat(client.unlink(PROVIDER_USER_ID)).isEqualTo(KakaoUnlinkResult.TRANSIENT_FAILURE);
+        assertThat(client.unlink(PROVIDER_USER_ID)).isEqualTo(KakaoUnlinkResult.RETRYABLE_FAILURE);
     }
 
     @Test
@@ -297,7 +324,7 @@ class KakaoApiClientTest {
                 .expect(requestTo(API_BASE_URL + "/v1/user/unlink"))
                 .andRespond(withStatus(HttpStatus.TOO_MANY_REQUESTS));
 
-        assertThat(client.unlink(PROVIDER_USER_ID)).isEqualTo(KakaoUnlinkResult.TRANSIENT_FAILURE);
+        assertThat(client.unlink(PROVIDER_USER_ID)).isEqualTo(KakaoUnlinkResult.RETRYABLE_FAILURE);
     }
 
     @Test
@@ -307,7 +334,7 @@ class KakaoApiClientTest {
                 .expect(requestTo(API_BASE_URL + "/v1/user/unlink"))
                 .andRespond(withException(new SocketTimeoutException("read timed out")));
 
-        assertThat(client.unlink(PROVIDER_USER_ID)).isEqualTo(KakaoUnlinkResult.TRANSIENT_FAILURE);
+        assertThat(client.unlink(PROVIDER_USER_ID)).isEqualTo(KakaoUnlinkResult.RETRYABLE_FAILURE);
     }
 
     private void assertErrorCode(Runnable call, ErrorCode expected) {

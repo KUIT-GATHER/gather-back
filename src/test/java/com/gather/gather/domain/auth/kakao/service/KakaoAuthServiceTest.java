@@ -29,6 +29,7 @@ import com.gather.gather.domain.auth.service.LoginPolicy;
 import com.gather.gather.domain.auth.service.SignupValidator;
 import com.gather.gather.domain.auth.service.TokenIssueResult;
 import com.gather.gather.domain.auth.service.TokenIssuer;
+import com.gather.gather.domain.auth.service.WithdrawalPolicy;
 import com.gather.gather.domain.posting.entity.PostingCategory;
 import com.gather.gather.domain.region.entity.Region;
 import com.gather.gather.domain.region.repository.RegionRepository;
@@ -75,7 +76,8 @@ class KakaoAuthServiceTest {
                         socialSignupTokenProvider,
                         socialAccountRepository,
                         userRepository,
-                        new SignupValidator(userRepository, regionRepository),
+                        new SignupValidator(
+                                userRepository, regionRepository, new WithdrawalPolicy()),
                         tokenIssuer,
                         new LoginPolicy());
     }
@@ -191,7 +193,7 @@ class KakaoAuthServiceTest {
         when(socialAccountRepository.existsByProviderAndProviderUserId(
                         SocialProvider.KAKAO, PROVIDER_USER_ID))
                 .thenReturn(false);
-        when(userRepository.findByPhoneNumber("01012345678")).thenReturn(Optional.empty());
+        when(userRepository.findByPhoneNumberForUpdate("01012345678")).thenReturn(Optional.empty());
         when(userRepository.existsByNickname("길동")).thenReturn(false);
         when(regionRepository.findById(ACTIVITY_REGION_ID)).thenReturn(Optional.of(activityRegion));
         when(userRepository.saveAndFlush(any(User.class)))
@@ -241,7 +243,7 @@ class KakaoAuthServiceTest {
         when(socialAccountRepository.existsByProviderAndProviderUserId(
                         SocialProvider.KAKAO, PROVIDER_USER_ID))
                 .thenReturn(false);
-        when(userRepository.findByPhoneNumber("01012345678")).thenReturn(Optional.empty());
+        when(userRepository.findByPhoneNumberForUpdate("01012345678")).thenReturn(Optional.empty());
         when(userRepository.existsByNickname("길동")).thenReturn(false);
         when(regionRepository.findById(ACTIVITY_REGION_ID))
                 .thenReturn(Optional.of(Region.create("강남구", 2, "11680", null)));
@@ -265,7 +267,8 @@ class KakaoAuthServiceTest {
         when(socialAccountRepository.existsByProviderAndProviderUserId(
                         SocialProvider.KAKAO, PROVIDER_USER_ID))
                 .thenReturn(false);
-        when(userRepository.findByPhoneNumber("01012345678")).thenReturn(Optional.of(socialUser()));
+        when(userRepository.findByPhoneNumberForUpdate("01012345678"))
+                .thenReturn(Optional.of(socialUser()));
 
         assertErrorCode(
                 () -> kakaoAuthService.signup(SIGNUP_TOKEN, signupRequest()),
@@ -283,7 +286,8 @@ class KakaoAuthServiceTest {
                 .thenReturn(false);
         User withdrawn = socialUser();
         withdrawn.withdraw(WithdrawalReason.SELF, LocalDateTime.now().minusDays(1));
-        when(userRepository.findByPhoneNumber("01012345678")).thenReturn(Optional.of(withdrawn));
+        when(userRepository.findByPhoneNumberForUpdate("01012345678"))
+                .thenReturn(Optional.of(withdrawn));
 
         assertErrorCode(
                 () -> kakaoAuthService.signup(SIGNUP_TOKEN, signupRequest()),
@@ -299,7 +303,7 @@ class KakaoAuthServiceTest {
         when(socialAccountRepository.existsByProviderAndProviderUserId(
                         SocialProvider.KAKAO, PROVIDER_USER_ID))
                 .thenReturn(false);
-        when(userRepository.findByPhoneNumber("01012345678")).thenReturn(Optional.empty());
+        when(userRepository.findByPhoneNumberForUpdate("01012345678")).thenReturn(Optional.empty());
         when(userRepository.existsByNickname("길동")).thenReturn(true);
 
         assertErrorCode(
@@ -354,7 +358,7 @@ class KakaoAuthServiceTest {
         when(socialAccountRepository.existsByProviderAndProviderUserId(
                         SocialProvider.KAKAO, PROVIDER_USER_ID))
                 .thenReturn(false);
-        when(userRepository.findByPhoneNumber("01012345678")).thenReturn(Optional.empty());
+        when(userRepository.findByPhoneNumberForUpdate("01012345678")).thenReturn(Optional.empty());
         when(userRepository.existsByNickname("길동")).thenReturn(false);
         when(regionRepository.findById(ACTIVITY_REGION_ID)).thenReturn(Optional.empty());
 
@@ -370,7 +374,7 @@ class KakaoAuthServiceTest {
         when(socialAccountRepository.existsByProviderAndProviderUserId(
                         SocialProvider.KAKAO, PROVIDER_USER_ID))
                 .thenReturn(false);
-        when(userRepository.findByPhoneNumber("01012345678")).thenReturn(Optional.empty());
+        when(userRepository.findByPhoneNumberForUpdate("01012345678")).thenReturn(Optional.empty());
         when(userRepository.existsByNickname("길동")).thenReturn(false);
         when(regionRepository.findById(ACTIVITY_REGION_ID))
                 .thenReturn(Optional.of(Region.create("서울특별시", 1, "11", null)));

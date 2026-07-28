@@ -88,7 +88,7 @@ public class KakaoAuthService {
         String nickname = request.nickname();
         String introduction = signupValidator.normalizeNullableText(request.introduction());
 
-        signupValidator.validatePhoneNumberNotDuplicated(phoneNumber);
+        signupValidator.preparePhoneNumberForSignup(phoneNumber);
         signupValidator.validateNicknameNotDuplicated(nickname);
 
         Region activityRegion = signupValidator.findActivityRegion(request.activityRegionId());

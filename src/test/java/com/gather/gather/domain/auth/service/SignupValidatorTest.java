@@ -3,6 +3,7 @@ package com.gather.gather.domain.auth.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.gather.gather.domain.auth.dto.PhoneNumberUnavailableReason;
@@ -25,6 +26,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
@@ -36,6 +38,8 @@ class SignupValidatorTest {
 
     @Mock private UserRepository userRepository;
     @Mock private RegionRepository regionRepository;
+
+    @Spy private WithdrawalPolicy withdrawalPolicy = new WithdrawalPolicy();
 
     @InjectMocks private SignupValidator signupValidator;
 
@@ -67,19 +71,19 @@ class SignupValidatorTest {
     @Test
     @DisplayName("쓰는 사람이 없으면 통과한다")
     void validatePhoneNumberNotDuplicated_whenUnused_passes() {
-        when(userRepository.findByPhoneNumber(PHONE_NUMBER)).thenReturn(Optional.empty());
+        when(userRepository.findByPhoneNumberForUpdate(PHONE_NUMBER)).thenReturn(Optional.empty());
 
-        assertThatCode(() -> signupValidator.validatePhoneNumberNotDuplicated(PHONE_NUMBER))
+        assertThatCode(() -> signupValidator.preparePhoneNumberForSignup(PHONE_NUMBER))
                 .doesNotThrowAnyException();
     }
 
     @Test
     @DisplayName("활성 회원이 쓰고 있으면 이미 사용 중 오류다")
     void validatePhoneNumberNotDuplicated_whenActiveUserHolds_throwsDuplicate() {
-        when(userRepository.findByPhoneNumber(PHONE_NUMBER))
+        when(userRepository.findByPhoneNumberForUpdate(PHONE_NUMBER))
                 .thenReturn(Optional.of(user(UserStatus.ACTIVE, null)));
 
-        assertThatThrownBy(() -> signupValidator.validatePhoneNumberNotDuplicated(PHONE_NUMBER))
+        assertThatThrownBy(() -> signupValidator.preparePhoneNumberForSignup(PHONE_NUMBER))
                 .isInstanceOfSatisfying(
                         BusinessException.class,
                         exception ->
@@ -90,11 +94,11 @@ class SignupValidatorTest {
     @Test
     @DisplayName("탈퇴자가 쥐고 있으면 기다리면 풀린다는 뜻의 재가입 유예 오류다")
     void validatePhoneNumberNotDuplicated_whenWithdrawnUserHolds_throwsCooldown() {
-        when(userRepository.findByPhoneNumber(PHONE_NUMBER))
+        when(userRepository.findByPhoneNumberForUpdate(PHONE_NUMBER))
                 .thenReturn(
                         Optional.of(user(UserStatus.WITHDRAWN, LocalDateTime.now().minusDays(1))));
 
-        assertThatThrownBy(() -> signupValidator.validatePhoneNumberNotDuplicated(PHONE_NUMBER))
+        assertThatThrownBy(() -> signupValidator.preparePhoneNumberForSignup(PHONE_NUMBER))
                 .isInstanceOfSatisfying(
                         BusinessException.class,
                         exception ->
@@ -107,8 +111,21 @@ class SignupValidatorTest {
     void phoneNumberUnavailableReason_afterGraceButNotAnonymized_isCooldown() {
         User withdrawn = user(UserStatus.WITHDRAWN, LocalDateTime.now().minusDays(30));
 
-        assertThat(signupValidator.phoneNumberUnavailableReason(withdrawn))
-                .isEqualTo(PhoneNumberUnavailableReason.WITHDRAWN_COOLDOWN);
+        assertThat(signupValidator.isPhoneNumberAvailable(withdrawn)).isTrue();
+    }
+
+    @Test
+    void preparePhoneNumberForSignup_atSevenDaysAnonymizesAndFlushesHolder() {
+        User withdrawn = user(UserStatus.WITHDRAWN, LocalDateTime.now().minusDays(7));
+        when(userRepository.findByPhoneNumberForUpdate(PHONE_NUMBER))
+                .thenReturn(Optional.of(withdrawn));
+
+        signupValidator.preparePhoneNumberForSignup(PHONE_NUMBER);
+
+        assertThat(withdrawn.getPhoneNumber()).isEqualTo("wd_7");
+        assertThat(withdrawn.getEmail()).isNull();
+        assertThat(withdrawn.getNickname()).isEqualTo("wd_7");
+        verify(userRepository).flush();
     }
 
     @Test

@@ -9,6 +9,7 @@ import com.gather.gather.domain.region.entity.Region;
 import com.gather.gather.domain.region.repository.RegionRepository;
 import com.gather.gather.global.exception.BusinessException;
 import com.gather.gather.global.exception.ErrorCode;
+import java.time.LocalDateTime;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
@@ -39,6 +40,7 @@ public class SignupValidator {
 
     private final UserRepository userRepository;
     private final RegionRepository regionRepository;
+    private final WithdrawalPolicy withdrawalPolicy;
 
     public void validateName(String name) {
         validateKoreanOrEnglish(name);
@@ -71,11 +73,16 @@ public class SignupValidator {
     }
 
     /** 일반 가입과 소셜 가입이 공유하므로 재가입 유예 분기도 여기 한 곳만 고치면 양쪽에 적용된다. */
-    public void validatePhoneNumberNotDuplicated(String phoneNumber) {
+    public void preparePhoneNumberForSignup(String phoneNumber) {
         userRepository
-                .findByPhoneNumber(phoneNumber)
+                .findByPhoneNumberForUpdate(phoneNumber)
                 .ifPresent(
                         holder -> {
+                            if (canReuseWithdrawnPhoneNumber(holder, LocalDateTime.now())) {
+                                holder.anonymize();
+                                userRepository.flush();
+                                return;
+                            }
                             throw new BusinessException(phoneNumberConflictError(holder));
                         });
     }
@@ -89,8 +96,13 @@ public class SignupValidator {
      */
     public PhoneNumberUnavailableReason phoneNumberUnavailableReason(User holder) {
         return holder.getStatus() == UserStatus.WITHDRAWN
+                        && !canReuseWithdrawnPhoneNumber(holder, LocalDateTime.now())
                 ? PhoneNumberUnavailableReason.WITHDRAWN_COOLDOWN
                 : PhoneNumberUnavailableReason.IN_USE;
+    }
+
+    public boolean isPhoneNumberAvailable(User holder) {
+        return canReuseWithdrawnPhoneNumber(holder, LocalDateTime.now());
     }
 
     private ErrorCode phoneNumberConflictError(User holder) {
@@ -98,6 +110,12 @@ public class SignupValidator {
                         == PhoneNumberUnavailableReason.WITHDRAWN_COOLDOWN
                 ? ErrorCode.WITHDRAWN_PHONE_NUMBER_COOLDOWN
                 : ErrorCode.DUPLICATE_PHONE_NUMBER;
+    }
+
+    private boolean canReuseWithdrawnPhoneNumber(User holder, LocalDateTime now) {
+        return holder.getStatus() == UserStatus.WITHDRAWN
+                && holder.getWithdrawnAt() != null
+                && withdrawalPolicy.isGracePeriodOver(holder.getWithdrawnAt(), now);
     }
 
     public void validateNicknameNotDuplicated(String nickname) {
