@@ -1,0 +1,205 @@
+package com.gather.gather.domain.meeting.service;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.mockStatic;
+import static org.mockito.Mockito.when;
+
+import com.gather.gather.domain.auth.entity.Gender;
+import com.gather.gather.domain.auth.entity.User;
+import com.gather.gather.domain.auth.repository.UserRepository;
+import com.gather.gather.domain.meeting.dto.MeetingResponse;
+import com.gather.gather.domain.meeting.entity.Meeting;
+import com.gather.gather.domain.meeting.entity.MeetingMember;
+import com.gather.gather.domain.meeting.enums.MeetingMemberStatus;
+import com.gather.gather.domain.meeting.repository.MeetingMemberRepository;
+import com.gather.gather.domain.meeting.repository.MeetingRepository;
+import com.gather.gather.domain.posting.entity.PostingCategory;
+import com.gather.gather.global.config.RecommendationProperties;
+import com.gather.gather.global.util.CategoryDeadlineScoreCalculator;
+import com.gather.gather.global.util.SecurityUtil;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Optional;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
+import org.mockito.MockedStatic;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.Pageable;
+import org.springframework.test.util.ReflectionTestUtils;
+
+@ExtendWith(MockitoExtension.class)
+class MeetingRecommendationServiceTest {
+
+    private static final Long USER_ID = 1L;
+
+    @Mock private MeetingRepository meetingRepository;
+    @Mock private MeetingMemberRepository meetingMemberRepository;
+    @Mock private UserRepository userRepository;
+
+    private MeetingRecommendationService meetingRecommendationService;
+
+    private final LocalDateTime now = LocalDateTime.now();
+
+    @BeforeEach
+    void setUp() {
+        meetingRecommendationService =
+                new MeetingRecommendationService(
+                        meetingRepository,
+                        meetingMemberRepository,
+                        userRepository,
+                        new CategoryDeadlineScoreCalculator(
+                                new RecommendationProperties(0.7, 0.3, 30)));
+    }
+
+    @Test
+    @DisplayName(
+            "getRecommendedMeetings ranks by category match then deadline proximity, excluding "
+                    + "meetings already joined or pending")
+    void getRecommendedMeetings_ranksByScoreAndExcludesJoined() {
+        Meeting m1 = meeting(1L, PostingCategory.ENVIRONMENT, now.plusDays(5));
+        Meeting m2 = meeting(2L, PostingCategory.WELFARE, now.plusDays(1));
+        Meeting m3 = meeting(3L, PostingCategory.ENVIRONMENT, now.plusDays(40));
+        Meeting m4 = meeting(4L, PostingCategory.WELFARE, now.plusDays(20));
+        Meeting m5 = meeting(5L, PostingCategory.EDUCATION, now.plusDays(2));
+        Meeting m6 = meeting(6L, PostingCategory.ENVIRONMENT, now); // 이미 가입한 모임 → 제외되어야 함
+
+        when(meetingRepository.searchMeetings(
+                        isNull(),
+                        eq(false),
+                        eq(List.of(-1L)),
+                        isNull(),
+                        isNull(),
+                        eq(true),
+                        any(LocalDateTime.class),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of(m1, m2, m3, m4, m5, m6)));
+        when(userRepository.findById(USER_ID))
+                .thenReturn(Optional.of(userWithPreference(PostingCategory.ENVIRONMENT)));
+        when(meetingMemberRepository.findAllByUserIdAndStatusAndMeetingIdInFetchMeeting(
+                        eq(USER_ID), eq(MeetingMemberStatus.PENDING), anyList()))
+                .thenReturn(List.of());
+        when(meetingMemberRepository.findAllByUserIdAndStatusAndMeetingIdInFetchMeeting(
+                        eq(USER_ID), eq(MeetingMemberStatus.APPROVED), anyList()))
+                .thenReturn(List.of(joinedMember(m6)));
+
+        try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
+            securityUtil.when(SecurityUtil::getCurrentUserIdOrNull).thenReturn(USER_ID);
+
+            List<MeetingResponse> recommended =
+                    meetingRecommendationService.getRecommendedMeetings();
+
+            // m1(cat+near) > m3(cat, far) > m2(no cat, near) > m5(no cat) > m4(no cat, far). m6 제외.
+            assertThat(recommended)
+                    .extracting(MeetingResponse::meetingId)
+                    .containsExactly(1L, 3L, 2L, 5L, 4L);
+        }
+    }
+
+    @Test
+    @DisplayName(
+            "getRecommendedMeetings falls back to nearest-deadline order for a guest (no login)")
+    void getRecommendedMeetings_guestFallsBackToDeadlineOrder() {
+        Meeting m1 = meeting(1L, PostingCategory.ENVIRONMENT, now.plusDays(5));
+        Meeting m2 = meeting(2L, PostingCategory.WELFARE, now.plusDays(1));
+        Meeting m3 = meeting(3L, PostingCategory.ENVIRONMENT, now.plusDays(40));
+        Meeting m4 = meeting(4L, PostingCategory.WELFARE, now.plusDays(20));
+        Meeting m5 = meeting(5L, PostingCategory.EDUCATION, now.plusDays(2));
+
+        when(meetingRepository.searchMeetings(
+                        isNull(),
+                        eq(false),
+                        eq(List.of(-1L)),
+                        isNull(),
+                        isNull(),
+                        eq(true),
+                        any(LocalDateTime.class),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of(m1, m2, m3, m4, m5)));
+
+        try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
+            securityUtil.when(SecurityUtil::getCurrentUserIdOrNull).thenReturn(null);
+
+            List<MeetingResponse> recommended =
+                    meetingRecommendationService.getRecommendedMeetings();
+
+            assertThat(recommended)
+                    .extracting(MeetingResponse::meetingId)
+                    .containsExactly(2L, 5L, 1L, 4L, 3L);
+        }
+    }
+
+    private Meeting meeting(Long id, PostingCategory category, LocalDateTime deadline) {
+        Meeting createdMeeting =
+                Meeting.create(
+                        "테스트 모임 " + id,
+                        "설명",
+                        10,
+                        deadline,
+                        null,
+                        category,
+                        1L,
+                        dummyHost(),
+                        null,
+                        null,
+                        now.plusDays(50),
+                        now.plusDays(50).plusHours(2));
+        ReflectionTestUtils.setField(createdMeeting, "id", id);
+        return createdMeeting;
+    }
+
+    private MeetingMember joinedMember(Meeting meeting) {
+        return MeetingMember.createMember(dummyHost(), meeting);
+    }
+
+    private User dummyHost() {
+        return User.create(
+                "호스트",
+                LocalDate.of(1995, 1, 1),
+                Gender.FEMALE,
+                "01098765432",
+                "host@example.com",
+                "encoded-password",
+                "호스트닉네임",
+                "소개",
+                true,
+                true,
+                false,
+                null,
+                List.of());
+    }
+
+    private User userWithPreference(PostingCategory category) {
+        User createdUser =
+                User.create(
+                        "홍길동",
+                        LocalDate.of(2000, 1, 1),
+                        Gender.MALE,
+                        "01012345678",
+                        "test@example.com",
+                        "encoded-password",
+                        "길동",
+                        "소개",
+                        true,
+                        true,
+                        false,
+                        null,
+                        List.of(category));
+        ReflectionTestUtils.setField(createdUser, "id", USER_ID);
+        return createdUser;
+    }
+}
