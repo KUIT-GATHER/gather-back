@@ -14,12 +14,12 @@ import com.gather.gather.domain.posting.dto.PostingSummaryResponse;
 import com.gather.gather.domain.posting.entity.Posting;
 import com.gather.gather.domain.posting.entity.PostingCategory;
 import com.gather.gather.domain.posting.entity.PostingParticipation;
-import com.gather.gather.domain.posting.entity.PostingParticipationStatus;
 import com.gather.gather.domain.posting.entity.PostingStatus;
 import com.gather.gather.domain.posting.repository.PostingParticipationRepository;
 import com.gather.gather.domain.posting.repository.PostingRepository;
 import com.gather.gather.global.config.RecommendationProperties;
 import com.gather.gather.global.util.CategoryDeadlineScoreCalculator;
+import com.gather.gather.global.util.PreferredCategoryResolver;
 import com.gather.gather.global.util.SecurityUtil;
 import java.time.LocalDate;
 import java.util.HashMap;
@@ -57,7 +57,7 @@ class PostingRecommendationServiceTest {
                 new PostingRecommendationService(
                         postingRepository,
                         postingParticipationRepository,
-                        userRepository,
+                        new PreferredCategoryResolver(userRepository),
                         regionNameResolver,
                         new CategoryDeadlineScoreCalculator(
                                 new RecommendationProperties(0.7, 0.3, 30)));
@@ -87,8 +87,7 @@ class PostingRecommendationServiceTest {
                 .thenReturn(new PageImpl<>(List.of(p1, p2, p3, p4, p5, p6)));
         when(userRepository.findById(USER_ID))
                 .thenReturn(Optional.of(userWithPreference(PostingCategory.ENVIRONMENT)));
-        when(postingParticipationRepository.findByUserIdAndStatusIn(
-                        eq(USER_ID), eq(List.of(PostingParticipationStatus.values()))))
+        when(postingParticipationRepository.findByUserId(eq(USER_ID)))
                 .thenReturn(List.of(PostingParticipation.create(USER_ID, 6L)));
 
         try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
@@ -134,6 +133,102 @@ class PostingRecommendationServiceTest {
             assertThat(recommended)
                     .extracting(PostingSummaryResponse::id)
                     .containsExactly(2L, 5L, 1L, 4L, 3L);
+        }
+    }
+
+    @Test
+    @DisplayName(
+            "getRecommendedPostings returns fewer than 5 items when the candidate pool is smaller")
+    void getRecommendedPostings_smallCandidatePool_returnsAllOfThem() {
+        LocalDate today = LocalDate.now();
+        Posting p1 = posting(1L, PostingCategory.ENVIRONMENT, today.plusDays(1));
+        Posting p2 = posting(2L, PostingCategory.WELFARE, today.plusDays(5));
+
+        when(postingRepository.search(
+                        eq(PostingStatus.RECRUITING),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of(p1, p2)));
+
+        try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
+            securityUtil.when(SecurityUtil::getCurrentUserIdOrNull).thenReturn(null);
+
+            List<PostingSummaryResponse> recommended =
+                    postingRecommendationService.getRecommendedPostings();
+
+            assertThat(recommended).extracting(PostingSummaryResponse::id).containsExactly(1L, 2L);
+        }
+    }
+
+    @Test
+    @DisplayName(
+            "getRecommendedPostings returns an empty list when every candidate has already been applied to")
+    void getRecommendedPostings_allCandidatesExcluded_returnsEmptyList() {
+        LocalDate today = LocalDate.now();
+        Posting p1 = posting(1L, PostingCategory.ENVIRONMENT, today.plusDays(1));
+        Posting p2 = posting(2L, PostingCategory.WELFARE, today.plusDays(5));
+
+        when(postingRepository.search(
+                        eq(PostingStatus.RECRUITING),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of(p1, p2)));
+        when(userRepository.findById(USER_ID))
+                .thenReturn(Optional.of(userWithPreference(PostingCategory.ENVIRONMENT)));
+        when(postingParticipationRepository.findByUserId(eq(USER_ID)))
+                .thenReturn(
+                        List.of(
+                                PostingParticipation.create(USER_ID, 1L),
+                                PostingParticipation.create(USER_ID, 2L)));
+
+        try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
+            securityUtil.when(SecurityUtil::getCurrentUserIdOrNull).thenReturn(USER_ID);
+
+            List<PostingSummaryResponse> recommended =
+                    postingRecommendationService.getRecommendedPostings();
+
+            assertThat(recommended).isEmpty();
+        }
+    }
+
+    @Test
+    @DisplayName("getRecommendedPostings breaks ties on equal score and deadline by ascending id")
+    void getRecommendedPostings_tiedScoreAndDeadline_breaksTieByAscendingId() {
+        LocalDate sameDeadline = LocalDate.now().plusDays(10);
+        // 두 후보 모두 선호 카테고리(ENVIRONMENT)와 매칭되지 않아 카테고리 점수 0, 마감일도 동일 → 총점 동점.
+        Posting higherId = posting(20L, PostingCategory.WELFARE, sameDeadline);
+        Posting lowerId = posting(10L, PostingCategory.WELFARE, sameDeadline);
+
+        when(postingRepository.search(
+                        eq(PostingStatus.RECRUITING),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of(higherId, lowerId)));
+        when(userRepository.findById(USER_ID))
+                .thenReturn(Optional.of(userWithPreference(PostingCategory.ENVIRONMENT)));
+        when(postingParticipationRepository.findByUserId(eq(USER_ID))).thenReturn(List.of());
+
+        try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
+            securityUtil.when(SecurityUtil::getCurrentUserIdOrNull).thenReturn(USER_ID);
+
+            List<PostingSummaryResponse> recommended =
+                    postingRecommendationService.getRecommendedPostings();
+
+            assertThat(recommended)
+                    .extracting(PostingSummaryResponse::id)
+                    .containsExactly(10L, 20L);
         }
     }
 

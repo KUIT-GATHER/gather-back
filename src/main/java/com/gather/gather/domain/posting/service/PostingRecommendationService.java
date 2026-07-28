@@ -1,15 +1,14 @@
 package com.gather.gather.domain.posting.service;
 
-import com.gather.gather.domain.auth.repository.UserRepository;
 import com.gather.gather.domain.posting.dto.PostingSummaryResponse;
 import com.gather.gather.domain.posting.entity.Posting;
 import com.gather.gather.domain.posting.entity.PostingCategory;
 import com.gather.gather.domain.posting.entity.PostingParticipation;
-import com.gather.gather.domain.posting.entity.PostingParticipationStatus;
 import com.gather.gather.domain.posting.entity.PostingStatus;
 import com.gather.gather.domain.posting.repository.PostingParticipationRepository;
 import com.gather.gather.domain.posting.repository.PostingRepository;
 import com.gather.gather.global.util.CategoryDeadlineScoreCalculator;
+import com.gather.gather.global.util.PreferredCategoryResolver;
 import com.gather.gather.global.util.SecurityUtil;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
@@ -23,6 +22,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -44,16 +44,20 @@ public class PostingRecommendationService {
 
     private final PostingRepository postingRepository;
     private final PostingParticipationRepository postingParticipationRepository;
-    private final UserRepository userRepository;
+    private final PreferredCategoryResolver preferredCategoryResolver;
     private final RegionNameResolver regionNameResolver;
     private final CategoryDeadlineScoreCalculator scoreCalculator;
 
     public List<PostingSummaryResponse> getRecommendedPostings() {
         Long userId = SecurityUtil.getCurrentUserIdOrNull();
-        Set<PostingCategory> preferredCategories = resolvePreferredCategories(userId);
+        Set<PostingCategory> preferredCategories = preferredCategoryResolver.resolve(userId);
         Set<Long> excludedPostingIds = resolveAppliedPostingIds(userId);
 
-        Pageable candidatePage = PageRequest.of(0, CANDIDATE_POOL_SIZE);
+        // 후보가 CANDIDATE_POOL_SIZE를 초과하면 정렬 없이는 임의의(대략 PK순) 일부만 잘려 채점 대상에서
+        // 아예 누락될 수 있으므로, 마감일이 가까운 순으로 정렬해 근접도 점수가 높은 후보가 항상 풀에 포함되게 한다.
+        Pageable candidatePage =
+                PageRequest.of(
+                        0, CANDIDATE_POOL_SIZE, Sort.by(Sort.Direction.ASC, "noticeEndDate"));
         Page<Posting> candidates =
                 postingRepository.search(
                         PostingStatus.RECRUITING, null, null, null, null, null, candidatePage);
@@ -96,24 +100,12 @@ public class PostingRecommendationService {
         return scoreCalculator.score(posting.getCategory(), preferredCategories, deadline, now);
     }
 
-    private Set<PostingCategory> resolvePreferredCategories(Long userId) {
-        if (userId == null) {
-            return Set.of();
-        }
-        return userRepository
-                .findById(userId)
-                .map(user -> Set.copyOf(user.getInterestCategories()))
-                .orElse(Set.of());
-    }
-
     /** 진행 상태와 무관하게(APPLIED/CONFIRMED/COMPLETED/REVIEWED) 이미 참여 이력이 있는 공고는 추천에서 제외한다. */
     private Set<Long> resolveAppliedPostingIds(Long userId) {
         if (userId == null) {
             return Set.of();
         }
-        return postingParticipationRepository
-                .findByUserIdAndStatusIn(userId, List.of(PostingParticipationStatus.values()))
-                .stream()
+        return postingParticipationRepository.findByUserId(userId).stream()
                 .map(PostingParticipation::getPostingId)
                 .collect(Collectors.toSet());
     }

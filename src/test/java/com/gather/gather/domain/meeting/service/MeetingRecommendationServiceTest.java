@@ -20,6 +20,7 @@ import com.gather.gather.domain.meeting.repository.MeetingRepository;
 import com.gather.gather.domain.posting.entity.PostingCategory;
 import com.gather.gather.global.config.RecommendationProperties;
 import com.gather.gather.global.util.CategoryDeadlineScoreCalculator;
+import com.gather.gather.global.util.PreferredCategoryResolver;
 import com.gather.gather.global.util.SecurityUtil;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -55,7 +56,7 @@ class MeetingRecommendationServiceTest {
                 new MeetingRecommendationService(
                         meetingRepository,
                         meetingMemberRepository,
-                        userRepository,
+                        new PreferredCategoryResolver(userRepository),
                         new CategoryDeadlineScoreCalculator(
                                 new RecommendationProperties(0.7, 0.3, 30)));
     }
@@ -63,14 +64,16 @@ class MeetingRecommendationServiceTest {
     @Test
     @DisplayName(
             "getRecommendedMeetings ranks by category match then deadline proximity, excluding "
-                    + "meetings already joined or pending")
-    void getRecommendedMeetings_ranksByScoreAndExcludesJoined() {
+                    + "meetings already joined (APPROVED) or pending (PENDING)")
+    void getRecommendedMeetings_ranksByScoreAndExcludesJoinedOrPending() {
         Meeting m1 = meeting(1L, PostingCategory.ENVIRONMENT, now.plusDays(5));
         Meeting m2 = meeting(2L, PostingCategory.WELFARE, now.plusDays(1));
         Meeting m3 = meeting(3L, PostingCategory.ENVIRONMENT, now.plusDays(40));
         Meeting m4 = meeting(4L, PostingCategory.WELFARE, now.plusDays(20));
         Meeting m5 = meeting(5L, PostingCategory.EDUCATION, now.plusDays(2));
-        Meeting m6 = meeting(6L, PostingCategory.ENVIRONMENT, now); // 이미 가입한 모임 → 제외되어야 함
+        Meeting m6 = meeting(6L, PostingCategory.ENVIRONMENT, now); // 이미 가입(APPROVED)한 모임 → 제외되어야 함
+        Meeting m7 =
+                meeting(7L, PostingCategory.ENVIRONMENT, now); // 가입 신청 중(PENDING)인 모임 → 제외되어야 함
 
         when(meetingRepository.searchMeetings(
                         isNull(),
@@ -84,12 +87,12 @@ class MeetingRecommendationServiceTest {
                         isNull(),
                         isNull(),
                         any(Pageable.class)))
-                .thenReturn(new PageImpl<>(List.of(m1, m2, m3, m4, m5, m6)));
+                .thenReturn(new PageImpl<>(List.of(m1, m2, m3, m4, m5, m6, m7)));
         when(userRepository.findById(USER_ID))
                 .thenReturn(Optional.of(userWithPreference(PostingCategory.ENVIRONMENT)));
         when(meetingMemberRepository.findAllByUserIdAndStatusAndMeetingIdInFetchMeeting(
                         eq(USER_ID), eq(MeetingMemberStatus.PENDING), anyList()))
-                .thenReturn(List.of());
+                .thenReturn(List.of(joinedMember(m7)));
         when(meetingMemberRepository.findAllByUserIdAndStatusAndMeetingIdInFetchMeeting(
                         eq(USER_ID), eq(MeetingMemberStatus.APPROVED), anyList()))
                 .thenReturn(List.of(joinedMember(m6)));
@@ -100,7 +103,8 @@ class MeetingRecommendationServiceTest {
             List<MeetingResponse> recommended =
                     meetingRecommendationService.getRecommendedMeetings();
 
-            // m1(cat+near) > m3(cat, far) > m2(no cat, near) > m5(no cat) > m4(no cat, far). m6 제외.
+            // m1(cat+near) > m3(cat, far) > m2(no cat, near) > m5(no cat) > m4(no cat, far).
+            // m6(APPROVED)·m7(PENDING) 제외.
             assertThat(recommended)
                     .extracting(MeetingResponse::meetingId)
                     .containsExactly(1L, 3L, 2L, 5L, 4L);
@@ -140,6 +144,115 @@ class MeetingRecommendationServiceTest {
             assertThat(recommended)
                     .extracting(MeetingResponse::meetingId)
                     .containsExactly(2L, 5L, 1L, 4L, 3L);
+        }
+    }
+
+    @Test
+    @DisplayName(
+            "getRecommendedMeetings returns fewer than 5 items when the candidate pool is smaller")
+    void getRecommendedMeetings_smallCandidatePool_returnsAllOfThem() {
+        Meeting m1 = meeting(1L, PostingCategory.ENVIRONMENT, now.plusDays(1));
+        Meeting m2 = meeting(2L, PostingCategory.WELFARE, now.plusDays(5));
+
+        when(meetingRepository.searchMeetings(
+                        isNull(),
+                        eq(false),
+                        eq(List.of(-1L)),
+                        isNull(),
+                        isNull(),
+                        eq(true),
+                        any(LocalDateTime.class),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of(m1, m2)));
+
+        try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
+            securityUtil.when(SecurityUtil::getCurrentUserIdOrNull).thenReturn(null);
+
+            List<MeetingResponse> recommended =
+                    meetingRecommendationService.getRecommendedMeetings();
+
+            assertThat(recommended).extracting(MeetingResponse::meetingId).containsExactly(1L, 2L);
+        }
+    }
+
+    @Test
+    @DisplayName(
+            "getRecommendedMeetings returns an empty list when every candidate is already joined or pending")
+    void getRecommendedMeetings_allCandidatesExcluded_returnsEmptyList() {
+        Meeting m1 = meeting(1L, PostingCategory.ENVIRONMENT, now.plusDays(1));
+        Meeting m2 = meeting(2L, PostingCategory.WELFARE, now.plusDays(5));
+
+        when(meetingRepository.searchMeetings(
+                        isNull(),
+                        eq(false),
+                        eq(List.of(-1L)),
+                        isNull(),
+                        isNull(),
+                        eq(true),
+                        any(LocalDateTime.class),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of(m1, m2)));
+        when(userRepository.findById(USER_ID))
+                .thenReturn(Optional.of(userWithPreference(PostingCategory.ENVIRONMENT)));
+        when(meetingMemberRepository.findAllByUserIdAndStatusAndMeetingIdInFetchMeeting(
+                        eq(USER_ID), eq(MeetingMemberStatus.PENDING), anyList()))
+                .thenReturn(List.of(joinedMember(m1)));
+        when(meetingMemberRepository.findAllByUserIdAndStatusAndMeetingIdInFetchMeeting(
+                        eq(USER_ID), eq(MeetingMemberStatus.APPROVED), anyList()))
+                .thenReturn(List.of(joinedMember(m2)));
+
+        try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
+            securityUtil.when(SecurityUtil::getCurrentUserIdOrNull).thenReturn(USER_ID);
+
+            List<MeetingResponse> recommended =
+                    meetingRecommendationService.getRecommendedMeetings();
+
+            assertThat(recommended).isEmpty();
+        }
+    }
+
+    @Test
+    @DisplayName("getRecommendedMeetings breaks ties on equal score and deadline by ascending id")
+    void getRecommendedMeetings_tiedScoreAndDeadline_breaksTieByAscendingId() {
+        LocalDateTime sameDeadline = now.plusDays(10);
+        // 두 후보 모두 선호 카테고리(ENVIRONMENT)와 매칭되지 않아 카테고리 점수 0, 마감일도 동일 → 총점 동점.
+        Meeting higherId = meeting(20L, PostingCategory.WELFARE, sameDeadline);
+        Meeting lowerId = meeting(10L, PostingCategory.WELFARE, sameDeadline);
+
+        when(meetingRepository.searchMeetings(
+                        isNull(),
+                        eq(false),
+                        eq(List.of(-1L)),
+                        isNull(),
+                        isNull(),
+                        eq(true),
+                        any(LocalDateTime.class),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of(higherId, lowerId)));
+        when(userRepository.findById(USER_ID))
+                .thenReturn(Optional.of(userWithPreference(PostingCategory.ENVIRONMENT)));
+        when(meetingMemberRepository.findAllByUserIdAndStatusAndMeetingIdInFetchMeeting(
+                        eq(USER_ID), any(MeetingMemberStatus.class), anyList()))
+                .thenReturn(List.of());
+
+        try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
+            securityUtil.when(SecurityUtil::getCurrentUserIdOrNull).thenReturn(USER_ID);
+
+            List<MeetingResponse> recommended =
+                    meetingRecommendationService.getRecommendedMeetings();
+
+            assertThat(recommended)
+                    .extracting(MeetingResponse::meetingId)
+                    .containsExactly(10L, 20L);
         }
     }
 

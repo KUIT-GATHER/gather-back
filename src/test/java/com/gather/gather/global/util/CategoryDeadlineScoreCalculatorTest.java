@@ -90,4 +90,60 @@ class CategoryDeadlineScoreCalculatorTest {
 
         assertThat(nearScore).isGreaterThan(farScore);
     }
+
+    @Test
+    @DisplayName(
+            "score treats a deadline exactly at the window boundary as zero deadline proximity")
+    void score_deadlineExactlyAtWindowBoundary_deadlineScoreIsZero() {
+        double score =
+                calculator.score(PostingCategory.ENVIRONMENT, Set.of(), now.plusDays(30), now);
+
+        // daysUntilDeadline == windowDays → raw = (30 - 30) / 30 = 0
+        assertThat(score).isCloseTo(0.0, within(0.0001));
+    }
+
+    @Test
+    @DisplayName("score ignores category match entirely when categoryWeight is configured as zero")
+    void score_zeroCategoryWeight_categoryMatchDoesNotContribute() {
+        CategoryDeadlineScoreCalculator zeroCategoryWeightCalculator =
+                new CategoryDeadlineScoreCalculator(new RecommendationProperties(0.0, 0.3, 30));
+
+        double matchedScore =
+                zeroCategoryWeightCalculator.score(
+                        PostingCategory.ENVIRONMENT,
+                        Set.of(PostingCategory.ENVIRONMENT),
+                        now.plusDays(15),
+                        now);
+        double unmatchedScore =
+                zeroCategoryWeightCalculator.score(
+                        PostingCategory.ENVIRONMENT,
+                        Set.of(PostingCategory.WELFARE),
+                        now.plusDays(15),
+                        now);
+
+        assertThat(matchedScore).isCloseTo(unmatchedScore, within(0.0001));
+    }
+
+    @Test
+    @DisplayName(
+            "score ignores deadline proximity entirely when deadlineWeight is configured as zero")
+    void score_zeroDeadlineWeight_deadlineProximityDoesNotContribute() {
+        CategoryDeadlineScoreCalculator zeroDeadlineWeightCalculator =
+                new CategoryDeadlineScoreCalculator(new RecommendationProperties(0.7, 0.0, 30));
+
+        double nearScore =
+                zeroDeadlineWeightCalculator.score(
+                        PostingCategory.ENVIRONMENT,
+                        Set.of(PostingCategory.ENVIRONMENT),
+                        now.plusDays(1),
+                        now);
+        double farScore =
+                zeroDeadlineWeightCalculator.score(
+                        PostingCategory.ENVIRONMENT,
+                        Set.of(PostingCategory.ENVIRONMENT),
+                        now.plusDays(20),
+                        now);
+
+        assertThat(nearScore).isCloseTo(farScore, within(0.0001));
+    }
 }
