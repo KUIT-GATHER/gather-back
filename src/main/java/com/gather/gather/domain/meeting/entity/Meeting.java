@@ -71,10 +71,10 @@ public class Meeting {
     @Column(name = "volunteer_posting_id")
     private Long volunteerPostingId;
 
-    @Column(name = "activity_start_at", nullable = false)
+    @Column(name = "activity_start_at")
     private LocalDateTime activityStartAt;
 
-    @Column(name = "activity_end_at", nullable = false)
+    @Column(name = "activity_end_at")
     private LocalDateTime activityEndAt;
 
     @CreationTimestamp
@@ -154,7 +154,7 @@ public class Meeting {
     }
 
     public boolean isActivityEnded(LocalDateTime now) {
-        return activityEndAt.isBefore(now);
+        return activityEndAt != null && activityEndAt.isBefore(now);
     }
 
     public void increaseMemberCount() {

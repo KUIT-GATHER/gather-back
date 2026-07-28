@@ -71,10 +71,13 @@ public class MeetingService {
 
     @Transactional
     public MeetingResponse createMeeting(MeetingCreateRequest request) {
-        validateMeetingTime(request.deadline(), request.activityStartAt(), request.activityEndAt());
+        validateMeetingTime(
+                request.deadline(),
+                request.activityStartAt(),
+                request.activityEndAt(),
+                request.volunteerPostingId());
         validateRegionExists(request.regionId());
         PostingCategory category = resolveCategory(request);
-
         Long userId = SecurityUtil.getCurrentUserId();
         User host = getUser(userId);
 
@@ -385,7 +388,24 @@ public class MeetingService {
     }
 
     private void validateMeetingTime(
-            LocalDateTime deadline, LocalDateTime activityStartAt, LocalDateTime activityEndAt) {
+            LocalDateTime deadline,
+            LocalDateTime activityStartAt,
+            LocalDateTime activityEndAt,
+            Long volunteerPostingId) {
+        boolean postingBasedMeeting = volunteerPostingId != null;
+        boolean activityPeriodMissing = activityStartAt == null && activityEndAt == null;
+
+        if (activityPeriodMissing) {
+            if (postingBasedMeeting) {
+                throw new BusinessException(ErrorCode.INVALID_MEETING_TIME);
+            }
+            return;
+        }
+
+        if (activityStartAt == null || activityEndAt == null) {
+            throw new BusinessException(ErrorCode.INVALID_MEETING_TIME);
+        }
+
         if (!activityStartAt.isBefore(activityEndAt)) {
             throw new BusinessException(ErrorCode.INVALID_MEETING_TIME);
         }
