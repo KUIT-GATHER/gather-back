@@ -20,6 +20,7 @@ import com.gather.gather.domain.posting.entity.PostingLocation;
 import com.gather.gather.domain.posting.entity.PostingStatus;
 import com.gather.gather.domain.posting.repository.BookmarkRepository;
 import com.gather.gather.domain.posting.repository.PostingLocationRepository;
+import com.gather.gather.domain.posting.repository.PostingParticipationRepository;
 import com.gather.gather.domain.posting.repository.PostingRepository;
 import com.gather.gather.domain.region.entity.Region;
 import com.gather.gather.domain.region.repository.RegionRepository;
@@ -51,6 +52,7 @@ class PostingServiceTest {
     @Mock private RegionRepository regionRepository;
     @Mock private PostingSearchLogService postingSearchLogService;
     @Mock private BookmarkRepository bookmarkRepository;
+    @Mock private PostingParticipationRepository postingParticipationRepository;
 
     private PostingService postingService;
 
@@ -63,7 +65,8 @@ class PostingServiceTest {
                         regionRepository,
                         postingSearchLogService,
                         new RegionNameResolver(regionRepository),
-                        bookmarkRepository);
+                        bookmarkRepository,
+                        postingParticipationRepository);
     }
 
     @Test
@@ -426,6 +429,7 @@ class PostingServiceTest {
         assertThat(response.locations().get(1).locationSeq()).isEqualTo(2);
         assertThat(response.locations().get(2).locationSeq()).isEqualTo(3);
         assertThat(response.bookmarked()).isFalse();
+        assertThat(response.applied()).isFalse();
     }
 
     @Test
@@ -485,6 +489,67 @@ class PostingServiceTest {
             assertThat(response.bookmarked()).isFalse();
         }
         verify(bookmarkRepository, never()).existsByUserIdAndPostingId(any(), any());
+    }
+
+    @Test
+    @DisplayName("getPosting returns applied true when the current user has applied")
+    void getPosting_returnsAppliedTrue_whenCurrentUserHasApplied() {
+        Long userId = 1L;
+        Posting posting = postingWithId(1L, "동구 환경정화 봉사", 2L, PostingCategory.ENVIRONMENT);
+        when(postingRepository.findById(1L)).thenReturn(Optional.of(posting));
+        when(regionRepository.findById(2L)).thenReturn(Optional.of(regionWithId(2L, "동구")));
+        when(postingLocationRepository.findAllByPostingIdOrderByLocationSeq(1L))
+                .thenReturn(List.of());
+        when(postingParticipationRepository.existsByUserIdAndPostingId(userId, 1L))
+                .thenReturn(true);
+
+        try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
+            securityUtil.when(SecurityUtil::getCurrentUserIdOrNull).thenReturn(userId);
+
+            PostingResponse response = postingService.getPosting(1L);
+
+            assertThat(response.applied()).isTrue();
+        }
+    }
+
+    @Test
+    @DisplayName("getPosting returns applied false when the current user has not applied")
+    void getPosting_returnsAppliedFalse_whenCurrentUserHasNotApplied() {
+        Long userId = 1L;
+        Posting posting = postingWithId(1L, "동구 환경정화 봉사", 2L, PostingCategory.ENVIRONMENT);
+        when(postingRepository.findById(1L)).thenReturn(Optional.of(posting));
+        when(regionRepository.findById(2L)).thenReturn(Optional.of(regionWithId(2L, "동구")));
+        when(postingLocationRepository.findAllByPostingIdOrderByLocationSeq(1L))
+                .thenReturn(List.of());
+        when(postingParticipationRepository.existsByUserIdAndPostingId(userId, 1L))
+                .thenReturn(false);
+
+        try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
+            securityUtil.when(SecurityUtil::getCurrentUserIdOrNull).thenReturn(userId);
+
+            PostingResponse response = postingService.getPosting(1L);
+
+            assertThat(response.applied()).isFalse();
+        }
+    }
+
+    @Test
+    @DisplayName("getPosting returns applied false without querying participations when anonymous")
+    void getPosting_returnsAppliedFalse_whenAnonymous() {
+        Posting posting = postingWithId(1L, "동구 환경정화 봉사", 2L, PostingCategory.ENVIRONMENT);
+        when(postingRepository.findById(1L)).thenReturn(Optional.of(posting));
+        when(regionRepository.findById(2L)).thenReturn(Optional.of(regionWithId(2L, "동구")));
+        when(postingLocationRepository.findAllByPostingIdOrderByLocationSeq(1L))
+                .thenReturn(List.of());
+
+        try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
+            securityUtil.when(SecurityUtil::getCurrentUserIdOrNull).thenReturn(null);
+
+            PostingResponse response = postingService.getPosting(1L);
+
+            assertThat(response.applied()).isFalse();
+        }
+        verify(postingParticipationRepository, never()).existsByUserIdAndPostingId(any(), any());
     }
 
     @Test
