@@ -70,7 +70,7 @@ public class MeetingBookmarkQueryController {
                                                                 "currentMemberCount": 3,
                                                                 "maxMember": 10,
                                                                 "regionId": 2,
-                                                                "category": "ENVIRONMENT",
+                                                                "categories": ["ENVIRONMENT"],
                                                                 "status": "RECRUITING",
                                                                 "deadline": "2026-08-01T00:00:00",
                                                                 "activityStartAt": "2026-08-05T10:00:00"

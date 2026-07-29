@@ -67,7 +67,8 @@ public class MeetingController {
                             + "status=RECRUITING이면 마감 전·정원 미달이며 활동이 종료되지 않은 실제 가입 가능한 모임만 반환합니다. "
                             + "활동 종료 시간이 없는 자유 모임도 신청 마감 전이고 정원이 남아 있으면 포함됩니다. "
                             + "postingBasedFirst=true면 공고 기반 모임을 먼저 배치하고 "
-                            + "자유 모임을 뒤에 두며, 그룹 내부 정렬은 sort를 따릅니다(기본 createdAt,desc).",
+                            + "자유 모임을 뒤에 두며, 그룹 내부 정렬은 sort를 따릅니다(기본 createdAt,desc). "
+                            + "다중 카테고리에는 단일 정렬 기준이 없어 category 정렬은 지원하지 않으며, 요청 시 400을 반환합니다.",
             parameters = {
                 @Parameter(
                         name = "sort",

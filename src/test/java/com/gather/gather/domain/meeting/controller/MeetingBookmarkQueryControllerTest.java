@@ -65,6 +65,8 @@ class MeetingBookmarkQueryControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.content[0].meetingId").value(1))
+                .andExpect(jsonPath("$.data.content[0].categories[0]").value("ENVIRONMENT"))
+                .andExpect(jsonPath("$.data.content[0].category").doesNotExist())
                 .andExpect(jsonPath("$.data.content[0].status").value("RECRUITING"))
                 .andExpect(jsonPath("$.data.totalElements").value(1));
     }

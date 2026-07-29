@@ -93,4 +93,30 @@ class MeetingControllerTest {
         assertThat(capturedRequest.activityStartAt()).isNull();
         assertThat(capturedRequest.activityEndAt()).isNull();
     }
+
+    @Test
+    @DisplayName("POST /api/v1/meetings returns 400 when more than 3 categories are requested")
+    void createMeeting_returns400_whenMoreThanThreeCategoriesAreRequested() throws Exception {
+        String requestBody =
+                """
+                {
+                  "name": "자유 모임",
+                  "description": "카테고리 개수 검증",
+                  "maxMember": 10,
+                  "deadline": "2026-08-01T23:59:59",
+                  "categories": ["ENVIRONMENT", "EDUCATION", "CULTURE", "WELFARE"],
+                  "regionId": 1
+                }
+                """;
+
+        mockMvc.perform(
+                        post("/api/v1/meetings")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(requestBody))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.error.code").value("VALIDATION_ERROR"));
+
+        verifyNoInteractions(meetingService);
+    }
 }
