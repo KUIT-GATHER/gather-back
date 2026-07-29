@@ -13,6 +13,7 @@ import com.gather.gather.domain.region.repository.RegionRepository;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -96,7 +97,7 @@ class MeetingRepositoryTest {
                 10,
                 now.plusDays(3),
                 null,
-                PostingCategory.ENVIRONMENT,
+                Set.of(PostingCategory.ENVIRONMENT),
                 region.getId(),
                 userRepository.save(user(region)),
                 "누구나 참여할 수 있습니다.",
