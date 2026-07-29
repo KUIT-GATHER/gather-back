@@ -17,7 +17,6 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -31,7 +30,6 @@ import org.springframework.transaction.annotation.Transactional;
  * <p>모임 생성/가입/목록조회를 담당하는 {@link MeetingService}와 분리해, 추천 전용 조회·채점·정렬만 담당한다. 점수 산식은 {@link
  * CategoryDeadlineScoreCalculator}를 통해 봉사공고 추천과 동일한 로직을 공유한다.
  */
-@Slf4j
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
@@ -41,12 +39,6 @@ public class MeetingRecommendationService {
 
     /** 후보를 한 번에 조회할 페이지 크기. */
     private static final int PAGE_SIZE = 200;
-
-    /**
-     * 채점 대상 후보를 스캔할 안전 상한. 마감일순으로 페이지를 넘겨가며 전량을 스캔해 진짜 전체 후보 기준 상위 5개를 보장하되, 카탈로그가 비정상적으로 커진 경우 무한정
-     * 스캔하지 않도록 상한을 둔다(도달 시 조용히 자르지 않고 경고 로그를 남긴다).
-     */
-    private static final int MAX_CANDIDATE_SCAN_SIZE = 5000;
 
     /**
      * {@code MeetingRepository#searchMeetings}는 지역 필터를 끄더라도 empty-IN 방지용 더미값이 필요하다(MeetingService와
@@ -86,7 +78,7 @@ public class MeetingRecommendationService {
 
     /**
      * 마감일이 가까운 순으로 페이지를 넘겨가며 전체 후보를 채점한다. 첫 페이지만 잘라 채점하면 이후 페이지에 있는 더 높은 점수의 후보(예: 마감일은 멀지만 선호
-     * 카테고리인 모임)가 통째로 누락될 수 있어, 안전 상한(MAX_CANDIDATE_SCAN_SIZE)까지 전량을 순회한다.
+     * 카테고리인 모임)가 통째로 누락될 수 있어, 후보가 소진될 때까지 전량을 순회한다.
      */
     private List<ScoredMeeting> scoreAllCandidates(
             Set<PostingCategory> preferredCategories,
@@ -94,9 +86,8 @@ public class MeetingRecommendationService {
             LocalDateTime now) {
         List<ScoredMeeting> scored = new ArrayList<>();
         Sort sort = Sort.by(Sort.Direction.ASC, "deadline");
-        int scanned = 0;
         int pageNumber = 0;
-        while (scanned < MAX_CANDIDATE_SCAN_SIZE) {
+        while (true) {
             Pageable pageable = PageRequest.of(pageNumber, PAGE_SIZE, sort);
             Page<Meeting> candidates =
                     meetingRepository.searchMeetings(
@@ -115,7 +106,6 @@ public class MeetingRecommendationService {
             if (content.isEmpty()) {
                 break;
             }
-            scanned += content.size();
             content.stream()
                     .filter(meeting -> !excludedMeetingIds.contains(meeting.getId()))
                     .forEach(
@@ -132,9 +122,6 @@ public class MeetingRecommendationService {
                 break;
             }
             pageNumber++;
-        }
-        if (scanned >= MAX_CANDIDATE_SCAN_SIZE) {
-            log.warn("모임 추천 후보 스캔이 안전 상한({}건)에 도달해 이후 후보는 채점에서 제외됐습니다.", MAX_CANDIDATE_SCAN_SIZE);
         }
         return scored;
     }

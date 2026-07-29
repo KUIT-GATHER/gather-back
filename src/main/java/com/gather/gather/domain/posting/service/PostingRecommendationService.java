@@ -19,7 +19,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
@@ -34,7 +33,6 @@ import org.springframework.transaction.annotation.Transactional;
  * <p>목록 조회/상세 조회를 담당하는 {@link PostingService}와 분리해, 추천 전용 조회·채점·정렬만 담당한다. 비로그인이거나 선호 카테고리가 없는 사용자는
  * 카테고리 점수가 항상 0이 되어 자연히 마감임박순으로 정렬된다.
  */
-@Slf4j
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
@@ -44,12 +42,6 @@ public class PostingRecommendationService {
 
     /** 후보를 한 번에 조회할 페이지 크기. */
     private static final int PAGE_SIZE = 200;
-
-    /**
-     * 채점 대상 후보를 스캔할 안전 상한. 마감일순으로 페이지를 넘겨가며 전량을 스캔해 진짜 전체 후보 기준 상위 5개를 보장하되, 카탈로그가 비정상적으로 커진 경우 무한정
-     * 스캔하지 않도록 상한을 둔다(도달 시 조용히 자르지 않고 경고 로그를 남긴다).
-     */
-    private static final int MAX_CANDIDATE_SCAN_SIZE = 5000;
 
     private final PostingRepository postingRepository;
     private final PostingParticipationRepository postingParticipationRepository;
@@ -90,8 +82,8 @@ public class PostingRecommendationService {
 
     /**
      * 마감일이 가까운 순으로 페이지를 넘겨가며 전체 후보를 채점한다. 첫 페이지만 잘라 채점하면 이후 페이지에 있는 더 높은 점수의 후보(예: 마감일은 멀지만 선호
-     * 카테고리인 공고)가 통째로 누락될 수 있어, 안전 상한(MAX_CANDIDATE_SCAN_SIZE)까지 전량을 순회한다. 신청 이력이 있는 공고와 비활성
-     * (isActive=false) 공고는 신청 시점에 이미 막혀 있으므로 여기서 미리 제외한다.
+     * 카테고리인 공고)가 통째로 누락될 수 있어, 후보가 소진될 때까지 전량을 순회한다. 신청 이력이 있는 공고와 비활성(isActive=false) 공고는 신청 시점에
+     * 이미 막혀 있으므로 여기서 미리 제외한다.
      */
     private List<ScoredPosting> scoreAllCandidates(
             Set<PostingCategory> preferredCategories,
@@ -99,9 +91,8 @@ public class PostingRecommendationService {
             LocalDateTime now) {
         List<ScoredPosting> scored = new ArrayList<>();
         Sort sort = Sort.by(Sort.Direction.ASC, "noticeEndDate");
-        int scanned = 0;
         int pageNumber = 0;
-        while (scanned < MAX_CANDIDATE_SCAN_SIZE) {
+        while (true) {
             Pageable pageable = PageRequest.of(pageNumber, PAGE_SIZE, sort);
             Page<Posting> candidates =
                     postingRepository.search(
@@ -110,7 +101,6 @@ public class PostingRecommendationService {
             if (content.isEmpty()) {
                 break;
             }
-            scanned += content.size();
             content.stream()
                     .filter(posting -> Boolean.TRUE.equals(posting.getIsActive()))
                     .filter(posting -> !excludedPostingIds.contains(posting.getId()))
@@ -124,9 +114,6 @@ public class PostingRecommendationService {
                 break;
             }
             pageNumber++;
-        }
-        if (scanned >= MAX_CANDIDATE_SCAN_SIZE) {
-            log.warn("봉사공고 추천 후보 스캔이 안전 상한({}건)에 도달해 이후 후보는 채점에서 제외됐습니다.", MAX_CANDIDATE_SCAN_SIZE);
         }
         return scored;
     }
