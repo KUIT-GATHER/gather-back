@@ -42,7 +42,7 @@ public interface MeetingRepository extends JpaRepository<Meeting, Long> {
                       AND (:status IS NULL OR m.status = :status)
                       AND (:recruitingOnly = false
                            OR (m.deadline >= :now
-                               AND m.activityEndAt >= :now
+                               AND (m.activityEndAt IS NULL OR m.activityEndAt >= :now)
                                AND m.currentMemberCount < m.maxMember))
                       AND (:activityStartAt IS NULL OR m.activityEndAt >= :activityStartAt)
                       AND (:activityEndAt IS NULL OR m.activityStartAt <= :activityEndAt)
@@ -64,7 +64,7 @@ public interface MeetingRepository extends JpaRepository<Meeting, Long> {
                       AND (:status IS NULL OR m.status = :status)
                       AND (:recruitingOnly = false
                            OR (m.deadline >= :now
-                               AND m.activityEndAt >= :now
+                               AND (m.activityEndAt IS NULL OR m.activityEndAt >= :now)
                                AND m.currentMemberCount < m.maxMember))
                       AND (:activityStartAt IS NULL OR m.activityEndAt >= :activityStartAt)
                       AND (:activityEndAt IS NULL OR m.activityStartAt <= :activityEndAt)

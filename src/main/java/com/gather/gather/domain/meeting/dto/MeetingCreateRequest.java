@@ -26,5 +26,13 @@ public record MeetingCreateRequest(
         String participationCondition,
         @Schema(description = "공고 기반 모임 생성 시 연결할 봉사공고 ID. 자유 모임이면 null", example = "10")
                 Long volunteerPostingId,
-        @NotNull(message = "활동 시작 시간은 필수입니다.") LocalDateTime activityStartAt,
-        @NotNull(message = "활동 종료 시간은 필수입니다.") LocalDateTime activityEndAt) {}
+        @Schema(
+                        description = "활동 시작 시간. 자유 모임은 null로 요청하며, 공고 기반 모임은 필수입니다.",
+                        example = "2026-08-01T09:00:00",
+                        nullable = true)
+                LocalDateTime activityStartAt,
+        @Schema(
+                        description = "활동 종료 시간. 자유 모임은 null로 요청하며, 공고 기반 모임은 필수입니다.",
+                        example = "2026-08-01T18:00:00",
+                        nullable = true)
+                LocalDateTime activityEndAt) {}
