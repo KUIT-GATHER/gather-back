@@ -12,7 +12,6 @@ import com.gather.gather.domain.auth.kakao.token.SocialSignupTokenPayload;
 import com.gather.gather.domain.auth.kakao.token.SocialSignupTokenProvider;
 import com.gather.gather.domain.auth.repository.SocialAccountRepository;
 import com.gather.gather.domain.auth.repository.UserRepository;
-import com.gather.gather.domain.auth.service.LoginPolicy;
 import com.gather.gather.domain.auth.service.SignupValidator;
 import com.gather.gather.domain.auth.service.TokenIssueResult;
 import com.gather.gather.domain.auth.service.TokenIssuer;
@@ -35,7 +34,7 @@ public class KakaoAuthService {
     private final UserRepository userRepository;
     private final SignupValidator signupValidator;
     private final TokenIssuer tokenIssuer;
-    private final LoginPolicy loginPolicy;
+    private final KakaoLoginResolver kakaoLoginResolver;
 
     /**
      * 카카오 인증 결과로 기존 회원 로그인과 신규 회원 가입 토큰 발급을 분기한다.
@@ -52,23 +51,11 @@ public class KakaoAuthService {
         KakaoUserResponse userInfo = kakaoApiClient.getUserInfo(kakaoAccessToken);
         String providerUserId = String.valueOf(userInfo.id());
 
-        return socialAccountRepository
-                .findByProviderAndProviderUserId(SocialProvider.KAKAO, providerUserId)
-                .map(socialAccount -> loginExistingMember(socialAccount.getUser()))
-                .orElseGet(
-                        () ->
-                                KakaoLoginResult.additionalInfoRequired(
-                                        socialSignupTokenProvider.createSignupToken(
-                                                SocialProvider.KAKAO, providerUserId),
-                                        userInfo.nickname()));
+        return kakaoLoginResolver.resolve(
+                SocialProvider.KAKAO, providerUserId, userInfo.nickname());
     }
 
     // 정지·탈퇴 계정이 카카오 로그인으로 제재를 우회하지 못하도록, 일반 로그인·재발급과 동일하게 상태를 검증한 뒤 토큰을 발급한다.
-    private KakaoLoginResult loginExistingMember(User user) {
-        loginPolicy.validateLoginAllowed(user);
-        return KakaoLoginResult.loginCompleted(tokenIssuer.issue(user));
-    }
-
     /**
      * User·SocialAccount·활동지역·관심 카테고리·약관·Refresh Token을 한 트랜잭션으로 저장한다. 중간에 실패하면 회원이 일부만 생성되지 않는다.
      */

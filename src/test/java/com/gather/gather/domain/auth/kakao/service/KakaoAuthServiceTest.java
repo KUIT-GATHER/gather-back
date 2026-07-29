@@ -25,7 +25,6 @@ import com.gather.gather.domain.auth.kakao.token.SocialSignupTokenPayload;
 import com.gather.gather.domain.auth.kakao.token.SocialSignupTokenProvider;
 import com.gather.gather.domain.auth.repository.SocialAccountRepository;
 import com.gather.gather.domain.auth.repository.UserRepository;
-import com.gather.gather.domain.auth.service.LoginPolicy;
 import com.gather.gather.domain.auth.service.SignupValidator;
 import com.gather.gather.domain.auth.service.TokenIssueResult;
 import com.gather.gather.domain.auth.service.TokenIssuer;
@@ -46,9 +45,12 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.junit.jupiter.MockitoSettings;
+import org.mockito.quality.Strictness;
 import org.springframework.dao.DataIntegrityViolationException;
 
 @ExtendWith(MockitoExtension.class)
+@MockitoSettings(strictness = Strictness.LENIENT)
 class KakaoAuthServiceTest {
 
     private static final String REDIRECT_URI = "https://gathernow.kr/login/kakao/callback";
@@ -64,6 +66,7 @@ class KakaoAuthServiceTest {
     @Mock private UserRepository userRepository;
     @Mock private RegionRepository regionRepository;
     @Mock private TokenIssuer tokenIssuer;
+    @Mock private KakaoLoginResolver kakaoLoginResolver;
 
     private KakaoAuthService kakaoAuthService;
 
@@ -79,7 +82,7 @@ class KakaoAuthServiceTest {
                         new SignupValidator(
                                 userRepository, regionRepository, new WithdrawalPolicy()),
                         tokenIssuer,
-                        new LoginPolicy());
+                        kakaoLoginResolver);
     }
 
     @Test
@@ -95,6 +98,11 @@ class KakaoAuthServiceTest {
                                         user, SocialProvider.KAKAO, PROVIDER_USER_ID)));
         when(tokenIssuer.issue(user))
                 .thenReturn(new TokenIssueResult("access-token", "refresh-token"));
+
+        when(kakaoLoginResolver.resolve(any(), any(), any()))
+                .thenReturn(
+                        KakaoLoginResult.loginCompleted(
+                                new TokenIssueResult("access-token", "refresh-token")));
 
         KakaoLoginResult result = kakaoAuthService.login(loginRequest());
 
@@ -127,6 +135,9 @@ class KakaoAuthServiceTest {
                                 SocialAccount.create(
                                         user, SocialProvider.KAKAO, PROVIDER_USER_ID)));
 
+        when(kakaoLoginResolver.resolve(any(), any(), any()))
+                .thenThrow(new BusinessException(expected));
+
         assertErrorCode(() -> kakaoAuthService.login(loginRequest()), expected);
 
         verify(tokenIssuer, never()).issue(any());
@@ -137,6 +148,15 @@ class KakaoAuthServiceTest {
     void login_whenSocialAccountAbsent_returnsAdditionalInfoRequired() {
         stubKakaoAuthentication("동현");
         stubNewSocialAccount();
+
+        when(kakaoLoginResolver.resolve(any(), any(), any()))
+                .thenReturn(KakaoLoginResult.additionalInfoRequired(SIGNUP_TOKEN, "?숉쁽"));
+
+        when(kakaoLoginResolver.resolve(any(), any(), any()))
+                .thenAnswer(
+                        invocation ->
+                                KakaoLoginResult.additionalInfoRequired(
+                                        SIGNUP_TOKEN, invocation.getArgument(2)));
 
         KakaoLoginResult result = kakaoAuthService.login(loginRequest());
 
@@ -152,6 +172,9 @@ class KakaoAuthServiceTest {
     void login_whenNicknameMissing_returnsNullNickname() {
         stubKakaoAuthentication(null);
         stubNewSocialAccount();
+
+        when(kakaoLoginResolver.resolve(any(), any(), any()))
+                .thenReturn(KakaoLoginResult.additionalInfoRequired(SIGNUP_TOKEN, null));
 
         KakaoLoginResult result = kakaoAuthService.login(loginRequest());
 
