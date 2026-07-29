@@ -5,6 +5,8 @@ import com.gather.gather.domain.posting.dto.PostingResponse;
 import com.gather.gather.domain.posting.dto.PostingSummaryResponse;
 import com.gather.gather.domain.posting.entity.Posting;
 import com.gather.gather.domain.posting.entity.PostingCategory;
+import com.gather.gather.domain.posting.entity.PostingParticipation;
+import com.gather.gather.domain.posting.entity.PostingParticipationStatus;
 import com.gather.gather.domain.posting.entity.PostingStatus;
 import com.gather.gather.domain.posting.repository.BookmarkRepository;
 import com.gather.gather.domain.posting.repository.PostingLocationRepository;
@@ -117,7 +119,7 @@ public class PostingService {
                 regionName,
                 buildLocations(posting),
                 isBookmarkedByCurrentUser(id),
-                isAppliedByCurrentUser(id));
+                resolveParticipationStatus(id));
     }
 
     /** 인증이 선택적인 엔드포인트이므로, 로그인하지 않은 사용자는 항상 false를 받는다. */
@@ -126,11 +128,16 @@ public class PostingService {
         return userId != null && bookmarkRepository.existsByUserIdAndPostingId(userId, postingId);
     }
 
-    /** 인증이 선택적인 엔드포인트이므로, 로그인하지 않은 사용자는 항상 false를 받는다. */
-    private boolean isAppliedByCurrentUser(Long postingId) {
+    /** 인증이 선택적인 엔드포인트이므로, 로그인하지 않은 사용자는 항상 참여 이력 없음(null)으로 취급한다. */
+    private PostingParticipationStatus resolveParticipationStatus(Long postingId) {
         Long userId = SecurityUtil.getCurrentUserIdOrNull();
-        return userId != null
-                && postingParticipationRepository.existsByUserIdAndPostingId(userId, postingId);
+        if (userId == null) {
+            return null;
+        }
+        return postingParticipationRepository
+                .findByUserIdAndPostingId(userId, postingId)
+                .map(PostingParticipation::getStatus)
+                .orElse(null);
     }
 
     /**

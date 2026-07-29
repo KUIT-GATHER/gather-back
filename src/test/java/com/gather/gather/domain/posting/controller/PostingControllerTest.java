@@ -10,9 +10,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.gather.gather.domain.posting.dto.PostingLocationResponse;
+import com.gather.gather.domain.posting.dto.PostingParticipationAction;
 import com.gather.gather.domain.posting.dto.PostingResponse;
 import com.gather.gather.domain.posting.dto.PostingSummaryResponse;
 import com.gather.gather.domain.posting.entity.PostingCategory;
+import com.gather.gather.domain.posting.entity.PostingParticipationStatus;
 import com.gather.gather.domain.posting.entity.PostingStatus;
 import com.gather.gather.domain.posting.service.PostingKeywordRecommendationService;
 import com.gather.gather.domain.posting.service.PostingService;
@@ -273,7 +275,8 @@ class PostingControllerTest {
                         null,
                         null,
                         true,
-                        true);
+                        PostingParticipationStatus.APPLIED,
+                        PostingParticipationAction.CANCEL);
         when(postingService.getPosting(1L)).thenReturn(response);
 
         mockMvc.perform(get("/api/v1/postings/1"))
@@ -284,7 +287,8 @@ class PostingControllerTest {
                 .andExpect(jsonPath("$.data.locations").isArray())
                 .andExpect(jsonPath("$.data.locations.length()").value(1))
                 .andExpect(jsonPath("$.data.bookmarked").value(true))
-                .andExpect(jsonPath("$.data.applied").value(true));
+                .andExpect(jsonPath("$.data.participationStatus").value("APPLIED"))
+                .andExpect(jsonPath("$.data.participationAction").value("CANCEL"));
     }
 
     @Test

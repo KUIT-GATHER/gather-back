@@ -2,6 +2,7 @@ package com.gather.gather.domain.posting.dto;
 
 import com.gather.gather.domain.posting.entity.Posting;
 import com.gather.gather.domain.posting.entity.PostingCategory;
+import com.gather.gather.domain.posting.entity.PostingParticipationStatus;
 import com.gather.gather.domain.posting.entity.PostingStatus;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -39,14 +40,15 @@ public record PostingResponse(
         LocalDateTime createdAt,
         LocalDateTime updatedAt,
         boolean bookmarked,
-        boolean applied) {
+        PostingParticipationStatus participationStatus,
+        PostingParticipationAction participationAction) {
 
     public static PostingResponse from(
             Posting posting,
             String regionName,
             List<PostingLocationResponse> locations,
             boolean bookmarked,
-            boolean applied) {
+            PostingParticipationStatus participationStatus) {
         return new PostingResponse(
                 posting.getId(),
                 posting.getTitle(),
@@ -79,6 +81,7 @@ public record PostingResponse(
                 posting.getCreatedAt(),
                 posting.getUpdatedAt(),
                 bookmarked,
-                applied);
+                participationStatus,
+                PostingParticipationAction.from(participationStatus));
     }
 }
