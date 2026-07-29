@@ -8,6 +8,7 @@ import com.gather.gather.domain.posting.entity.PostingCategory;
 import com.gather.gather.domain.posting.entity.PostingStatus;
 import com.gather.gather.domain.posting.repository.BookmarkRepository;
 import com.gather.gather.domain.posting.repository.PostingLocationRepository;
+import com.gather.gather.domain.posting.repository.PostingParticipationRepository;
 import com.gather.gather.domain.posting.repository.PostingRepository;
 import com.gather.gather.domain.region.entity.Region;
 import com.gather.gather.domain.region.repository.RegionRepository;
@@ -58,6 +59,7 @@ public class PostingService {
     private final PostingSearchLogService postingSearchLogService;
     private final RegionNameResolver regionNameResolver;
     private final BookmarkRepository bookmarkRepository;
+    private final PostingParticipationRepository postingParticipationRepository;
 
     @Transactional(readOnly = true)
     public PageResponse<PostingSummaryResponse> getPostings(
@@ -111,13 +113,24 @@ public class PostingService {
                                 .orElse(null)
                         : null;
         return PostingResponse.from(
-                posting, regionName, buildLocations(posting), isBookmarkedByCurrentUser(id));
+                posting,
+                regionName,
+                buildLocations(posting),
+                isBookmarkedByCurrentUser(id),
+                isAppliedByCurrentUser(id));
     }
 
     /** 인증이 선택적인 엔드포인트이므로, 로그인하지 않은 사용자는 항상 false를 받는다. */
     private boolean isBookmarkedByCurrentUser(Long postingId) {
         Long userId = SecurityUtil.getCurrentUserIdOrNull();
         return userId != null && bookmarkRepository.existsByUserIdAndPostingId(userId, postingId);
+    }
+
+    /** 인증이 선택적인 엔드포인트이므로, 로그인하지 않은 사용자는 항상 false를 받는다. */
+    private boolean isAppliedByCurrentUser(Long postingId) {
+        Long userId = SecurityUtil.getCurrentUserIdOrNull();
+        return userId != null
+                && postingParticipationRepository.existsByUserIdAndPostingId(userId, postingId);
     }
 
     /**
