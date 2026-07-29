@@ -45,6 +45,7 @@ public class MeetingController {
             summary = "모임 생성",
             description =
                     "로그인한 사용자가 새로운 모임을 생성합니다. "
+                            + "자유 모임은 categories에 카테고리를 1개 이상 3개 이하로 전달합니다. "
                             + "자유 모임은 volunteerPostingId, activityStartAt, activityEndAt을 생략하거나 null로 요청할 수 있습니다. "
                             + "공고 기반 모임은 volunteerPostingId와 활동 시작·종료 시간이 모두 필요합니다. "
                             + "활동 기간을 전달하는 경우 활동 시작 시간은 종료 시간보다 빨라야 하며, "
@@ -66,7 +67,8 @@ public class MeetingController {
                             + "status=RECRUITING이면 마감 전·정원 미달이며 활동이 종료되지 않은 실제 가입 가능한 모임만 반환합니다. "
                             + "활동 종료 시간이 없는 자유 모임도 신청 마감 전이고 정원이 남아 있으면 포함됩니다. "
                             + "postingBasedFirst=true면 공고 기반 모임을 먼저 배치하고 "
-                            + "자유 모임을 뒤에 두며, 그룹 내부 정렬은 sort를 따릅니다(기본 createdAt,desc).",
+                            + "자유 모임을 뒤에 두며, 그룹 내부 정렬은 sort를 따릅니다(기본 createdAt,desc). "
+                            + "다중 카테고리에는 단일 정렬 기준이 없어 category 정렬은 지원하지 않으며, 요청 시 400을 반환합니다.",
             parameters = {
                 @Parameter(
                         name = "sort",
@@ -74,7 +76,7 @@ public class MeetingController {
                                 "정렬 기준 (property,direction). 예: createdAt,desc(최신순), "
                                         + "currentMemberCount,desc(인기순), deadline,asc(마감임박). "
                                         + "허용 필드: id, name, currentMemberCount, maxMember, regionId, "
-                                        + "category, status, deadline, activityStartAt, activityEndAt, "
+                                        + "status, deadline, activityStartAt, activityEndAt, "
                                         + "createdAt, updatedAt.",
                         example = "createdAt,desc")
             })
@@ -84,7 +86,8 @@ public class MeetingController {
             @Parameter(description = "지역 ID (상위 시/도 선택 시 하위 시군구 모임 포함)")
                     @RequestParam(required = false)
                     Long regionId,
-            @Parameter(description = "카테고리", example = "WELFARE") @RequestParam(required = false)
+            @Parameter(description = "해당 카테고리를 하나라도 포함한 모임 조회", example = "WELFARE")
+                    @RequestParam(required = false)
                     PostingCategory category,
             @Parameter(description = "모집 상태. RECRUITING이면 실제 가입 가능한 모임만 반환")
                     @RequestParam(required = false)

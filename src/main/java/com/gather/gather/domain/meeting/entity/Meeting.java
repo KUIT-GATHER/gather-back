@@ -3,7 +3,9 @@ package com.gather.gather.domain.meeting.entity;
 import com.gather.gather.domain.auth.entity.User;
 import com.gather.gather.domain.meeting.enums.MeetingStatus;
 import com.gather.gather.domain.posting.entity.PostingCategory;
+import jakarta.persistence.CollectionTable;
 import jakarta.persistence.Column;
+import jakarta.persistence.ElementCollection;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
@@ -15,6 +17,8 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import java.time.LocalDateTime;
+import java.util.LinkedHashSet;
+import java.util.Set;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -47,9 +51,11 @@ public class Meeting {
     @Column(columnDefinition = "TEXT")
     private String memo;
 
+    @ElementCollection(fetch = FetchType.LAZY)
+    @CollectionTable(name = "meeting_category", joinColumns = @JoinColumn(name = "meeting_id"))
     @Enumerated(EnumType.STRING)
     @Column(name = "category", nullable = false, length = 20)
-    private PostingCategory category;
+    private Set<PostingCategory> categories = new LinkedHashSet<>();
 
     @Column(name = "region_id", nullable = false)
     private Long regionId;
@@ -94,7 +100,7 @@ public class Meeting {
             Integer maxMember,
             LocalDateTime deadline,
             String memo,
-            PostingCategory category,
+            Set<PostingCategory> categories,
             Long regionId,
             User host,
             String participationCondition,
@@ -106,7 +112,7 @@ public class Meeting {
         this.maxMember = maxMember;
         this.deadline = deadline;
         this.memo = memo;
-        this.category = category;
+        this.categories = new LinkedHashSet<>(categories);
         this.regionId = regionId;
         this.host = host;
         this.currentMemberCount = INITIAL_MEMBER_COUNT;
@@ -123,7 +129,7 @@ public class Meeting {
             Integer maxMember,
             LocalDateTime deadline,
             String memo,
-            PostingCategory category,
+            Set<PostingCategory> categories,
             Long regionId,
             User host,
             String participationCondition,
@@ -136,7 +142,7 @@ public class Meeting {
                 maxMember,
                 deadline,
                 memo,
-                category,
+                categories,
                 regionId,
                 host,
                 participationCondition,

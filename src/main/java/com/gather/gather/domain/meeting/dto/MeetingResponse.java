@@ -5,6 +5,7 @@ import com.gather.gather.domain.meeting.enums.MeetingMemberRole;
 import com.gather.gather.domain.meeting.enums.MeetingStatus;
 import com.gather.gather.domain.posting.entity.PostingCategory;
 import java.time.LocalDateTime;
+import java.util.Set;
 
 public record MeetingResponse(
         Long meetingId,
@@ -13,7 +14,7 @@ public record MeetingResponse(
         Integer currentMemberCount,
         Integer maxMember,
         Long regionId,
-        PostingCategory category,
+        Set<PostingCategory> categories,
         MeetingStatus status,
         LocalDateTime deadline,
         LocalDateTime activityStartAt,
@@ -34,7 +35,7 @@ public record MeetingResponse(
                 meeting.getCurrentMemberCount(),
                 meeting.getMaxMember(),
                 meeting.getRegionId(),
-                meeting.getCategory(),
+                Set.copyOf(meeting.getCategories()),
                 displayStatus,
                 meeting.getDeadline(),
                 meeting.getActivityStartAt(),

@@ -24,6 +24,7 @@ import com.gather.gather.global.exception.ErrorCode;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -81,6 +82,47 @@ class MeetingCreationServiceTest {
     }
 
     @Test
+    @DisplayName("자유 모임은 카테고리를 최대 세 개까지 저장한다")
+    void createMeeting_savesUpToThreeCategoriesForFreeMeeting() {
+        setAuthenticatedUser(1L);
+        User host = mock(User.class);
+        Set<PostingCategory> categories =
+                Set.of(
+                        PostingCategory.ENVIRONMENT,
+                        PostingCategory.EDUCATION,
+                        PostingCategory.WELFARE);
+        MeetingCreateRequest request = createRequest(null, null, null, categories);
+
+        when(regionRepository.existsById(1L)).thenReturn(true);
+        when(userRepository.findById(1L)).thenReturn(Optional.of(host));
+        when(meetingRepository.save(any(Meeting.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+        when(meetingMemberRepository.save(any(MeetingMember.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        meetingService.createMeeting(request);
+
+        ArgumentCaptor<Meeting> meetingCaptor = ArgumentCaptor.forClass(Meeting.class);
+        verify(meetingRepository).save(meetingCaptor.capture());
+        assertThat(meetingCaptor.getValue().getCategories())
+                .containsExactlyInAnyOrderElementsOf(categories);
+    }
+
+    @Test
+    @DisplayName("자유 모임은 카테고리가 없으면 생성할 수 없다")
+    void createMeeting_rejectsFreeMeetingWithoutCategory() {
+        MeetingCreateRequest request = createRequest(null, null, null, Set.of());
+        when(regionRepository.existsById(1L)).thenReturn(true);
+
+        assertThatThrownBy(() -> meetingService.createMeeting(request))
+                .isInstanceOfSatisfying(
+                        BusinessException.class,
+                        exception ->
+                                assertThat(exception.getErrorCode())
+                                        .isEqualTo(ErrorCode.VALIDATION_ERROR));
+    }
+
+    @Test
     @DisplayName("공고 기반 모임은 활동 기간이 없으면 생성할 수 없다")
     void createMeeting_rejectsPostingBasedMeetingWithoutActivityPeriod() {
         MeetingCreateRequest request = createRequest(10L, null, null);
@@ -122,13 +164,25 @@ class MeetingCreationServiceTest {
 
     private MeetingCreateRequest createRequest(
             Long volunteerPostingId, LocalDateTime activityStartAt, LocalDateTime activityEndAt) {
+        return createRequest(
+                volunteerPostingId,
+                activityStartAt,
+                activityEndAt,
+                Set.of(PostingCategory.ENVIRONMENT));
+    }
+
+    private MeetingCreateRequest createRequest(
+            Long volunteerPostingId,
+            LocalDateTime activityStartAt,
+            LocalDateTime activityEndAt,
+            Set<PostingCategory> categories) {
         return new MeetingCreateRequest(
                 "자유 모임",
                 "활동 일정은 추후 등록합니다.",
                 10,
                 LocalDateTime.of(2026, 8, 1, 23, 59),
                 null,
-                PostingCategory.ENVIRONMENT,
+                categories,
                 1L,
                 "누구나 참여할 수 있습니다.",
                 volunteerPostingId,

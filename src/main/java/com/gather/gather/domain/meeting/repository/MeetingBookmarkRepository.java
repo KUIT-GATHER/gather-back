@@ -33,7 +33,7 @@ public interface MeetingBookmarkRepository extends JpaRepository<MeetingBookmark
             join MeetingBookmark b on b.meetingId = m.id
             where b.userId = :userId
               and m.deletedAt is null
-              and (:category is null or m.category = :category)
+              and (:category is null or :category member of m.categories)
               and (:keyword is null
                    or m.name like concat('%', :keyword, '%') escape '\\'
                    or m.description like concat('%', :keyword, '%') escape '\\')

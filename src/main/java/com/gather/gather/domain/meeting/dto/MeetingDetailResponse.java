@@ -4,6 +4,7 @@ import com.gather.gather.domain.meeting.entity.Meeting;
 import com.gather.gather.domain.meeting.enums.MeetingStatus;
 import com.gather.gather.domain.posting.entity.PostingCategory;
 import java.time.LocalDateTime;
+import java.util.Set;
 
 public record MeetingDetailResponse(
         Long meetingId,
@@ -12,7 +13,7 @@ public record MeetingDetailResponse(
         Integer currentMemberCount,
         Integer maxMember,
         Long regionId,
-        PostingCategory category,
+        Set<PostingCategory> categories,
         Long hostId,
         Long volunteerPostingId,
         String participationCondition,
@@ -32,7 +33,7 @@ public record MeetingDetailResponse(
                 meeting.getCurrentMemberCount(),
                 meeting.getMaxMember(),
                 meeting.getRegionId(),
-                meeting.getCategory(),
+                Set.copyOf(meeting.getCategories()),
                 meeting.getHost().getId(),
                 meeting.getVolunteerPostingId(),
                 meeting.getParticipationCondition(),
