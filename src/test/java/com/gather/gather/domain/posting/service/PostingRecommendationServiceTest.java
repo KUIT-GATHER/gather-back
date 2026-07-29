@@ -296,6 +296,61 @@ class PostingRecommendationServiceTest {
         }
     }
 
+    @Test
+    @DisplayName(
+            "getRecommendedPostings excludes postings whose noticeEndDate has already passed even"
+                    + " though the stored status is still RECRUITING (sync lag)")
+    void getRecommendedPostings_excludesPostingsPastNoticeEndDate() {
+        LocalDate today = LocalDate.now();
+        Posting stillOpen = posting(1L, PostingCategory.ENVIRONMENT, today);
+        Posting expired = posting(2L, PostingCategory.ENVIRONMENT, today.minusDays(1));
+
+        when(postingRepository.search(
+                        eq(PostingStatus.RECRUITING),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of(stillOpen, expired)));
+
+        try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
+            securityUtil.when(SecurityUtil::getCurrentUserIdOrNull).thenReturn(null);
+
+            List<PostingSummaryResponse> recommended =
+                    postingRecommendationService.getRecommendedPostings();
+
+            assertThat(recommended).extracting(PostingSummaryResponse::id).containsExactly(1L);
+        }
+    }
+
+    @Test
+    @DisplayName(
+            "getRecommendedPostings keeps postings with a null noticeEndDate (rolling recruitment)")
+    void getRecommendedPostings_keepsPostingsWithNullNoticeEndDate() {
+        Posting rollingRecruitment = posting(1L, PostingCategory.ENVIRONMENT, null);
+
+        when(postingRepository.search(
+                        eq(PostingStatus.RECRUITING),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of(rollingRecruitment)));
+
+        try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
+            securityUtil.when(SecurityUtil::getCurrentUserIdOrNull).thenReturn(null);
+
+            List<PostingSummaryResponse> recommended =
+                    postingRecommendationService.getRecommendedPostings();
+
+            assertThat(recommended).extracting(PostingSummaryResponse::id).containsExactly(1L);
+        }
+    }
+
     private Posting posting(Long id, PostingCategory category, LocalDate noticeEndDate) {
         return posting(id, category, noticeEndDate, true);
     }

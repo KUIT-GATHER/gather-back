@@ -10,6 +10,7 @@ import com.gather.gather.domain.posting.repository.PostingRepository;
 import com.gather.gather.global.util.CategoryDeadlineScoreCalculator;
 import com.gather.gather.global.util.PreferredCategoryResolver;
 import com.gather.gather.global.util.SecurityUtil;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.ArrayList;
@@ -84,12 +85,16 @@ public class PostingRecommendationService {
      * 마감일이 가까운 순으로 페이지를 넘겨가며 전체 후보를 채점한다. 첫 페이지만 잘라 채점하면 이후 페이지에 있는 더 높은 점수의 후보(예: 마감일은 멀지만 선호
      * 카테고리인 공고)가 통째로 누락될 수 있어, 후보가 소진될 때까지 전량을 순회한다. 신청 이력이 있는 공고와 비활성(isActive=false) 공고는 신청 시점에
      * 이미 막혀 있으므로 여기서 미리 제외한다.
+     *
+     * <p>{@code status}는 외부 공공데이터 API 동기화 주기만큼 지연될 수 있어(마감일이 지났는데도 다음 동기화 전까지 RECRUITING으로 남아있을 수
+     * 있음), 저장된 상태만으로 필터링하지 않고 {@code noticeEndDate}가 아직 지나지 않은 공고인지도 함께 확인한다.
      */
     private List<ScoredPosting> scoreAllCandidates(
             Set<PostingCategory> preferredCategories,
             Set<Long> excludedPostingIds,
             LocalDateTime now) {
         List<ScoredPosting> scored = new ArrayList<>();
+        LocalDate today = now.toLocalDate();
         Sort sort = Sort.by(Sort.Direction.ASC, "noticeEndDate");
         int pageNumber = 0;
         while (true) {
@@ -103,6 +108,7 @@ public class PostingRecommendationService {
             }
             content.stream()
                     .filter(posting -> Boolean.TRUE.equals(posting.getIsActive()))
+                    .filter(posting -> isNoticeStillOpen(posting, today))
                     .filter(posting -> !excludedPostingIds.contains(posting.getId()))
                     .forEach(
                             posting ->
@@ -116,6 +122,12 @@ public class PostingRecommendationService {
             pageNumber++;
         }
         return scored;
+    }
+
+    /** noticeEndDate가 없는 공고(상시 모집 등)는 통과시키고, 있으면 오늘을 포함해 아직 지나지 않은 경우만 통과시킨다. */
+    private boolean isNoticeStillOpen(Posting posting, LocalDate today) {
+        LocalDate noticeEndDate = posting.getNoticeEndDate();
+        return noticeEndDate == null || !noticeEndDate.isBefore(today);
     }
 
     private double scoreOf(
