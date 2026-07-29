@@ -16,6 +16,7 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import lombok.AccessLevel;
@@ -32,17 +33,16 @@ public class User {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(nullable = false, length = 20)
+    @Column(length = 20)
     private String name;
 
-    @Column(nullable = false)
-    private LocalDate birthDate;
+    @Column private LocalDate birthDate;
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 10)
+    @Column(length = 10)
     private Gender gender;
 
-    @Column(nullable = false, unique = true, length = 20)
+    @Column(nullable = false, unique = true, length = 24)
     private String phoneNumber;
 
     // 소셜 가입 회원은 이메일·비밀번호를 보유하지 않는다.
@@ -52,7 +52,7 @@ public class User {
     @Column(length = 255)
     private String password;
 
-    @Column(nullable = false, unique = true, length = 20)
+    @Column(nullable = false, unique = true, length = 24)
     private String nickname;
 
     @Column(length = 50)
@@ -69,6 +69,14 @@ public class User {
     @Column(nullable = false, length = 20)
     private UserStatus status;
 
+    @Column private LocalDateTime withdrawnAt;
+
+    @Enumerated(EnumType.STRING)
+    @Column(length = 20)
+    private WithdrawalReason withdrawalReason;
+
+    @Column private LocalDateTime anonymizedAt;
+
     @Column(nullable = false)
     private boolean emailVerified;
 
@@ -82,7 +90,7 @@ public class User {
     private boolean marketingAgreed;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "activity_region_id", nullable = false)
+    @JoinColumn(name = "activity_region_id")
     private Region activityRegion;
 
     @ElementCollection
@@ -187,6 +195,56 @@ public class User {
 
     public void changeProfileImageKey(String profileImageKey) {
         this.profileImageKey = profileImageKey;
+    }
+
+    public void withdraw(WithdrawalReason reason, LocalDateTime now) {
+        if (isWithdrawn()) {
+            return;
+        }
+        if (reason == null || now == null) {
+            throw new IllegalArgumentException("탈퇴 사유와 탈퇴 시각은 필수입니다.");
+        }
+        this.status = UserStatus.WITHDRAWN;
+        this.withdrawalReason = reason;
+        this.withdrawnAt = now;
+    }
+
+    public void anonymize(LocalDateTime now) {
+        if (isAnonymized()) {
+            return;
+        }
+        if (!isWithdrawn()) {
+            throw new IllegalStateException("탈퇴한 사용자만 익명화할 수 있습니다.");
+        }
+        if (id == null) {
+            throw new IllegalStateException("영속화되지 않은 사용자는 익명화할 수 없습니다.");
+        }
+        if (now == null) {
+            throw new IllegalArgumentException("익명화 시각은 필수입니다.");
+        }
+
+        this.name = null;
+        this.birthDate = null;
+        this.gender = null;
+        this.phoneNumber = "wdp_" + id;
+        this.email = null;
+        this.password = null;
+        this.nickname = "wdn_" + id;
+        this.introduction = null;
+        this.profileImageKey = null;
+        this.emailVerified = false;
+        this.marketingAgreed = false;
+        this.activityRegion = null;
+        this.interestCategories.clear();
+        this.anonymizedAt = now;
+    }
+
+    public boolean isWithdrawn() {
+        return status == UserStatus.WITHDRAWN;
+    }
+
+    public boolean isAnonymized() {
+        return anonymizedAt != null;
     }
 
     /** 마이페이지 프로필 편집. 회원가입과 동일한 필드 집합을 갱신하며, 이메일·전화번호·비밀번호는 이 화면의 편집 대상이 아니다. */

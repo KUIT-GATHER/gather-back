@@ -78,7 +78,8 @@ class AuthServiceTest {
                         emailSender,
                         tokenProvider,
                         new TokenIssuer(tokenProvider, refreshTokenRepository),
-                        new SignupValidator(userRepository, regionRepository),
+                        new SignupValidator(
+                                userRepository, regionRepository, new PhoneNumberNormalizer()),
                         new LoginPolicy());
     }
 

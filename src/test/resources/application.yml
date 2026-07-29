@@ -34,6 +34,9 @@ gather:
       cleanup-fixed-delay-milliseconds: 3600000
       cleanup-scheduler-enabled: false
   auth:
+    rejoin-block-hmac:
+      secret: Z2F0aGVyLXRlc3QtcmVqb2luLWJsb2NrLWhtYWMtc2VjcmV0LTIwMjYtMDctMjk=
+      key-version: 1
     refresh-cookie:
       name: gather_refresh_token
       secure: false
