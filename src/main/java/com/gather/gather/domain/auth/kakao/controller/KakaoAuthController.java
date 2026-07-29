@@ -271,7 +271,7 @@ public class KakaoAuthController {
                                                             .SIGNUP_TOKEN_EXPIRED_EXAMPLE),
                                     @ExampleObject(
                                             name = "SIGNUP_TOKEN_INVALID",
-                                            summary = "서명 변조·클레임 불일치·헤더 누락",
+                                            summary = "잘못된 형식·존재하지 않음·이미 소비 또는 취소됨·헤더 누락",
                                             value =
                                                     KakaoAuthSwaggerExamples
                                                             .SIGNUP_TOKEN_INVALID_EXAMPLE)
@@ -308,7 +308,7 @@ public class KakaoAuthController {
                                                             .DUPLICATE_NICKNAME_EXAMPLE),
                                     @ExampleObject(
                                             name = "ALREADY_REGISTERED",
-                                            summary = "이미 가입된 카카오 계정. 가입 토큰 재사용.",
+                                            summary = "가입 세션 발급 후 이미 가입 완료된 카카오 계정",
                                             value =
                                                     KakaoAuthSwaggerExamples
                                                             .ALREADY_REGISTERED_EXAMPLE)
@@ -318,7 +318,7 @@ public class KakaoAuthController {
     public ResponseEntity<ApiResponse<TokenResponse>> signup(
             @Parameter(
                             name = SIGNUP_TOKEN_HEADER,
-                            description = "카카오 로그인 응답으로 받은 가입용 임시 토큰",
+                            description = "카카오 로그인 응답으로 받은 일회성 opaque 가입 토큰",
                             required = true,
                             in = io.swagger.v3.oas.annotations.enums.ParameterIn.HEADER)
                     @RequestHeader(name = SIGNUP_TOKEN_HEADER, required = false)

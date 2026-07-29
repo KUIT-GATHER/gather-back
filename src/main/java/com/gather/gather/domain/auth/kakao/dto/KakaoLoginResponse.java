@@ -10,7 +10,8 @@ public record KakaoLoginResponse(
         @Schema(description = "로그인 결과 상태") SignupStatus signupStatus,
         @Schema(description = "Gather Access Token. LOGIN_COMPLETED일 때만 내려갑니다.") String accessToken,
         @Schema(description = "토큰 타입", example = "Bearer") String tokenType,
-        @Schema(description = "가입용 임시 토큰. ADDITIONAL_INFO_REQUIRED일 때만 내려갑니다.") String signupToken,
+        @Schema(description = "일회성 opaque 가입 토큰. ADDITIONAL_INFO_REQUIRED일 때만 내려갑니다.")
+                String signupToken,
         @Schema(description = "카카오 프로필. ADDITIONAL_INFO_REQUIRED일 때만 내려갑니다.")
                 KakaoProfile profile) {
 

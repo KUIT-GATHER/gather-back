@@ -9,8 +9,6 @@ import com.gather.gather.domain.auth.kakao.config.KakaoProperties;
 import com.gather.gather.domain.auth.kakao.dto.KakaoLoginRequest;
 import com.gather.gather.domain.auth.kakao.dto.KakaoSignupRequest;
 import com.gather.gather.domain.auth.kakao.dto.KakaoUserResponse;
-import com.gather.gather.domain.auth.kakao.token.SocialSignupTokenPayload;
-import com.gather.gather.domain.auth.kakao.token.SocialSignupTokenProvider;
 import com.gather.gather.domain.auth.service.LoginPolicy;
 import com.gather.gather.domain.auth.service.RejoinBlockIdentifier;
 import com.gather.gather.domain.auth.service.RejoinBlockIdentifierHasher;
@@ -35,7 +33,7 @@ public class KakaoAuthService {
 
     private final KakaoApiClient kakaoApiClient;
     private final KakaoProperties kakaoProperties;
-    private final SocialSignupTokenProvider socialSignupTokenProvider;
+    private final SocialSignupSessionService signupSessionService;
     private final RejoinBlockIdentifierHasher identifierHasher;
     private final SocialAccountProviderIdCipher providerIdCipher;
     private final SocialAccountIdentityService socialAccountIdentityService;
@@ -68,7 +66,7 @@ public class KakaoAuthService {
                             EncryptedProviderUserId encryptedProviderUserId =
                                     providerIdCipher.encrypt(providerUserId);
                             return KakaoLoginResult.additionalInfoRequired(
-                                    socialSignupTokenProvider.createSignupToken(
+                                    signupSessionService.issue(
                                             SocialProvider.KAKAO,
                                             identifier,
                                             encryptedProviderUserId),
@@ -88,8 +86,9 @@ public class KakaoAuthService {
 
     /** 가입 토큰과 추가정보를 검증하고, 원자적 저장은 별도 트랜잭션 서비스에 위임한다. */
     public TokenIssueResult signup(String signupToken, KakaoSignupRequest request) {
-        SocialSignupTokenPayload payload = socialSignupTokenProvider.parseSignupToken(signupToken);
-        validateNotRegistered(payload);
+        // 유효한 가입 세션 없이 전화번호·닉네임 중복 여부 같은 가입 검증 결과를 탐색하지 못하게 먼저 확인한다.
+        // 실제 일회성 보장은 KakaoSignupTransactionService가 같은 세션을 다시 잠그고 검증한다.
+        signupSessionService.validatePending(signupToken);
 
         signupValidator.validateName(request.name());
         signupValidator.validateNickname(request.nickname());
@@ -122,14 +121,18 @@ public class KakaoAuthService {
                         request.interestCategories());
 
         try {
-            return signupTransactionService.createAccount(user, payload, phoneNumber, nickname);
+            return signupTransactionService.createAccount(user, signupToken, phoneNumber, nickname);
         } catch (SocialAccountProviderKeyConflictException exception) {
             DataIntegrityViolationException integrityException = exception.integrityException();
-            Optional<SocialAccount> conflictedAccount;
+            Optional<SocialAccount> conflictedAccount = Optional.empty();
             try {
-                conflictedAccount =
-                        socialAccountIdentityService.findByProviderAndKey(
-                                payload.provider(), payload.identifier());
+                Optional<SocialSignupSessionIdentity> identity =
+                        signupSessionService.findIdentity(signupToken);
+                if (identity.isPresent()) {
+                    conflictedAccount =
+                            socialAccountIdentityService.findByProviderAndKey(
+                                    identity.get().provider(), identity.get().identifier());
+                }
             } catch (RuntimeException reloadFailure) {
                 // 확정된 UNIQUE 충돌을 재조회 실패로 덮어쓰지 않는다. 원인은 suppressed로 보존해 운영 분석에 남긴다.
                 integrityException.addSuppressed(reloadFailure);
@@ -139,6 +142,10 @@ public class KakaoAuthService {
             if (conflictedAccount.isEmpty()) {
                 throw integrityException;
             }
+            SocialAccount socialAccount = conflictedAccount.get();
+            if (!socialAccount.isLinked()) {
+                throw new BusinessException(ErrorCode.SOCIAL_ACCOUNT_NOT_LINKED);
+            }
             throw new BusinessException(ErrorCode.ALREADY_REGISTERED);
         }
     }
@@ -147,15 +154,6 @@ public class KakaoAuthService {
     private void validateRedirectUri(String redirectUri) {
         if (!kakaoProperties.redirectUris().contains(redirectUri)) {
             throw new BusinessException(ErrorCode.VALIDATION_ERROR);
-        }
-    }
-
-    // 만료 전 가입 토큰은 여러 번 제출될 수 있다. 유니크 제약에 도달하기 전에 명확한 코드로 실패시킨다.
-    private void validateNotRegistered(SocialSignupTokenPayload payload) {
-        if (socialAccountIdentityService
-                .findByProviderAndKey(payload.provider(), payload.identifier())
-                .isPresent()) {
-            throw new BusinessException(ErrorCode.ALREADY_REGISTERED);
         }
     }
 }

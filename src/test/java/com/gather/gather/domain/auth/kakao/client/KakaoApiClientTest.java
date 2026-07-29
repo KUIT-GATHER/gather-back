@@ -34,9 +34,6 @@ class KakaoApiClientTest {
     private static final String AUTH_BASE_URL = "http://localhost/kauth";
     private static final String API_BASE_URL = "http://localhost/kapi";
     private static final String REDIRECT_URI = "https://gathernow.kr/login/kakao/callback";
-    private static final String SIGNUP_TOKEN_SECRET =
-            "z9tOf6reUdkTRI0KFFiydLKdxpayBBxVWSAm7EJTgKXolFCFvnQ4qViBrdh6y7yP";
-
     private MockRestServiceServer authServer;
     private MockRestServiceServer apiServer;
     private KakaoApiClient client;
@@ -55,7 +52,6 @@ class KakaoApiClientTest {
                 "test-rest-api-key",
                 "test-client-secret",
                 List.of(REDIRECT_URI),
-                SIGNUP_TOKEN_SECRET,
                 900,
                 AUTH_BASE_URL,
                 API_BASE_URL);
