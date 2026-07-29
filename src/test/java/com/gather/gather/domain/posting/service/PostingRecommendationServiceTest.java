@@ -32,7 +32,9 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.MockedStatic;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.test.util.ReflectionTestUtils;
 
@@ -232,13 +234,81 @@ class PostingRecommendationServiceTest {
         }
     }
 
+    @Test
+    @DisplayName(
+            "getRecommendedPostings scans beyond the first page so a preferred-category posting"
+                    + " on a later page still outranks a non-preferred posting on the first page")
+    void getRecommendedPostings_scansSecondPage_preferredCategoryOnLaterPageWins() {
+        LocalDate today = LocalDate.now();
+        Posting nearNonPreferred = posting(1L, PostingCategory.WELFARE, today.plusDays(1));
+        Posting farPreferred = posting(2L, PostingCategory.ENVIRONMENT, today.plusDays(29));
+
+        Page<Posting> firstPage =
+                new PageImpl<>(List.of(nearNonPreferred), PageRequest.of(0, 1), 2);
+        Page<Posting> secondPage = new PageImpl<>(List.of(farPreferred), PageRequest.of(1, 1), 2);
+        when(postingRepository.search(
+                        eq(PostingStatus.RECRUITING),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        any(Pageable.class)))
+                .thenReturn(firstPage, secondPage);
+        when(userRepository.findById(USER_ID))
+                .thenReturn(Optional.of(userWithPreference(PostingCategory.ENVIRONMENT)));
+        when(postingParticipationRepository.findByUserId(eq(USER_ID))).thenReturn(List.of());
+
+        try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
+            securityUtil.when(SecurityUtil::getCurrentUserIdOrNull).thenReturn(USER_ID);
+
+            List<PostingSummaryResponse> recommended =
+                    postingRecommendationService.getRecommendedPostings();
+
+            assertThat(recommended).extracting(PostingSummaryResponse::id).containsExactly(2L, 1L);
+        }
+    }
+
+    @Test
+    @DisplayName("getRecommendedPostings excludes postings that are RECRUITING but isActive=false")
+    void getRecommendedPostings_excludesInactivePostings() {
+        LocalDate today = LocalDate.now();
+        Posting active = posting(1L, PostingCategory.ENVIRONMENT, today.plusDays(1), true);
+        Posting inactive = posting(2L, PostingCategory.ENVIRONMENT, today.plusDays(2), false);
+
+        when(postingRepository.search(
+                        eq(PostingStatus.RECRUITING),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of(active, inactive)));
+
+        try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
+            securityUtil.when(SecurityUtil::getCurrentUserIdOrNull).thenReturn(null);
+
+            List<PostingSummaryResponse> recommended =
+                    postingRecommendationService.getRecommendedPostings();
+
+            assertThat(recommended).extracting(PostingSummaryResponse::id).containsExactly(1L);
+        }
+    }
+
     private Posting posting(Long id, PostingCategory category, LocalDate noticeEndDate) {
+        return posting(id, category, noticeEndDate, true);
+    }
+
+    private Posting posting(
+            Long id, PostingCategory category, LocalDate noticeEndDate, boolean isActive) {
         Posting createdPosting =
                 Posting.builder()
                         .title("테스트 공고 " + id)
                         .status(PostingStatus.RECRUITING)
                         .category(category)
                         .noticeEndDate(noticeEndDate)
+                        .isActive(isActive)
                         .build();
         ReflectionTestUtils.setField(createdPosting, "id", id);
         return createdPosting;

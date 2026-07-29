@@ -335,4 +335,47 @@ class PostingControllerTest {
                 .andExpect(jsonPath("$.data").isArray())
                 .andExpect(jsonPath("$.data.length()").value(0));
     }
+
+    @Test
+    @DisplayName("GET /api/v1/postings/recommended returns 200 with recommended postings")
+    void getRecommendedPostings_returns200WithRecommendations() throws Exception {
+        PostingSummaryResponse summary =
+                new PostingSummaryResponse(
+                        1L,
+                        "동구 환경정화 봉사",
+                        PostingStatus.RECRUITING,
+                        "울산 동구청",
+                        LocalDate.of(2026, 7, 10),
+                        LocalDate.of(2026, 7, 10),
+                        "동구 일대",
+                        5,
+                        1,
+                        2L,
+                        "동구",
+                        PostingCategory.ENVIRONMENT,
+                        LocalDate.of(2026, 7, 5));
+        when(postingRecommendationService.getRecommendedPostings()).thenReturn(List.of(summary));
+
+        mockMvc.perform(get("/api/v1/postings/recommended"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data").isArray())
+                .andExpect(jsonPath("$.data.length()").value(1))
+                .andExpect(jsonPath("$.data[0].id").value(1))
+                .andExpect(jsonPath("$.data[0].category").value("ENVIRONMENT"));
+
+        verify(postingRecommendationService).getRecommendedPostings();
+    }
+
+    @Test
+    @DisplayName("GET /api/v1/postings/recommended returns 200 with empty list when no data")
+    void getRecommendedPostings_returns200WithEmptyList_whenNoData() throws Exception {
+        when(postingRecommendationService.getRecommendedPostings()).thenReturn(List.of());
+
+        mockMvc.perform(get("/api/v1/postings/recommended"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data").isArray())
+                .andExpect(jsonPath("$.data.length()").value(0));
+    }
 }

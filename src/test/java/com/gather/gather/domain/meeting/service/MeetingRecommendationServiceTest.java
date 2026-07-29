@@ -2,7 +2,6 @@ package com.gather.gather.domain.meeting.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mockStatic;
@@ -33,7 +32,9 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.MockedStatic;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.test.util.ReflectionTestUtils;
 
@@ -90,11 +91,11 @@ class MeetingRecommendationServiceTest {
                 .thenReturn(new PageImpl<>(List.of(m1, m2, m3, m4, m5, m6, m7)));
         when(userRepository.findById(USER_ID))
                 .thenReturn(Optional.of(userWithPreference(PostingCategory.ENVIRONMENT)));
-        when(meetingMemberRepository.findAllByUserIdAndStatusAndMeetingIdInFetchMeeting(
-                        eq(USER_ID), eq(MeetingMemberStatus.PENDING), anyList()))
+        when(meetingMemberRepository.findAllByUserIdAndStatusFetchMeeting(
+                        eq(USER_ID), eq(MeetingMemberStatus.PENDING)))
                 .thenReturn(List.of(joinedMember(m7)));
-        when(meetingMemberRepository.findAllByUserIdAndStatusAndMeetingIdInFetchMeeting(
-                        eq(USER_ID), eq(MeetingMemberStatus.APPROVED), anyList()))
+        when(meetingMemberRepository.findAllByUserIdAndStatusFetchMeeting(
+                        eq(USER_ID), eq(MeetingMemberStatus.APPROVED)))
                 .thenReturn(List.of(joinedMember(m6)));
 
         try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
@@ -200,11 +201,11 @@ class MeetingRecommendationServiceTest {
                 .thenReturn(new PageImpl<>(List.of(m1, m2)));
         when(userRepository.findById(USER_ID))
                 .thenReturn(Optional.of(userWithPreference(PostingCategory.ENVIRONMENT)));
-        when(meetingMemberRepository.findAllByUserIdAndStatusAndMeetingIdInFetchMeeting(
-                        eq(USER_ID), eq(MeetingMemberStatus.PENDING), anyList()))
+        when(meetingMemberRepository.findAllByUserIdAndStatusFetchMeeting(
+                        eq(USER_ID), eq(MeetingMemberStatus.PENDING)))
                 .thenReturn(List.of(joinedMember(m1)));
-        when(meetingMemberRepository.findAllByUserIdAndStatusAndMeetingIdInFetchMeeting(
-                        eq(USER_ID), eq(MeetingMemberStatus.APPROVED), anyList()))
+        when(meetingMemberRepository.findAllByUserIdAndStatusFetchMeeting(
+                        eq(USER_ID), eq(MeetingMemberStatus.APPROVED)))
                 .thenReturn(List.of(joinedMember(m2)));
 
         try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
@@ -240,8 +241,8 @@ class MeetingRecommendationServiceTest {
                 .thenReturn(new PageImpl<>(List.of(higherId, lowerId)));
         when(userRepository.findById(USER_ID))
                 .thenReturn(Optional.of(userWithPreference(PostingCategory.ENVIRONMENT)));
-        when(meetingMemberRepository.findAllByUserIdAndStatusAndMeetingIdInFetchMeeting(
-                        eq(USER_ID), any(MeetingMemberStatus.class), anyList()))
+        when(meetingMemberRepository.findAllByUserIdAndStatusFetchMeeting(
+                        eq(USER_ID), any(MeetingMemberStatus.class)))
                 .thenReturn(List.of());
 
         try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
@@ -253,6 +254,43 @@ class MeetingRecommendationServiceTest {
             assertThat(recommended)
                     .extracting(MeetingResponse::meetingId)
                     .containsExactly(10L, 20L);
+        }
+    }
+
+    @Test
+    @DisplayName(
+            "getRecommendedMeetings scans beyond the first page so a preferred-category meeting"
+                    + " on a later page still outranks a non-preferred meeting on the first page")
+    void getRecommendedMeetings_scansSecondPage_preferredCategoryOnLaterPageWins() {
+        Meeting nearNonPreferred = meeting(1L, PostingCategory.WELFARE, now.plusDays(1));
+        Meeting farPreferred = meeting(2L, PostingCategory.ENVIRONMENT, now.plusDays(29));
+
+        Page<Meeting> firstPage =
+                new PageImpl<>(List.of(nearNonPreferred), PageRequest.of(0, 1), 2);
+        Page<Meeting> secondPage = new PageImpl<>(List.of(farPreferred), PageRequest.of(1, 1), 2);
+        when(meetingRepository.searchMeetings(
+                        isNull(),
+                        eq(false),
+                        eq(List.of(-1L)),
+                        isNull(),
+                        isNull(),
+                        eq(true),
+                        any(LocalDateTime.class),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        any(Pageable.class)))
+                .thenReturn(firstPage, secondPage);
+        when(userRepository.findById(USER_ID))
+                .thenReturn(Optional.of(userWithPreference(PostingCategory.ENVIRONMENT)));
+
+        try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
+            securityUtil.when(SecurityUtil::getCurrentUserIdOrNull).thenReturn(USER_ID);
+
+            List<MeetingResponse> recommended =
+                    meetingRecommendationService.getRecommendedMeetings();
+
+            assertThat(recommended).extracting(MeetingResponse::meetingId).containsExactly(2L, 1L);
         }
     }
 
