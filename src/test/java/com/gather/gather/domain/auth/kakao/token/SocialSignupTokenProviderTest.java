@@ -3,8 +3,11 @@ package com.gather.gather.domain.auth.kakao.token;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.gather.gather.domain.auth.entity.AccountRejoinBlockIdentifierType;
+import com.gather.gather.domain.auth.entity.EncryptedProviderUserId;
 import com.gather.gather.domain.auth.entity.SocialProvider;
 import com.gather.gather.domain.auth.kakao.config.KakaoProperties;
+import com.gather.gather.domain.auth.service.RejoinBlockIdentifier;
 import com.gather.gather.global.exception.BusinessException;
 import com.gather.gather.global.exception.ErrorCode;
 import io.jsonwebtoken.Claims;
@@ -32,7 +35,12 @@ class SocialSignupTokenProviderTest {
     private static final String ISSUER = "gather";
     private static final String AUDIENCE = "gather-social-signup";
     private static final String PROVIDER_USER_ID = "123456789";
+    private static final String PROVIDER_USER_KEY = "a".repeat(64);
     private static final long TTL_SECONDS = 900;
+    private static final RejoinBlockIdentifier IDENTIFIER =
+            new RejoinBlockIdentifier(AccountRejoinBlockIdentifierType.KAKAO, PROVIDER_USER_KEY, 1);
+    private static final EncryptedProviderUserId ENCRYPTED_PROVIDER_USER_ID =
+            new EncryptedProviderUserId("encrypted-provider-user-id", 2);
 
     private final SocialSignupTokenProvider provider = new SocialSignupTokenProvider(properties());
     private final SecretKey signingKey = key(SIGNUP_TOKEN_SECRET);
@@ -49,20 +57,25 @@ class SocialSignupTokenProviderTest {
     }
 
     @Test
-    @DisplayName("발급한 토큰은 provider와 카카오 회원번호로 되돌아온다")
+    @DisplayName("발급한 토큰은 provider와 HMAC·암호문으로 되돌아온다")
     void createAndParse_roundTrips() {
-        String token = provider.createSignupToken(SocialProvider.KAKAO, PROVIDER_USER_ID);
+        String token =
+                provider.createSignupToken(
+                        SocialProvider.KAKAO, IDENTIFIER, ENCRYPTED_PROVIDER_USER_ID);
 
         SocialSignupTokenPayload payload = provider.parseSignupToken(token);
 
         assertThat(payload.provider()).isEqualTo(SocialProvider.KAKAO);
-        assertThat(payload.providerUserId()).isEqualTo(PROVIDER_USER_ID);
+        assertThat(payload.identifier()).isEqualTo(IDENTIFIER);
+        assertThat(payload.encryptedProviderUserId()).isEqualTo(ENCRYPTED_PROVIDER_USER_ID);
     }
 
     @Test
     @DisplayName("가입 토큰의 만료시간은 15분이며 클레임은 설계대로 채워진다")
     void createSignupToken_expiresIn15MinutesWithDesignedClaims() {
-        String token = provider.createSignupToken(SocialProvider.KAKAO, PROVIDER_USER_ID);
+        String token =
+                provider.createSignupToken(
+                        SocialProvider.KAKAO, IDENTIFIER, ENCRYPTED_PROVIDER_USER_ID);
 
         Claims claims =
                 Jwts.parser().verifyWith(signingKey).build().parseSignedClaims(token).getPayload();
@@ -72,23 +85,44 @@ class SocialSignupTokenProviderTest {
         assertThat(ttlSeconds).isEqualTo(TTL_SECONDS);
         assertThat(claims.getIssuer()).isEqualTo(ISSUER);
         assertThat(claims.getAudience()).containsExactly(AUDIENCE);
-        assertThat(claims.getSubject()).isEqualTo("kakao:" + PROVIDER_USER_ID);
+        assertThat(claims.getSubject()).isEqualTo("kakao:" + PROVIDER_USER_KEY);
         assertThat(claims.get("provider", String.class)).isEqualTo("KAKAO");
         assertThat(claims.get("tokenType", String.class)).isEqualTo("SOCIAL_SIGNUP");
+        assertThat(claims.get("identifierType", String.class)).isEqualTo("KAKAO");
+        assertThat(claims.get("providerUserKey", String.class)).isEqualTo(PROVIDER_USER_KEY);
+        assertThat(claims.get("providerUserKeyVersion", Integer.class)).isEqualTo(1);
+        assertThat(claims.get("providerUserIdCiphertext", String.class))
+                .isEqualTo(ENCRYPTED_PROVIDER_USER_ID.ciphertext());
+        assertThat(claims.get("encryptionKeyVersion", Integer.class)).isEqualTo(2);
         assertThat(claims.getId()).isNotBlank();
     }
 
     @Test
-    @DisplayName("가입 토큰에는 이메일·닉네임 등 개인정보를 넣지 않는다")
+    @DisplayName("가입 토큰에는 평문 카카오 회원번호와 프로필 개인정보를 넣지 않는다")
     void createSignupToken_containsOnlyIdentityClaims() {
-        String token = provider.createSignupToken(SocialProvider.KAKAO, PROVIDER_USER_ID);
+        String token =
+                provider.createSignupToken(
+                        SocialProvider.KAKAO, IDENTIFIER, ENCRYPTED_PROVIDER_USER_ID);
 
         Claims claims =
                 Jwts.parser().verifyWith(signingKey).build().parseSignedClaims(token).getPayload();
 
         assertThat(claims.keySet())
                 .containsExactlyInAnyOrder(
-                        "iss", "aud", "sub", "provider", "tokenType", "jti", "iat", "exp");
+                        "iss",
+                        "aud",
+                        "sub",
+                        "provider",
+                        "tokenType",
+                        "identifierType",
+                        "providerUserKey",
+                        "providerUserKeyVersion",
+                        "providerUserIdCiphertext",
+                        "encryptionKeyVersion",
+                        "jti",
+                        "iat",
+                        "exp");
+        assertThat(claims.values()).doesNotContain(PROVIDER_USER_ID);
     }
 
     @Test
@@ -156,7 +190,10 @@ class SocialSignupTokenProviderTest {
     @DisplayName("지원하지 않는 provider의 토큰은 거부한다")
     void parse_unknownProvider_throwsSignupTokenInvalid() {
         assertErrorCode(
-                validClaims().claim("provider", "NAVER").subject("naver:999").compact(),
+                validClaims()
+                        .claim("provider", "NAVER")
+                        .subject("naver:" + PROVIDER_USER_KEY)
+                        .compact(),
                 ErrorCode.SIGNUP_TOKEN_INVALID);
     }
 
@@ -164,13 +201,15 @@ class SocialSignupTokenProviderTest {
     @DisplayName("subject 형식이 provider 접두사와 맞지 않으면 거부한다")
     void parse_subjectWithoutProviderPrefix_throwsSignupTokenInvalid() {
         assertErrorCode(
-                validClaims().subject(PROVIDER_USER_ID).compact(), ErrorCode.SIGNUP_TOKEN_INVALID);
+                validClaims().subject(PROVIDER_USER_KEY).compact(), ErrorCode.SIGNUP_TOKEN_INVALID);
     }
 
     @Test
-    @DisplayName("카카오 회원번호가 비어 있는 토큰은 거부한다")
-    void parse_blankProviderUserId_throwsSignupTokenInvalid() {
-        assertErrorCode(validClaims().subject("kakao:").compact(), ErrorCode.SIGNUP_TOKEN_INVALID);
+    @DisplayName("provider user key가 비어 있는 토큰은 거부한다")
+    void parse_blankProviderUserKey_throwsSignupTokenInvalid() {
+        assertErrorCode(
+                validClaims().subject("kakao:").claim("providerUserKey", "").compact(),
+                ErrorCode.SIGNUP_TOKEN_INVALID);
     }
 
     @ParameterizedTest
@@ -188,9 +227,14 @@ class SocialSignupTokenProviderTest {
     private JwtBuilder baseClaims() {
         long now = System.currentTimeMillis();
         return Jwts.builder()
-                .subject("kakao:" + PROVIDER_USER_ID)
+                .subject("kakao:" + PROVIDER_USER_KEY)
                 .claim("provider", "KAKAO")
                 .claim("tokenType", "SOCIAL_SIGNUP")
+                .claim("identifierType", "KAKAO")
+                .claim("providerUserKey", PROVIDER_USER_KEY)
+                .claim("providerUserKeyVersion", 1)
+                .claim("providerUserIdCiphertext", ENCRYPTED_PROVIDER_USER_ID.ciphertext())
+                .claim("encryptionKeyVersion", ENCRYPTED_PROVIDER_USER_ID.keyVersion())
                 .id(UUID.randomUUID().toString())
                 .issuedAt(new Date(now))
                 .expiration(new Date(now + TTL_SECONDS * 1000))
