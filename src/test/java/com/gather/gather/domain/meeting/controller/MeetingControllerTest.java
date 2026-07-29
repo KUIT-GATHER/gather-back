@@ -10,6 +10,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.gather.gather.domain.meeting.dto.MeetingCreateRequest;
 import com.gather.gather.domain.meeting.service.MeetingKeywordRecommendationService;
 import com.gather.gather.domain.meeting.service.MeetingService;
+import com.gather.gather.domain.posting.entity.PostingCategory;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -39,7 +40,7 @@ class MeetingControllerTest {
                   "name": "%s",
                   "maxMember": 2,
                   "deadline": "2026-07-31T23:59:59",
-                  "category": "WELFARE",
+                  "categories": ["WELFARE"],
                   "regionId": 1,
                   "activityStartAt": "2026-08-01T09:00:00",
                   "activityEndAt": "2026-08-01T18:00:00"
@@ -68,7 +69,7 @@ class MeetingControllerTest {
                   "description": "활동 일정은 추후 등록합니다.",
                   "maxMember": 10,
                   "deadline": "2026-08-01T23:59:59",
-                  "category": "ENVIRONMENT",
+                  "categories": ["ENVIRONMENT", "EDUCATION"],
                   "regionId": 1,
                   "participationCondition": "누구나 참여할 수 있습니다."
                 }
@@ -87,6 +88,8 @@ class MeetingControllerTest {
 
         MeetingCreateRequest capturedRequest = requestCaptor.getValue();
         assertThat(capturedRequest.volunteerPostingId()).isNull();
+        assertThat(capturedRequest.categories())
+                .containsExactlyInAnyOrder(PostingCategory.ENVIRONMENT, PostingCategory.EDUCATION);
         assertThat(capturedRequest.activityStartAt()).isNull();
         assertThat(capturedRequest.activityEndAt()).isNull();
     }

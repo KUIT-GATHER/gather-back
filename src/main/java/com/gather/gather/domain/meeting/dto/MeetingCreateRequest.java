@@ -7,6 +7,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import java.time.LocalDateTime;
+import java.util.Set;
 
 public record MeetingCreateRequest(
         @NotBlank(message = "모임 이름은 필수입니다.") @Size(max = 100, message = "모임 이름은 100자 이하여야 합니다.")
@@ -17,10 +18,11 @@ public record MeetingCreateRequest(
         @NotNull(message = "신청 마감일은 필수입니다.") LocalDateTime deadline,
         String memo,
         @Schema(
-                        description =
-                                "카테고리. 자유 모임 생성 시 필수이며, 공고 기반 모임은 volunteerPostingId에 해당하는 봉사공고의 category를 사용합니다.",
-                        example = "WELFARE")
-                PostingCategory category,
+                        description = "모임 카테고리. 자유 모임은 1~3개를 전달하며, 공고 기반 모임은 생략할 수 있습니다.",
+                        example = "[\"ENVIRONMENT\", \"EDUCATION\"]",
+                        nullable = true)
+                @Size(max = 3, message = "카테고리는 최대 3개까지 선택할 수 있습니다.")
+                Set<@NotNull(message = "카테고리 값은 null일 수 없습니다.") PostingCategory> categories,
         @Schema(description = "지역 ID", example = "1") @NotNull(message = "지역은 필수입니다.")
                 Long regionId,
         String participationCondition,

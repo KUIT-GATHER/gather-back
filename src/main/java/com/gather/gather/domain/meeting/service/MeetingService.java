@@ -53,7 +53,6 @@ public class MeetingService {
                     "currentMemberCount",
                     "maxMember",
                     "regionId",
-                    "category",
                     "status",
                     "deadline",
                     "activityStartAt",
@@ -77,7 +76,7 @@ public class MeetingService {
                 request.activityEndAt(),
                 request.volunteerPostingId());
         validateRegionExists(request.regionId());
-        PostingCategory category = resolveCategory(request);
+        Set<PostingCategory> categories = resolveCategories(request);
         Long userId = SecurityUtil.getCurrentUserId();
         User host = getUser(userId);
 
@@ -88,7 +87,7 @@ public class MeetingService {
                         request.maxMember(),
                         request.deadline(),
                         request.memo(),
-                        category,
+                        categories,
                         request.regionId(),
                         host,
                         request.participationCondition(),
@@ -364,21 +363,25 @@ public class MeetingService {
         }
     }
 
-    private PostingCategory resolveCategory(MeetingCreateRequest request) {
+    private Set<PostingCategory> resolveCategories(MeetingCreateRequest request) {
         if (request.volunteerPostingId() != null) {
             Posting posting =
                     postingRepository
                             .findById(request.volunteerPostingId())
                             .orElseThrow(() -> new BusinessException(ErrorCode.POSTING_NOT_FOUND));
 
-            return posting.getCategory();
+            return Set.of(posting.getCategory());
         }
 
-        if (request.category() == null) {
+        if (request.categories() == null || request.categories().isEmpty()) {
             throw new BusinessException(ErrorCode.VALIDATION_ERROR);
         }
 
-        return request.category();
+        if (request.categories().size() > 3) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR);
+        }
+
+        return Set.copyOf(request.categories());
     }
 
     private void validateRegionExists(Long regionId) {

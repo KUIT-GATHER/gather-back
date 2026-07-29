@@ -38,7 +38,7 @@ public interface MeetingRepository extends JpaRepository<Meeting, Long> {
                            OR m.name LIKE CONCAT('%', :keyword, '%')
                            OR m.description LIKE CONCAT('%', :keyword, '%'))
                       AND (:hasRegionFilter = false OR m.regionId IN :regionIds)
-                      AND (:category IS NULL OR m.category = :category)
+                      AND (:category IS NULL OR :category MEMBER OF m.categories)
                       AND (:status IS NULL OR m.status = :status)
                       AND (:recruitingOnly = false
                            OR (m.deadline >= :now
@@ -60,7 +60,7 @@ public interface MeetingRepository extends JpaRepository<Meeting, Long> {
                            OR m.name LIKE CONCAT('%', :keyword, '%')
                            OR m.description LIKE CONCAT('%', :keyword, '%'))
                       AND (:hasRegionFilter = false OR m.regionId IN :regionIds)
-                      AND (:category IS NULL OR m.category = :category)
+                      AND (:category IS NULL OR :category MEMBER OF m.categories)
                       AND (:status IS NULL OR m.status = :status)
                       AND (:recruitingOnly = false
                            OR (m.deadline >= :now

@@ -6,6 +6,7 @@ import static org.mockito.Mockito.mock;
 import com.gather.gather.domain.auth.entity.User;
 import com.gather.gather.domain.posting.entity.PostingCategory;
 import java.time.LocalDateTime;
+import java.util.Set;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -23,7 +24,7 @@ class MeetingTest {
                         10,
                         now.plusDays(7),
                         null,
-                        PostingCategory.ENVIRONMENT,
+                        Set.of(PostingCategory.ENVIRONMENT),
                         1L,
                         mock(User.class),
                         null,
@@ -46,7 +47,7 @@ class MeetingTest {
                         10,
                         now.minusDays(2),
                         null,
-                        PostingCategory.WELFARE,
+                        Set.of(PostingCategory.WELFARE),
                         1L,
                         mock(User.class),
                         null,
