@@ -134,7 +134,7 @@ record PhoneNumberAvailabilityResponse(String phoneNumber, boolean available, St
 
 ### 5-1. 마이그레이션
 
-`V29__add_withdrawal_columns_to_users.sql` (V27까지 존재, V28은 타 팀원 선점 — **머지 직전 재확인 필수**)
+`V31__add_withdrawal_columns_to_users.sql` (통합 순서: V28 알림 → V29/V30 배지 → V31 회원 탈퇴)
 
 ```sql
 ALTER TABLE users
@@ -301,7 +301,7 @@ WITHDRAWN_PHONE_NUMBER_COOLDOWN(HttpStatus.CONFLICT, "탈퇴 후 7일간 재가�
 
 | 파일 | 내용 |
 |---|---|
-| `db/migration/V29__add_withdrawal_columns_to_users.sql` | 컬럼 2개 |
+| `db/migration/V31__add_withdrawal_columns_to_users.sql` | 컬럼 2개 |
 | `domain/auth/entity/WithdrawalReason.java` | `SELF`, `KAKAO_UNLINK` |
 | `domain/auth/service/AccountTerminationService.java` | **계정 종료 코어.** 상태 전이 + 토큰 폐기 + 이벤트 발행 |
 | `domain/auth/service/UserWithdrawnEvent.java` | `record UserWithdrawnEvent(Long userId)` |
@@ -368,8 +368,8 @@ WITHDRAWN_PHONE_NUMBER_COOLDOWN(HttpStatus.CONFLICT, "탈퇴 후 7일간 재가�
 ## 11. 배포 및 마이그레이션 고려사항
 
 ```
-1. develop 최신화 후 V29 부여 (V28 선점 여부 재확인 — 과거 V10 중복 사고 있었음)
-2. V29 + 코드 배포 (엔드포인트가 살아있는 상태로)
+1. V28 알림 → V29/V30 배지 → V31 회원 탈퇴 순서로 통합한다.
+2. V31 + 코드 배포 (엔드포인트가 살아있는 상태로)
 3. 운영 EC2 /etc/gather/gather.env 에 KAKAO_ADMIN_KEY / KAKAO_APP_ID 주입 후 재기동
 4. /health 및 curl 로 웹훅 엔드포인트 200 확인
 5. ★ 마지막에 ★ 카카오 콘솔에 웹훅 URL 등록
@@ -379,7 +379,7 @@ WITHDRAWN_PHONE_NUMBER_COOLDOWN(HttpStatus.CONFLICT, "탈퇴 후 7일간 재가�
 
 - **콘솔 등록을 먼저 하면 안 된다.** 엔드포인트가 없는 상태의 웹훅은 404가 되고, **카카오는 재전송을 보장하지 않으므로 영구 유실**된다.
 - **롤백 시 콘솔 등록도 함께 해제**해야 한다. 코드를 되돌려도 콘솔 설정은 남는다.
-- V29는 nullable 컬럼 추가뿐이라 DDL 롤백이 불필요하다.
+- V31은 nullable 컬럼 추가뿐이라 DDL 롤백이 불필요하다.
 - 6번이 중요한 이유: dev에서 카카오가 실제로 보내는 요청을 받아볼 수 없어(R10) **파라미터 형식 오해가 있다면 운영에서 처음 드러난다.**
 
 ---
@@ -411,8 +411,8 @@ WITHDRAWN_PHONE_NUMBER_COOLDOWN(HttpStatus.CONFLICT, "탈퇴 후 7일간 재가�
 
 | 단계 | 내용 | 검증 |
 |---|---|---|
-| 0 | develop 최신화, V29 확보 | 마이그레이션 번호 충돌 없음 |
-| 1 | V29 + `User.withdraw()`/`anonymize()` + `WithdrawalReason` | 엔티티 단위 테스트, `ddl-auto=validate` 부팅 성공 |
+| 0 | develop 최신화, V31 확보 | V28 알림 → V29/V30 배지 → V31 순서 확인 |
+| 1 | V31 + `User.withdraw()`/`anonymize()` + `WithdrawalReason` | 엔티티 단위 테스트, `ddl-auto=validate` 부팅 성공 |
 | 2 | `AccountTerminationService` + `UserWithdrawnEvent` + `RefreshTokenRepository.deleteByUser` | 단위 테스트 — 상태 전이·토큰 전량 삭제·이벤트 발행 |
 | 3 | `DELETE /api/v1/users/me` + 쿠키 만료 | **통합 테스트 1** 통과 |
 | 4 | `KakaoProperties` 확장 + 테스트 yml 더미 + `KakaoApiClient.unlink` | 기존 `@SpringBootTest` 15개 정상 기동, `MockRestServiceServer` 테스트 |
@@ -445,5 +445,11 @@ WITHDRAWN_PHONE_NUMBER_COOLDOWN(HttpStatus.CONFLICT, "탈퇴 후 7일간 재가�
 - [ ] 카카오 앱 생성일이 **2018-09-19 이전인지** — 이전이면 [카카오 로그인] > [고급] > [사용자 아이디 고정] 활성화 필요(연결 해제 후 회원번호 변경 방지)
 - [ ] 카카오 unlink API의 "이미 연결 해제됨" 오류 코드 — 미확인. 8-2대로 보수적으로 구현했다(5xx와 429만 재시도, 나머지 4xx는 영구 실패).
 - [x] 대표 어드민 키의 실제 길이 — **32자**(2026-07-27 콘솔 확인). `KakaoProperties`는 "32자 이상"이 아니라 **정확히 32자**를 요구한다. 하한만 두면 긴 자리표시자가 그대로 통과해 검증 의도가 무력화된다.
-- [x] V28 선점 확정 여부 — 알림 도메인이 V28을 가져갔고(원래 V26이었으나 out-of-order 회피를 위해 변경) 탈퇴는 **V29**를 유지한다.
-- [ ] 재가입 시 `email_verification` 잔존 row가 인증 흐름을 막지 않는지
+- [x] 통합 순서 확정 — V28 알림, V29/V30 배지, V31 회원 탈퇴.
+- [x] 일반 가입은 만료되지 않은 이메일 인증만 사용하고, 가입 성공 시 인증 row를 소비한다.
+
+## 후속 보완 사항
+
+- 카카오 로그인에서 탈퇴 계정의 stale `social_account`를 발견하면 해당 row와 User를 잠근 뒤 `withdrawnAt + 7일`을 판정한다. 7일 미만은 기존 탈퇴 계정 오류를 반환하고, 7일 이상이면 stale row를 삭제한 뒤 신규 가입 토큰 흐름으로 전환한다. 일일 unlink 재시도 배치는 재가입 허용 시점을 결정하지 않는 안전망이다.
+- 일반 회원가입은 `verified == true`이고 아직 만료되지 않은 이메일 인증만 허용한다. 가입에 성공하면 해당 인증 row를 같은 트랜잭션에서 삭제하며, 일반 계정 탈퇴 시에도 기존 이메일의 인증 row를 정리한다.
+- unlink 재시도는 `social_account.id` 오름차순 keyset 순회로 실행한다. 한 실행의 대상이 100건을 초과해도 다음 페이지를 처리하고, 재시도 대기 row는 같은 실행에서 반복 호출하지 않는다.
