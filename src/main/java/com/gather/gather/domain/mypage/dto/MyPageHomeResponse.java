@@ -19,7 +19,9 @@ public record MyPageHomeResponse(
                 user.getNickname(),
                 profileImageUrl,
                 user.getBirthDate(),
-                RegionResponse.from(user.getActivityRegion()),
+                user.getActivityRegion() == null
+                        ? null
+                        : RegionResponse.from(user.getActivityRegion()),
                 hasBookmark);
     }
 }

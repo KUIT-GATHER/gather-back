@@ -25,6 +25,7 @@ import com.gather.gather.domain.auth.kakao.token.SocialSignupTokenProvider;
 import com.gather.gather.domain.auth.repository.SocialAccountRepository;
 import com.gather.gather.domain.auth.repository.UserRepository;
 import com.gather.gather.domain.auth.service.LoginPolicy;
+import com.gather.gather.domain.auth.service.PhoneNumberNormalizer;
 import com.gather.gather.domain.auth.service.SignupValidator;
 import com.gather.gather.domain.auth.service.TokenIssueResult;
 import com.gather.gather.domain.auth.service.TokenIssuer;
@@ -73,7 +74,8 @@ class KakaoAuthServiceTest {
                         socialSignupTokenProvider,
                         socialAccountRepository,
                         userRepository,
-                        new SignupValidator(userRepository, regionRepository),
+                        new SignupValidator(
+                                userRepository, regionRepository, new PhoneNumberNormalizer()),
                         tokenIssuer,
                         new LoginPolicy());
     }
