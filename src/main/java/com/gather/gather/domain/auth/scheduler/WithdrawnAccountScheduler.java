@@ -42,7 +42,8 @@ public class WithdrawnAccountScheduler {
             UnlinkRetrySummary summary = withdrawnAccountCleanupService.retryPendingUnlinks();
             if (summary.attemptedCount() > 0) {
                 log.info(
-                        "Kakao unlink retry finished. resolved={}, noLinkedAccount={}, retryPending={}, failed={}, forcedDeletion={}",
+                        "Kakao unlink retry finished. attempted={}, resolved={}, noLinkedAccount={}, retryPending={}, failed={}, forcedDeletion={}",
+                        summary.attemptedCount(),
                         summary.resolvedCount(),
                         summary.noLinkedAccountCount(),
                         summary.retryPendingCount(),

@@ -78,12 +78,35 @@ public class SignupValidator {
                 .findByPhoneNumberForUpdate(phoneNumber)
                 .ifPresent(
                         holder -> {
-                            if (canReuseWithdrawnPhoneNumber(holder, LocalDateTime.now())) {
+                            if (canReuseWithdrawnAccount(holder, LocalDateTime.now())) {
                                 holder.anonymize();
                                 userRepository.flush();
                                 return;
                             }
                             throw new BusinessException(phoneNumberConflictError(holder));
+                        });
+    }
+
+    /**
+     * 일반 가입은 이메일과 전화번호를 모두 가지므로, 이메일을 먼저 잠가 만료된 탈퇴 계정을 즉시 익명화한다. 이후 전화번호를 잠그는 순서는 모든 일반 가입 요청에서
+     * 동일하게 유지한다.
+     */
+    public void prepareEmailForSignup(String email) {
+        // 존재하지 않는 unique 값에 FOR UPDATE를 걸면 MySQL gap lock이 생길 수 있으므로,
+        // 기존 보유자가 있을 때만 해당 행을 잠근다. 동시 신규 가입 충돌은 users unique 제약으로 처리한다.
+        if (!userRepository.existsByEmail(email)) {
+            return;
+        }
+        userRepository
+                .findByEmailForUpdate(email)
+                .ifPresent(
+                        holder -> {
+                            if (canReuseWithdrawnAccount(holder, LocalDateTime.now())) {
+                                holder.anonymize();
+                                userRepository.flush();
+                                return;
+                            }
+                            throw new BusinessException(ErrorCode.DUPLICATE_EMAIL);
                         });
     }
 
@@ -96,13 +119,13 @@ public class SignupValidator {
      */
     public PhoneNumberUnavailableReason phoneNumberUnavailableReason(User holder) {
         return holder.getStatus() == UserStatus.WITHDRAWN
-                        && !canReuseWithdrawnPhoneNumber(holder, LocalDateTime.now())
+                        && !canReuseWithdrawnAccount(holder, LocalDateTime.now())
                 ? PhoneNumberUnavailableReason.WITHDRAWN_COOLDOWN
                 : PhoneNumberUnavailableReason.IN_USE;
     }
 
     public boolean isPhoneNumberAvailable(User holder) {
-        return canReuseWithdrawnPhoneNumber(holder, LocalDateTime.now());
+        return canReuseWithdrawnAccount(holder, LocalDateTime.now());
     }
 
     private ErrorCode phoneNumberConflictError(User holder) {
@@ -112,7 +135,7 @@ public class SignupValidator {
                 : ErrorCode.DUPLICATE_PHONE_NUMBER;
     }
 
-    private boolean canReuseWithdrawnPhoneNumber(User holder, LocalDateTime now) {
+    private boolean canReuseWithdrawnAccount(User holder, LocalDateTime now) {
         return holder.getStatus() == UserStatus.WITHDRAWN
                 && holder.getWithdrawnAt() != null
                 && withdrawalPolicy.isGracePeriodOver(holder.getWithdrawnAt(), now);

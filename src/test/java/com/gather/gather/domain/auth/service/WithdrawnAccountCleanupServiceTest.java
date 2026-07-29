@@ -25,6 +25,7 @@ import com.gather.gather.domain.region.entity.Region;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.stream.IntStream;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -73,12 +74,14 @@ class WithdrawnAccountCleanupServiceTest {
     }
 
     private SocialAccount socialAccountOf(User user) {
-        return SocialAccount.create(user, SocialProvider.KAKAO, "4242");
+        SocialAccount account = SocialAccount.create(user, SocialProvider.KAKAO, "4242");
+        ReflectionTestUtils.setField(account, "id", user.getId());
+        return account;
     }
 
     private void givenPendingUnlink(SocialAccount account) {
-        when(socialAccountRepository.findByUserStatus(
-                        eq(UserStatus.WITHDRAWN), any(Pageable.class)))
+        when(socialAccountRepository.findByUserStatusAfterId(
+                        eq(UserStatus.WITHDRAWN), anyLong(), any(Pageable.class)))
                 .thenReturn(List.of(account));
     }
 
@@ -106,6 +109,25 @@ class WithdrawnAccountCleanupServiceTest {
                 .thenReturn(List.of());
 
         assertThat(cleanupService().anonymizeExpiredAccounts()).isZero();
+    }
+
+    @Test
+    @DisplayName("익명화 대상이 100건을 넘어도 같은 실행에서 모두 처리한다")
+    void anonymizeExpiredAccounts_moreThanOneHundredRows_processesAllTargets() {
+        List<User> firstBatch =
+                IntStream.rangeClosed(1, 100)
+                        .mapToObj(index -> anonymizationTarget(index))
+                        .toList();
+        User lastTarget = anonymizationTarget(101);
+        when(userRepository.findAnonymizationTargets(
+                        eq(UserStatus.WITHDRAWN), any(LocalDateTime.class), any(Pageable.class)))
+                .thenReturn(firstBatch, List.of(lastTarget));
+
+        int count = cleanupService().anonymizeExpiredAccounts();
+
+        assertThat(count).isEqualTo(101);
+        assertThat(lastTarget.getEmail()).isNull();
+        verify(userRepository).flush();
     }
 
     @Test
@@ -152,8 +174,8 @@ class WithdrawnAccountCleanupServiceTest {
         User failing = withdrawnUser(LocalDateTime.now().minusDays(3));
         User succeeding = withdrawnUser(LocalDateTime.now().minusDays(3));
         ReflectionTestUtils.setField(succeeding, "id", 8L);
-        when(socialAccountRepository.findByUserStatus(
-                        eq(UserStatus.WITHDRAWN), any(Pageable.class)))
+        when(socialAccountRepository.findByUserStatusAfterId(
+                        eq(UserStatus.WITHDRAWN), anyLong(), any(Pageable.class)))
                 .thenReturn(List.of(socialAccountOf(failing), socialAccountOf(succeeding)));
         doThrow(new IllegalStateException("kakao down"))
                 .when(kakaoUnlinkService)
@@ -168,12 +190,50 @@ class WithdrawnAccountCleanupServiceTest {
     @Test
     @DisplayName("재처리 대상이 없으면 카카오를 호출하지 않는다")
     void retryPendingUnlinks_withoutPendingRows_doesNothing() {
-        when(socialAccountRepository.findByUserStatus(
-                        eq(UserStatus.WITHDRAWN), any(Pageable.class)))
+        when(socialAccountRepository.findByUserStatusAfterId(
+                        eq(UserStatus.WITHDRAWN), anyLong(), any(Pageable.class)))
                 .thenReturn(List.of());
 
         assertThat(cleanupService().retryPendingUnlinks().attemptedCount()).isZero();
 
         verify(kakaoUnlinkService, never()).unlinkIfLinked(anyLong());
+    }
+
+    @Test
+    @DisplayName("첫 100건이 재시도 대기여도 다음 페이지의 대상까지 처리한다")
+    void retryPendingUnlinks_moreThanOneHundredRows_reachesLaterRows() {
+        List<SocialAccount> firstPage =
+                IntStream.rangeClosed(1, 100)
+                        .mapToObj(index -> pendingAccount(index, index))
+                        .toList();
+        SocialAccount nextPageAccount = pendingAccount(101, 101);
+        when(socialAccountRepository.findByUserStatusAfterId(
+                        eq(UserStatus.WITHDRAWN), eq(0L), any(Pageable.class)))
+                .thenReturn(firstPage);
+        when(socialAccountRepository.findByUserStatusAfterId(
+                        eq(UserStatus.WITHDRAWN), eq(100L), any(Pageable.class)))
+                .thenReturn(List.of(nextPageAccount));
+        when(kakaoUnlinkService.unlinkIfLinked(anyLong()))
+                .thenReturn(KakaoUnlinkResult.RETRYABLE_FAILURE);
+
+        UnlinkRetrySummary summary = cleanupService().retryPendingUnlinks();
+
+        assertThat(summary.retryPendingCount()).isEqualTo(101);
+        assertThat(summary.attemptedCount()).isEqualTo(101);
+        verify(kakaoUnlinkService).unlinkIfLinked(101L);
+    }
+
+    private SocialAccount pendingAccount(long accountId, long userId) {
+        User user = withdrawnUser(LocalDateTime.now().minusDays(3));
+        ReflectionTestUtils.setField(user, "id", userId);
+        SocialAccount account = socialAccountOf(user);
+        ReflectionTestUtils.setField(account, "id", accountId);
+        return account;
+    }
+
+    private User anonymizationTarget(long userId) {
+        User user = withdrawnUser(LocalDateTime.now().minusDays(8));
+        ReflectionTestUtils.setField(user, "id", userId);
+        return user;
     }
 }

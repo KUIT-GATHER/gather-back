@@ -37,7 +37,7 @@ public class KakaoUnlinkWebhookService {
         }
 
         Optional<SocialAccount> socialAccount =
-                socialAccountRepository.findByProviderAndProviderUserId(
+                socialAccountRepository.findByProviderAndProviderUserIdForUpdate(
                         SocialProvider.KAKAO, kakaoUserId);
         if (socialAccount.isEmpty()) {
             log.info(

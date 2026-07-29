@@ -738,6 +738,52 @@ class AuthServiceTest {
         return status == UserStatus.SUSPENDED ? ErrorCode.SUSPENDED_USER : ErrorCode.WITHDRAWN_USER;
     }
 
+    @Test
+    @DisplayName("만료된 인증 완료 이메일은 회원가입에 사용할 수 없다")
+    void signup_withExpiredVerifiedEmail_throwsEmailNotVerified() {
+        EmailVerification emailVerification =
+                EmailVerification.create(
+                        "test@example.com", "123456", LocalDateTime.now().minusMinutes(1));
+        emailVerification.verify(LocalDateTime.now().minusMinutes(2));
+        when(emailVerificationRepository.findByEmail("test@example.com"))
+                .thenReturn(Optional.of(emailVerification));
+
+        assertErrorCode(
+                () -> authService.signup(signupRequest(123L)), ErrorCode.EMAIL_NOT_VERIFIED);
+
+        verify(userRepository, never()).saveAndFlush(any(User.class));
+        verify(emailVerificationRepository, never()).delete(any(EmailVerification.class));
+    }
+
+    @Test
+    @DisplayName("회원가입 성공 후 사용한 이메일 인증을 소비한다")
+    void signup_withVerifiedEmail_deletesVerificationAfterSavingUser() {
+        prepareSuccessfulSignup();
+
+        authService.signup(signupRequest(123L));
+
+        verify(emailVerificationRepository).delete(any(EmailVerification.class));
+    }
+
+    @Test
+    @DisplayName("7일이 지난 탈퇴자의 이메일과 전화번호는 익명화 배치 전에도 즉시 재가입할 수 있다")
+    void signup_afterGracePeriodAnonymizesExistingEmailHolderAndSucceeds() {
+        User withdrawn = activeUser();
+        ReflectionTestUtils.setField(withdrawn, "id", 7L);
+        withdrawn.withdraw(WithdrawalReason.SELF, LocalDateTime.now().minusDays(8));
+        prepareSuccessfulSignup();
+        when(userRepository.existsByEmail("test@example.com")).thenReturn(true);
+        when(userRepository.findByEmailForUpdate("test@example.com"))
+                .thenReturn(Optional.of(withdrawn));
+        when(userRepository.findByPhoneNumberForUpdate("01012345678")).thenReturn(Optional.empty());
+
+        authService.signup(signupRequest(123L));
+
+        assertThat(withdrawn.getPhoneNumber()).isEqualTo("wd_7");
+        assertThat(withdrawn.getEmail()).isNull();
+        verify(userRepository).saveAndFlush(any(User.class));
+    }
+
     private void prepareVerifiedEmail() {
         EmailVerification emailVerification =
                 EmailVerification.create(

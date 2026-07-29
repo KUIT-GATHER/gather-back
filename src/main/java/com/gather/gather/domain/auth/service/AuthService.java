@@ -177,7 +177,7 @@ public class AuthService {
         String nickname = request.nickname();
         String introduction = signupValidator.normalizeNullableText(request.introduction());
 
-        validateEmailVerified(email);
+        EmailVerification emailVerification = validateEmailVerified(email);
         validateDuplicates(email, phoneNumber, nickname);
 
         Region activityRegion = signupValidator.findActivityRegion(request.activityRegionId());
@@ -199,7 +199,9 @@ public class AuthService {
                         request.interestCategories());
 
         try {
-            return SignupResponse.from(userRepository.saveAndFlush(user));
+            SignupResponse response = SignupResponse.from(userRepository.saveAndFlush(user));
+            emailVerificationRepository.delete(emailVerification);
+            return response;
         } catch (DataIntegrityViolationException exception) {
             throw signupValidator.resolveDuplicateException(
                     exception, email, phoneNumber, nickname);
@@ -270,21 +272,20 @@ public class AuthService {
         signupValidator.validateInterestCategories(request.interestCategories());
     }
 
-    private void validateEmailVerified(String email) {
+    private EmailVerification validateEmailVerified(String email) {
         EmailVerification emailVerification =
                 emailVerificationRepository
                         .findByEmail(email)
                         .orElseThrow(() -> new BusinessException(ErrorCode.EMAIL_NOT_VERIFIED));
-        if (!emailVerification.isVerified()) {
+        if (!emailVerification.isVerified() || emailVerification.isExpired(LocalDateTime.now())) {
             throw new BusinessException(ErrorCode.EMAIL_NOT_VERIFIED);
         }
+        return emailVerification;
     }
 
     private void validateDuplicates(String email, String phoneNumber, String nickname) {
+        signupValidator.prepareEmailForSignup(email);
         signupValidator.preparePhoneNumberForSignup(phoneNumber);
-        if (userRepository.existsByEmail(email)) {
-            throw new BusinessException(ErrorCode.DUPLICATE_EMAIL);
-        }
         signupValidator.validateNicknameNotDuplicated(nickname);
     }
 

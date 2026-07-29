@@ -11,6 +11,7 @@ import com.gather.gather.domain.auth.entity.Gender;
 import com.gather.gather.domain.auth.entity.User;
 import com.gather.gather.domain.auth.entity.UserStatus;
 import com.gather.gather.domain.auth.entity.WithdrawalReason;
+import com.gather.gather.domain.auth.repository.EmailVerificationRepository;
 import com.gather.gather.domain.auth.repository.RefreshTokenRepository;
 import com.gather.gather.domain.auth.repository.UserRepository;
 import com.gather.gather.domain.posting.entity.PostingCategory;
@@ -38,6 +39,7 @@ class AccountTerminationServiceTest {
 
     @Mock private UserRepository userRepository;
     @Mock private RefreshTokenRepository refreshTokenRepository;
+    @Mock private EmailVerificationRepository emailVerificationRepository;
     @Mock private ApplicationEventPublisher eventPublisher;
 
     @InjectMocks private AccountTerminationService accountTerminationService;
@@ -75,6 +77,7 @@ class AccountTerminationServiceTest {
         assertThat(user.getWithdrawalReason()).isEqualTo(WithdrawalReason.SELF);
         assertThat(user.getWithdrawnAt()).isBetween(before, LocalDateTime.now());
         verify(refreshTokenRepository).deleteByUser(user);
+        verify(emailVerificationRepository).deleteByEmail("test@example.com");
 
         ArgumentCaptor<UserWithdrawnEvent> captor =
                 ArgumentCaptor.forClass(UserWithdrawnEvent.class);
@@ -106,6 +109,7 @@ class AccountTerminationServiceTest {
         assertThat(user.getWithdrawalReason()).isEqualTo(WithdrawalReason.SELF);
         assertThat(user.getWithdrawnAt()).isEqualTo(firstWithdrawnAt);
         verify(refreshTokenRepository, never()).deleteByUser(any());
+        verify(emailVerificationRepository, never()).deleteByEmail(any());
         verify(eventPublisher, never()).publishEvent(any(UserWithdrawnEvent.class));
     }
 

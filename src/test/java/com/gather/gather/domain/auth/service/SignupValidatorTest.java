@@ -129,6 +129,21 @@ class SignupValidatorTest {
     }
 
     @Test
+    void prepareEmailForSignup_atSevenDaysAnonymizesAndFlushesHolder() {
+        User withdrawn = user(UserStatus.WITHDRAWN, LocalDateTime.now().minusDays(7));
+        when(userRepository.existsByEmail("test@example.com")).thenReturn(true);
+        when(userRepository.findByEmailForUpdate("test@example.com"))
+                .thenReturn(Optional.of(withdrawn));
+
+        signupValidator.prepareEmailForSignup("test@example.com");
+
+        assertThat(withdrawn.getPhoneNumber()).isEqualTo("wd_7");
+        assertThat(withdrawn.getEmail()).isNull();
+        assertThat(withdrawn.getNickname()).isEqualTo("wd_7");
+        verify(userRepository).flush();
+    }
+
+    @Test
     @DisplayName("정지 회원은 탈퇴자가 아니므로 이미 사용 중으로 본다")
     void phoneNumberUnavailableReason_whenSuspended_isInUse() {
         assertThat(signupValidator.phoneNumberUnavailableReason(user(UserStatus.SUSPENDED, null)))

@@ -73,7 +73,7 @@ class KakaoUnlinkWebhookServiceTest {
     }
 
     private void givenSocialAccount(Optional<SocialAccount> account) {
-        when(socialAccountRepository.findByProviderAndProviderUserId(
+        when(socialAccountRepository.findByProviderAndProviderUserIdForUpdate(
                         SocialProvider.KAKAO, KAKAO_USER_ID))
                 .thenReturn(account);
     }

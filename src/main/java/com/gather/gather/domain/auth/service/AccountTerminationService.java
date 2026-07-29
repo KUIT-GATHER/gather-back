@@ -3,6 +3,7 @@ package com.gather.gather.domain.auth.service;
 import com.gather.gather.domain.auth.entity.User;
 import com.gather.gather.domain.auth.entity.UserStatus;
 import com.gather.gather.domain.auth.entity.WithdrawalReason;
+import com.gather.gather.domain.auth.repository.EmailVerificationRepository;
 import com.gather.gather.domain.auth.repository.RefreshTokenRepository;
 import com.gather.gather.domain.auth.repository.UserRepository;
 import com.gather.gather.global.exception.BusinessException;
@@ -26,6 +27,7 @@ public class AccountTerminationService {
 
     private final UserRepository userRepository;
     private final RefreshTokenRepository refreshTokenRepository;
+    private final EmailVerificationRepository emailVerificationRepository;
     private final ApplicationEventPublisher eventPublisher;
 
     /**
@@ -47,7 +49,11 @@ public class AccountTerminationService {
             return;
         }
 
+        String email = user.getEmail();
         user.withdraw(reason, LocalDateTime.now());
+        if (email != null) {
+            emailVerificationRepository.deleteByEmail(email);
+        }
         refreshTokenRepository.deleteByUser(user);
         eventPublisher.publishEvent(new UserWithdrawnEvent(userId));
     }
