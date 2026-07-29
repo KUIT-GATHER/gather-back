@@ -8,6 +8,9 @@ import com.gather.gather.domain.auth.entity.AccountRejoinBlockIdentifierType;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.NullSource;
+import org.junit.jupiter.params.provider.ValueSource;
 
 class RejoinBlockIdentifierHasherTest {
 
@@ -62,6 +65,17 @@ class RejoinBlockIdentifierHasherTest {
         RejoinBlockIdentifier result = hasher.hashPhone(phoneNumber);
 
         assertThat(result.hash()).hasSize(64).doesNotContain(phoneNumber);
+    }
+
+    @ParameterizedTest
+    @NullSource
+    @ValueSource(strings = {"", " ", "\t"})
+    void hashKakao_rejectsBlankProviderUserId(String providerUserId) {
+        RejoinBlockIdentifierHasher hasher = hasher("first-secret-value-with-at-least-32-bytes");
+
+        assertThatThrownBy(() -> hasher.hashKakao(providerUserId))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("카카오 식별자는 필수입니다.");
     }
 
     @Test

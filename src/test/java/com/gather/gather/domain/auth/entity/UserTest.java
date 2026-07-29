@@ -39,6 +39,25 @@ class UserTest {
     }
 
     @Test
+    void withdraw_rejectsNullReason() {
+        User user = user(1L);
+        LocalDateTime now = LocalDateTime.of(2026, 7, 29, 12, 0);
+
+        assertThatThrownBy(() -> user.withdraw(null, now))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("탈퇴 사유와 탈퇴 시각은 필수입니다.");
+    }
+
+    @Test
+    void withdraw_rejectsNullTime() {
+        User user = user(1L);
+
+        assertThatThrownBy(() -> user.withdraw(WithdrawalReason.SELF, null))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("탈퇴 사유와 탈퇴 시각은 필수입니다.");
+    }
+
+    @Test
     void anonymize_removesPersonalInformationAndKeepsRequiredConsentHistory() {
         User user = user(42L);
         user.changeProfileImageKey("profiles/42/image.jpg");
@@ -104,6 +123,26 @@ class UserTest {
         assertThatThrownBy(() -> user.anonymize(now))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessage("영속화되지 않은 사용자는 익명화할 수 없습니다.");
+    }
+
+    @Test
+    void anonymize_rejectsActiveUser() {
+        User user = user(1L);
+        LocalDateTime now = LocalDateTime.of(2026, 7, 29, 12, 0);
+
+        assertThatThrownBy(() -> user.anonymize(now))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("탈퇴한 사용자만 익명화할 수 있습니다.");
+    }
+
+    @Test
+    void anonymize_rejectsNullTime() {
+        User user = user(1L);
+        user.withdraw(WithdrawalReason.SELF, LocalDateTime.of(2026, 7, 29, 12, 0));
+
+        assertThatThrownBy(() -> user.anonymize(null))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("익명화 시각은 필수입니다.");
     }
 
     private User user(Long id) {
