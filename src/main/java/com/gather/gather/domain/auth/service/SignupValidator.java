@@ -36,6 +36,7 @@ public class SignupValidator {
 
     private final UserRepository userRepository;
     private final RegionRepository regionRepository;
+    private final PhoneNumberNormalizer phoneNumberNormalizer;
 
     public void validateName(String name) {
         validateKoreanOrEnglish(name);
@@ -98,14 +99,7 @@ public class SignupValidator {
     }
 
     public String normalizePhoneNumber(String phoneNumber) {
-        if (phoneNumber == null || phoneNumber.isBlank()) {
-            throw new BusinessException(ErrorCode.VALIDATION_ERROR);
-        }
-        String normalized = phoneNumber.replaceAll("[\\s-]", "");
-        if (!normalized.matches("^[0-9]+$")) {
-            throw new BusinessException(ErrorCode.VALIDATION_ERROR);
-        }
-        return normalized;
+        return phoneNumberNormalizer.normalize(phoneNumber);
     }
 
     public String normalizeNullableText(String text) {
