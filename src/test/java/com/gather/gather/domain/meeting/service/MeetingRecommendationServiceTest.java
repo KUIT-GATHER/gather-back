@@ -25,6 +25,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -302,7 +303,7 @@ class MeetingRecommendationServiceTest {
                         10,
                         deadline,
                         null,
-                        category,
+                        Set.of(category),
                         1L,
                         dummyHost(),
                         null,

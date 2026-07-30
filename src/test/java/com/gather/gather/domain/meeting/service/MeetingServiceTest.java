@@ -22,6 +22,7 @@ import com.gather.gather.domain.posting.repository.PostingRepository;
 import com.gather.gather.domain.region.repository.RegionRepository;
 import com.gather.gather.global.common.PageResponse;
 import java.util.List;
+import java.util.Set;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -54,7 +55,7 @@ class MeetingServiceTest {
         meeting = mock(Meeting.class);
         when(meeting.getId()).thenReturn(12L);
         when(meeting.getName()).thenReturn("한강공원 플로깅팀");
-        when(meeting.getCategory()).thenReturn(PostingCategory.ENVIRONMENT);
+        when(meeting.getCategories()).thenReturn(Set.of(PostingCategory.ENVIRONMENT));
         when(meeting.getCurrentMemberCount()).thenReturn(12);
         when(meeting.getMaxMember()).thenReturn(20);
         when(meeting.getStatus()).thenReturn(MeetingStatus.RECRUITING);

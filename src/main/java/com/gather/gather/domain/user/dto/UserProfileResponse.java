@@ -28,7 +28,9 @@ public record UserProfileResponse(
                 user.getIntroduction(),
                 user.getBirthDate(),
                 user.getGender(),
-                RegionResponse.from(user.getActivityRegion()),
+                user.getActivityRegion() == null
+                        ? null
+                        : RegionResponse.from(user.getActivityRegion()),
                 user.getInterestCategories());
     }
 }

@@ -275,6 +275,7 @@ class PostingControllerTest {
                         List.of(new PostingLocationResponse(1, "동구 일대", null, null)),
                         null,
                         null,
+                        true,
                         true);
         when(postingService.getPosting(1L)).thenReturn(response);
 
@@ -285,7 +286,8 @@ class PostingControllerTest {
                 .andExpect(jsonPath("$.data.regionName").value("동구"))
                 .andExpect(jsonPath("$.data.locations").isArray())
                 .andExpect(jsonPath("$.data.locations.length()").value(1))
-                .andExpect(jsonPath("$.data.bookmarked").value(true));
+                .andExpect(jsonPath("$.data.bookmarked").value(true))
+                .andExpect(jsonPath("$.data.applied").value(true));
     }
 
     @Test

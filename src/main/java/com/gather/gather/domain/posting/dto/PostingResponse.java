@@ -38,13 +38,15 @@ public record PostingResponse(
         List<PostingLocationResponse> locations,
         LocalDateTime createdAt,
         LocalDateTime updatedAt,
-        boolean bookmarked) {
+        boolean bookmarked,
+        boolean applied) {
 
     public static PostingResponse from(
             Posting posting,
             String regionName,
             List<PostingLocationResponse> locations,
-            boolean bookmarked) {
+            boolean bookmarked,
+            boolean applied) {
         return new PostingResponse(
                 posting.getId(),
                 posting.getTitle(),
@@ -76,6 +78,7 @@ public record PostingResponse(
                 locations,
                 posting.getCreatedAt(),
                 posting.getUpdatedAt(),
-                bookmarked);
+                bookmarked,
+                applied);
     }
 }

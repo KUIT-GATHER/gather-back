@@ -114,7 +114,8 @@ public class MeetingRecommendationService {
                                             new ScoredMeeting(
                                                     meeting,
                                                     scoreCalculator.score(
-                                                            meeting.getCategory(),
+                                                            resolveScoringCategory(
+                                                                    meeting, preferredCategories),
                                                             preferredCategories,
                                                             meeting.getDeadline(),
                                                             now))));
@@ -144,6 +145,18 @@ public class MeetingRecommendationService {
                     .forEach(member -> joinedMeetingIds.add(member.getMeeting().getId()));
         }
         return joinedMeetingIds;
+    }
+
+    /**
+     * 모임은 카테고리를 여러 개 가질 수 있으므로, 선호 카테고리와 하나라도 겹치면 그 카테고리를 넘겨 만점을 받도록 하고, 겹치지 않으면 임의의 카테고리를 넘겨도
+     * {@link CategoryDeadlineScoreCalculator}가 0점 처리한다.
+     */
+    private PostingCategory resolveScoringCategory(
+            Meeting meeting, Set<PostingCategory> preferredCategories) {
+        return meeting.getCategories().stream()
+                .filter(preferredCategories::contains)
+                .findFirst()
+                .orElseGet(() -> meeting.getCategories().iterator().next());
     }
 
     private record ScoredMeeting(Meeting meeting, double score) {}
