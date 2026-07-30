@@ -4,6 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -63,8 +65,8 @@ class KakaoAuthServiceTest {
             new RejoinBlockIdentifier(AccountRejoinBlockIdentifierType.KAKAO, PROVIDER_USER_KEY, 1);
     private static final EncryptedProviderUserId ENCRYPTED_PROVIDER_USER_ID =
             new EncryptedProviderUserId("encrypted-provider-user-id", 1);
-    private static final SocialSignupSessionIdentity SIGNUP_IDENTITY =
-            new SocialSignupSessionIdentity(
+    private static final SocialSignupIdentitySnapshot SIGNUP_IDENTITY =
+            new SocialSignupIdentitySnapshot(
                     SocialProvider.KAKAO, IDENTIFIER, ENCRYPTED_PROVIDER_USER_ID);
 
     @Mock private KakaoApiClient kakaoApiClient;
@@ -111,7 +113,7 @@ class KakaoAuthServiceTest {
         assertThat(result.signupStatus()).isEqualTo(SignupStatus.LOGIN_COMPLETED);
         assertThat(result.tokens().accessToken()).isEqualTo("access-token");
         assertThat(result.signupToken()).isNull();
-        verify(signupSessionService, never()).issue(any(), any(), any());
+        verify(signupSessionService, never()).issue(any(), any());
     }
 
     @Test
@@ -221,6 +223,7 @@ class KakaoAuthServiceTest {
 
         TokenIssueResult result = kakaoAuthService.signup(SIGNUP_TOKEN, signupRequest());
 
+        verify(signupSessionService).validateUsable(SIGNUP_TOKEN);
         ArgumentCaptor<User> userCaptor = ArgumentCaptor.forClass(User.class);
         verify(signupTransactionService)
                 .createAccount(userCaptor.capture(), eq(SIGNUP_TOKEN), eq("01012345678"), eq("길동"));
@@ -264,15 +267,60 @@ class KakaoAuthServiceTest {
                         "Duplicate entry for key 'social_account.uk_social_account_provider_key'");
         when(signupTransactionService.createAccount(
                         any(User.class), eq(SIGNUP_TOKEN), eq("01012345678"), eq("길동")))
-                .thenThrow(new SocialAccountProviderKeyConflictException(integrityException));
-        when(signupSessionService.findIdentity(SIGNUP_TOKEN))
-                .thenReturn(Optional.of(SIGNUP_IDENTITY));
+                .thenThrow(
+                        new KakaoSignupIdentityConflictException(
+                                SIGNUP_IDENTITY, integrityException));
         when(socialAccountIdentityService.findByProviderAndKey(SocialProvider.KAKAO, IDENTIFIER))
                 .thenReturn(Optional.of(linkedSocialAccount(socialUser())));
 
         assertErrorCode(
                 () -> kakaoAuthService.signup(SIGNUP_TOKEN, signupRequest()),
                 ErrorCode.ALREADY_REGISTERED);
+    }
+
+    @Test
+    @DisplayName("UNIQUE 충돌 후 UNLINK_PENDING 계정이 조회되면 재가입을 거부한다")
+    void signup_whenConflictReloadsUnlinkPending_throwsNotLinked() {
+        stubValidSignupToken();
+        stubValidSignupInput();
+        DataIntegrityViolationException integrityException =
+                new DataIntegrityViolationException("provider identity conflict");
+        when(signupTransactionService.createAccount(
+                        any(User.class), eq(SIGNUP_TOKEN), eq("01012345678"), eq("길동")))
+                .thenThrow(
+                        new KakaoSignupIdentityConflictException(
+                                SIGNUP_IDENTITY, integrityException));
+        SocialAccount account = linkedSocialAccount(socialUser());
+        account.markUnlinkPending(LocalDateTime.of(2026, 7, 29, 13, 0));
+        when(socialAccountIdentityService.findByProviderAndKey(SocialProvider.KAKAO, IDENTIFIER))
+                .thenReturn(Optional.of(account));
+
+        assertErrorCode(
+                () -> kakaoAuthService.signup(SIGNUP_TOKEN, signupRequest()),
+                ErrorCode.SOCIAL_ACCOUNT_NOT_LINKED);
+    }
+
+    @Test
+    @DisplayName("UNIQUE 충돌 후 UNLINKED 계정이 조회되면 재가입을 거부한다")
+    void signup_whenConflictReloadsUnlinked_throwsNotLinked() {
+        stubValidSignupToken();
+        stubValidSignupInput();
+        DataIntegrityViolationException integrityException =
+                new DataIntegrityViolationException("provider identity conflict");
+        when(signupTransactionService.createAccount(
+                        any(User.class), eq(SIGNUP_TOKEN), eq("01012345678"), eq("길동")))
+                .thenThrow(
+                        new KakaoSignupIdentityConflictException(
+                                SIGNUP_IDENTITY, integrityException));
+        SocialAccount account = linkedSocialAccount(socialUser());
+        account.markUnlinkPending(LocalDateTime.of(2026, 7, 29, 13, 0));
+        account.markUnlinked(LocalDateTime.of(2026, 7, 29, 14, 0));
+        when(socialAccountIdentityService.findByProviderAndKey(SocialProvider.KAKAO, IDENTIFIER))
+                .thenReturn(Optional.of(account));
+
+        assertErrorCode(
+                () -> kakaoAuthService.signup(SIGNUP_TOKEN, signupRequest()),
+                ErrorCode.SOCIAL_ACCOUNT_NOT_LINKED);
     }
 
     @Test
@@ -288,9 +336,9 @@ class KakaoAuthServiceTest {
                         "Duplicate entry for key 'social_account.uk_social_account_provider_key'");
         when(signupTransactionService.createAccount(
                         any(User.class), eq(SIGNUP_TOKEN), eq("01012345678"), eq("길동")))
-                .thenThrow(new SocialAccountProviderKeyConflictException(integrityException));
-        when(signupSessionService.findIdentity(SIGNUP_TOKEN))
-                .thenReturn(Optional.of(SIGNUP_IDENTITY));
+                .thenThrow(
+                        new KakaoSignupIdentityConflictException(
+                                SIGNUP_IDENTITY, integrityException));
         when(socialAccountIdentityService.findByProviderAndKey(SocialProvider.KAKAO, IDENTIFIER))
                 .thenReturn(Optional.empty());
 
@@ -312,9 +360,9 @@ class KakaoAuthServiceTest {
         IllegalStateException reloadFailure = new IllegalStateException("key version mismatch");
         when(signupTransactionService.createAccount(
                         any(User.class), eq(SIGNUP_TOKEN), eq("01012345678"), eq("길동")))
-                .thenThrow(new SocialAccountProviderKeyConflictException(integrityException));
-        when(signupSessionService.findIdentity(SIGNUP_TOKEN))
-                .thenReturn(Optional.of(SIGNUP_IDENTITY));
+                .thenThrow(
+                        new KakaoSignupIdentityConflictException(
+                                SIGNUP_IDENTITY, integrityException));
         when(socialAccountIdentityService.findByProviderAndKey(SocialProvider.KAKAO, IDENTIFIER))
                 .thenThrow(reloadFailure);
 
@@ -335,6 +383,32 @@ class KakaoAuthServiceTest {
                 ErrorCode.DUPLICATE_PHONE_NUMBER);
 
         verifyNoInteractions(signupTransactionService);
+    }
+
+    @Test
+    @DisplayName("무효한 가입 token은 사용자 입력 조회와 저장 흐름 전에 차단한다")
+    void signup_whenSignupTokenInvalid_stopsBeforeInputValidationAndPersistence() {
+        BusinessException invalid = new BusinessException(ErrorCode.SIGNUP_TOKEN_INVALID);
+        doThrow(invalid).when(signupSessionService).validateUsable(SIGNUP_TOKEN);
+
+        assertThatThrownBy(() -> kakaoAuthService.signup(SIGNUP_TOKEN, signupRequest()))
+                .isSameAs(invalid);
+
+        verifyNoInteractions(
+                userRepository, regionRepository, signupTransactionService, tokenIssuer);
+    }
+
+    @Test
+    @DisplayName("만료된 가입 token은 사용자 입력 조회와 저장 흐름 전에 차단한다")
+    void signup_whenSignupTokenExpired_stopsBeforeInputValidationAndPersistence() {
+        BusinessException expired = new BusinessException(ErrorCode.SIGNUP_TOKEN_EXPIRED);
+        doThrow(expired).when(signupSessionService).validateUsable(SIGNUP_TOKEN);
+
+        assertThatThrownBy(() -> kakaoAuthService.signup(SIGNUP_TOKEN, signupRequest()))
+                .isSameAs(expired);
+
+        verifyNoInteractions(
+                userRepository, regionRepository, signupTransactionService, tokenIssuer);
     }
 
     @Test
@@ -421,12 +495,20 @@ class KakaoAuthServiceTest {
         when(socialAccountIdentityService.findKakaoAccount(PROVIDER_USER_ID, IDENTIFIER))
                 .thenReturn(Optional.empty());
         when(providerIdCipher.encrypt(PROVIDER_USER_ID)).thenReturn(ENCRYPTED_PROVIDER_USER_ID);
-        when(signupSessionService.issue(
-                        SocialProvider.KAKAO, IDENTIFIER, ENCRYPTED_PROVIDER_USER_ID))
+        when(signupSessionService.issue(IDENTIFIER, ENCRYPTED_PROVIDER_USER_ID))
                 .thenReturn(SIGNUP_TOKEN);
     }
 
-    private void stubValidSignupToken() {}
+    private void stubValidSignupToken() {
+        doNothing().when(signupSessionService).validateUsable(SIGNUP_TOKEN);
+    }
+
+    private void stubValidSignupInput() {
+        when(userRepository.existsByPhoneNumber("01012345678")).thenReturn(false);
+        when(userRepository.existsByNickname("길동")).thenReturn(false);
+        when(regionRepository.findById(ACTIVITY_REGION_ID))
+                .thenReturn(Optional.of(Region.create("강남구", 2, "11680", null)));
+    }
 
     private KakaoUserResponse kakaoUser(String nickname) {
         return new KakaoUserResponse(

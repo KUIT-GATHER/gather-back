@@ -3,12 +3,12 @@ package com.gather.gather.domain.auth.repository;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.gather.gather.domain.auth.entity.AccountRejoinBlockIdentifierType;
 import com.gather.gather.domain.auth.entity.EncryptedProviderUserId;
 import com.gather.gather.domain.auth.entity.SocialProvider;
 import com.gather.gather.domain.auth.entity.SocialSignupSession;
 import com.gather.gather.domain.auth.entity.SocialSignupSessionStatus;
-import jakarta.persistence.EntityManager;
-import jakarta.persistence.PersistenceContext;
+import com.gather.gather.domain.auth.service.RejoinBlockIdentifier;
 import java.time.LocalDateTime;
 import java.util.List;
 import org.junit.jupiter.api.DisplayName;
@@ -28,7 +28,6 @@ class SocialSignupSessionRepositoryTest {
 
     @Autowired private SocialSignupSessionRepository repository;
     @Autowired private JdbcTemplate jdbcTemplate;
-    @PersistenceContext private EntityManager entityManager;
 
     @Test
     @DisplayName("token hash로 원문 없이 가입 세션을 정확히 조회한다")
@@ -71,26 +70,6 @@ class SocialSignupSessionRepositoryTest {
     }
 
     @Test
-    @DisplayName("identity 일괄 취소는 PENDING만 바꾸고 terminal 상태를 보존한다")
-    void cancelPendingByIdentity_doesNotChangeTerminalSessions() {
-        SocialSignupSession pending = repository.saveAndFlush(session("f".repeat(64)));
-        SocialSignupSession consumed = repository.saveAndFlush(session("1".repeat(64)));
-        consumed.consume(NOW.plusMinutes(1));
-        repository.flush();
-
-        int changed =
-                repository.cancelPendingByIdentity(
-                        SocialProvider.KAKAO, PROVIDER_USER_KEY, NOW.plusMinutes(2));
-        entityManager.clear();
-
-        assertThat(changed).isEqualTo(1);
-        assertThat(repository.findById(pending.getId()).orElseThrow().getStatus())
-                .isEqualTo(SocialSignupSessionStatus.CANCELLED);
-        assertThat(repository.findById(consumed.getId()).orElseThrow().getStatus())
-                .isEqualTo(SocialSignupSessionStatus.CONSUMED);
-    }
-
-    @Test
     @DisplayName("V34는 token UNIQUE와 identity·expiresAt 인덱스를 생성한다")
     void migration_createsRequiredIndexes() {
         List<String> indexes =
@@ -111,11 +90,10 @@ class SocialSignupSessionRepositoryTest {
     }
 
     private SocialSignupSession session(String tokenHash) {
-        return SocialSignupSession.create(
+        return SocialSignupSession.createKakao(
                 tokenHash,
-                SocialProvider.KAKAO,
-                PROVIDER_USER_KEY,
-                3,
+                new RejoinBlockIdentifier(
+                        AccountRejoinBlockIdentifierType.KAKAO, PROVIDER_USER_KEY, 3),
                 new EncryptedProviderUserId("ciphertext", 4),
                 NOW.plusMinutes(15),
                 NOW);

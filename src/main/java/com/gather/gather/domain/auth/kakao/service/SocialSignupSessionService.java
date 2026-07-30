@@ -2,7 +2,6 @@ package com.gather.gather.domain.auth.kakao.service;
 
 import com.gather.gather.domain.auth.entity.AccountRejoinBlockIdentifierType;
 import com.gather.gather.domain.auth.entity.EncryptedProviderUserId;
-import com.gather.gather.domain.auth.entity.SocialProvider;
 import com.gather.gather.domain.auth.entity.SocialSignupSession;
 import com.gather.gather.domain.auth.entity.SocialSignupSessionStatus;
 import com.gather.gather.domain.auth.kakao.config.KakaoProperties;
@@ -13,14 +12,17 @@ import com.gather.gather.global.exception.BusinessException;
 import com.gather.gather.global.exception.ErrorCode;
 import java.time.Clock;
 import java.time.LocalDateTime;
-import java.util.Optional;
+import java.util.List;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class SocialSignupSessionService {
 
     private static final int TOKEN_ISSUE_MAX_ATTEMPTS = 3;
@@ -33,58 +35,84 @@ public class SocialSignupSessionService {
     private final Clock clock;
 
     public String issue(
-            SocialProvider provider,
-            RejoinBlockIdentifier identifier,
-            EncryptedProviderUserId encryptedProviderUserId) {
+            RejoinBlockIdentifier identifier, EncryptedProviderUserId encryptedProviderUserId) {
+        DataIntegrityViolationException lastConflict = null;
         for (int attempt = 1; attempt <= TOKEN_ISSUE_MAX_ATTEMPTS; attempt++) {
             String token = tokenService.generateToken();
-            String tokenHash = tokenService.hashToken(token);
+            String tokenHash = tokenService.validateAndHash(token);
             LocalDateTime now = LocalDateTime.now(clock);
 
             try {
-                persistenceService.saveNew(
-                        SocialSignupSession.create(
+                persistenceService.saveNewAttempt(
+                        SocialSignupSession.createKakao(
                                 tokenHash,
-                                provider,
-                                identifier.hash(),
-                                identifier.keyVersion(),
+                                identifier,
                                 encryptedProviderUserId,
                                 now.plusSeconds(kakaoProperties.signupTokenExpirationSeconds()),
                                 now));
                 return token;
             } catch (DataIntegrityViolationException exception) {
-                if (!constraintResolver.isTokenHashConflict(exception)
-                        || attempt == TOKEN_ISSUE_MAX_ATTEMPTS) {
+                if (!constraintResolver.isTokenHashConflict(exception)) {
                     throw exception;
+                }
+                lastConflict = exception;
+                if (attempt < TOKEN_ISSUE_MAX_ATTEMPTS) {
+                    log.warn(
+                            "가입 세션 token hash 충돌로 발급을 재시도합니다. attempt={}, maxAttempts={}",
+                            attempt,
+                            TOKEN_ISSUE_MAX_ATTEMPTS);
                 }
             }
         }
-        throw new IllegalStateException("가입 세션 token 발급 재시도 횟수를 초과했습니다.");
+        log.error("가입 세션 token hash 충돌 재시도 횟수를 소진했습니다. maxAttempts={}", TOKEN_ISSUE_MAX_ATTEMPTS);
+        throw new IllegalStateException("가입 세션 token 발급 재시도 횟수를 초과했습니다.", lastConflict);
     }
 
     @Transactional(readOnly = true)
-    public Optional<SocialSignupSessionIdentity> findIdentity(String token) {
-        String tokenHash = tokenService.hashToken(token);
-        return sessionRepository.findByTokenHash(tokenHash).map(this::toIdentity);
+    public void validateUsable(String rawToken) {
+        String tokenHash = tokenService.validateAndHash(rawToken);
+        SocialSignupSession session = findByTokenHash(tokenHash);
+        requireUsable(session, LocalDateTime.now(clock));
     }
 
-    @Transactional(readOnly = true)
-    public void validatePending(String token) {
-        String tokenHash = tokenService.hashToken(token);
-        SocialSignupSession session =
-                sessionRepository
-                        .findByTokenHash(tokenHash)
+    @Transactional(propagation = Propagation.MANDATORY)
+    public LockedSocialSignupSession lockForSignup(String rawToken, LocalDateTime now) {
+        String tokenHash = tokenService.validateAndHash(rawToken);
+        SocialSignupSession candidate = findByTokenHash(tokenHash);
+        requireUsable(candidate, now);
+
+        List<SocialSignupSession> lockedPendingSessions =
+                sessionRepository.findAllByIdentityAndStatusForUpdate(
+                        candidate.getProvider(),
+                        candidate.getProviderUserKey(),
+                        SocialSignupSessionStatus.PENDING);
+        SocialSignupSession target =
+                lockedPendingSessions.stream()
+                        .filter(session -> session.getTokenHash().equals(tokenHash))
+                        .findFirst()
                         .orElseThrow(() -> new BusinessException(ErrorCode.SIGNUP_TOKEN_INVALID));
+        requireUsable(target, now);
+        return new LockedSocialSignupSession(
+                target, lockedPendingSessions, toIdentitySnapshot(target));
+    }
+
+    private SocialSignupSession findByTokenHash(String tokenHash) {
+        return sessionRepository
+                .findByTokenHash(tokenHash)
+                .orElseThrow(() -> new BusinessException(ErrorCode.SIGNUP_TOKEN_INVALID));
+    }
+
+    private void requireUsable(SocialSignupSession session, LocalDateTime now) {
         if (session.getStatus() != SocialSignupSessionStatus.PENDING) {
             throw new BusinessException(ErrorCode.SIGNUP_TOKEN_INVALID);
         }
-        if (session.isExpiredAt(LocalDateTime.now(clock))) {
+        if (session.isExpiredAt(now)) {
             throw new BusinessException(ErrorCode.SIGNUP_TOKEN_EXPIRED);
         }
     }
 
-    private SocialSignupSessionIdentity toIdentity(SocialSignupSession session) {
-        return new SocialSignupSessionIdentity(
+    private SocialSignupIdentitySnapshot toIdentitySnapshot(SocialSignupSession session) {
+        return new SocialSignupIdentitySnapshot(
                 session.getProvider(),
                 new RejoinBlockIdentifier(
                         AccountRejoinBlockIdentifierType.KAKAO,

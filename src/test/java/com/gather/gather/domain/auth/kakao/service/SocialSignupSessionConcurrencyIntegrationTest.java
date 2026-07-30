@@ -110,7 +110,7 @@ class SocialSignupSessionConcurrencyIntegrationTest {
                                                 userRepository.deleteById(userId);
                                             });
                             issuedTokens.stream()
-                                    .map(signupTokenService::hashToken)
+                                    .map(signupTokenService::validateAndHash)
                                     .map(signupSessionRepository::findByTokenHash)
                                     .flatMap(java.util.Optional::stream)
                                     .forEach(signupSessionRepository::delete);
@@ -288,9 +288,7 @@ class SocialSignupSessionConcurrencyIntegrationTest {
             String sessionProviderUserId, RejoinBlockIdentifier sessionIdentifier) {
         String token =
                 signupSessionService.issue(
-                        SocialProvider.KAKAO,
-                        sessionIdentifier,
-                        providerIdCipher.encrypt(sessionProviderUserId));
+                        sessionIdentifier, providerIdCipher.encrypt(sessionProviderUserId));
         issuedTokens.add(token);
         return token;
     }
@@ -416,7 +414,7 @@ class SocialSignupSessionConcurrencyIntegrationTest {
                         status -> {
                             entityManager.clear();
                             return signupSessionRepository
-                                    .findByTokenHash(signupTokenService.hashToken(token))
+                                    .findByTokenHash(signupTokenService.validateAndHash(token))
                                     .orElseThrow();
                         });
     }

@@ -2,7 +2,6 @@ package com.gather.gather.domain.auth.kakao.service;
 
 import com.gather.gather.domain.auth.entity.EncryptedProviderUserId;
 import com.gather.gather.domain.auth.entity.SocialAccount;
-import com.gather.gather.domain.auth.entity.SocialProvider;
 import com.gather.gather.domain.auth.entity.User;
 import com.gather.gather.domain.auth.kakao.client.KakaoApiClient;
 import com.gather.gather.domain.auth.kakao.config.KakaoProperties;
@@ -66,10 +65,7 @@ public class KakaoAuthService {
                             EncryptedProviderUserId encryptedProviderUserId =
                                     providerIdCipher.encrypt(providerUserId);
                             return KakaoLoginResult.additionalInfoRequired(
-                                    signupSessionService.issue(
-                                            SocialProvider.KAKAO,
-                                            identifier,
-                                            encryptedProviderUserId),
+                                    signupSessionService.issue(identifier, encryptedProviderUserId),
                                     userInfo.nickname());
                         });
     }
@@ -88,7 +84,7 @@ public class KakaoAuthService {
     public TokenIssueResult signup(String signupToken, KakaoSignupRequest request) {
         // 유효한 가입 세션 없이 전화번호·닉네임 중복 여부 같은 가입 검증 결과를 탐색하지 못하게 먼저 확인한다.
         // 실제 일회성 보장은 KakaoSignupTransactionService가 같은 세션을 다시 잠그고 검증한다.
-        signupSessionService.validatePending(signupToken);
+        signupSessionService.validateUsable(signupToken);
 
         signupValidator.validateName(request.name());
         signupValidator.validateNickname(request.nickname());
@@ -122,17 +118,14 @@ public class KakaoAuthService {
 
         try {
             return signupTransactionService.createAccount(user, signupToken, phoneNumber, nickname);
-        } catch (SocialAccountProviderKeyConflictException exception) {
+        } catch (KakaoSignupIdentityConflictException exception) {
             DataIntegrityViolationException integrityException = exception.integrityException();
-            Optional<SocialAccount> conflictedAccount = Optional.empty();
+            Optional<SocialAccount> conflictedAccount;
             try {
-                Optional<SocialSignupSessionIdentity> identity =
-                        signupSessionService.findIdentity(signupToken);
-                if (identity.isPresent()) {
-                    conflictedAccount =
-                            socialAccountIdentityService.findByProviderAndKey(
-                                    identity.get().provider(), identity.get().identifier());
-                }
+                SocialSignupIdentitySnapshot identity = exception.identity();
+                conflictedAccount =
+                        socialAccountIdentityService.findByProviderAndKey(
+                                identity.provider(), identity.identifier());
             } catch (RuntimeException reloadFailure) {
                 // 확정된 UNIQUE 충돌을 재조회 실패로 덮어쓰지 않는다. 원인은 suppressed로 보존해 운영 분석에 남긴다.
                 integrityException.addSuppressed(reloadFailure);
@@ -140,6 +133,7 @@ public class KakaoAuthService {
                 throw integrityException;
             }
             if (conflictedAccount.isEmpty()) {
+                log.error("소셜 계정 UNIQUE 충돌 후 최신 SocialAccount를 찾지 못해 원본 무결성 오류를 유지합니다.");
                 throw integrityException;
             }
             SocialAccount socialAccount = conflictedAccount.get();

@@ -26,7 +26,7 @@ public class SocialSignupTokenService {
         return Base64.getUrlEncoder().withoutPadding().encodeToString(tokenBytes);
     }
 
-    public String hashToken(String token) {
+    public String validateAndHash(String token) {
         validateToken(token);
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");

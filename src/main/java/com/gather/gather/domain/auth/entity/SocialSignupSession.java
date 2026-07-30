@@ -1,5 +1,6 @@
 package com.gather.gather.domain.auth.entity;
 
+import com.gather.gather.domain.auth.service.RejoinBlockIdentifier;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -78,24 +79,15 @@ public class SocialSignupSession {
 
     private SocialSignupSession(
             String tokenHash,
-            SocialProvider provider,
-            String providerUserKey,
-            int providerUserKeyVersion,
+            RejoinBlockIdentifier identifier,
             EncryptedProviderUserId encryptedProviderUserId,
             LocalDateTime expiresAt,
             LocalDateTime now) {
-        validateCreation(
-                tokenHash,
-                provider,
-                providerUserKey,
-                providerUserKeyVersion,
-                encryptedProviderUserId,
-                expiresAt,
-                now);
+        validateCreation(tokenHash, identifier, encryptedProviderUserId, expiresAt, now);
         this.tokenHash = tokenHash;
-        this.provider = provider;
-        this.providerUserKey = providerUserKey;
-        this.providerUserKeyVersion = providerUserKeyVersion;
+        this.provider = SocialProvider.KAKAO;
+        this.providerUserKey = identifier.hash();
+        this.providerUserKeyVersion = identifier.keyVersion();
         this.providerUserIdCiphertext = encryptedProviderUserId.ciphertext();
         this.encryptionKeyVersion = encryptedProviderUserId.keyVersion();
         this.status = SocialSignupSessionStatus.PENDING;
@@ -104,22 +96,14 @@ public class SocialSignupSession {
         this.updatedAt = now;
     }
 
-    public static SocialSignupSession create(
+    public static SocialSignupSession createKakao(
             String tokenHash,
-            SocialProvider provider,
-            String providerUserKey,
-            int providerUserKeyVersion,
+            RejoinBlockIdentifier identifier,
             EncryptedProviderUserId encryptedProviderUserId,
             LocalDateTime expiresAt,
             LocalDateTime now) {
         return new SocialSignupSession(
-                tokenHash,
-                provider,
-                providerUserKey,
-                providerUserKeyVersion,
-                encryptedProviderUserId,
-                expiresAt,
-                now);
+                tokenHash, identifier, encryptedProviderUserId, expiresAt, now);
     }
 
     public boolean isExpiredAt(LocalDateTime now) {
@@ -157,9 +141,7 @@ public class SocialSignupSession {
 
     private static void validateCreation(
             String tokenHash,
-            SocialProvider provider,
-            String providerUserKey,
-            int providerUserKeyVersion,
+            RejoinBlockIdentifier identifier,
             EncryptedProviderUserId encryptedProviderUserId,
             LocalDateTime expiresAt,
             LocalDateTime now) {
@@ -168,15 +150,13 @@ public class SocialSignupSession {
                 || !isLowercaseHex(tokenHash)) {
             throw new IllegalArgumentException("가입 세션 토큰 hash 형식이 올바르지 않습니다.");
         }
-        if (provider != SocialProvider.KAKAO) {
-            throw new IllegalArgumentException("카카오 가입 세션만 생성할 수 있습니다.");
-        }
+        String providerUserKey = identifier == null ? null : identifier.hash();
         if (providerUserKey == null
                 || providerUserKey.length() != PROVIDER_USER_KEY_LENGTH
                 || !isLowercaseHex(providerUserKey)) {
             throw new IllegalArgumentException("소셜 계정 조회 키 형식이 올바르지 않습니다.");
         }
-        if (providerUserKeyVersion <= 0) {
+        if (identifier.keyVersion() <= 0) {
             throw new IllegalArgumentException("소셜 계정 조회 키 버전은 1 이상이어야 합니다.");
         }
         if (encryptedProviderUserId == null) {

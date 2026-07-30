@@ -3,6 +3,7 @@ package com.gather.gather.domain.auth.entity;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.gather.gather.domain.auth.service.RejoinBlockIdentifier;
 import java.time.LocalDateTime;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -117,33 +118,27 @@ class SocialSignupSessionTest {
     void create_rejectsMissingValuesAndInvalidKeyVersions() {
         assertThatThrownBy(
                         () ->
-                                SocialSignupSession.create(
+                                SocialSignupSession.createKakao(
                                         null,
-                                        SocialProvider.KAKAO,
-                                        "b".repeat(64),
-                                        3,
+                                        identifier("b".repeat(64), 3),
                                         new EncryptedProviderUserId("ciphertext", 4),
                                         EXPIRES_AT,
                                         CREATED_AT))
                 .isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(
                         () ->
-                                SocialSignupSession.create(
+                                SocialSignupSession.createKakao(
                                         "a".repeat(64),
                                         null,
-                                        "b".repeat(64),
-                                        3,
                                         new EncryptedProviderUserId("ciphertext", 4),
                                         EXPIRES_AT,
                                         CREATED_AT))
                 .isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(
                         () ->
-                                SocialSignupSession.create(
+                                SocialSignupSession.createKakao(
                                         "a".repeat(64),
-                                        SocialProvider.KAKAO,
-                                        "b".repeat(64),
-                                        0,
+                                        identifier("b".repeat(64), 0),
                                         new EncryptedProviderUserId("ciphertext", 4),
                                         EXPIRES_AT,
                                         CREATED_AT))
@@ -157,13 +152,15 @@ class SocialSignupSessionTest {
     }
 
     private SocialSignupSession sessionWithIdentity(String providerUserKey, String ciphertext) {
-        return SocialSignupSession.create(
+        return SocialSignupSession.createKakao(
                 "a".repeat(64),
-                SocialProvider.KAKAO,
-                providerUserKey,
-                3,
+                identifier(providerUserKey, 3),
                 new EncryptedProviderUserId(ciphertext, 4),
                 EXPIRES_AT,
                 CREATED_AT);
+    }
+
+    private RejoinBlockIdentifier identifier(String hash, int keyVersion) {
+        return new RejoinBlockIdentifier(AccountRejoinBlockIdentifierType.KAKAO, hash, keyVersion);
     }
 }

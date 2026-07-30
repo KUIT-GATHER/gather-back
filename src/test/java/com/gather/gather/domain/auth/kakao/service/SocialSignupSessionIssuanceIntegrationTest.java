@@ -7,7 +7,6 @@ import static org.mockito.Mockito.when;
 
 import com.gather.gather.domain.auth.entity.AccountRejoinBlockIdentifierType;
 import com.gather.gather.domain.auth.entity.EncryptedProviderUserId;
-import com.gather.gather.domain.auth.entity.SocialProvider;
 import com.gather.gather.domain.auth.entity.SocialSignupSession;
 import com.gather.gather.domain.auth.kakao.token.SocialSignupTokenService;
 import com.gather.gather.domain.auth.repository.SocialSignupSessionRepository;
@@ -52,20 +51,17 @@ class SocialSignupSessionIssuanceIntegrationTest {
         EncryptedProviderUserId encryptedProviderUserId =
                 new EncryptedProviderUserId("ciphertext", 4);
         sessionRepository.saveAndFlush(
-                SocialSignupSession.create(
+                SocialSignupSession.createKakao(
                         COLLIDING_HASH,
-                        SocialProvider.KAKAO,
-                        identifier.hash(),
-                        identifier.keyVersion(),
+                        identifier,
                         encryptedProviderUserId,
                         now.plusMinutes(15),
                         now));
         when(tokenService.generateToken()).thenReturn(COLLIDING_TOKEN, RETRIED_TOKEN);
-        when(tokenService.hashToken(COLLIDING_TOKEN)).thenReturn(COLLIDING_HASH);
-        when(tokenService.hashToken(RETRIED_TOKEN)).thenReturn(RETRIED_HASH);
+        when(tokenService.validateAndHash(COLLIDING_TOKEN)).thenReturn(COLLIDING_HASH);
+        when(tokenService.validateAndHash(RETRIED_TOKEN)).thenReturn(RETRIED_HASH);
 
-        String issued =
-                sessionService.issue(SocialProvider.KAKAO, identifier, encryptedProviderUserId);
+        String issued = sessionService.issue(identifier, encryptedProviderUserId);
 
         assertThat(issued).isEqualTo(RETRIED_TOKEN);
         assertThat(sessionRepository.findByTokenHash(COLLIDING_HASH)).isPresent();

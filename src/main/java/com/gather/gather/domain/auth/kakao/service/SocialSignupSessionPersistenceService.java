@@ -9,12 +9,12 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 @RequiredArgsConstructor
-public class SocialSignupSessionPersistenceService {
+class SocialSignupSessionPersistenceService {
 
     private final SocialSignupSessionRepository sessionRepository;
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public void saveNew(SocialSignupSession session) {
+    public void saveNewAttempt(SocialSignupSession session) {
         sessionRepository.saveAndFlush(session);
     }
 }

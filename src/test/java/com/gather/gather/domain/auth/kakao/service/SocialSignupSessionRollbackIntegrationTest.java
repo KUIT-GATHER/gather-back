@@ -54,17 +54,13 @@ class SocialSignupSessionRollbackIntegrationTest {
     @BeforeEach
     void setUp() {
         identifier = identifierHasher.hashKakao(PROVIDER_USER_ID);
-        token =
-                signupSessionService.issue(
-                        SocialProvider.KAKAO,
-                        identifier,
-                        providerIdCipher.encrypt(PROVIDER_USER_ID));
+        token = signupSessionService.issue(identifier, providerIdCipher.encrypt(PROVIDER_USER_ID));
     }
 
     @AfterEach
     void tearDown() {
         signupSessionRepository
-                .findByTokenHash(signupTokenService.hashToken(token))
+                .findByTokenHash(signupTokenService.validateAndHash(token))
                 .ifPresent(signupSessionRepository::delete);
     }
 
@@ -105,7 +101,7 @@ class SocialSignupSessionRollbackIntegrationTest {
                 .isEmpty();
         SocialSignupSession session =
                 signupSessionRepository
-                        .findByTokenHash(signupTokenService.hashToken(token))
+                        .findByTokenHash(signupTokenService.validateAndHash(token))
                         .orElseThrow();
         assertThat(session.getStatus()).isEqualTo(SocialSignupSessionStatus.PENDING);
     }

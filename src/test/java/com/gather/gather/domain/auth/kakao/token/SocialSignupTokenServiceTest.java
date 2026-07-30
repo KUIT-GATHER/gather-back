@@ -39,11 +39,11 @@ class SocialSignupTokenServiceTest {
 
     @Test
     @DisplayName("동일 토큰의 SHA-256 hash는 결정적인 lowercase hex 64자다")
-    void hashToken_returnsDeterministicLowercaseSha256Hex() {
+    void validateAndHash_returnsDeterministicLowercaseSha256Hex() {
         String token = service.generateToken();
 
-        String first = service.hashToken(token);
-        String second = service.hashToken(token);
+        String first = service.validateAndHash(token);
+        String second = service.validateAndHash(token);
 
         assertThat(first).isEqualTo(second).hasSize(64).matches("[0-9a-f]{64}").isNotEqualTo(token);
     }
@@ -58,8 +58,8 @@ class SocialSignupTokenServiceTest {
                 "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
             })
     @DisplayName("null·길이 오류·URL-safe Base64가 아닌 토큰은 원문을 노출하지 않고 거부한다")
-    void hashToken_rejectsInvalidTokenWithoutExposingValue(String token) {
-        assertThatThrownBy(() -> service.hashToken(token))
+    void validateAndHash_rejectsInvalidTokenWithoutExposingValue(String token) {
+        assertThatThrownBy(() -> service.validateAndHash(token))
                 .isInstanceOf(BusinessException.class)
                 .satisfies(
                         exception ->
@@ -76,10 +76,10 @@ class SocialSignupTokenServiceTest {
 
     @Test
     @DisplayName("기존 JWT 가입 토큰은 opaque token 형식으로 허용하지 않는다")
-    void hashToken_rejectsLegacyJwtSignupToken() {
+    void validateAndHash_rejectsLegacyJwtSignupToken() {
         String legacyJwt = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjMifQ.signature";
 
-        assertThatThrownBy(() -> service.hashToken(legacyJwt))
+        assertThatThrownBy(() -> service.validateAndHash(legacyJwt))
                 .isInstanceOf(BusinessException.class)
                 .extracting(exception -> ((BusinessException) exception).getErrorCode())
                 .isEqualTo(ErrorCode.SIGNUP_TOKEN_INVALID);
