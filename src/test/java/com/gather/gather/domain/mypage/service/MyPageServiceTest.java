@@ -337,6 +337,33 @@ class MyPageServiceTest {
     }
 
     @Test
+    @DisplayName(
+            "getActivityRecords does not throw and sorts a null actStartDate last when a"
+                    + " completed posting has no actStartDate")
+    void getActivityRecords_sortsNullActStartDateLast() {
+        Posting datedPosting = posting(203L, LocalDate.of(2026, 7, 10));
+        Posting undatedPosting = postingWithNullActStartDate(204L);
+
+        PostingParticipation datedParticipation = PostingParticipation.create(USER_ID, 203L);
+        PostingParticipation undatedParticipation = PostingParticipation.create(USER_ID, 204L);
+
+        try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
+            securityUtil.when(SecurityUtil::getCurrentUserId).thenReturn(USER_ID);
+            when(postingParticipationRepository.findAllByUserIdAndStatus(
+                            USER_ID, PostingParticipationStatus.COMPLETED))
+                    .thenReturn(List.of(undatedParticipation, datedParticipation));
+            when(postingRepository.findAllById(List.of(204L, 203L)))
+                    .thenReturn(List.of(undatedPosting, datedPosting));
+
+            List<MyPageActivityRecordResponse> records = myPageService.getActivityRecords(null);
+
+            assertThat(records)
+                    .extracting(MyPageActivityRecordResponse::postingId)
+                    .containsExactly(203L, 204L);
+        }
+    }
+
+    @Test
     @DisplayName("getActivityRecords filters to only the requested category when provided")
     void getActivityRecords_filtersByCategory() {
         Posting environmentPosting = posting(301L, LocalDate.of(2026, 7, 10));
@@ -402,6 +429,19 @@ class MyPageServiceTest {
 
     private Posting posting(Long id, LocalDate actStartDate) {
         return posting(id, actStartDate, (LocalDate) null);
+    }
+
+    /** activityDate만 있고 actStartDate/actEndDate는 없는 공고 — 실제로 존재할 수 있는 데이터 형태를 재현한다. */
+    private Posting postingWithNullActStartDate(Long id) {
+        Posting createdPosting =
+                Posting.builder()
+                        .title("테스트 공고 " + id)
+                        .status(PostingStatus.RECRUITING)
+                        .activityDate(LocalDate.of(2026, 7, 1))
+                        .category(PostingCategory.ENVIRONMENT)
+                        .build();
+        ReflectionTestUtils.setField(createdPosting, "id", id);
+        return createdPosting;
     }
 
     private Posting posting(Long id, LocalDate actStartDate, LocalDate actEndDate) {

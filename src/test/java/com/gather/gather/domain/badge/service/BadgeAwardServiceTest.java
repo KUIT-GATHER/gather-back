@@ -80,4 +80,18 @@ class BadgeAwardServiceTest {
 
         verify(notificationCreateService, never()).create(any(), any(), any(), any(), any());
     }
+
+    @Test
+    @DisplayName(
+            "award keeps the saved badge even when sending the earned-badge notification fails")
+    void award_keepsBadge_whenNotificationCreationFails() {
+        when(userBadgeRepository.existsByUserIdAndBadgeType(USER_ID, BadgeType.FIRST_COMPLETION))
+                .thenReturn(false);
+        when(notificationCreateService.create(any(), any(), any(), any(), any()))
+                .thenThrow(new RuntimeException("recipient user not found"));
+
+        badgeAwardService.award(USER_ID, BadgeType.FIRST_COMPLETION);
+
+        verify(userBadgeRepository).saveAndFlush(any(UserBadge.class));
+    }
 }

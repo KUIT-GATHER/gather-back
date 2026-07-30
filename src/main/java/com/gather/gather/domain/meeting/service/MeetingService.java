@@ -26,6 +26,7 @@ import com.gather.gather.domain.region.repository.RegionRepository;
 import com.gather.gather.global.common.PageResponse;
 import com.gather.gather.global.exception.BusinessException;
 import com.gather.gather.global.exception.ErrorCode;
+import com.gather.gather.global.util.RecognizedMinutesValidator;
 import com.gather.gather.global.util.SecurityUtil;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -290,18 +291,27 @@ public class MeetingService {
 
         meetingMemberRepository
                 .findAllByMeetingIdAndStatusFetchUser(meetingId, MeetingMemberStatus.APPROVED)
-                .forEach(
-                        approvedMember ->
-                                badgeEvaluationService.onVolunteerActivityCompleted(
-                                        approvedMember.getUser().getId()));
+                .forEach(approvedMember -> evaluateBadgesSafely(meetingId, approvedMember));
+    }
+
+    /** 멤버 한 명의 뱃지 평가 실패가 나머지 멤버의 뱃지 평가나 모임 완료 처리 자체를 막지 않도록 격리한다. */
+    private void evaluateBadgesSafely(Long meetingId, MeetingMember approvedMember) {
+        Long memberUserId = approvedMember.getUser().getId();
+        try {
+            badgeEvaluationService.onVolunteerActivityCompleted(memberUserId);
+        } catch (RuntimeException exception) {
+            log.warn(
+                    "모임 완료 처리 중 뱃지 평가 실패(해당 멤버만 영향, 완료 처리는 유지됨). meetingId={}, userId={}",
+                    meetingId,
+                    memberUserId,
+                    exception);
+        }
     }
 
     /** 모임 완료 처리 이후, 승인된 멤버 본인이 직접 인정시간을 입력한다(분 단위, 1회만 입력 가능). */
     @Transactional
     public void submitMemberHours(Long meetingId, Integer recognizedMinutes) {
-        if (recognizedMinutes == null || recognizedMinutes <= 0 || recognizedMinutes % 10 != 0) {
-            throw new BusinessException(ErrorCode.VALIDATION_ERROR);
-        }
+        RecognizedMinutesValidator.validate(recognizedMinutes);
 
         Long userId = SecurityUtil.getCurrentUserId();
         Meeting meeting = getMeetingEntity(meetingId);

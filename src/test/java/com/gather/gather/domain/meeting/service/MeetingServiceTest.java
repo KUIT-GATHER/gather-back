@@ -152,6 +152,46 @@ class MeetingServiceTest {
     }
 
     @Test
+    @DisplayName(
+            "completeMeeting keeps completing the meeting and evaluates every member's badges"
+                    + " even when one member's badge evaluation throws")
+    void completeMeeting_isolatesPerMemberBadgeFailures() {
+        setAuthenticatedUser(1L);
+        Meeting hostMeeting = mock(Meeting.class);
+        com.gather.gather.domain.auth.entity.User host =
+                mock(com.gather.gather.domain.auth.entity.User.class);
+        when(host.getId()).thenReturn(1L);
+        when(hostMeeting.getHost()).thenReturn(host);
+        when(meetingRepository.findByIdAndDeletedAtIsNullForUpdate(12L))
+                .thenReturn(java.util.Optional.of(hostMeeting));
+
+        MeetingMember failingMember = mock(MeetingMember.class);
+        com.gather.gather.domain.auth.entity.User failingUser =
+                mock(com.gather.gather.domain.auth.entity.User.class);
+        when(failingUser.getId()).thenReturn(2L);
+        when(failingMember.getUser()).thenReturn(failingUser);
+
+        MeetingMember okMember = mock(MeetingMember.class);
+        com.gather.gather.domain.auth.entity.User okUser =
+                mock(com.gather.gather.domain.auth.entity.User.class);
+        when(okUser.getId()).thenReturn(3L);
+        when(okMember.getUser()).thenReturn(okUser);
+
+        when(meetingMemberRepository.findAllByMeetingIdAndStatusFetchUser(
+                        12L, MeetingMemberStatus.APPROVED))
+                .thenReturn(List.of(failingMember, okMember));
+        org.mockito.Mockito.doThrow(new RuntimeException("badge evaluation blew up"))
+                .when(badgeEvaluationService)
+                .onVolunteerActivityCompleted(2L);
+
+        meetingService.completeMeeting(12L);
+
+        verify(hostMeeting).complete();
+        verify(badgeEvaluationService).onVolunteerActivityCompleted(2L);
+        verify(badgeEvaluationService).onVolunteerActivityCompleted(3L);
+    }
+
+    @Test
     @DisplayName("completeMeeting throws MEETING_HOST_ONLY when called by a non-host")
     void completeMeeting_throwsHostOnly_whenNotHost() {
         setAuthenticatedUser(2L);

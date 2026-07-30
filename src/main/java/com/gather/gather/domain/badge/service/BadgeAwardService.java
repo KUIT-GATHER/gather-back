@@ -38,12 +38,20 @@ public class BadgeAwardService {
             return;
         }
 
-        notificationCreateService.create(
-                userId,
-                NotificationType.BADGE_EARNED,
-                badgeType.getTitle() + " 뱃지를 획득했어요!",
-                NotificationTargetType.MY_PAGE,
-                null);
+        try {
+            notificationCreateService.create(
+                    userId,
+                    NotificationType.BADGE_EARNED,
+                    badgeType.getTitle() + " 뱃지를 획득했어요!",
+                    NotificationTargetType.MY_PAGE,
+                    null);
+        } catch (RuntimeException exception) {
+            log.warn(
+                    "뱃지 획득 알림 발송 실패(뱃지 지급 자체는 유지됨). userId={}, badgeType={}",
+                    userId,
+                    badgeType,
+                    exception);
+        }
     }
 
     private boolean isUniqueConstraintViolation(DataIntegrityViolationException exception) {

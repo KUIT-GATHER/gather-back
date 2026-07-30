@@ -10,6 +10,7 @@ import com.gather.gather.domain.posting.repository.PostingParticipationRepositor
 import com.gather.gather.domain.posting.repository.PostingRepository;
 import com.gather.gather.global.exception.BusinessException;
 import com.gather.gather.global.exception.ErrorCode;
+import com.gather.gather.global.util.RecognizedMinutesValidator;
 import com.gather.gather.global.util.SecurityUtil;
 import java.time.LocalDate;
 import java.util.Locale;
@@ -110,9 +111,7 @@ public class PostingParticipationService {
     /** 완료 처리 이후 사용자가 직접 인정시간을 입력한다(분 단위, 1회만 입력 가능). */
     @Transactional
     public void submitRecognizedMinutes(Long postingId, Integer recognizedMinutes) {
-        if (recognizedMinutes == null || recognizedMinutes <= 0 || recognizedMinutes % 10 != 0) {
-            throw new BusinessException(ErrorCode.VALIDATION_ERROR);
-        }
+        RecognizedMinutesValidator.validate(recognizedMinutes);
 
         Long userId = SecurityUtil.getCurrentUserId();
         PostingParticipation participation =

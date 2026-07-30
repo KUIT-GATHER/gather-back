@@ -46,6 +46,13 @@ public class PostingParticipation {
     @Column(name = "recognized_minutes")
     private Integer recognizedMinutes;
 
+    /**
+     * 완료 처리 시점(complete() 호출 시각). 뱃지 판정(연속 참여 월 계산)에 이 값을 사용한다 — updatedAt은
+     * submitRecognizedMinutes() 등 완료 이후의 다른 변경으로도 갱신되므로 완료 시점 대용으로 쓸 수 없다.
+     */
+    @Column(name = "completed_at")
+    private LocalDateTime completedAt;
+
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
@@ -66,6 +73,7 @@ public class PostingParticipation {
 
     public void complete() {
         this.status = PostingParticipationStatus.COMPLETED;
+        this.completedAt = LocalDateTime.now();
     }
 
     public void submitRecognizedMinutes(Integer recognizedMinutes) {

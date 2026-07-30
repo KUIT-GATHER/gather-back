@@ -103,7 +103,7 @@ public class MyPageService {
 
         Map<PostingCategory, Long> countsByCategory =
                 completed.stream()
-                        .map(participation -> postingsById.get(participation.getPostingId()))
+                        .map(participation -> resolvePostingOrLog(participation, postingsById))
                         .filter(posting -> posting != null)
                         .collect(
                                 Collectors.groupingBy(Posting::getCategory, Collectors.counting()));
@@ -135,14 +135,14 @@ public class MyPageService {
                         participation ->
                                 Map.entry(
                                         participation,
-                                        postingsById.get(participation.getPostingId())))
+                                        resolvePostingOrLog(participation, postingsById)))
                 .filter(entry -> entry.getValue() != null)
                 .filter(entry -> category == null || entry.getValue().getCategory() == category)
                 .sorted(
                         Comparator.comparing(
-                                        (Map.Entry<PostingParticipation, Posting> entry) ->
-                                                entry.getValue().getActStartDate())
-                                .reversed())
+                                (Map.Entry<PostingParticipation, Posting> entry) ->
+                                        entry.getValue().getActStartDate(),
+                                Comparator.nullsLast(Comparator.reverseOrder())))
                 .map(entry -> MyPageActivityRecordResponse.of(entry.getKey(), entry.getValue()))
                 .toList();
     }
@@ -161,6 +161,22 @@ public class MyPageService {
                         participations.stream().map(PostingParticipation::getPostingId).toList())
                 .stream()
                 .collect(Collectors.toMap(Posting::getId, Function.identity()));
+    }
+
+    /**
+     * posting_participation은 posting_id에 FK가 걸려 있어 정상 운영 중에는 항상 posting이 존재하지만, 참여한 공고를 찾지 못하는
+     * 경우(데이터 정합성 이슈 등)를 대비해 방어적으로 로그를 남기고 결과에서 제외한다.
+     */
+    private Posting resolvePostingOrLog(
+            PostingParticipation participation, Map<Long, Posting> postingsById) {
+        Posting posting = postingsById.get(participation.getPostingId());
+        if (posting == null) {
+            log.warn(
+                    "마이페이지 활동기록 조회 중 postingId={}에 해당하는 posting을 찾지 못함. participationId={}",
+                    participation.getPostingId(),
+                    participation.getId());
+        }
+        return posting;
     }
 
     /**

@@ -20,7 +20,8 @@ import org.springframework.transaction.annotation.Transactional;
 /**
  * 개인 봉사공고 완료(PostingParticipation)와 모임 봉사 완료(MeetingMember)를 합산해 판정하는 뱃지 트리거.
  *
- * <p>완료 시점은 각 엔티티의 updatedAt(개인 완료 처리 시점 / 모임 완료 처리 시점)을 기준으로 삼는다.
+ * <p>완료 시점은 각 엔티티의 completedAt(개인 완료 처리 시점 / 모임 완료 처리 시점)을 기준으로 삼는다. updatedAt은 완료 이후의 다른 변경(인정시간
+ * 입력 등)으로도 갱신되므로 완료 시점 판정에 사용하지 않는다.
  */
 @Service
 @RequiredArgsConstructor
@@ -53,12 +54,12 @@ public class BadgeEvaluationService {
         for (PostingParticipation participation :
                 postingParticipationRepository.findAllByUserIdAndStatus(
                         userId, PostingParticipationStatus.COMPLETED)) {
-            dates.add(participation.getUpdatedAt().toLocalDate());
+            dates.add(participation.getCompletedAt().toLocalDate());
         }
         for (MeetingMember member :
                 meetingMemberRepository.findAllByUserIdAndStatusAndMeetingStatus(
                         userId, MeetingMemberStatus.APPROVED, MeetingStatus.COMPLETED)) {
-            dates.add(member.getMeeting().getUpdatedAt().toLocalDate());
+            dates.add(member.getMeeting().getCompletedAt().toLocalDate());
         }
         return dates;
     }

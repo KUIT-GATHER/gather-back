@@ -94,6 +94,13 @@ public class Meeting {
     @Column(name = "deleted_at")
     private LocalDateTime deletedAt;
 
+    /**
+     * 완료 처리 시점(complete() 호출 시각). 뱃지 판정(연속 참여 월 계산)에 이 값을 사용한다 — updatedAt은 완료 이후 다른 변경(예: 소프트
+     * 삭제)으로도 갱신될 수 있어 완료 시점 대용으로 쓸 수 없다.
+     */
+    @Column(name = "completed_at")
+    private LocalDateTime completedAt;
+
     private Meeting(
             String name,
             String description,
@@ -176,6 +183,7 @@ public class Meeting {
 
     public void complete() {
         this.status = MeetingStatus.COMPLETED;
+        this.completedAt = LocalDateTime.now();
     }
 
     public void delete() {

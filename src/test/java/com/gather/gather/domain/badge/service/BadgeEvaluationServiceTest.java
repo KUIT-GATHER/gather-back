@@ -119,10 +119,32 @@ class BadgeEvaluationServiceTest {
         verify(badgeAwardService, never()).award(USER_ID, BadgeType.FIRST_COMPLETION);
     }
 
+    @Test
+    @DisplayName(
+            "uses completedAt (not updatedAt) so a later recognized-minutes edit does not shift"
+                    + " the consecutive-months calculation")
+    void onVolunteerActivityCompleted_usesCompletedAt_notUpdatedAt_whenUpdatedAtDriftsLater() {
+        PostingParticipation participation = completedAt(LocalDate.of(2026, 1, 10));
+        // submitRecognizedMinutes() 등 완료 이후의 수정으로 updatedAt이 나중 시점으로 밀린 상황을 재현한다.
+        ReflectionTestUtils.setField(
+                participation, "updatedAt", LocalDate.of(2026, 6, 1).atStartOfDay());
+        when(postingParticipationRepository.findAllByUserIdAndStatus(
+                        USER_ID, PostingParticipationStatus.COMPLETED))
+                .thenReturn(
+                        List.of(
+                                participation,
+                                completedAt(LocalDate.of(2026, 2, 5)),
+                                completedAt(LocalDate.of(2026, 3, 20))));
+
+        badgeEvaluationService.onVolunteerActivityCompleted(USER_ID);
+
+        verify(badgeAwardService).award(USER_ID, BadgeType.CONSECUTIVE_3_MONTHS);
+    }
+
     private PostingParticipation completedAt(LocalDate date) {
         PostingParticipation participation = PostingParticipation.create(USER_ID, 10L);
         ReflectionTestUtils.setField(participation, "status", PostingParticipationStatus.COMPLETED);
-        ReflectionTestUtils.setField(participation, "updatedAt", date.atStartOfDay());
+        ReflectionTestUtils.setField(participation, "completedAt", date.atStartOfDay());
         return participation;
     }
 }
