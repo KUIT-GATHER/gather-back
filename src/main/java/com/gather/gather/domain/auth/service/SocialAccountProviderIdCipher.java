@@ -12,6 +12,11 @@ import javax.crypto.spec.GCMParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
 import org.springframework.stereotype.Component;
 
+/**
+ * 카카오 회원번호를 단일 활성 키로 암복호화한다.
+ *
+ * <p>저장된 key version이 다르면 fail-closed한다. 키 교체 전에는 기존 암호문의 재암호화 또는 이전 키를 함께 읽는 keyring 구현이 선행되어야 한다.
+ */
 @Component
 public class SocialAccountProviderIdCipher {
 

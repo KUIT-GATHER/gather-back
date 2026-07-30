@@ -140,6 +140,17 @@ class SocialAccountTest {
                 .isInstanceOf(IllegalStateException.class);
     }
 
+    @Test
+    @DisplayName("생명주기 필드가 부분적으로만 채워진 row는 손상 상태로 거부한다")
+    void requiresLegacyIdentityBackfill_partialLifecycle_throws() {
+        SocialAccount partiallyMigrated = newLegacyAccount(persistedUser(1L));
+        ReflectionTestUtils.setField(partiallyMigrated, "providerUserKey", PROVIDER_USER_KEY);
+
+        assertThatThrownBy(partiallyMigrated::requiresLegacyIdentityBackfill)
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("부분적으로만 저장");
+    }
+
     private SocialAccount createLinked(User user) {
         return SocialAccount.createLinked(
                 user,

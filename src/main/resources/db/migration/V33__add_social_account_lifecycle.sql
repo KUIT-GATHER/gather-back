@@ -14,6 +14,8 @@ ALTER TABLE social_account
         COMMENT '동일 카카오 계정의 Gather User 연결 세대',
     ADD COLUMN connected_at DATETIME(6) NULL,
     ADD COLUMN unlinked_at DATETIME(6) NULL,
+    ADD COLUMN version BIGINT NOT NULL DEFAULT 0
+        COMMENT 'SocialAccount 상태 전이와 generation 변경의 낙관적 잠금 버전',
     ADD CONSTRAINT uk_social_account_provider_key
         UNIQUE (provider, provider_user_key);
 

@@ -33,7 +33,6 @@ import com.gather.gather.domain.auth.service.RejoinBlockIdentifierHasher;
 import com.gather.gather.domain.auth.service.SignupValidator;
 import com.gather.gather.domain.auth.service.SocialAccountIdentityService;
 import com.gather.gather.domain.auth.service.SocialAccountProviderIdCipher;
-import com.gather.gather.domain.auth.service.SocialAccountProviderKeyConflictException;
 import com.gather.gather.domain.auth.service.TokenIssueResult;
 import com.gather.gather.domain.auth.service.TokenIssuer;
 import com.gather.gather.domain.posting.entity.PostingCategory;
@@ -295,6 +294,31 @@ class KakaoAuthServiceTest {
 
         assertThatThrownBy(() -> kakaoAuthService.signup(SIGNUP_TOKEN, signupRequest()))
                 .isSameAs(integrityException);
+    }
+
+    @Test
+    @DisplayName("provider key UNIQUE 충돌 후 재조회 실패는 원래 무결성 예외를 유지한다")
+    void signup_whenProviderKeyConflictReloadFails_preservesIntegrityException() {
+        stubValidSignupToken();
+        when(userRepository.existsByPhoneNumber("01012345678")).thenReturn(false);
+        when(userRepository.existsByNickname("길동")).thenReturn(false);
+        when(regionRepository.findById(ACTIVITY_REGION_ID))
+                .thenReturn(Optional.of(Region.create("강남구", 2, "11680", null)));
+        DataIntegrityViolationException integrityException =
+                new DataIntegrityViolationException(
+                        "Duplicate entry for key 'social_account.uk_social_account_provider_key'");
+        IllegalStateException reloadFailure = new IllegalStateException("key version mismatch");
+        when(signupTransactionService.createAccount(
+                        any(User.class), eq(SIGNUP_PAYLOAD), eq("01012345678"), eq("길동")))
+                .thenThrow(new SocialAccountProviderKeyConflictException(integrityException));
+        when(socialAccountIdentityService.findByProviderAndKey(SocialProvider.KAKAO, IDENTIFIER))
+                .thenReturn(Optional.empty())
+                .thenThrow(reloadFailure);
+
+        assertThatThrownBy(() -> kakaoAuthService.signup(SIGNUP_TOKEN, signupRequest()))
+                .isSameAs(integrityException)
+                .satisfies(
+                        exception -> assertThat(exception.getSuppressed()).contains(reloadFailure));
     }
 
     @Test

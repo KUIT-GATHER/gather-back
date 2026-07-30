@@ -12,6 +12,7 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
+import jakarta.persistence.Version;
 import java.time.LocalDateTime;
 import lombok.AccessLevel;
 import lombok.Getter;
@@ -44,7 +45,7 @@ public class SocialAccount {
     @Column(nullable = false, length = 20)
     private SocialProvider provider;
 
-    // 단계적 migration 동안만 유지한다. 외부에 평문을 노출하지 않도록 getter를 제공하지 않는다.
+    // staged migration 동안 기존·신규 row 모두 dual-write한다. getter 제한은 일반 애플리케이션 접근만 줄인다.
     @Column(name = "provider_user_id", nullable = false, length = 100)
     @Getter(AccessLevel.NONE)
     private String legacyProviderUserId;
@@ -70,6 +71,10 @@ public class SocialAccount {
     @Column private LocalDateTime connectedAt;
 
     @Column private LocalDateTime unlinkedAt;
+
+    @Version
+    @Column(nullable = false)
+    private Long version;
 
     @Column(nullable = false)
     private LocalDateTime createdAt;

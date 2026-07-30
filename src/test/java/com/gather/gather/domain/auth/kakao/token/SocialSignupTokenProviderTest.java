@@ -21,10 +21,14 @@ import java.util.UUID;
 import javax.crypto.SecretKey;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.NullAndEmptySource;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 
+@ExtendWith(OutputCaptureExtension.class)
 class SocialSignupTokenProviderTest {
 
     private static final String SIGNUP_TOKEN_SECRET =
@@ -184,6 +188,23 @@ class SocialSignupTokenProviderTest {
         assertErrorCode(
                 validClaims().claim("tokenType", "ACCESS").compact(),
                 ErrorCode.SIGNUP_TOKEN_INVALID);
+    }
+
+    @Test
+    @DisplayName("예상하지 못한 클레임 타입 오류는 원인과 내부 로그를 남기고 INVALID로 변환한다")
+    void parse_unexpectedClaimType_preservesCauseAndLogs(CapturedOutput output) {
+        String token = validClaims().claim("provider", 123).compact();
+
+        assertThatThrownBy(() -> provider.parseSignupToken(token))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(
+                        exception -> {
+                            BusinessException businessException = (BusinessException) exception;
+                            assertThat(businessException.getErrorCode())
+                                    .isEqualTo(ErrorCode.SIGNUP_TOKEN_INVALID);
+                            assertThat(businessException.getCause()).isNotNull();
+                        });
+        assertThat(output).contains("가입 토큰 클레임 처리 중 예상하지 못한 오류가 발생했습니다.").doesNotContain(token);
     }
 
     @Test

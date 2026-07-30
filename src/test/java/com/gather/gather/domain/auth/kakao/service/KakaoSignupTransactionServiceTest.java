@@ -20,7 +20,6 @@ import com.gather.gather.domain.auth.service.RejoinBlockIdentifier;
 import com.gather.gather.domain.auth.service.SignupValidator;
 import com.gather.gather.domain.auth.service.SocialAccountConstraintResolver;
 import com.gather.gather.domain.auth.service.SocialAccountProviderIdCipher;
-import com.gather.gather.domain.auth.service.SocialAccountProviderKeyConflictException;
 import com.gather.gather.domain.auth.service.TokenIssueResult;
 import com.gather.gather.domain.auth.service.TokenIssuer;
 import com.gather.gather.domain.posting.entity.PostingCategory;

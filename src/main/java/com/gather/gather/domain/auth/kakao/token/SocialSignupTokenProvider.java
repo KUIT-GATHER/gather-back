@@ -18,6 +18,7 @@ import java.util.Locale;
 import java.util.Set;
 import java.util.UUID;
 import javax.crypto.SecretKey;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 /**
@@ -30,6 +31,7 @@ import org.springframework.stereotype.Component;
  * 재조회로 막는다.
  */
 @Component
+@Slf4j
 public class SocialSignupTokenProvider {
 
     private static final String ISSUER = "gather";
@@ -117,7 +119,9 @@ public class SocialSignupTokenProvider {
         } catch (BusinessException exception) {
             throw exception;
         } catch (RuntimeException exception) {
-            throw new BusinessException(ErrorCode.SIGNUP_TOKEN_INVALID);
+            // 서명이 유효한 토큰의 클레임 처리 실패는 코드 결함일 수 있으므로, 토큰·클레임 값 없이 원인을 남긴다.
+            log.warn("가입 토큰 클레임 처리 중 예상하지 못한 오류가 발생했습니다.", exception);
+            throw new BusinessException(ErrorCode.SIGNUP_TOKEN_INVALID, exception);
         }
     }
 

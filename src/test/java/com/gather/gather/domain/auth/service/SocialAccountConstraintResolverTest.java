@@ -3,6 +3,7 @@ package com.gather.gather.domain.auth.service;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.sql.SQLIntegrityConstraintViolationException;
+import org.hibernate.exception.ConstraintViolationException;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -30,6 +31,24 @@ class SocialAccountConstraintResolverTest {
                                 mysqlDuplicate(
                                         SocialAccountConstraintResolver.USER_PROVIDER_CONSTRAINT)))
                 .isEqualTo(SocialAccountConstraint.USER_PROVIDER);
+    }
+
+    @Test
+    @DisplayName("Hibernate ConstraintViolationException의 constraintName을 우선 분류한다")
+    void resolve_hibernateConstraintViolation_usesConstraintName() {
+        SQLIntegrityConstraintViolationException sqlException =
+                new SQLIntegrityConstraintViolationException(
+                        "duplicate without constraint name", "23000", 1062);
+        ConstraintViolationException hibernateException =
+                new ConstraintViolationException(
+                        "could not execute statement",
+                        sqlException,
+                        SocialAccountConstraintResolver.PROVIDER_KEY_CONSTRAINT);
+        DataIntegrityViolationException exception =
+                new DataIntegrityViolationException("integrity violation", hibernateException);
+
+        assertThat(resolver.resolve(exception))
+                .isEqualTo(SocialAccountConstraint.PROVIDER_USER_KEY);
     }
 
     @Test
