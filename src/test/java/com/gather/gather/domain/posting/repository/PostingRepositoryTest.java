@@ -159,6 +159,23 @@ class PostingRepositoryTest {
         assertThat(result.getContent())
                 .extracting(Posting::getId)
                 .containsExactlyInAnyOrder(recruiting.getId(), closed.getId());
+        assertThat(result.getTotalElements()).isEqualTo(2);
+    }
+
+    @Test
+    void search_returnsOnlyCompleted_whenStatusIsExplicitlyCompleted() {
+        Posting completed = postingWithStatus(PostingStatus.COMPLETED);
+        postingWithStatus(PostingStatus.RECRUITING);
+        postingWithStatus(PostingStatus.CLOSED);
+
+        var result =
+                postingRepository.search(
+                        PostingStatus.COMPLETED, null, null, null, null, null, PAGEABLE);
+
+        assertThat(result.getContent())
+                .extracting(Posting::getId)
+                .containsExactly(completed.getId());
+        assertThat(result.getTotalElements()).isEqualTo(1);
     }
 
     @Test

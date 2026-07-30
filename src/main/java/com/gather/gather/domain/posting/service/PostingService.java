@@ -37,9 +37,9 @@ import org.springframework.transaction.annotation.Transactional;
 public class PostingService {
 
     /**
-     * {@link PostingRepository#search}가 JPQL로 정렬을 적용하기 때문에, 존재하지 않는 프로퍼티로 정렬을 시도하면 500
-     * INTERNAL_SERVER_ERROR로 이어진다(Hibernate가 속성을 못 찾아 던지는 예외를 GlobalExceptionHandler의 catch-all이
-     * 받음). 클라이언트 입력값 문제이므로 쿼리 실행 전에 검증해 400으로 응답한다.
+     * {@link PostingRepository#search}가 Criteria API({@code root.get(property)})로 정렬을 적용하기 때문에,
+     * 존재하지 않는 프로퍼티로 정렬을 시도하면 500 INTERNAL_SERVER_ERROR로 이어진다(Hibernate가 속성을 못 찾아 던지는 예외를
+     * GlobalExceptionHandler의 catch-all이 받음). 클라이언트 입력값 문제이므로 쿼리 실행 전에 검증해 400으로 응답한다.
      */
     private static final Set<String> SORTABLE_PROPERTIES =
             Set.of(

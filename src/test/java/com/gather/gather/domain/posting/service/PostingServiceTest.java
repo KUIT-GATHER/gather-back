@@ -90,7 +90,7 @@ class PostingServiceTest {
     }
 
     @Test
-    @DisplayName("getPostings uses the given status instead of the RECRUITING default")
+    @DisplayName("getPostings passes an explicitly given status through unchanged")
     void getPostings_usesGivenStatus_whenProvided() {
         Pageable pageable = PageRequest.of(0, 20);
         when(postingRepository.search(
