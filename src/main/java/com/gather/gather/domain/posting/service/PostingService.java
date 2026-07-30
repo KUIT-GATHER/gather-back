@@ -74,12 +74,11 @@ public class PostingService {
             String keyword,
             PostingCategory category) {
         validateSort(pageable.getSort());
-        PostingStatus effectiveStatus = status != null ? status : PostingStatus.RECRUITING;
         List<Long> regionIds = resolveRegionIds(regionId, regionGroupId);
 
         Page<Posting> postings =
                 postingRepository.search(
-                        effectiveStatus,
+                        status,
                         regionIds,
                         noticeStartDate,
                         noticeEndDate,

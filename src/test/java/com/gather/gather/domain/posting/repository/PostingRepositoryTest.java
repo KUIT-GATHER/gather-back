@@ -12,11 +12,13 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * {@link PostingRepository#search}의 실제 DB 동작 검증. 특히 regionIds가 null이 아니라 빈 리스트로 들어왔을 때(존재하지 않는
- * regionId 필터) 예외 없이 빈 결과를 반환하는지가 핵심 검증 대상이다.
+ * {@link PostingRepository#search}의 실제 DB 동작 검증. regionIds가 null이 아니라 빈 리스트로 들어왔을 때(존재하지 않는
+ * regionId 필터) 예외 없이 빈 결과를 반환하는지, status가 null일 때 RECRUITING/CLOSED가 우선순위 정렬되어 반환되고 COMPLETED는
+ * 제외되는지가 핵심 검증 대상이다.
  */
 @SpringBootTest
 @Transactional
@@ -144,6 +146,99 @@ class PostingRepositoryTest {
                         PostingStatus.RECRUITING, null, null, null, "존재하지않는키워드", null, PAGEABLE);
 
         assertThat(result.getContent()).isEmpty();
+    }
+
+    @Test
+    void search_returnsRecruitingAndClosedButNotCompleted_whenStatusIsNull() {
+        Posting recruiting = postingWithStatus(PostingStatus.RECRUITING);
+        Posting closed = postingWithStatus(PostingStatus.CLOSED);
+        postingWithStatus(PostingStatus.COMPLETED);
+
+        var result = postingRepository.search(null, null, null, null, null, null, PAGEABLE);
+
+        assertThat(result.getContent())
+                .extracting(Posting::getId)
+                .containsExactlyInAnyOrder(recruiting.getId(), closed.getId());
+    }
+
+    @Test
+    void search_ordersRecruitingGroupBeforeClosedGroup_regardlessOfSecondarySort() {
+        // id 오름차순 정렬이면 원래는 closed가 먼저 나와야 하지만, 모집중 우선순위가 이를 덮어써야 한다.
+        Posting closed = postingWithStatus(PostingStatus.CLOSED);
+        Posting recruiting = postingWithStatus(PostingStatus.RECRUITING);
+        Pageable idAscending = PageRequest.of(0, 20, Sort.by(Sort.Direction.ASC, "id"));
+
+        var result = postingRepository.search(null, null, null, null, null, null, idAscending);
+
+        assertThat(result.getContent())
+                .extracting(Posting::getId)
+                .containsExactly(recruiting.getId(), closed.getId());
+    }
+
+    @Test
+    void search_appliesSecondarySort_withinEachPriorityGroup() {
+        Posting recruitingLow = postingWithStatusAndApplicantCount(PostingStatus.RECRUITING, 1);
+        Posting recruitingHigh = postingWithStatusAndApplicantCount(PostingStatus.RECRUITING, 9);
+        Posting closedLow = postingWithStatusAndApplicantCount(PostingStatus.CLOSED, 2);
+        Posting closedHigh = postingWithStatusAndApplicantCount(PostingStatus.CLOSED, 8);
+        Pageable applicantCountDescending =
+                PageRequest.of(0, 20, Sort.by(Sort.Direction.DESC, "applicantCount"));
+
+        var result =
+                postingRepository.search(
+                        null, null, null, null, null, null, applicantCountDescending);
+
+        assertThat(result.getContent())
+                .extracting(Posting::getId)
+                .containsExactly(
+                        recruitingHigh.getId(),
+                        recruitingLow.getId(),
+                        closedHigh.getId(),
+                        closedLow.getId());
+    }
+
+    @Test
+    void search_paginatesCorrectly_acrossRecruitingClosedGroupBoundary() {
+        Posting r1 = postingWithStatus(PostingStatus.RECRUITING);
+        Posting r2 = postingWithStatus(PostingStatus.RECRUITING);
+        Posting c1 = postingWithStatus(PostingStatus.CLOSED);
+        Posting c2 = postingWithStatus(PostingStatus.CLOSED);
+        Posting c3 = postingWithStatus(PostingStatus.CLOSED);
+        Pageable idAscending = PageRequest.of(0, 3, Sort.by(Sort.Direction.ASC, "id"));
+
+        var firstPage = postingRepository.search(null, null, null, null, null, null, idAscending);
+        var secondPage =
+                postingRepository.search(null, null, null, null, null, null, idAscending.next());
+
+        assertThat(firstPage.getTotalElements()).isEqualTo(5);
+        assertThat(firstPage.getTotalPages()).isEqualTo(2);
+        assertThat(firstPage.getContent())
+                .extracting(Posting::getId)
+                .containsExactly(r1.getId(), r2.getId(), c1.getId());
+        assertThat(secondPage.getContent())
+                .extracting(Posting::getId)
+                .containsExactly(c2.getId(), c3.getId());
+    }
+
+    private Posting postingWithStatus(PostingStatus status) {
+        return postingRepository.save(
+                Posting.builder()
+                        .title("테스트 공고")
+                        .status(status)
+                        .activityDate(LocalDate.of(2026, 7, 15))
+                        .category(PostingCategory.ENVIRONMENT)
+                        .build());
+    }
+
+    private Posting postingWithStatusAndApplicantCount(PostingStatus status, int applicantCount) {
+        return postingRepository.save(
+                Posting.builder()
+                        .title("테스트 공고")
+                        .status(status)
+                        .activityDate(LocalDate.of(2026, 7, 15))
+                        .applicantCount(applicantCount)
+                        .category(PostingCategory.ENVIRONMENT)
+                        .build());
     }
 
     private Posting save(PostingStatus status, LocalDate noticeStart, LocalDate noticeEnd) {
