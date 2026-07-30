@@ -7,6 +7,7 @@ import com.gather.gather.domain.meeting.dto.MeetingJoinResponse;
 import com.gather.gather.domain.meeting.dto.MeetingResponse;
 import com.gather.gather.domain.meeting.enums.MeetingStatus;
 import com.gather.gather.domain.meeting.service.MeetingKeywordRecommendationService;
+import com.gather.gather.domain.meeting.service.MeetingRecommendationService;
 import com.gather.gather.domain.meeting.service.MeetingService;
 import com.gather.gather.domain.posting.entity.PostingCategory;
 import com.gather.gather.global.common.ApiResponse;
@@ -40,6 +41,7 @@ public class MeetingController {
 
     private final MeetingService meetingService;
     private final MeetingKeywordRecommendationService meetingKeywordRecommendationService;
+    private final MeetingRecommendationService meetingRecommendationService;
 
     @Operation(
             summary = "모임 생성",
@@ -111,6 +113,17 @@ public class MeetingController {
                         activityEndDate,
                         postingBasedFirst,
                         pageable));
+    }
+
+    @Operation(
+            summary = "모임 추천 목록 조회",
+            description =
+                    "선호 카테고리 매칭과 마감일 근접도로 점수를 매겨 상위 5개 모임을 추천합니다. 인증이 필요 없으며, "
+                            + "비로그인이거나 선호 카테고리를 설정하지 않았으면 마감임박순 상위 5개를 반환합니다. "
+                            + "이미 가입했거나 가입 신청 중인 모임은 추천에서 제외됩니다.")
+    @GetMapping("/recommended")
+    public ApiResponse<List<MeetingResponse>> getRecommendedMeetings() {
+        return ApiResponse.success(meetingRecommendationService.getRecommendedMeetings());
     }
 
     @Operation(

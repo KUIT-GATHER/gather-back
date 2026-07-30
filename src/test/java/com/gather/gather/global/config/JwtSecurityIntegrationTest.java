@@ -52,6 +52,7 @@ class JwtSecurityIntegrationTest {
     private static final String PROFILE_IMAGE_PATH = "/api/v1/users/me/profile-image";
     private static final String MYPAGE_HOME_PATH = "/api/v1/mypage/home";
     private static final String MYPAGE_ACTIVITIES_PATH = "/api/v1/mypage/activities";
+    private static final String MEETING_RECOMMENDED_PATH = "/api/v1/meetings/recommended";
     private static final String PARTICIPATION_PATH = "/api/v1/postings/1/participations";
 
     @Autowired private MockMvc mockMvc;
@@ -196,6 +197,14 @@ class JwtSecurityIntegrationTest {
     @DisplayName("활동 지역 권역 조회(/api/v1/regions/groups)는 토큰 없이 통과한다(401이 아니다)")
     void permitAllPath_regionGroups_passesWithoutToken() throws Exception {
         mockMvc.perform(get("/api/v1/regions/groups"))
+                .andExpect(
+                        result -> assertThat(result.getResponse().getStatus()).isNotEqualTo(401));
+    }
+
+    @Test
+    @DisplayName("모임 추천 목록 조회(/api/v1/meetings/recommended)는 토큰 없이 통과한다(401이 아니다)")
+    void permitAllPath_meetingRecommended_passesWithoutToken() throws Exception {
+        mockMvc.perform(get(MEETING_RECOMMENDED_PATH))
                 .andExpect(
                         result -> assertThat(result.getResponse().getStatus()).isNotEqualTo(401));
     }

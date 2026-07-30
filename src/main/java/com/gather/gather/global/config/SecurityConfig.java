@@ -87,6 +87,10 @@ public class SecurityConfig {
                                                 HttpMethod.GET,
                                                 "/api/v1/meetings/keywords/recommended")
                                         .permitAll()
+                                        // 모임 추천 목록 조회(비로그인 공개, 카테고리/마감일 기준 상위 5개)
+                                        .requestMatchers(
+                                                HttpMethod.GET, "/api/v1/meetings/recommended")
+                                        .permitAll()
                                         // 모임 상세 조회(비로그인 공개)
                                         .requestMatchers(
                                                 new RegexRequestMatcher(

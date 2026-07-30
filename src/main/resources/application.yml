@@ -61,6 +61,10 @@ gather:
       - https://dev.gathernow.kr
   email:
     mode: log
+  recommendation:
+    category-weight: ${GATHER_RECOMMENDATION_CATEGORY_WEIGHT:0.7}
+    deadline-weight: ${GATHER_RECOMMENDATION_DEADLINE_WEIGHT:0.3}
+    deadline-window-days: ${GATHER_RECOMMENDATION_DEADLINE_WINDOW_DAYS:30}
 
 volunteer-api:
   base-url: https://apis.data.go.kr/1741000/volunteerPartcptnService
