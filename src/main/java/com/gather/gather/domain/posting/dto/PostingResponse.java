@@ -2,7 +2,9 @@ package com.gather.gather.domain.posting.dto;
 
 import com.gather.gather.domain.posting.entity.Posting;
 import com.gather.gather.domain.posting.entity.PostingCategory;
+import com.gather.gather.domain.posting.entity.PostingParticipationStatus;
 import com.gather.gather.domain.posting.entity.PostingStatus;
+import io.swagger.v3.oas.annotations.media.Schema;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -39,14 +41,17 @@ public record PostingResponse(
         LocalDateTime createdAt,
         LocalDateTime updatedAt,
         boolean bookmarked,
-        boolean applied) {
+        @Schema(nullable = true, description = "로그인 사용자의 참여 상태. 비로그인 또는 미참여 시 null")
+                PostingParticipationStatus participationStatus,
+        @Schema(description = "공고 상세 하단 버튼 액션. participationStatus가 null이어도 항상 반환된다")
+                PostingParticipationAction participationAction) {
 
     public static PostingResponse from(
             Posting posting,
             String regionName,
             List<PostingLocationResponse> locations,
             boolean bookmarked,
-            boolean applied) {
+            PostingParticipationStatus participationStatus) {
         return new PostingResponse(
                 posting.getId(),
                 posting.getTitle(),
@@ -79,6 +84,7 @@ public record PostingResponse(
                 posting.getCreatedAt(),
                 posting.getUpdatedAt(),
                 bookmarked,
-                applied);
+                participationStatus,
+                PostingParticipationAction.from(participationStatus));
     }
 }

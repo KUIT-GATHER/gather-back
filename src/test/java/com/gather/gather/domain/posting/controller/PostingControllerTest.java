@@ -10,9 +10,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.gather.gather.domain.posting.dto.PostingLocationResponse;
+import com.gather.gather.domain.posting.dto.PostingParticipationAction;
 import com.gather.gather.domain.posting.dto.PostingResponse;
 import com.gather.gather.domain.posting.dto.PostingSummaryResponse;
 import com.gather.gather.domain.posting.entity.PostingCategory;
+import com.gather.gather.domain.posting.entity.PostingParticipationStatus;
 import com.gather.gather.domain.posting.entity.PostingStatus;
 import com.gather.gather.domain.posting.service.PostingKeywordRecommendationService;
 import com.gather.gather.domain.posting.service.PostingRecommendationService;
@@ -276,7 +278,8 @@ class PostingControllerTest {
                         null,
                         null,
                         true,
-                        true);
+                        PostingParticipationStatus.APPLIED,
+                        PostingParticipationAction.CANCEL);
         when(postingService.getPosting(1L)).thenReturn(response);
 
         mockMvc.perform(get("/api/v1/postings/1"))
@@ -287,7 +290,58 @@ class PostingControllerTest {
                 .andExpect(jsonPath("$.data.locations").isArray())
                 .andExpect(jsonPath("$.data.locations.length()").value(1))
                 .andExpect(jsonPath("$.data.bookmarked").value(true))
-                .andExpect(jsonPath("$.data.applied").value(true));
+                .andExpect(jsonPath("$.data.participationStatus").value("APPLIED"))
+                .andExpect(jsonPath("$.data.participationAction").value("CANCEL"));
+    }
+
+    @Test
+    @DisplayName(
+            "GET /api/v1/postings/{id} returns participationStatus null and participationAction"
+                    + " APPLY when anonymous or not participating")
+    void getPosting_returns200WithNullParticipationStatus_whenAnonymousOrNotParticipating()
+            throws Exception {
+        PostingResponse response =
+                new PostingResponse(
+                        1L,
+                        "동구 환경정화 봉사",
+                        PostingStatus.RECRUITING,
+                        "내용",
+                        "울산 동구청",
+                        "행복재단",
+                        LocalDate.of(2026, 7, 10),
+                        LocalDate.of(2026, 7, 10),
+                        "09:00",
+                        "18:00",
+                        LocalDate.of(2026, 7, 1),
+                        LocalDate.of(2026, 7, 9),
+                        "월,화",
+                        5,
+                        1,
+                        true,
+                        false,
+                        false,
+                        "동구 일대",
+                        "홍길동",
+                        "010-0000-0000",
+                        "02-000-0000",
+                        "test@example.com",
+                        "울산 동구 어딘가",
+                        2L,
+                        "동구",
+                        PostingCategory.ENVIRONMENT,
+                        List.of(new PostingLocationResponse(1, "동구 일대", null, null)),
+                        null,
+                        null,
+                        false,
+                        null,
+                        PostingParticipationAction.APPLY);
+        when(postingService.getPosting(1L)).thenReturn(response);
+
+        mockMvc.perform(get("/api/v1/postings/1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.participationStatus").value(nullValue()))
+                .andExpect(jsonPath("$.data.participationAction").value("APPLY"));
     }
 
     @Test

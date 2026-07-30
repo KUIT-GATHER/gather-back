@@ -12,11 +12,14 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.gather.gather.domain.posting.dto.PostingParticipationAction;
 import com.gather.gather.domain.posting.dto.PostingResponse;
 import com.gather.gather.domain.posting.dto.PostingSummaryResponse;
 import com.gather.gather.domain.posting.entity.Posting;
 import com.gather.gather.domain.posting.entity.PostingCategory;
 import com.gather.gather.domain.posting.entity.PostingLocation;
+import com.gather.gather.domain.posting.entity.PostingParticipation;
+import com.gather.gather.domain.posting.entity.PostingParticipationStatus;
 import com.gather.gather.domain.posting.entity.PostingStatus;
 import com.gather.gather.domain.posting.repository.BookmarkRepository;
 import com.gather.gather.domain.posting.repository.PostingLocationRepository;
@@ -35,6 +38,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.mockito.Mock;
 import org.mockito.MockedStatic;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -429,7 +434,8 @@ class PostingServiceTest {
         assertThat(response.locations().get(1).locationSeq()).isEqualTo(2);
         assertThat(response.locations().get(2).locationSeq()).isEqualTo(3);
         assertThat(response.bookmarked()).isFalse();
-        assertThat(response.applied()).isFalse();
+        assertThat(response.participationStatus()).isNull();
+        assertThat(response.participationAction()).isEqualTo(PostingParticipationAction.APPLY);
     }
 
     @Test
@@ -492,50 +498,8 @@ class PostingServiceTest {
     }
 
     @Test
-    @DisplayName("getPosting returns applied true when the current user has applied")
-    void getPosting_returnsAppliedTrue_whenCurrentUserHasApplied() {
-        Long userId = 1L;
-        Posting posting = postingWithId(1L, "동구 환경정화 봉사", 2L, PostingCategory.ENVIRONMENT);
-        when(postingRepository.findById(1L)).thenReturn(Optional.of(posting));
-        when(regionRepository.findById(2L)).thenReturn(Optional.of(regionWithId(2L, "동구")));
-        when(postingLocationRepository.findAllByPostingIdOrderByLocationSeq(1L))
-                .thenReturn(List.of());
-        when(postingParticipationRepository.existsByUserIdAndPostingId(userId, 1L))
-                .thenReturn(true);
-
-        try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
-            securityUtil.when(SecurityUtil::getCurrentUserIdOrNull).thenReturn(userId);
-
-            PostingResponse response = postingService.getPosting(1L);
-
-            assertThat(response.applied()).isTrue();
-        }
-    }
-
-    @Test
-    @DisplayName("getPosting returns applied false when the current user has not applied")
-    void getPosting_returnsAppliedFalse_whenCurrentUserHasNotApplied() {
-        Long userId = 1L;
-        Posting posting = postingWithId(1L, "동구 환경정화 봉사", 2L, PostingCategory.ENVIRONMENT);
-        when(postingRepository.findById(1L)).thenReturn(Optional.of(posting));
-        when(regionRepository.findById(2L)).thenReturn(Optional.of(regionWithId(2L, "동구")));
-        when(postingLocationRepository.findAllByPostingIdOrderByLocationSeq(1L))
-                .thenReturn(List.of());
-        when(postingParticipationRepository.existsByUserIdAndPostingId(userId, 1L))
-                .thenReturn(false);
-
-        try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
-            securityUtil.when(SecurityUtil::getCurrentUserIdOrNull).thenReturn(userId);
-
-            PostingResponse response = postingService.getPosting(1L);
-
-            assertThat(response.applied()).isFalse();
-        }
-    }
-
-    @Test
-    @DisplayName("getPosting returns applied false without querying participations when anonymous")
-    void getPosting_returnsAppliedFalse_whenAnonymous() {
+    @DisplayName("getPosting does not query participation and returns APPLY action when anonymous")
+    void getPosting_doesNotQueryParticipation_whenAnonymous() {
         Posting posting = postingWithId(1L, "동구 환경정화 봉사", 2L, PostingCategory.ENVIRONMENT);
         when(postingRepository.findById(1L)).thenReturn(Optional.of(posting));
         when(regionRepository.findById(2L)).thenReturn(Optional.of(regionWithId(2L, "동구")));
@@ -547,9 +511,57 @@ class PostingServiceTest {
 
             PostingResponse response = postingService.getPosting(1L);
 
-            assertThat(response.applied()).isFalse();
+            assertThat(response.participationStatus()).isNull();
+            assertThat(response.participationAction()).isEqualTo(PostingParticipationAction.APPLY);
         }
-        verify(postingParticipationRepository, never()).existsByUserIdAndPostingId(any(), any());
+        verify(postingParticipationRepository, never()).findByUserIdAndPostingId(any(), any());
+    }
+
+    @Test
+    @DisplayName(
+            "getPosting returns null status and APPLY action when the user has not participated")
+    void getPosting_returnsNullParticipationAndApplyAction_whenNoParticipation() {
+        Long userId = 1L;
+        Posting posting = postingWithId(1L, "동구 환경정화 봉사", 2L, PostingCategory.ENVIRONMENT);
+        when(postingRepository.findById(1L)).thenReturn(Optional.of(posting));
+        when(regionRepository.findById(2L)).thenReturn(Optional.of(regionWithId(2L, "동구")));
+        when(postingLocationRepository.findAllByPostingIdOrderByLocationSeq(1L))
+                .thenReturn(List.of());
+        when(postingParticipationRepository.findByUserIdAndPostingId(userId, 1L))
+                .thenReturn(Optional.empty());
+
+        try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
+            securityUtil.when(SecurityUtil::getCurrentUserIdOrNull).thenReturn(userId);
+
+            PostingResponse response = postingService.getPosting(1L);
+
+            assertThat(response.participationStatus()).isNull();
+            assertThat(response.participationAction()).isEqualTo(PostingParticipationAction.APPLY);
+        }
+    }
+
+    @ParameterizedTest
+    @CsvSource({"APPLIED, CANCEL", "CONFIRMED, COMPLETE", "COMPLETED, NONE", "REVIEWED, NONE"})
+    @DisplayName("getPosting derives participationAction from the user's participation status")
+    void getPosting_derivesParticipationAction_fromStatus(
+            PostingParticipationStatus status, PostingParticipationAction expectedAction) {
+        Long userId = 1L;
+        Posting posting = postingWithId(1L, "동구 환경정화 봉사", 2L, PostingCategory.ENVIRONMENT);
+        when(postingRepository.findById(1L)).thenReturn(Optional.of(posting));
+        when(regionRepository.findById(2L)).thenReturn(Optional.of(regionWithId(2L, "동구")));
+        when(postingLocationRepository.findAllByPostingIdOrderByLocationSeq(1L))
+                .thenReturn(List.of());
+        when(postingParticipationRepository.findByUserIdAndPostingId(userId, 1L))
+                .thenReturn(Optional.of(participationWithStatus(userId, 1L, status)));
+
+        try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
+            securityUtil.when(SecurityUtil::getCurrentUserIdOrNull).thenReturn(userId);
+
+            PostingResponse response = postingService.getPosting(1L);
+
+            assertThat(response.participationStatus()).isEqualTo(status);
+            assertThat(response.participationAction()).isEqualTo(expectedAction);
+        }
     }
 
     @Test
@@ -600,5 +612,12 @@ class PostingServiceTest {
 
     private PostingLocation locationWithId(int locationSeq, String address) {
         return PostingLocation.create(1L, locationSeq, address, null, null);
+    }
+
+    private PostingParticipation participationWithStatus(
+            Long userId, Long postingId, PostingParticipationStatus status) {
+        PostingParticipation participation = PostingParticipation.create(userId, postingId);
+        ReflectionTestUtils.setField(participation, "status", status);
+        return participation;
     }
 }
