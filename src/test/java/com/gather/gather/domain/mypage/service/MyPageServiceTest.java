@@ -13,7 +13,9 @@ import com.gather.gather.domain.auth.entity.Gender;
 import com.gather.gather.domain.auth.entity.User;
 import com.gather.gather.domain.auth.repository.UserRepository;
 import com.gather.gather.domain.meeting.repository.MeetingBookmarkRepository;
+import com.gather.gather.domain.mypage.dto.MyPageActivityRecordResponse;
 import com.gather.gather.domain.mypage.dto.MyPageActivityResponse;
+import com.gather.gather.domain.mypage.dto.MyPageActivitySummaryResponse;
 import com.gather.gather.domain.mypage.dto.MyPageHomeResponse;
 import com.gather.gather.domain.posting.entity.Posting;
 import com.gather.gather.domain.posting.entity.PostingCategory;
@@ -270,6 +272,113 @@ class MyPageServiceTest {
         }
     }
 
+    @Test
+    @DisplayName(
+            "getActivitySummary counts only COMPLETED participations and fills every category"
+                    + " (0 for categories with no completion)")
+    void getActivitySummary_countsCompletedParticipationsByCategory() {
+        Posting environmentPosting = posting(101L, LocalDate.of(2026, 7, 20));
+        Posting educationPosting =
+                posting(102L, LocalDate.of(2026, 7, 5), PostingCategory.EDUCATION);
+
+        PostingParticipation first = PostingParticipation.create(USER_ID, 101L);
+        PostingParticipation second = PostingParticipation.create(USER_ID, 102L);
+
+        try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
+            securityUtil.when(SecurityUtil::getCurrentUserId).thenReturn(USER_ID);
+            when(postingParticipationRepository.findAllByUserIdAndStatus(
+                            USER_ID, PostingParticipationStatus.COMPLETED))
+                    .thenReturn(List.of(first, second));
+            when(postingRepository.findAllById(List.of(101L, 102L)))
+                    .thenReturn(List.of(environmentPosting, educationPosting));
+
+            MyPageActivitySummaryResponse summary = myPageService.getActivitySummary();
+
+            assertThat(summary.totalCompletedCount()).isEqualTo(2);
+            assertThat(summary.categoryBlocks())
+                    .hasSize(PostingCategory.values().length)
+                    .filteredOn(block -> block.category() == PostingCategory.ENVIRONMENT)
+                    .extracting(MyPageActivitySummaryResponse.CategoryBlock::count)
+                    .containsExactly(1L);
+            assertThat(summary.categoryBlocks())
+                    .filteredOn(block -> block.category() == PostingCategory.CULTURE)
+                    .extracting(MyPageActivitySummaryResponse.CategoryBlock::count)
+                    .containsExactly(0L);
+        }
+    }
+
+    @Test
+    @DisplayName(
+            "getActivityRecords returns completed cards sorted by latest actStartDate first,"
+                    + " including recognizedMinutes")
+    void getActivityRecords_returnsCompletedCardsSortedByLatestFirst() {
+        Posting earlierPosting = posting(201L, LocalDate.of(2026, 7, 1));
+        Posting laterPosting = posting(202L, LocalDate.of(2026, 7, 20));
+
+        PostingParticipation earlierParticipation = PostingParticipation.create(USER_ID, 201L);
+        earlierParticipation.submitRecognizedMinutes(90);
+        PostingParticipation laterParticipation = PostingParticipation.create(USER_ID, 202L);
+
+        try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
+            securityUtil.when(SecurityUtil::getCurrentUserId).thenReturn(USER_ID);
+            when(postingParticipationRepository.findAllByUserIdAndStatus(
+                            USER_ID, PostingParticipationStatus.COMPLETED))
+                    .thenReturn(List.of(earlierParticipation, laterParticipation));
+            when(postingRepository.findAllById(List.of(201L, 202L)))
+                    .thenReturn(List.of(earlierPosting, laterPosting));
+
+            List<MyPageActivityRecordResponse> records = myPageService.getActivityRecords(null);
+
+            assertThat(records)
+                    .extracting(MyPageActivityRecordResponse::postingId)
+                    .containsExactly(202L, 201L);
+            assertThat(records.get(1).recognizedMinutes()).isEqualTo(90);
+        }
+    }
+
+    @Test
+    @DisplayName("getActivityRecords filters to only the requested category when provided")
+    void getActivityRecords_filtersByCategory() {
+        Posting environmentPosting = posting(301L, LocalDate.of(2026, 7, 10));
+        Posting educationPosting =
+                posting(302L, LocalDate.of(2026, 7, 11), PostingCategory.EDUCATION);
+
+        PostingParticipation environmentParticipation = PostingParticipation.create(USER_ID, 301L);
+        PostingParticipation educationParticipation = PostingParticipation.create(USER_ID, 302L);
+
+        try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
+            securityUtil.when(SecurityUtil::getCurrentUserId).thenReturn(USER_ID);
+            when(postingParticipationRepository.findAllByUserIdAndStatus(
+                            USER_ID, PostingParticipationStatus.COMPLETED))
+                    .thenReturn(List.of(environmentParticipation, educationParticipation));
+            when(postingRepository.findAllById(List.of(301L, 302L)))
+                    .thenReturn(List.of(environmentPosting, educationPosting));
+
+            List<MyPageActivityRecordResponse> records =
+                    myPageService.getActivityRecords(PostingCategory.EDUCATION);
+
+            assertThat(records)
+                    .extracting(MyPageActivityRecordResponse::postingId)
+                    .containsExactly(302L);
+        }
+    }
+
+    @Test
+    @DisplayName(
+            "getActivityRecords returns an empty list when there are no completed participations")
+    void getActivityRecords_returnsEmpty_whenNoCompletedParticipations() {
+        try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
+            securityUtil.when(SecurityUtil::getCurrentUserId).thenReturn(USER_ID);
+            when(postingParticipationRepository.findAllByUserIdAndStatus(
+                            USER_ID, PostingParticipationStatus.COMPLETED))
+                    .thenReturn(List.of());
+
+            List<MyPageActivityRecordResponse> records = myPageService.getActivityRecords(null);
+
+            assertThat(records).isEmpty();
+        }
+    }
+
     private User user() {
         Region activityRegion = Region.create("강남구", 2, "11680", null);
         User createdUser =
@@ -292,10 +401,19 @@ class MyPageServiceTest {
     }
 
     private Posting posting(Long id, LocalDate actStartDate) {
-        return posting(id, actStartDate, null);
+        return posting(id, actStartDate, (LocalDate) null);
     }
 
     private Posting posting(Long id, LocalDate actStartDate, LocalDate actEndDate) {
+        return posting(id, actStartDate, actEndDate, PostingCategory.ENVIRONMENT);
+    }
+
+    private Posting posting(Long id, LocalDate actStartDate, PostingCategory category) {
+        return posting(id, actStartDate, null, category);
+    }
+
+    private Posting posting(
+            Long id, LocalDate actStartDate, LocalDate actEndDate, PostingCategory category) {
         Posting createdPosting =
                 Posting.builder()
                         .title("테스트 공고 " + id)
@@ -303,7 +421,7 @@ class MyPageServiceTest {
                         .activityDate(actStartDate)
                         .actStartDate(actStartDate)
                         .actEndDate(actEndDate)
-                        .category(PostingCategory.ENVIRONMENT)
+                        .category(category)
                         .build();
         ReflectionTestUtils.setField(createdPosting, "id", id);
         return createdPosting;

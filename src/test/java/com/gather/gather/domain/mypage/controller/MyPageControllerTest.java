@@ -6,9 +6,13 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.gather.gather.domain.mypage.dto.MyPageActivityRecordResponse;
 import com.gather.gather.domain.mypage.dto.MyPageActivityResponse;
+import com.gather.gather.domain.mypage.dto.MyPageActivitySummaryResponse;
+import com.gather.gather.domain.mypage.dto.MyPageActivitySummaryResponse.CategoryBlock;
 import com.gather.gather.domain.mypage.dto.MyPageHomeResponse;
 import com.gather.gather.domain.mypage.service.MyPageService;
+import com.gather.gather.domain.posting.entity.PostingCategory;
 import com.gather.gather.domain.posting.entity.PostingParticipationStatus;
 import com.gather.gather.domain.region.dto.RegionResponse;
 import com.gather.gather.global.exception.BusinessException;
@@ -100,5 +104,54 @@ class MyPageControllerTest {
         mockMvc.perform(get("/api/v1/mypage/activities").param("yearMonth", "2026-07-01"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error.code").value("VALIDATION_ERROR"));
+    }
+
+    @Test
+    @DisplayName("GET /api/v1/mypage/activities/summary returns total count and category blocks")
+    void getActivitySummary_returns200WithSummary() throws Exception {
+        when(myPageService.getActivitySummary())
+                .thenReturn(
+                        MyPageActivitySummaryResponse.of(
+                                2, List.of(new CategoryBlock(PostingCategory.ENVIRONMENT, 2))));
+
+        mockMvc.perform(get("/api/v1/mypage/activities/summary"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.totalCompletedCount").value(2))
+                .andExpect(jsonPath("$.data.categoryBlocks[0].category").value("ENVIRONMENT"))
+                .andExpect(jsonPath("$.data.categoryBlocks[0].count").value(2));
+    }
+
+    @Test
+    @DisplayName("GET /api/v1/mypage/activities/records returns completed cards")
+    void getActivityRecords_returns200WithCards() throws Exception {
+        when(myPageService.getActivityRecords(null))
+                .thenReturn(
+                        List.of(
+                                new MyPageActivityRecordResponse(
+                                        1L,
+                                        10L,
+                                        "테스트 공고",
+                                        PostingCategory.ENVIRONMENT,
+                                        LocalDate.of(2026, 7, 15),
+                                        LocalDate.of(2026, 7, 15),
+                                        "서울숲공원",
+                                        90)));
+
+        mockMvc.perform(get("/api/v1/mypage/activities/records"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data[0].postingId").value(10))
+                .andExpect(jsonPath("$.data[0].recognizedMinutes").value(90));
+    }
+
+    @Test
+    @DisplayName("GET /api/v1/mypage/activities/records filters by category when provided")
+    void getActivityRecords_filtersByCategory() throws Exception {
+        when(myPageService.getActivityRecords(PostingCategory.EDUCATION)).thenReturn(List.of());
+
+        mockMvc.perform(get("/api/v1/mypage/activities/records").param("category", "EDUCATION"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data").isEmpty());
     }
 }

@@ -3,9 +3,13 @@ package com.gather.gather.domain.mypage.service;
 import com.gather.gather.domain.auth.entity.User;
 import com.gather.gather.domain.auth.repository.UserRepository;
 import com.gather.gather.domain.meeting.repository.MeetingBookmarkRepository;
+import com.gather.gather.domain.mypage.dto.MyPageActivityRecordResponse;
 import com.gather.gather.domain.mypage.dto.MyPageActivityResponse;
+import com.gather.gather.domain.mypage.dto.MyPageActivitySummaryResponse;
+import com.gather.gather.domain.mypage.dto.MyPageActivitySummaryResponse.CategoryBlock;
 import com.gather.gather.domain.mypage.dto.MyPageHomeResponse;
 import com.gather.gather.domain.posting.entity.Posting;
+import com.gather.gather.domain.posting.entity.PostingCategory;
 import com.gather.gather.domain.posting.entity.PostingParticipation;
 import com.gather.gather.domain.posting.entity.PostingParticipationStatus;
 import com.gather.gather.domain.posting.repository.BookmarkRepository;
@@ -17,6 +21,7 @@ import com.gather.gather.global.exception.ErrorCode;
 import com.gather.gather.global.util.SecurityUtil;
 import java.time.LocalDate;
 import java.time.YearMonth;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
@@ -70,14 +75,7 @@ public class MyPageService {
             return List.of();
         }
 
-        Map<Long, Posting> postingsById =
-                postingRepository
-                        .findAllById(
-                                participations.stream()
-                                        .map(PostingParticipation::getPostingId)
-                                        .toList())
-                        .stream()
-                        .collect(Collectors.toMap(Posting::getId, Function.identity()));
+        Map<Long, Posting> postingsById = fetchPostingsById(participations);
 
         LocalDate monthStart = yearMonth.atDay(1);
         LocalDate monthEnd = yearMonth.atEndOfMonth();
@@ -95,6 +93,74 @@ public class MyPageService {
                 .sorted(Comparator.comparing(entry -> entry.getValue().getActStartDate()))
                 .map(entry -> MyPageActivityResponse.of(entry.getKey(), entry.getValue()))
                 .toList();
+    }
+
+    /** 활동기록 화면 - 활동 현황: 총 완료 횟수 + 분야별 블럭. */
+    public MyPageActivitySummaryResponse getActivitySummary() {
+        Long userId = SecurityUtil.getCurrentUserId();
+        List<PostingParticipation> completed = findCompletedParticipations(userId);
+        Map<Long, Posting> postingsById = fetchPostingsById(completed);
+
+        Map<PostingCategory, Long> countsByCategory =
+                completed.stream()
+                        .map(participation -> postingsById.get(participation.getPostingId()))
+                        .filter(posting -> posting != null)
+                        .collect(
+                                Collectors.groupingBy(Posting::getCategory, Collectors.counting()));
+
+        List<CategoryBlock> categoryBlocks =
+                Arrays.stream(PostingCategory.values())
+                        .map(
+                                category ->
+                                        new CategoryBlock(
+                                                category,
+                                                countsByCategory.getOrDefault(category, 0L)))
+                        .toList();
+
+        return MyPageActivitySummaryResponse.of(completed.size(), categoryBlocks);
+    }
+
+    /** 활동기록 상세의 봉사 카드 목록. category가 null이면 전체 분야를 반환하고, 최신 활동 시작일순으로 정렬한다. */
+    public List<MyPageActivityRecordResponse> getActivityRecords(PostingCategory category) {
+        Long userId = SecurityUtil.getCurrentUserId();
+        List<PostingParticipation> completed = findCompletedParticipations(userId);
+        if (completed.isEmpty()) {
+            return List.of();
+        }
+
+        Map<Long, Posting> postingsById = fetchPostingsById(completed);
+
+        return completed.stream()
+                .map(
+                        participation ->
+                                Map.entry(
+                                        participation,
+                                        postingsById.get(participation.getPostingId())))
+                .filter(entry -> entry.getValue() != null)
+                .filter(entry -> category == null || entry.getValue().getCategory() == category)
+                .sorted(
+                        Comparator.comparing(
+                                        (Map.Entry<PostingParticipation, Posting> entry) ->
+                                                entry.getValue().getActStartDate())
+                                .reversed())
+                .map(entry -> MyPageActivityRecordResponse.of(entry.getKey(), entry.getValue()))
+                .toList();
+    }
+
+    private List<PostingParticipation> findCompletedParticipations(Long userId) {
+        return postingParticipationRepository.findAllByUserIdAndStatus(
+                userId, PostingParticipationStatus.COMPLETED);
+    }
+
+    private Map<Long, Posting> fetchPostingsById(List<PostingParticipation> participations) {
+        if (participations.isEmpty()) {
+            return Map.of();
+        }
+        return postingRepository
+                .findAllById(
+                        participations.stream().map(PostingParticipation::getPostingId).toList())
+                .stream()
+                .collect(Collectors.toMap(Posting::getId, Function.identity()));
     }
 
     /**
