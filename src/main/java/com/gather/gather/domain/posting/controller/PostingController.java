@@ -5,6 +5,7 @@ import com.gather.gather.domain.posting.dto.PostingSummaryResponse;
 import com.gather.gather.domain.posting.entity.PostingCategory;
 import com.gather.gather.domain.posting.entity.PostingStatus;
 import com.gather.gather.domain.posting.service.PostingKeywordRecommendationService;
+import com.gather.gather.domain.posting.service.PostingRecommendationService;
 import com.gather.gather.domain.posting.service.PostingService;
 import com.gather.gather.global.common.ApiResponse;
 import com.gather.gather.global.common.PageResponse;
@@ -36,6 +37,7 @@ public class PostingController {
 
     private final PostingService postingService;
     private final PostingKeywordRecommendationService postingKeywordRecommendationService;
+    private final PostingRecommendationService postingRecommendationService;
 
     @Operation(
             summary = "봉사공고 목록 조회",
@@ -212,6 +214,17 @@ public class PostingController {
     @GetMapping("/{id}")
     public ApiResponse<PostingResponse> getPosting(@PathVariable Long id) {
         return ApiResponse.success(postingService.getPosting(id));
+    }
+
+    @Operation(
+            summary = "봉사공고 추천 목록 조회",
+            description =
+                    "선호 카테고리 매칭과 마감일 근접도로 점수를 매겨 상위 5개 봉사공고를 추천합니다. 인증이 필요 없으며, "
+                            + "비로그인이거나 선호 카테고리를 설정하지 않았으면 마감임박순 상위 5개를 반환합니다. "
+                            + "이미 지원한 공고는 추천에서 제외됩니다.")
+    @GetMapping("/recommended")
+    public ApiResponse<List<PostingSummaryResponse>> getRecommendedPostings() {
+        return ApiResponse.success(postingRecommendationService.getRecommendedPostings());
     }
 
     @Operation(
