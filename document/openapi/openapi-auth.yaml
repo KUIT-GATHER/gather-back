@@ -757,7 +757,7 @@ paths:
         - Auth - Kakao
       summary: 카카오 추가정보 가입
       description: |
-        카카오 로그인에서 받은 가입용 임시 토큰과 추가정보로 회원가입을 완료하고 곧바로 로그인 토큰을 발급합니다.
+        카카오 로그인에서 받은 일회성 opaque 가입 토큰과 추가정보로 회원가입을 완료하고 곧바로 로그인 토큰을 발급합니다.
         이메일과 비밀번호는 받지 않습니다.
 
         가입 토큰은 `Authorization`이 아니라 `X-Signup-Token` 헤더로 보냅니다.
@@ -768,7 +768,7 @@ paths:
         - name: X-Signup-Token
           in: header
           required: true
-          description: 카카오 로그인 응답으로 받은 가입용 임시 토큰
+          description: 카카오 로그인 응답으로 받은 일회성 opaque 가입 토큰
           schema:
             type: string
       requestBody:
@@ -865,7 +865,7 @@ paths:
                       code: SIGNUP_TOKEN_EXPIRED
                       message: 가입 인증이 만료되었습니다. 카카오 로그인부터 다시 진행해주세요.
                 signupTokenInvalid:
-                  summary: 서명 변조·클레임 불일치·헤더 누락
+                  summary: 잘못된 형식·존재하지 않음·이미 소비 또는 취소됨·헤더 누락
                   value:
                     success: false
                     data: null
@@ -1393,7 +1393,7 @@ components:
         signupToken:
           type: string
           nullable: true
-          description: 가입용 임시 토큰. ADDITIONAL_INFO_REQUIRED일 때만 내려갑니다. X-Signup-Token 헤더로 재전송합니다.
+          description: 일회성 opaque 가입 토큰. ADDITIONAL_INFO_REQUIRED일 때만 내려갑니다. X-Signup-Token 헤더로 재전송합니다.
           example: signup-token-value
         profile:
           nullable: true
