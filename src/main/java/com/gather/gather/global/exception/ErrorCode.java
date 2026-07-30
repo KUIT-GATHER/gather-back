@@ -55,6 +55,9 @@ public enum ErrorCode {
     INVALID_MEETING_TIME(HttpStatus.BAD_REQUEST, "모임 시간이 올바르지 않습니다."),
     MEETING_BOOKMARK_DUPLICATE(HttpStatus.CONFLICT, "이미 북마크한 모임입니다."),
     MEETING_BOOKMARK_NOT_FOUND(HttpStatus.NOT_FOUND, "북마크를 찾을 수 없습니다."),
+    MEETING_ALREADY_COMPLETED(HttpStatus.CONFLICT, "이미 완료 처리된 모임입니다."),
+    MEETING_HOURS_NOT_ALLOWED(HttpStatus.CONFLICT, "완료 처리된 모임에서만 인정시간을 입력할 수 있습니다."),
+    MEETING_HOURS_ALREADY_SUBMITTED(HttpStatus.CONFLICT, "이미 인정시간을 입력했습니다."),
 
     POSTING_NOT_FOUND(HttpStatus.NOT_FOUND, "봉사공고를 찾을 수 없습니다."),
     POSTING_CLOSED(HttpStatus.CONFLICT, "마감된 봉사공고입니다."),
@@ -65,6 +68,10 @@ public enum ErrorCode {
     PARTICIPATION_CANCEL_NOT_ALLOWED(
             HttpStatus.CONFLICT, "이력 보존을 위해 완료되었거나 후기가 작성된 신청은 취소할 수 없습니다."),
     POSTING_APPLICATION_UNAVAILABLE(HttpStatus.CONFLICT, "1365 신청 정보가 연동되지 않아 신청할 수 없는 공고입니다."),
+    PARTICIPATION_ALREADY_COMPLETED(HttpStatus.CONFLICT, "이미 완료 처리된 참여입니다."),
+    PARTICIPATION_COMPLETE_NOT_ALLOWED(HttpStatus.CONFLICT, "활동종료일이 지나야 완료 처리를 할 수 있습니다."),
+    PARTICIPATION_HOURS_NOT_ALLOWED(HttpStatus.CONFLICT, "완료 처리된 참여만 인정시간을 입력할 수 있습니다."),
+    PARTICIPATION_HOURS_ALREADY_SUBMITTED(HttpStatus.CONFLICT, "이미 인정시간을 입력했습니다."),
 
     UNSUPPORTED_PROFILE_IMAGE_TYPE(HttpStatus.BAD_REQUEST, "지원하지 않는 프로필 이미지 형식입니다."),
     PROFILE_IMAGE_SIZE_EXCEEDED(HttpStatus.BAD_REQUEST, "프로필 이미지의 허용 크기를 초과했습니다."),

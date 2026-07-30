@@ -2,6 +2,8 @@ package com.gather.gather.domain.post.service;
 
 import com.gather.gather.domain.auth.entity.User;
 import com.gather.gather.domain.auth.repository.UserRepository;
+import com.gather.gather.domain.badge.entity.BadgeType;
+import com.gather.gather.domain.badge.service.BadgeAwardService;
 import com.gather.gather.domain.meeting.entity.Meeting;
 import com.gather.gather.domain.meeting.entity.MeetingMember;
 import com.gather.gather.domain.meeting.enums.MeetingMemberRole;
@@ -46,6 +48,7 @@ public class PostService {
     private final MeetingRepository meetingRepository;
     private final MeetingMemberRepository meetingMemberRepository;
     private final UserRepository userRepository;
+    private final BadgeAwardService badgeAwardService;
 
     public List<PostSummaryResponse> getPosts(Long meetingId, PostType typeFilter) {
         Long userId = SecurityUtil.getCurrentUserId();
@@ -96,7 +99,11 @@ public class PostService {
                         request.type(),
                         request.recruitCapacity());
 
-        return PostResponse.from(postRepository.save(post));
+        Post savedPost = postRepository.save(post);
+        if (request.type() == PostType.REVIEW) {
+            badgeAwardService.award(userId, BadgeType.FIRST_REVIEW);
+        }
+        return PostResponse.from(savedPost);
     }
 
     @Transactional

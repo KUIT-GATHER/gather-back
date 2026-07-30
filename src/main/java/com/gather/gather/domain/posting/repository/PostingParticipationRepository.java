@@ -15,4 +15,8 @@ public interface PostingParticipationRepository extends JpaRepository<PostingPar
 
     List<PostingParticipation> findByUserIdAndStatusNotIn(
             Long userId, Collection<PostingParticipationStatus> excludedStatuses);
+
+    /** 뱃지 판정(완료 횟수, 연속 참여 월)용 — 완료된 참여 이력만 조회한다. */
+    List<PostingParticipation> findAllByUserIdAndStatus(
+            Long userId, PostingParticipationStatus status);
 }

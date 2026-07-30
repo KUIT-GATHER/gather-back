@@ -45,6 +45,10 @@ class MeetingServiceTest {
     @Mock private RegionRepository regionRepository;
     @Mock private PostingRepository postingRepository;
     @Mock private MeetingSearchLogService meetingSearchLogService;
+    @Mock private com.gather.gather.domain.badge.service.BadgeAwardService badgeAwardService;
+
+    @Mock
+    private com.gather.gather.domain.badge.service.BadgeEvaluationService badgeEvaluationService;
 
     @InjectMocks private MeetingService meetingService;
 
@@ -53,19 +57,29 @@ class MeetingServiceTest {
     @BeforeEach
     void setUp() {
         meeting = mock(Meeting.class);
-        when(meeting.getId()).thenReturn(12L);
-        when(meeting.getName()).thenReturn("한강공원 플로깅팀");
-        when(meeting.getCategories()).thenReturn(Set.of(PostingCategory.ENVIRONMENT));
-        when(meeting.getCurrentMemberCount()).thenReturn(12);
-        when(meeting.getMaxMember()).thenReturn(20);
-        when(meeting.getStatus()).thenReturn(MeetingStatus.RECRUITING);
-        when(meeting.isActivityEnded(org.mockito.ArgumentMatchers.any())).thenReturn(false);
-        when(meeting.isDeadlinePassed(org.mockito.ArgumentMatchers.any())).thenReturn(false);
-        when(meeting.isFull()).thenReturn(false);
+        org.mockito.Mockito.lenient().when(meeting.getId()).thenReturn(12L);
+        org.mockito.Mockito.lenient().when(meeting.getName()).thenReturn("한강공원 플로깅팀");
+        org.mockito.Mockito.lenient()
+                .when(meeting.getCategories())
+                .thenReturn(Set.of(PostingCategory.ENVIRONMENT));
+        org.mockito.Mockito.lenient().when(meeting.getCurrentMemberCount()).thenReturn(12);
+        org.mockito.Mockito.lenient().when(meeting.getMaxMember()).thenReturn(20);
+        org.mockito.Mockito.lenient()
+                .when(meeting.getStatus())
+                .thenReturn(MeetingStatus.RECRUITING);
+        org.mockito.Mockito.lenient()
+                .when(meeting.isActivityEnded(org.mockito.ArgumentMatchers.any()))
+                .thenReturn(false);
+        org.mockito.Mockito.lenient()
+                .when(meeting.isDeadlinePassed(org.mockito.ArgumentMatchers.any()))
+                .thenReturn(false);
+        org.mockito.Mockito.lenient().when(meeting.isFull()).thenReturn(false);
 
-        when(postingRepository.existsById(10L)).thenReturn(true);
-        when(meetingRepository.findAllByVolunteerPostingIdAndDeletedAtIsNull(
-                        eq(10L), org.mockito.ArgumentMatchers.any()))
+        org.mockito.Mockito.lenient().when(postingRepository.existsById(10L)).thenReturn(true);
+        org.mockito.Mockito.lenient()
+                .when(
+                        meetingRepository.findAllByVolunteerPostingIdAndDeletedAtIsNull(
+                                eq(10L), org.mockito.ArgumentMatchers.any()))
                 .thenReturn(new PageImpl<>(List.of(meeting), PageRequest.of(0, 10), 1));
     }
 
@@ -118,6 +132,118 @@ class MeetingServiceTest {
 
         assertThat(response.member()).isTrue();
         assertThat(response.host()).isTrue();
+    }
+
+    @Test
+    @DisplayName("completeMeeting completes the meeting when called by the host")
+    void completeMeeting_completesMeeting_whenCalledByHost() {
+        setAuthenticatedUser(1L);
+        Meeting hostMeeting = mock(Meeting.class);
+        com.gather.gather.domain.auth.entity.User host =
+                mock(com.gather.gather.domain.auth.entity.User.class);
+        when(host.getId()).thenReturn(1L);
+        when(hostMeeting.getHost()).thenReturn(host);
+        when(meetingRepository.findByIdAndDeletedAtIsNullForUpdate(12L))
+                .thenReturn(java.util.Optional.of(hostMeeting));
+
+        meetingService.completeMeeting(12L);
+
+        verify(hostMeeting).complete();
+    }
+
+    @Test
+    @DisplayName("completeMeeting throws MEETING_HOST_ONLY when called by a non-host")
+    void completeMeeting_throwsHostOnly_whenNotHost() {
+        setAuthenticatedUser(2L);
+        Meeting hostMeeting = mock(Meeting.class);
+        com.gather.gather.domain.auth.entity.User host =
+                mock(com.gather.gather.domain.auth.entity.User.class);
+        when(host.getId()).thenReturn(1L);
+        when(hostMeeting.getHost()).thenReturn(host);
+        when(meetingRepository.findByIdAndDeletedAtIsNullForUpdate(12L))
+                .thenReturn(java.util.Optional.of(hostMeeting));
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(
+                        () -> meetingService.completeMeeting(12L))
+                .isInstanceOf(com.gather.gather.global.exception.BusinessException.class)
+                .hasFieldOrPropertyWithValue(
+                        "errorCode",
+                        com.gather.gather.global.exception.ErrorCode.MEETING_HOST_ONLY);
+        verify(hostMeeting, never()).complete();
+    }
+
+    @Test
+    @DisplayName("completeMeeting throws MEETING_ALREADY_COMPLETED when already completed")
+    void completeMeeting_throwsAlreadyCompleted_whenAlreadyCompleted() {
+        setAuthenticatedUser(1L);
+        Meeting hostMeeting = mock(Meeting.class);
+        com.gather.gather.domain.auth.entity.User host =
+                mock(com.gather.gather.domain.auth.entity.User.class);
+        when(host.getId()).thenReturn(1L);
+        when(hostMeeting.getHost()).thenReturn(host);
+        when(hostMeeting.getStatus()).thenReturn(MeetingStatus.COMPLETED);
+        when(meetingRepository.findByIdAndDeletedAtIsNullForUpdate(12L))
+                .thenReturn(java.util.Optional.of(hostMeeting));
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(
+                        () -> meetingService.completeMeeting(12L))
+                .isInstanceOf(com.gather.gather.global.exception.BusinessException.class)
+                .hasFieldOrPropertyWithValue(
+                        "errorCode",
+                        com.gather.gather.global.exception.ErrorCode.MEETING_ALREADY_COMPLETED);
+        verify(hostMeeting, never()).complete();
+    }
+
+    @Test
+    @DisplayName(
+            "submitMemberHours stores the minutes for an approved member of a completed meeting")
+    void submitMemberHours_storesMinutes_whenMeetingCompleted() {
+        setAuthenticatedUser(1L);
+        Meeting completedMeeting = mock(Meeting.class);
+        when(completedMeeting.getStatus()).thenReturn(MeetingStatus.COMPLETED);
+        when(meetingRepository.findByIdAndDeletedAtIsNull(12L))
+                .thenReturn(java.util.Optional.of(completedMeeting));
+        MeetingMember member = mock(MeetingMember.class);
+        when(member.getRecognizedMinutes()).thenReturn(null);
+        when(meetingMemberRepository.findByMeeting_IdAndUser_IdAndStatus(
+                        12L, 1L, MeetingMemberStatus.APPROVED))
+                .thenReturn(java.util.Optional.of(member));
+
+        meetingService.submitMemberHours(12L, 210);
+
+        verify(member).submitRecognizedMinutes(210);
+    }
+
+    @Test
+    @DisplayName(
+            "submitMemberHours throws MEETING_HOURS_NOT_ALLOWED when the meeting is not"
+                    + " completed yet")
+    void submitMemberHours_throwsHoursNotAllowed_whenNotCompleted() {
+        setAuthenticatedUser(1L);
+        Meeting recruitingMeeting = mock(Meeting.class);
+        when(recruitingMeeting.getStatus()).thenReturn(MeetingStatus.RECRUITING);
+        when(meetingRepository.findByIdAndDeletedAtIsNull(12L))
+                .thenReturn(java.util.Optional.of(recruitingMeeting));
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(
+                        () -> meetingService.submitMemberHours(12L, 210))
+                .isInstanceOf(com.gather.gather.global.exception.BusinessException.class)
+                .hasFieldOrPropertyWithValue(
+                        "errorCode",
+                        com.gather.gather.global.exception.ErrorCode.MEETING_HOURS_NOT_ALLOWED);
+    }
+
+    @Test
+    @DisplayName(
+            "submitMemberHours throws VALIDATION_ERROR when minutes is not a positive"
+                    + " multiple of 10")
+    void submitMemberHours_throwsValidationError_whenNotMultipleOfTen() {
+        org.assertj.core.api.Assertions.assertThatThrownBy(
+                        () -> meetingService.submitMemberHours(12L, 15))
+                .isInstanceOf(com.gather.gather.global.exception.BusinessException.class)
+                .hasFieldOrPropertyWithValue(
+                        "errorCode", com.gather.gather.global.exception.ErrorCode.VALIDATION_ERROR);
+        verify(meetingRepository, never()).findByIdAndDeletedAtIsNull(12L);
     }
 
     private void setAuthenticatedUser(Long userId) {

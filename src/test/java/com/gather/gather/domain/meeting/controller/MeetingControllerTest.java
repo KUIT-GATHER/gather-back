@@ -3,6 +3,7 @@ package com.gather.gather.domain.meeting.controller;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -118,5 +119,43 @@ class MeetingControllerTest {
                 .andExpect(jsonPath("$.error.code").value("VALIDATION_ERROR"));
 
         verifyNoInteractions(meetingService);
+    }
+
+    @Test
+    @DisplayName("PATCH /api/v1/meetings/{id}/complete returns 200 on completion")
+    void completeMeeting_returns200() throws Exception {
+        mockMvc.perform(patch("/api/v1/meetings/12/complete"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true));
+
+        verify(meetingService).completeMeeting(12L);
+    }
+
+    @Test
+    @DisplayName("PATCH /api/v1/meetings/{id}/complete returns 403 when called by a non-host")
+    void completeMeeting_returns403_whenNotHost() throws Exception {
+        org.mockito.Mockito.doThrow(
+                        new com.gather.gather.global.exception.BusinessException(
+                                com.gather.gather.global.exception.ErrorCode.MEETING_HOST_ONLY))
+                .when(meetingService)
+                .completeMeeting(12L);
+
+        mockMvc.perform(patch("/api/v1/meetings/12/complete"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.error.code").value("MEETING_HOST_ONLY"));
+    }
+
+    @Test
+    @DisplayName("PATCH /api/v1/meetings/{id}/members/me/hours returns 200 on submission")
+    void submitMemberHours_returns200() throws Exception {
+        mockMvc.perform(
+                        patch("/api/v1/meetings/12/members/me/hours")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("{\"recognizedMinutes\": 210}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true));
+
+        verify(meetingService).submitMemberHours(12L, 210);
     }
 }

@@ -82,6 +82,7 @@ public record PostingResponse(
                 posting.getUpdatedAt(),
                 bookmarked,
                 participationStatus,
-                PostingParticipationAction.from(participationStatus));
+                PostingParticipationAction.from(
+                        participationStatus, posting.isActivityEnded(LocalDate.now())));
     }
 }

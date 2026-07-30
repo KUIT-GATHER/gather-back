@@ -42,6 +42,10 @@ public class PostingParticipation {
     @Column(nullable = false, length = 20)
     private PostingParticipationStatus status;
 
+    /** 완료 처리 이후 사용자가 직접 입력하는 봉사 인정시간(분 단위, 10분 단위 입력). */
+    @Column(name = "recognized_minutes")
+    private Integer recognizedMinutes;
+
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
@@ -58,5 +62,13 @@ public class PostingParticipation {
 
     public static PostingParticipation create(Long userId, Long postingId) {
         return new PostingParticipation(userId, postingId, PostingParticipationStatus.APPLIED);
+    }
+
+    public void complete() {
+        this.status = PostingParticipationStatus.COMPLETED;
+    }
+
+    public void submitRecognizedMinutes(Integer recognizedMinutes) {
+        this.recognizedMinutes = recognizedMinutes;
     }
 }

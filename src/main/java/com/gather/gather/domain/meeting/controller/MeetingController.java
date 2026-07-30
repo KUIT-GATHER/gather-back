@@ -4,6 +4,7 @@ import com.gather.gather.domain.meeting.dto.MeetingCreateRequest;
 import com.gather.gather.domain.meeting.dto.MeetingDetailResponse;
 import com.gather.gather.domain.meeting.dto.MeetingJoinRequestResponse;
 import com.gather.gather.domain.meeting.dto.MeetingJoinResponse;
+import com.gather.gather.domain.meeting.dto.MeetingRecognizedMinutesRequest;
 import com.gather.gather.domain.meeting.dto.MeetingResponse;
 import com.gather.gather.domain.meeting.enums.MeetingStatus;
 import com.gather.gather.domain.meeting.service.MeetingKeywordRecommendationService;
@@ -160,5 +161,24 @@ public class MeetingController {
     @GetMapping("/{meetingId}")
     public ApiResponse<MeetingDetailResponse> getMeeting(@PathVariable Long meetingId) {
         return ApiResponse.success(meetingService.getMeeting(meetingId));
+    }
+
+    @Operation(
+            summary = "모임(그룹) 봉사 완료 처리",
+            description = "모임장이 모임을 완료 처리한다. 개인 봉사는 본인이 활동종료일 이후 별도 API로 완료 처리한다.")
+    @PatchMapping("/{meetingId}/complete")
+    public ApiResponse<Void> completeMeeting(@PathVariable Long meetingId) {
+        meetingService.completeMeeting(meetingId);
+        return ApiResponse.success(null);
+    }
+
+    @Operation(
+            summary = "봉사 인정시간 입력",
+            description = "완료 처리된 모임에 한해, 승인된 멤버 본인이 직접 인정시간(분 단위, 10분 단위)을 입력한다.")
+    @PatchMapping("/{meetingId}/members/me/hours")
+    public ApiResponse<Void> submitMemberHours(
+            @PathVariable Long meetingId, @RequestBody MeetingRecognizedMinutesRequest request) {
+        meetingService.submitMemberHours(meetingId, request.recognizedMinutes());
+        return ApiResponse.success(null);
     }
 }

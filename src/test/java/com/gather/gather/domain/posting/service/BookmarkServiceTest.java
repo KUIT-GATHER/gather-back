@@ -52,6 +52,7 @@ class BookmarkServiceTest {
     @Mock private BookmarkRepository bookmarkRepository;
     @Mock private PostingRepository postingRepository;
     @Mock private RegionRepository regionRepository;
+    @Mock private com.gather.gather.domain.badge.service.BadgeAwardService badgeAwardService;
 
     private BookmarkService bookmarkService;
 
@@ -61,7 +62,8 @@ class BookmarkServiceTest {
                 new BookmarkService(
                         bookmarkRepository,
                         postingRepository,
-                        new RegionNameResolver(regionRepository));
+                        new RegionNameResolver(regionRepository),
+                        badgeAwardService);
     }
 
     @Test

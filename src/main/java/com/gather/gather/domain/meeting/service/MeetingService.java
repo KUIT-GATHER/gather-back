@@ -2,6 +2,9 @@ package com.gather.gather.domain.meeting.service;
 
 import com.gather.gather.domain.auth.entity.User;
 import com.gather.gather.domain.auth.repository.UserRepository;
+import com.gather.gather.domain.badge.entity.BadgeType;
+import com.gather.gather.domain.badge.service.BadgeAwardService;
+import com.gather.gather.domain.badge.service.BadgeEvaluationService;
 import com.gather.gather.domain.meeting.dto.MeetingCreateRequest;
 import com.gather.gather.domain.meeting.dto.MeetingDetailResponse;
 import com.gather.gather.domain.meeting.dto.MeetingJoinRequestResponse;
@@ -67,6 +70,8 @@ public class MeetingService {
     private final RegionRepository regionRepository;
     private final PostingRepository postingRepository;
     private final MeetingSearchLogService meetingSearchLogService;
+    private final BadgeAwardService badgeAwardService;
+    private final BadgeEvaluationService badgeEvaluationService;
 
     @Transactional
     public MeetingResponse createMeeting(MeetingCreateRequest request) {
@@ -99,6 +104,7 @@ public class MeetingService {
 
         MeetingMember hostMember = MeetingMember.createHost(host, savedMeeting);
         meetingMemberRepository.save(hostMember);
+        badgeAwardService.award(userId, BadgeType.TEAM_CREATED);
 
         return MeetingResponse.from(savedMeeting, resolveDisplayStatus(savedMeeting));
     }
@@ -253,6 +259,9 @@ public class MeetingService {
         MeetingMember member = getPendingJoinRequestForUpdate(meetingId, joinRequestId);
         member.approve();
         meeting.increaseMemberCount();
+        if (member.getRole() == MeetingMemberRole.MEMBER) {
+            badgeAwardService.award(member.getUser().getId(), BadgeType.FIRST_TEAM_JOIN);
+        }
         return MeetingJoinRequestResponse.from(member);
     }
 
@@ -264,6 +273,54 @@ public class MeetingService {
         MeetingMember member = getPendingJoinRequestForUpdate(meetingId, joinRequestId);
         member.reject();
         return MeetingJoinRequestResponse.from(member);
+    }
+
+    /** 모임(그룹) 봉사 완료 판정: 모임장이 직접 완료 처리한다(개인 봉사는 본인이 활동종료일 이후 완료 처리한다). */
+    @Transactional
+    public void completeMeeting(Long meetingId) {
+        Long userId = SecurityUtil.getCurrentUserId();
+        Meeting meeting = getMeetingEntityForUpdate(meetingId);
+        validateHost(meeting, userId);
+
+        if (meeting.getStatus() == MeetingStatus.COMPLETED) {
+            throw new BusinessException(ErrorCode.MEETING_ALREADY_COMPLETED);
+        }
+
+        meeting.complete();
+
+        meetingMemberRepository
+                .findAllByMeetingIdAndStatusFetchUser(meetingId, MeetingMemberStatus.APPROVED)
+                .forEach(
+                        approvedMember ->
+                                badgeEvaluationService.onVolunteerActivityCompleted(
+                                        approvedMember.getUser().getId()));
+    }
+
+    /** 모임 완료 처리 이후, 승인된 멤버 본인이 직접 인정시간을 입력한다(분 단위, 1회만 입력 가능). */
+    @Transactional
+    public void submitMemberHours(Long meetingId, Integer recognizedMinutes) {
+        if (recognizedMinutes == null || recognizedMinutes <= 0 || recognizedMinutes % 10 != 0) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR);
+        }
+
+        Long userId = SecurityUtil.getCurrentUserId();
+        Meeting meeting = getMeetingEntity(meetingId);
+        if (meeting.getStatus() != MeetingStatus.COMPLETED) {
+            throw new BusinessException(ErrorCode.MEETING_HOURS_NOT_ALLOWED);
+        }
+
+        MeetingMember member =
+                meetingMemberRepository
+                        .findByMeeting_IdAndUser_IdAndStatus(
+                                meetingId, userId, MeetingMemberStatus.APPROVED)
+                        .orElseThrow(
+                                () -> new BusinessException(ErrorCode.MEETING_MEMBER_REQUIRED));
+
+        if (member.getRecognizedMinutes() != null) {
+            throw new BusinessException(ErrorCode.MEETING_HOURS_ALREADY_SUBMITTED);
+        }
+
+        member.submitRecognizedMinutes(recognizedMinutes);
     }
 
     public List<MeetingResponse> getMyMeetings() {

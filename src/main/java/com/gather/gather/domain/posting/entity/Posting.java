@@ -197,6 +197,11 @@ public class Posting {
         this.updatedAt = this.createdAt;
     }
 
+    /** 활동종료일이 지났는지 여부. actEndDate가 없으면(개별활동일만 있는 공고) 종료로 취급하지 않는다. */
+    public boolean isActivityEnded(LocalDate today) {
+        return actEndDate != null && !actEndDate.isAfter(today);
+    }
+
     /** 목록조회로 재확인된 기존 공고의 갱신 가능 필드만 반영한다(동기화 배치 update 경로). */
     public void updateFromSync(
             String title,

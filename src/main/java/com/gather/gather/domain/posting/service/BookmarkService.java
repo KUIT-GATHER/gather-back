@@ -1,5 +1,7 @@
 package com.gather.gather.domain.posting.service;
 
+import com.gather.gather.domain.badge.entity.BadgeType;
+import com.gather.gather.domain.badge.service.BadgeAwardService;
 import com.gather.gather.domain.posting.dto.BookmarkResponse;
 import com.gather.gather.domain.posting.dto.PostingSummaryResponse;
 import com.gather.gather.domain.posting.entity.Bookmark;
@@ -26,9 +28,12 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 public class BookmarkService {
 
+    private static final int BOOKMARK_5_THRESHOLD = 5;
+
     private final BookmarkRepository bookmarkRepository;
     private final PostingRepository postingRepository;
     private final RegionNameResolver regionNameResolver;
+    private final BadgeAwardService badgeAwardService;
 
     @Transactional
     public BookmarkResponse addBookmark(Long postingId) {
@@ -45,6 +50,9 @@ public class BookmarkService {
             bookmarkRepository.saveAndFlush(Bookmark.create(userId, postingId));
         } catch (DataIntegrityViolationException exception) {
             throw new BusinessException(ErrorCode.BOOKMARK_DUPLICATE);
+        }
+        if (bookmarkRepository.countByUserId(userId) >= BOOKMARK_5_THRESHOLD) {
+            badgeAwardService.award(userId, BadgeType.BOOKMARK_5);
         }
         return BookmarkResponse.of(postingId, true);
     }
