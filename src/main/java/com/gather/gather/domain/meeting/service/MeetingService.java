@@ -16,6 +16,7 @@ import com.gather.gather.domain.meeting.enums.MeetingStatus;
 import com.gather.gather.domain.meeting.repository.MeetingBookmarkRepository;
 import com.gather.gather.domain.meeting.repository.MeetingMemberRepository;
 import com.gather.gather.domain.meeting.repository.MeetingRepository;
+import com.gather.gather.domain.notification.service.NotificationCreateService;
 import com.gather.gather.domain.posting.entity.Posting;
 import com.gather.gather.domain.posting.entity.PostingCategory;
 import com.gather.gather.domain.posting.repository.PostingRepository;
@@ -67,6 +68,7 @@ public class MeetingService {
     private final RegionRepository regionRepository;
     private final PostingRepository postingRepository;
     private final MeetingSearchLogService meetingSearchLogService;
+    private final NotificationCreateService notificationCreateService;
 
     @Transactional
     public MeetingResponse createMeeting(MeetingCreateRequest request) {
@@ -253,6 +255,9 @@ public class MeetingService {
         MeetingMember member = getPendingJoinRequestForUpdate(meetingId, joinRequestId);
         member.approve();
         meeting.increaseMemberCount();
+
+        notificationCreateService.createMeetingJoinResultNotification(
+                member.getUser().getId(), meeting.getId(), meeting.getName(), true);
         return MeetingJoinRequestResponse.from(member);
     }
 
@@ -263,6 +268,9 @@ public class MeetingService {
 
         MeetingMember member = getPendingJoinRequestForUpdate(meetingId, joinRequestId);
         member.reject();
+
+        notificationCreateService.createMeetingJoinResultNotification(
+                member.getUser().getId(), meeting.getId(), meeting.getName(), false);
         return MeetingJoinRequestResponse.from(member);
     }
 

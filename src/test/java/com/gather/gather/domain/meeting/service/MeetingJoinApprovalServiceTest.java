@@ -17,6 +17,7 @@ import com.gather.gather.domain.meeting.enums.MeetingMemberStatus;
 import com.gather.gather.domain.meeting.enums.MeetingStatus;
 import com.gather.gather.domain.meeting.repository.MeetingMemberRepository;
 import com.gather.gather.domain.meeting.repository.MeetingRepository;
+import com.gather.gather.domain.notification.service.NotificationCreateService;
 import com.gather.gather.domain.posting.repository.PostingRepository;
 import com.gather.gather.domain.region.repository.RegionRepository;
 import com.gather.gather.global.exception.BusinessException;
@@ -42,6 +43,7 @@ class MeetingJoinApprovalServiceTest {
     private static final Long USER_ID = 2L;
     private static final Long HOST_ID = 3L;
     private static final Long JOIN_REQUEST_ID = 4L;
+    private static final String MEETING_NAME = "한강공원 플로깅팀";
 
     @Mock private MeetingRepository meetingRepository;
     @Mock private MeetingMemberRepository meetingMemberRepository;
@@ -49,7 +51,7 @@ class MeetingJoinApprovalServiceTest {
     @Mock private RegionRepository regionRepository;
     @Mock private PostingRepository postingRepository;
     @Mock private MeetingSearchLogService meetingSearchLogService;
-
+    @Mock private NotificationCreateService notificationCreateService;
     @InjectMocks private MeetingService meetingService;
 
     @Mock private Meeting meeting;
@@ -89,15 +91,19 @@ class MeetingJoinApprovalServiceTest {
     }
 
     @Test
-    @DisplayName("모임장이 가입 신청을 승인하면 상태와 현재 인원이 변경된다")
-    void approveJoinRequest_approvesRequestAndIncreasesMemberCount() {
+    @DisplayName("모임장이 가입 신청을 승인하면 상태와 현재 인원이 변경되고 신청자 알림이 생성된다")
+    void approveJoinRequest_approvesRequestAndCreatesNotification() {
         setAuthenticatedUser(HOST_ID);
         MeetingMember member = pendingMember();
+
         when(meetingRepository.findByIdAndDeletedAtIsNullForUpdate(MEETING_ID))
                 .thenReturn(Optional.of(meeting));
         when(meeting.getHost()).thenReturn(host);
         when(host.getId()).thenReturn(HOST_ID);
         when(meeting.isFull()).thenReturn(false);
+        when(meeting.getId()).thenReturn(MEETING_ID);
+        when(meeting.getName()).thenReturn(MEETING_NAME);
+        when(user.getId()).thenReturn(USER_ID);
         when(meetingMemberRepository.findPendingByIdAndMeetingIdForUpdate(
                         JOIN_REQUEST_ID, MEETING_ID))
                 .thenReturn(Optional.of(member));
@@ -107,6 +113,8 @@ class MeetingJoinApprovalServiceTest {
 
         assertThat(response.status()).isEqualTo(MeetingMemberStatus.APPROVED);
         verify(meeting).increaseMemberCount();
+        verify(notificationCreateService)
+                .createMeetingJoinResultNotification(USER_ID, MEETING_ID, MEETING_NAME, true);
     }
 
     @Test
@@ -188,14 +196,17 @@ class MeetingJoinApprovalServiceTest {
     }
 
     @Test
-    @DisplayName("가입 거절도 비관적 락으로 승인 대기 신청을 조회한다")
-    void rejectJoinRequest_usesPendingRequestLock() {
+    @DisplayName("가입 신청을 거절하면 상태가 변경되고 신청자 알림이 생성된다")
+    void rejectJoinRequest_rejectsRequestAndCreatesNotification() {
         setAuthenticatedUser(HOST_ID);
         MeetingMember member = pendingMember();
         when(meetingRepository.findByIdAndDeletedAtIsNullForUpdate(MEETING_ID))
                 .thenReturn(Optional.of(meeting));
         when(meeting.getHost()).thenReturn(host);
         when(host.getId()).thenReturn(HOST_ID);
+        when(meeting.getId()).thenReturn(MEETING_ID);
+        when(meeting.getName()).thenReturn(MEETING_NAME);
+        when(user.getId()).thenReturn(USER_ID);
         when(meetingMemberRepository.findPendingByIdAndMeetingIdForUpdate(
                         JOIN_REQUEST_ID, MEETING_ID))
                 .thenReturn(Optional.of(member));
@@ -205,6 +216,8 @@ class MeetingJoinApprovalServiceTest {
 
         assertThat(response.status()).isEqualTo(MeetingMemberStatus.REJECTED);
         verify(meeting, never()).increaseMemberCount();
+        verify(notificationCreateService)
+                .createMeetingJoinResultNotification(USER_ID, MEETING_ID, MEETING_NAME, false);
     }
 
     private MeetingMember pendingMember() {
