@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.anyCollection;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -12,7 +13,12 @@ import static org.mockito.Mockito.when;
 import com.gather.gather.domain.auth.entity.Gender;
 import com.gather.gather.domain.auth.entity.User;
 import com.gather.gather.domain.auth.repository.UserRepository;
+import com.gather.gather.domain.meeting.entity.Meeting;
+import com.gather.gather.domain.meeting.entity.MeetingMember;
+import com.gather.gather.domain.meeting.enums.MeetingMemberStatus;
+import com.gather.gather.domain.meeting.enums.MeetingStatus;
 import com.gather.gather.domain.meeting.repository.MeetingBookmarkRepository;
+import com.gather.gather.domain.meeting.repository.MeetingMemberRepository;
 import com.gather.gather.domain.mypage.dto.MyPageActivityRecordResponse;
 import com.gather.gather.domain.mypage.dto.MyPageActivityResponse;
 import com.gather.gather.domain.mypage.dto.MyPageActivitySummaryResponse;
@@ -27,6 +33,7 @@ import com.gather.gather.domain.posting.repository.PostingParticipationRepositor
 import com.gather.gather.domain.posting.repository.PostingRepository;
 import com.gather.gather.domain.region.entity.Region;
 import com.gather.gather.domain.user.service.ProfileImageUrlResolver;
+import com.gather.gather.global.common.PageResponse;
 import com.gather.gather.global.exception.BusinessException;
 import com.gather.gather.global.exception.ErrorCode;
 import com.gather.gather.global.util.SecurityUtil;
@@ -42,18 +49,23 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.MockedStatic;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.test.util.ReflectionTestUtils;
 
 @ExtendWith(MockitoExtension.class)
 class MyPageServiceTest {
 
     private static final Long USER_ID = 1L;
+    private static final Set<PostingParticipationStatus> COMPLETED_STATUSES =
+            Set.of(PostingParticipationStatus.COMPLETED, PostingParticipationStatus.REVIEWED);
 
     @Mock private UserRepository userRepository;
     @Mock private BookmarkRepository bookmarkRepository;
     @Mock private MeetingBookmarkRepository meetingBookmarkRepository;
     @Mock private PostingParticipationRepository postingParticipationRepository;
     @Mock private PostingRepository postingRepository;
+    @Mock private MeetingMemberRepository meetingMemberRepository;
     @Mock private ProfileImageUrlResolver profileImageUrlResolver;
 
     private MyPageService myPageService;
@@ -67,7 +79,13 @@ class MyPageServiceTest {
                         meetingBookmarkRepository,
                         postingParticipationRepository,
                         postingRepository,
+                        meetingMemberRepository,
                         profileImageUrlResolver);
+        lenient()
+                .when(
+                        meetingMemberRepository.findAllByUserIdAndStatusAndMeetingStatus(
+                                USER_ID, MeetingMemberStatus.APPROVED, MeetingStatus.COMPLETED))
+                .thenReturn(List.of());
     }
 
     @Test
@@ -286,8 +304,8 @@ class MyPageServiceTest {
 
         try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
             securityUtil.when(SecurityUtil::getCurrentUserId).thenReturn(USER_ID);
-            when(postingParticipationRepository.findAllByUserIdAndStatus(
-                            USER_ID, PostingParticipationStatus.COMPLETED))
+            when(postingParticipationRepository.findAllByUserIdAndStatusIn(
+                            USER_ID, COMPLETED_STATUSES))
                     .thenReturn(List.of(first, second));
             when(postingRepository.findAllById(List.of(101L, 102L)))
                     .thenReturn(List.of(environmentPosting, educationPosting));
@@ -321,13 +339,14 @@ class MyPageServiceTest {
 
         try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
             securityUtil.when(SecurityUtil::getCurrentUserId).thenReturn(USER_ID);
-            when(postingParticipationRepository.findAllByUserIdAndStatus(
-                            USER_ID, PostingParticipationStatus.COMPLETED))
+            when(postingParticipationRepository.findAllByUserIdAndStatusIn(
+                            USER_ID, COMPLETED_STATUSES))
                     .thenReturn(List.of(earlierParticipation, laterParticipation));
             when(postingRepository.findAllById(List.of(201L, 202L)))
                     .thenReturn(List.of(earlierPosting, laterPosting));
 
-            List<MyPageActivityRecordResponse> records = myPageService.getActivityRecords(null);
+            List<MyPageActivityRecordResponse> records =
+                    myPageService.getActivityRecords(null, defaultPageable()).content();
 
             assertThat(records)
                     .extracting(MyPageActivityRecordResponse::postingId)
@@ -349,13 +368,14 @@ class MyPageServiceTest {
 
         try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
             securityUtil.when(SecurityUtil::getCurrentUserId).thenReturn(USER_ID);
-            when(postingParticipationRepository.findAllByUserIdAndStatus(
-                            USER_ID, PostingParticipationStatus.COMPLETED))
+            when(postingParticipationRepository.findAllByUserIdAndStatusIn(
+                            USER_ID, COMPLETED_STATUSES))
                     .thenReturn(List.of(undatedParticipation, datedParticipation));
             when(postingRepository.findAllById(List.of(204L, 203L)))
                     .thenReturn(List.of(undatedPosting, datedPosting));
 
-            List<MyPageActivityRecordResponse> records = myPageService.getActivityRecords(null);
+            List<MyPageActivityRecordResponse> records =
+                    myPageService.getActivityRecords(null, defaultPageable()).content();
 
             assertThat(records)
                     .extracting(MyPageActivityRecordResponse::postingId)
@@ -375,14 +395,16 @@ class MyPageServiceTest {
 
         try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
             securityUtil.when(SecurityUtil::getCurrentUserId).thenReturn(USER_ID);
-            when(postingParticipationRepository.findAllByUserIdAndStatus(
-                            USER_ID, PostingParticipationStatus.COMPLETED))
+            when(postingParticipationRepository.findAllByUserIdAndStatusIn(
+                            USER_ID, COMPLETED_STATUSES))
                     .thenReturn(List.of(environmentParticipation, educationParticipation));
             when(postingRepository.findAllById(List.of(301L, 302L)))
                     .thenReturn(List.of(environmentPosting, educationPosting));
 
             List<MyPageActivityRecordResponse> records =
-                    myPageService.getActivityRecords(PostingCategory.EDUCATION);
+                    myPageService
+                            .getActivityRecords(PostingCategory.EDUCATION, defaultPageable())
+                            .content();
 
             assertThat(records)
                     .extracting(MyPageActivityRecordResponse::postingId)
@@ -396,14 +418,150 @@ class MyPageServiceTest {
     void getActivityRecords_returnsEmpty_whenNoCompletedParticipations() {
         try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
             securityUtil.when(SecurityUtil::getCurrentUserId).thenReturn(USER_ID);
-            when(postingParticipationRepository.findAllByUserIdAndStatus(
-                            USER_ID, PostingParticipationStatus.COMPLETED))
+            when(postingParticipationRepository.findAllByUserIdAndStatusIn(
+                            USER_ID, COMPLETED_STATUSES))
                     .thenReturn(List.of());
 
-            List<MyPageActivityRecordResponse> records = myPageService.getActivityRecords(null);
+            List<MyPageActivityRecordResponse> records =
+                    myPageService.getActivityRecords(null, defaultPageable()).content();
 
             assertThat(records).isEmpty();
         }
+    }
+
+    @Test
+    @DisplayName(
+            "getActivitySummary adds completed meeting volunteering into totalCompletedCount but"
+                    + " not into categoryBlocks (M-3)")
+    void getActivitySummary_includesMeetingCompletionsInTotalOnly() {
+        Posting environmentPosting = posting(101L, LocalDate.of(2026, 7, 20));
+        PostingParticipation participation = PostingParticipation.create(USER_ID, 101L);
+
+        try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
+            securityUtil.when(SecurityUtil::getCurrentUserId).thenReturn(USER_ID);
+            when(postingParticipationRepository.findAllByUserIdAndStatusIn(
+                            USER_ID, COMPLETED_STATUSES))
+                    .thenReturn(List.of(participation));
+            when(postingRepository.findAllById(List.of(101L)))
+                    .thenReturn(List.of(environmentPosting));
+            when(meetingMemberRepository.findAllByUserIdAndStatusAndMeetingStatus(
+                            USER_ID, MeetingMemberStatus.APPROVED, MeetingStatus.COMPLETED))
+                    .thenReturn(List.of(approvedMeetingMember(), approvedMeetingMember()));
+
+            MyPageActivitySummaryResponse summary = myPageService.getActivitySummary();
+
+            assertThat(summary.totalCompletedCount()).isEqualTo(3);
+            assertThat(
+                            summary.categoryBlocks().stream()
+                                    .mapToLong(MyPageActivitySummaryResponse.CategoryBlock::count)
+                                    .sum())
+                    .isEqualTo(1);
+        }
+    }
+
+    @Test
+    @DisplayName(
+            "getActivitySummary keeps totalCompletedCount equal to the sum of categoryBlocks for"
+                    + " the posting portion when a posting lookup fails (L-2)")
+    void getActivitySummary_totalMatchesBlockSum_whenPostingLookupFails() {
+        PostingParticipation orphanParticipation = PostingParticipation.create(USER_ID, 999L);
+
+        try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
+            securityUtil.when(SecurityUtil::getCurrentUserId).thenReturn(USER_ID);
+            when(postingParticipationRepository.findAllByUserIdAndStatusIn(
+                            USER_ID, COMPLETED_STATUSES))
+                    .thenReturn(List.of(orphanParticipation));
+            when(postingRepository.findAllById(List.of(999L))).thenReturn(List.of());
+
+            MyPageActivitySummaryResponse summary = myPageService.getActivitySummary();
+
+            long blockSum =
+                    summary.categoryBlocks().stream()
+                            .mapToLong(MyPageActivitySummaryResponse.CategoryBlock::count)
+                            .sum();
+            assertThat(summary.totalCompletedCount()).isEqualTo(blockSum);
+        }
+    }
+
+    @Test
+    @DisplayName(
+            "getActivityRecords breaks ties on the same actStartDate using participation id"
+                    + " descending, for a stable order (L-6)")
+    void getActivityRecords_breaksTiesOnSameDateByParticipationId() {
+        Posting samedayPostingA = posting(501L, LocalDate.of(2026, 7, 10));
+        Posting samedayPostingB = posting(502L, LocalDate.of(2026, 7, 10));
+        PostingParticipation participationA = PostingParticipation.create(USER_ID, 501L);
+        PostingParticipation participationB = PostingParticipation.create(USER_ID, 502L);
+        ReflectionTestUtils.setField(participationA, "id", 11L);
+        ReflectionTestUtils.setField(participationB, "id", 12L);
+
+        try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
+            securityUtil.when(SecurityUtil::getCurrentUserId).thenReturn(USER_ID);
+            when(postingParticipationRepository.findAllByUserIdAndStatusIn(
+                            USER_ID, COMPLETED_STATUSES))
+                    .thenReturn(List.of(participationA, participationB));
+            when(postingRepository.findAllById(List.of(501L, 502L)))
+                    .thenReturn(List.of(samedayPostingA, samedayPostingB));
+
+            List<MyPageActivityRecordResponse> records =
+                    myPageService.getActivityRecords(null, defaultPageable()).content();
+
+            assertThat(records)
+                    .extracting(MyPageActivityRecordResponse::postingId)
+                    .containsExactly(502L, 501L);
+        }
+    }
+
+    @Test
+    @DisplayName("getActivityRecords paginates the result according to the given Pageable (M-8)")
+    void getActivityRecords_paginatesResults() {
+        Posting first = posting(601L, LocalDate.of(2026, 7, 1));
+        Posting second = posting(602L, LocalDate.of(2026, 7, 2));
+        Posting third = posting(603L, LocalDate.of(2026, 7, 3));
+        PostingParticipation p1 = PostingParticipation.create(USER_ID, 601L);
+        PostingParticipation p2 = PostingParticipation.create(USER_ID, 602L);
+        PostingParticipation p3 = PostingParticipation.create(USER_ID, 603L);
+
+        try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
+            securityUtil.when(SecurityUtil::getCurrentUserId).thenReturn(USER_ID);
+            when(postingParticipationRepository.findAllByUserIdAndStatusIn(
+                            USER_ID, COMPLETED_STATUSES))
+                    .thenReturn(List.of(p1, p2, p3));
+            when(postingRepository.findAllById(List.of(601L, 602L, 603L)))
+                    .thenReturn(List.of(first, second, third));
+
+            PageResponse<MyPageActivityRecordResponse> page =
+                    myPageService.getActivityRecords(null, PageRequest.of(0, 2));
+
+            assertThat(page.content()).hasSize(2);
+            assertThat(page.totalElements()).isEqualTo(3);
+            assertThat(page.totalPages()).isEqualTo(2);
+        }
+    }
+
+    private Pageable defaultPageable() {
+        return PageRequest.of(0, 20);
+    }
+
+    private MeetingMember approvedMeetingMember() {
+        Meeting meeting =
+                Meeting.create(
+                        "테스트 모임",
+                        "설명",
+                        5,
+                        LocalDate.of(2026, 6, 1).atStartOfDay(),
+                        null,
+                        Set.of(PostingCategory.ENVIRONMENT),
+                        1L,
+                        user(),
+                        null,
+                        null,
+                        LocalDate.of(2026, 6, 2).atStartOfDay(),
+                        LocalDate.of(2026, 6, 3).atStartOfDay());
+        ReflectionTestUtils.setField(meeting, "status", MeetingStatus.COMPLETED);
+        MeetingMember member = MeetingMember.createHost(user(), meeting);
+        ReflectionTestUtils.setField(member, "status", MeetingMemberStatus.APPROVED);
+        return member;
     }
 
     private User user() {

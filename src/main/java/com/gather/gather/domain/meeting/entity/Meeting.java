@@ -170,6 +170,19 @@ public class Meeting {
         return activityEndAt != null && activityEndAt.isBefore(now);
     }
 
+    /** 활동 기간(activityStartAt~activityEndAt)이 설정된 모임인지 여부. 설정 안 된 자유 모임은 완료 처리에 날짜 게이트를 적용하지 않는다. */
+    public boolean hasActivityPeriod() {
+        return activityEndAt != null;
+    }
+
+    /**
+     * 뱃지 판정(활동일 기준 연속 참여 월 계산)에 쓰이는 실질 활동 종료 시각. 활동 기간이 없는 자유 모임은 null을 반환하며, 이 경우 호출부는
+     * completedAt(완료 처리 시각)으로 대체해야 한다.
+     */
+    public LocalDateTime getEffectiveActivityEnd() {
+        return activityEndAt != null ? activityEndAt : activityStartAt;
+    }
+
     public void increaseMemberCount() {
         this.currentMemberCount++;
         if (isFull()) {

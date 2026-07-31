@@ -15,6 +15,7 @@ import com.gather.gather.global.common.ApiResponse;
 import com.gather.gather.global.common.PageResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import java.time.LocalDate;
@@ -179,6 +180,18 @@ public class MeetingController {
     @Operation(
             summary = "모임(그룹) 봉사 완료 처리",
             description = "모임장이 모임을 완료 처리한다. 개인 봉사는 본인이 활동종료일 이후 별도 API로 완료 처리한다.")
+    @ApiResponses({
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                responseCode = "200",
+                description = "완료 처리 성공"),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                responseCode = "403",
+                description = "모임장이 아님(MEETING_HOST_ONLY)"),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                responseCode = "409",
+                description =
+                        "이미 완료됨(MEETING_ALREADY_COMPLETED) / 활동종료일 미경과(MEETING_COMPLETE_NOT_ALLOWED)")
+    })
     @PatchMapping("/{meetingId}/complete")
     public ApiResponse<Void> completeMeeting(@PathVariable Long meetingId) {
         meetingService.completeMeeting(meetingId);
@@ -188,6 +201,21 @@ public class MeetingController {
     @Operation(
             summary = "봉사 인정시간 입력",
             description = "완료 처리된 모임에 한해, 승인된 멤버 본인이 직접 인정시간(분 단위, 10분 단위)을 입력한다.")
+    @ApiResponses({
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                responseCode = "200",
+                description = "인정시간 입력 성공"),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                responseCode = "400",
+                description = "인정시간 형식 오류(10분 단위·양수·상한 이내가 아님, VALIDATION_ERROR)"),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                responseCode = "403",
+                description = "승인된 멤버가 아님(MEETING_MEMBER_REQUIRED)"),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                responseCode = "409",
+                description =
+                        "완료 처리되지 않음(MEETING_HOURS_NOT_ALLOWED) / 이미 입력됨(MEETING_HOURS_ALREADY_SUBMITTED)")
+    })
     @PatchMapping("/{meetingId}/members/me/hours")
     public ApiResponse<Void> submitMemberHours(
             @PathVariable Long meetingId, @RequestBody MeetingRecognizedMinutesRequest request) {

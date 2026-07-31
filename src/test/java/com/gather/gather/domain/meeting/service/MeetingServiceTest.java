@@ -9,6 +9,9 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.gather.gather.domain.auth.repository.UserRepository;
+import com.gather.gather.domain.badge.entity.BadgeType;
+import com.gather.gather.domain.badge.event.BadgeAwardRequestedEvent;
+import com.gather.gather.domain.badge.event.MeetingCompletedEvent;
 import com.gather.gather.domain.meeting.dto.PostingMeetingResponse;
 import com.gather.gather.domain.meeting.entity.Meeting;
 import com.gather.gather.domain.meeting.entity.MeetingMember;
@@ -45,10 +48,7 @@ class MeetingServiceTest {
     @Mock private RegionRepository regionRepository;
     @Mock private PostingRepository postingRepository;
     @Mock private MeetingSearchLogService meetingSearchLogService;
-    @Mock private com.gather.gather.domain.badge.service.BadgeAwardService badgeAwardService;
-
-    @Mock
-    private com.gather.gather.domain.badge.service.BadgeEvaluationService badgeEvaluationService;
+    @Mock private org.springframework.context.ApplicationEventPublisher eventPublisher;
 
     @InjectMocks private MeetingService meetingService;
 
@@ -149,13 +149,15 @@ class MeetingServiceTest {
         meetingService.completeMeeting(12L);
 
         verify(hostMeeting).complete();
+        verify(eventPublisher).publishEvent(new MeetingCompletedEvent(12L));
     }
 
     @Test
     @DisplayName(
-            "completeMeeting keeps completing the meeting and evaluates every member's badges"
-                    + " even when one member's badge evaluation throws")
-    void completeMeeting_isolatesPerMemberBadgeFailures() {
+            "completeMeeting publishes MeetingCompletedEvent after commit instead of evaluating"
+                    + " member badges inline (B-1 — per-member isolation now lives in"
+                    + " BadgeEventListener, covered by BadgeEventListenerTest)")
+    void completeMeeting_publishesEventInsteadOfEvaluatingBadgesInline() {
         setAuthenticatedUser(1L);
         Meeting hostMeeting = mock(Meeting.class);
         com.gather.gather.domain.auth.entity.User host =
@@ -165,30 +167,61 @@ class MeetingServiceTest {
         when(meetingRepository.findByIdAndDeletedAtIsNullForUpdate(12L))
                 .thenReturn(java.util.Optional.of(hostMeeting));
 
-        MeetingMember failingMember = mock(MeetingMember.class);
-        com.gather.gather.domain.auth.entity.User failingUser =
-                mock(com.gather.gather.domain.auth.entity.User.class);
-        when(failingUser.getId()).thenReturn(2L);
-        when(failingMember.getUser()).thenReturn(failingUser);
+        meetingService.completeMeeting(12L);
 
-        MeetingMember okMember = mock(MeetingMember.class);
-        com.gather.gather.domain.auth.entity.User okUser =
-                mock(com.gather.gather.domain.auth.entity.User.class);
-        when(okUser.getId()).thenReturn(3L);
-        when(okMember.getUser()).thenReturn(okUser);
+        verify(hostMeeting).complete();
+        verify(eventPublisher).publishEvent(new MeetingCompletedEvent(12L));
+        verify(meetingMemberRepository, never())
+                .findAllByMeetingIdAndStatusFetchUser(
+                        org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any());
+    }
 
-        when(meetingMemberRepository.findAllByMeetingIdAndStatusFetchUser(
-                        12L, MeetingMemberStatus.APPROVED))
-                .thenReturn(List.of(failingMember, okMember));
-        org.mockito.Mockito.doThrow(new RuntimeException("badge evaluation blew up"))
-                .when(badgeEvaluationService)
-                .onVolunteerActivityCompleted(2L);
+    @Test
+    @DisplayName(
+            "completeMeeting throws MEETING_COMPLETE_NOT_ALLOWED when the meeting has an activity"
+                    + " period that has not ended yet (M-1)")
+    void completeMeeting_throwsCompleteNotAllowed_whenActivityNotEnded() {
+        setAuthenticatedUser(1L);
+        Meeting hostMeeting = mock(Meeting.class);
+        com.gather.gather.domain.auth.entity.User host =
+                mock(com.gather.gather.domain.auth.entity.User.class);
+        when(host.getId()).thenReturn(1L);
+        when(hostMeeting.getHost()).thenReturn(host);
+        when(hostMeeting.hasActivityPeriod()).thenReturn(true);
+        when(hostMeeting.isActivityEnded(org.mockito.ArgumentMatchers.any())).thenReturn(false);
+        when(meetingRepository.findByIdAndDeletedAtIsNullForUpdate(12L))
+                .thenReturn(java.util.Optional.of(hostMeeting));
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(
+                        () -> meetingService.completeMeeting(12L))
+                .isInstanceOf(com.gather.gather.global.exception.BusinessException.class)
+                .hasFieldOrPropertyWithValue(
+                        "errorCode",
+                        com.gather.gather.global.exception.ErrorCode.MEETING_COMPLETE_NOT_ALLOWED);
+        verify(hostMeeting, never()).complete();
+        verify(eventPublisher, never()).publishEvent(org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    @DisplayName(
+            "completeMeeting succeeds when the meeting has an activity period that has already"
+                    + " ended (M-1)")
+    void completeMeeting_succeeds_whenActivityHasEnded() {
+        setAuthenticatedUser(1L);
+        Meeting hostMeeting = mock(Meeting.class);
+        com.gather.gather.domain.auth.entity.User host =
+                mock(com.gather.gather.domain.auth.entity.User.class);
+        when(host.getId()).thenReturn(1L);
+        when(hostMeeting.getHost()).thenReturn(host);
+        when(hostMeeting.hasActivityPeriod()).thenReturn(true);
+        when(hostMeeting.isActivityEnded(org.mockito.ArgumentMatchers.any())).thenReturn(true);
+        when(meetingRepository.findByIdAndDeletedAtIsNullForUpdate(12L))
+                .thenReturn(java.util.Optional.of(hostMeeting));
 
         meetingService.completeMeeting(12L);
 
         verify(hostMeeting).complete();
-        verify(badgeEvaluationService).onVolunteerActivityCompleted(2L);
-        verify(badgeEvaluationService).onVolunteerActivityCompleted(3L);
+        verify(eventPublisher).publishEvent(new MeetingCompletedEvent(12L));
     }
 
     @Test
@@ -284,6 +317,120 @@ class MeetingServiceTest {
                 .hasFieldOrPropertyWithValue(
                         "errorCode", com.gather.gather.global.exception.ErrorCode.VALIDATION_ERROR);
         verify(meetingRepository, never()).findByIdAndDeletedAtIsNull(12L);
+    }
+
+    @Test
+    @DisplayName(
+            "submitMemberHours throws MEETING_MEMBER_REQUIRED when the caller is not an"
+                    + " approved member (M-10)")
+    void submitMemberHours_throwsMemberRequired_whenNotApprovedMember() {
+        setAuthenticatedUser(1L);
+        Meeting completedMeeting = mock(Meeting.class);
+        when(completedMeeting.getStatus()).thenReturn(MeetingStatus.COMPLETED);
+        when(meetingRepository.findByIdAndDeletedAtIsNull(12L))
+                .thenReturn(java.util.Optional.of(completedMeeting));
+        when(meetingMemberRepository.findByMeeting_IdAndUser_IdAndStatus(
+                        12L, 1L, MeetingMemberStatus.APPROVED))
+                .thenReturn(java.util.Optional.empty());
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(
+                        () -> meetingService.submitMemberHours(12L, 210))
+                .isInstanceOf(com.gather.gather.global.exception.BusinessException.class)
+                .hasFieldOrPropertyWithValue(
+                        "errorCode",
+                        com.gather.gather.global.exception.ErrorCode.MEETING_MEMBER_REQUIRED);
+    }
+
+    @Test
+    @DisplayName(
+            "submitMemberHours throws MEETING_HOURS_ALREADY_SUBMITTED when minutes were already"
+                    + " entered (M-10)")
+    void submitMemberHours_throwsAlreadySubmitted_whenAlreadySet() {
+        setAuthenticatedUser(1L);
+        Meeting completedMeeting = mock(Meeting.class);
+        when(completedMeeting.getStatus()).thenReturn(MeetingStatus.COMPLETED);
+        when(meetingRepository.findByIdAndDeletedAtIsNull(12L))
+                .thenReturn(java.util.Optional.of(completedMeeting));
+        MeetingMember member = mock(MeetingMember.class);
+        when(member.getRecognizedMinutes()).thenReturn(60);
+        when(meetingMemberRepository.findByMeeting_IdAndUser_IdAndStatus(
+                        12L, 1L, MeetingMemberStatus.APPROVED))
+                .thenReturn(java.util.Optional.of(member));
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(
+                        () -> meetingService.submitMemberHours(12L, 210))
+                .isInstanceOf(com.gather.gather.global.exception.BusinessException.class)
+                .hasFieldOrPropertyWithValue(
+                        "errorCode",
+                        com.gather.gather.global.exception.ErrorCode
+                                .MEETING_HOURS_ALREADY_SUBMITTED);
+        verify(member, never()).submitRecognizedMinutes(org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    @DisplayName(
+            "approveJoinRequest publishes FIRST_TEAM_JOIN when the approved requester's role is"
+                    + " MEMBER (H-3)")
+    void approveJoinRequest_publishesFirstTeamJoin_whenRoleIsMember() {
+        setAuthenticatedUser(1L);
+        Meeting hostMeeting = mock(Meeting.class);
+        com.gather.gather.domain.auth.entity.User host =
+                mock(com.gather.gather.domain.auth.entity.User.class);
+        when(host.getId()).thenReturn(1L);
+        when(hostMeeting.getHost()).thenReturn(host);
+        when(hostMeeting.getStatus()).thenReturn(MeetingStatus.RECRUITING);
+        when(hostMeeting.isDeadlinePassed(org.mockito.ArgumentMatchers.any())).thenReturn(false);
+        when(hostMeeting.isActivityEnded(org.mockito.ArgumentMatchers.any())).thenReturn(false);
+        when(hostMeeting.isFull()).thenReturn(false);
+        when(meetingRepository.findByIdAndDeletedAtIsNullForUpdate(12L))
+                .thenReturn(java.util.Optional.of(hostMeeting));
+
+        MeetingMember pendingMember = mock(MeetingMember.class);
+        com.gather.gather.domain.auth.entity.User requester =
+                mock(com.gather.gather.domain.auth.entity.User.class);
+        when(requester.getId()).thenReturn(9L);
+        when(pendingMember.getUser()).thenReturn(requester);
+        when(pendingMember.getRole()).thenReturn(MeetingMemberRole.MEMBER);
+        when(meetingMemberRepository.findPendingByIdAndMeetingIdForUpdate(99L, 12L))
+                .thenReturn(java.util.Optional.of(pendingMember));
+
+        meetingService.approveJoinRequest(12L, 99L);
+
+        verify(pendingMember).approve();
+        verify(eventPublisher)
+                .publishEvent(new BadgeAwardRequestedEvent(9L, BadgeType.FIRST_TEAM_JOIN));
+    }
+
+    @Test
+    @DisplayName(
+            "approveJoinRequest does not publish FIRST_TEAM_JOIN when the approved requester's"
+                    + " role is HOST (H-3)")
+    void approveJoinRequest_doesNotPublishFirstTeamJoin_whenRoleIsHost() {
+        setAuthenticatedUser(1L);
+        Meeting hostMeeting = mock(Meeting.class);
+        com.gather.gather.domain.auth.entity.User host =
+                mock(com.gather.gather.domain.auth.entity.User.class);
+        when(host.getId()).thenReturn(1L);
+        when(hostMeeting.getHost()).thenReturn(host);
+        when(hostMeeting.getStatus()).thenReturn(MeetingStatus.RECRUITING);
+        when(hostMeeting.isDeadlinePassed(org.mockito.ArgumentMatchers.any())).thenReturn(false);
+        when(hostMeeting.isActivityEnded(org.mockito.ArgumentMatchers.any())).thenReturn(false);
+        when(hostMeeting.isFull()).thenReturn(false);
+        when(meetingRepository.findByIdAndDeletedAtIsNullForUpdate(12L))
+                .thenReturn(java.util.Optional.of(hostMeeting));
+
+        MeetingMember pendingMember = mock(MeetingMember.class);
+        com.gather.gather.domain.auth.entity.User requester =
+                mock(com.gather.gather.domain.auth.entity.User.class);
+        when(pendingMember.getUser()).thenReturn(requester);
+        when(pendingMember.getRole()).thenReturn(MeetingMemberRole.HOST);
+        when(meetingMemberRepository.findPendingByIdAndMeetingIdForUpdate(99L, 12L))
+                .thenReturn(java.util.Optional.of(pendingMember));
+
+        meetingService.approveJoinRequest(12L, 99L);
+
+        verify(pendingMember).approve();
+        verify(eventPublisher, never()).publishEvent(org.mockito.ArgumentMatchers.any());
     }
 
     private void setAuthenticatedUser(Long userId) {

@@ -3,7 +3,7 @@ package com.gather.gather.domain.post.service;
 import com.gather.gather.domain.auth.entity.User;
 import com.gather.gather.domain.auth.repository.UserRepository;
 import com.gather.gather.domain.badge.entity.BadgeType;
-import com.gather.gather.domain.badge.service.BadgeAwardService;
+import com.gather.gather.domain.badge.event.BadgeAwardRequestedEvent;
 import com.gather.gather.domain.meeting.entity.Meeting;
 import com.gather.gather.domain.meeting.entity.MeetingMember;
 import com.gather.gather.domain.meeting.enums.MeetingMemberRole;
@@ -24,6 +24,7 @@ import java.util.EnumSet;
 import java.util.List;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -48,7 +49,7 @@ public class PostService {
     private final MeetingRepository meetingRepository;
     private final MeetingMemberRepository meetingMemberRepository;
     private final UserRepository userRepository;
-    private final BadgeAwardService badgeAwardService;
+    private final ApplicationEventPublisher eventPublisher;
 
     public List<PostSummaryResponse> getPosts(Long meetingId, PostType typeFilter) {
         Long userId = SecurityUtil.getCurrentUserId();
@@ -101,7 +102,8 @@ public class PostService {
 
         Post savedPost = postRepository.save(post);
         if (request.type() == PostType.REVIEW) {
-            badgeAwardService.award(userId, BadgeType.FIRST_REVIEW);
+            eventPublisher.publishEvent(
+                    new BadgeAwardRequestedEvent(userId, BadgeType.FIRST_REVIEW));
         }
         return PostResponse.from(savedPost);
     }

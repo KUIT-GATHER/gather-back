@@ -1,6 +1,6 @@
 package com.gather.gather.domain.posting.service;
 
-import com.gather.gather.domain.badge.service.BadgeEvaluationService;
+import com.gather.gather.domain.badge.event.VolunteerActivityCompletedEvent;
 import com.gather.gather.domain.posting.dto.PostingParticipationResponse;
 import com.gather.gather.domain.posting.entity.Posting;
 import com.gather.gather.domain.posting.entity.PostingParticipation;
@@ -17,6 +17,7 @@ import java.util.Locale;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.hibernate.exception.ConstraintViolationException;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -35,7 +36,7 @@ public class PostingParticipationService {
 
     private final PostingParticipationRepository postingParticipationRepository;
     private final PostingRepository postingRepository;
-    private final BadgeEvaluationService badgeEvaluationService;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Transactional
     public PostingParticipationResponse apply(Long postingId) {
@@ -105,7 +106,7 @@ public class PostingParticipationService {
         }
 
         participation.complete();
-        badgeEvaluationService.onVolunteerActivityCompleted(userId);
+        eventPublisher.publishEvent(new VolunteerActivityCompletedEvent(userId));
     }
 
     /** 완료 처리 이후 사용자가 직접 인정시간을 입력한다(분 단위, 1회만 입력 가능). */

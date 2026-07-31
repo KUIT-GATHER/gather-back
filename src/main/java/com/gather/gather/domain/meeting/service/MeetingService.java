@@ -3,8 +3,8 @@ package com.gather.gather.domain.meeting.service;
 import com.gather.gather.domain.auth.entity.User;
 import com.gather.gather.domain.auth.repository.UserRepository;
 import com.gather.gather.domain.badge.entity.BadgeType;
-import com.gather.gather.domain.badge.service.BadgeAwardService;
-import com.gather.gather.domain.badge.service.BadgeEvaluationService;
+import com.gather.gather.domain.badge.event.BadgeAwardRequestedEvent;
+import com.gather.gather.domain.badge.event.MeetingCompletedEvent;
 import com.gather.gather.domain.meeting.dto.MeetingCreateRequest;
 import com.gather.gather.domain.meeting.dto.MeetingDetailResponse;
 import com.gather.gather.domain.meeting.dto.MeetingJoinRequestResponse;
@@ -37,6 +37,7 @@ import java.util.Set;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -71,8 +72,7 @@ public class MeetingService {
     private final RegionRepository regionRepository;
     private final PostingRepository postingRepository;
     private final MeetingSearchLogService meetingSearchLogService;
-    private final BadgeAwardService badgeAwardService;
-    private final BadgeEvaluationService badgeEvaluationService;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Transactional
     public MeetingResponse createMeeting(MeetingCreateRequest request) {
@@ -105,7 +105,7 @@ public class MeetingService {
 
         MeetingMember hostMember = MeetingMember.createHost(host, savedMeeting);
         meetingMemberRepository.save(hostMember);
-        badgeAwardService.award(userId, BadgeType.TEAM_CREATED);
+        eventPublisher.publishEvent(new BadgeAwardRequestedEvent(userId, BadgeType.TEAM_CREATED));
 
         return MeetingResponse.from(savedMeeting, resolveDisplayStatus(savedMeeting));
     }
@@ -261,7 +261,9 @@ public class MeetingService {
         member.approve();
         meeting.increaseMemberCount();
         if (member.getRole() == MeetingMemberRole.MEMBER) {
-            badgeAwardService.award(member.getUser().getId(), BadgeType.FIRST_TEAM_JOIN);
+            eventPublisher.publishEvent(
+                    new BadgeAwardRequestedEvent(
+                            member.getUser().getId(), BadgeType.FIRST_TEAM_JOIN));
         }
         return MeetingJoinRequestResponse.from(member);
     }
@@ -286,26 +288,12 @@ public class MeetingService {
         if (meeting.getStatus() == MeetingStatus.COMPLETED) {
             throw new BusinessException(ErrorCode.MEETING_ALREADY_COMPLETED);
         }
+        if (meeting.hasActivityPeriod() && !meeting.isActivityEnded(LocalDateTime.now())) {
+            throw new BusinessException(ErrorCode.MEETING_COMPLETE_NOT_ALLOWED);
+        }
 
         meeting.complete();
-
-        meetingMemberRepository
-                .findAllByMeetingIdAndStatusFetchUser(meetingId, MeetingMemberStatus.APPROVED)
-                .forEach(approvedMember -> evaluateBadgesSafely(meetingId, approvedMember));
-    }
-
-    /** 멤버 한 명의 뱃지 평가 실패가 나머지 멤버의 뱃지 평가나 모임 완료 처리 자체를 막지 않도록 격리한다. */
-    private void evaluateBadgesSafely(Long meetingId, MeetingMember approvedMember) {
-        Long memberUserId = approvedMember.getUser().getId();
-        try {
-            badgeEvaluationService.onVolunteerActivityCompleted(memberUserId);
-        } catch (RuntimeException exception) {
-            log.warn(
-                    "모임 완료 처리 중 뱃지 평가 실패(해당 멤버만 영향, 완료 처리는 유지됨). meetingId={}, userId={}",
-                    meetingId,
-                    memberUserId,
-                    exception);
-        }
+        eventPublisher.publishEvent(new MeetingCompletedEvent(meetingId));
     }
 
     /** 모임 완료 처리 이후, 승인된 멤버 본인이 직접 인정시간을 입력한다(분 단위, 1회만 입력 가능). */
@@ -344,7 +332,8 @@ public class MeetingService {
                                 MeetingResponse.from(
                                         member.getMeeting(),
                                         resolveDisplayStatus(member.getMeeting()),
-                                        member.getRole())) // ← HOST/MEMBER
+                                        member.getRole(), // ← HOST/MEMBER
+                                        member.getRecognizedMinutes()))
                 .toList();
     }
 

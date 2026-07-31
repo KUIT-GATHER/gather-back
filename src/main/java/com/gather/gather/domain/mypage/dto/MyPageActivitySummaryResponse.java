@@ -6,8 +6,13 @@ import java.util.List;
 
 @Schema(description = "활동기록 화면 - 활동 현황(총 완료 횟수 + 분야별 블럭)")
 public record MyPageActivitySummaryResponse(
-        @Schema(description = "총 활동 완료 횟수", example = "12") long totalCompletedCount,
-        @Schema(description = "분야별 블럭(전체 분야, 미수행 분야는 count=0)")
+        @Schema(
+                        description =
+                                "총 활동 완료 횟수(봉사공고 참여 + 모임 봉사 합산). 모임은 다중 분야를 가질 수 있어 분야별 블럭에는 집계되지 않으므로,"
+                                        + " categoryBlocks 합계보다 클 수 있다.",
+                        example = "12")
+                long totalCompletedCount,
+        @Schema(description = "분야별 블럭(봉사공고 참여만 집계, 전체 분야, 미수행 분야는 count=0)")
                 List<CategoryBlock> categoryBlocks) {
 
     public static MyPageActivitySummaryResponse of(

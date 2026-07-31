@@ -7,6 +7,7 @@ import com.gather.gather.domain.mypage.dto.MyPageHomeResponse;
 import com.gather.gather.domain.mypage.service.MyPageService;
 import com.gather.gather.domain.posting.entity.PostingCategory;
 import com.gather.gather.global.common.ApiResponse;
+import com.gather.gather.global.common.PageResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -16,6 +17,8 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import java.time.YearMonth;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.web.PageableDefault;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -153,7 +156,9 @@ public class MyPageController {
 
     @Operation(
             summary = "활동기록 상세 - 봉사 카드 목록",
-            description = "완료된 봉사 참여를 최신순으로 조회한다. category를 지정하면 해당 분야만 반환한다(미지정 시 전체).")
+            description =
+                    "완료된 봉사공고 참여를 최신 활동일순으로 페이지 단위 조회한다(모임 봉사는 포함하지 않음). "
+                            + "category를 지정하면 해당 분야만 반환한다(미지정 시 전체). 정렬은 항상 고정이며 sort 파라미터는 지원하지 않는다.")
     @ApiResponses({
         @io.swagger.v3.oas.annotations.responses.ApiResponse(
                 responseCode = "200",
@@ -170,9 +175,10 @@ public class MyPageController {
                                                 value = UNAUTHORIZED_EXAMPLE)))
     })
     @GetMapping("/activities/records")
-    public ApiResponse<List<MyPageActivityRecordResponse>> getActivityRecords(
+    public ApiResponse<PageResponse<MyPageActivityRecordResponse>> getActivityRecords(
             @Parameter(description = "분야 필터(미지정 시 전체)") @RequestParam(required = false)
-                    PostingCategory category) {
-        return ApiResponse.success(myPageService.getActivityRecords(category));
+                    PostingCategory category,
+            @PageableDefault(size = 20) Pageable pageable) {
+        return ApiResponse.success(myPageService.getActivityRecords(category, pageable));
     }
 }

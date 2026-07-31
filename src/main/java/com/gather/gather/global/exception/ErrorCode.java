@@ -57,6 +57,7 @@ public enum ErrorCode {
     MEETING_BOOKMARK_DUPLICATE(HttpStatus.CONFLICT, "이미 북마크한 모임입니다."),
     MEETING_BOOKMARK_NOT_FOUND(HttpStatus.NOT_FOUND, "북마크를 찾을 수 없습니다."),
     MEETING_ALREADY_COMPLETED(HttpStatus.CONFLICT, "이미 완료 처리된 모임입니다."),
+    MEETING_COMPLETE_NOT_ALLOWED(HttpStatus.CONFLICT, "활동종료일이 지나야 완료 처리를 할 수 있습니다."),
     MEETING_HOURS_NOT_ALLOWED(HttpStatus.CONFLICT, "완료 처리된 모임에서만 인정시간을 입력할 수 있습니다."),
     MEETING_HOURS_ALREADY_SUBMITTED(HttpStatus.CONFLICT, "이미 인정시간을 입력했습니다."),
 

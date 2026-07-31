@@ -184,8 +184,9 @@ public class PostingController {
                             + "헤더가 없거나 비로그인 상태, 혹은 유효하지 않거나 만료된 토큰인 경우에도 bookmarked는 항상 false입니다. "
                             + "participationStatus는 해당 사용자의 참여 상태(APPLIED/CONFIRMED/COMPLETED/REVIEWED)이며, "
                             + "참여 이력이 없거나 비로그인 상태면 null입니다. "
-                            + "participationAction은 하단 버튼 동작으로, null/APPLIED는 각각 APPLY/CANCEL, "
-                            + "CONFIRMED는 COMPLETE, COMPLETED/REVIEWED는 NONE입니다.")
+                            + "participationAction은 하단 버튼 동작으로, 참여 상태와 활동종료 여부로 파생됩니다. "
+                            + "null은 APPLY, APPLIED/CONFIRMED는 활동종료 전이면 CANCEL·이후면 COMPLETE, "
+                            + "COMPLETED/REVIEWED는 NONE입니다.")
     @ApiResponses({
         @io.swagger.v3.oas.annotations.responses.ApiResponse(
                 responseCode = "200",

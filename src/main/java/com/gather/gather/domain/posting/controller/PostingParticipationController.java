@@ -308,6 +308,9 @@ public class PostingParticipationController {
                 responseCode = "200",
                 description = "인정시간 입력 성공"),
         @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                responseCode = "400",
+                description = "인정시간 형식 오류(10분 단위·양수·상한 이내가 아님, VALIDATION_ERROR)"),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(
                 responseCode = "401",
                 description = "인증되지 않은 요청",
                 content =

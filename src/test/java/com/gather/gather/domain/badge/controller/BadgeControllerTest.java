@@ -45,4 +45,51 @@ class BadgeControllerTest {
                 .andExpect(jsonPath("$.data[0].badgeType").value("FIRST_COMPLETION"))
                 .andExpect(jsonPath("$.data.length()").value(1));
     }
+
+    @Test
+    @DisplayName(
+            "GET /api/v1/mypage/badges returns 200 with an empty list when the user has no badges (L-10)")
+    void getMyBadges_returns200WithEmptyList_whenNoBadges() throws Exception {
+        when(badgeQueryService.getMyBadges()).thenReturn(List.of());
+
+        mockMvc.perform(get("/api/v1/mypage/badges"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data").isArray())
+                .andExpect(jsonPath("$.data.length()").value(0));
+    }
+
+    @Test
+    @DisplayName(
+            "GET /api/v1/mypage/badges maps every field and preserves the service's recent-first"
+                    + " ordering (L-10)")
+    void getMyBadges_mapsAllFieldsAndPreservesRecentFirstOrder() throws Exception {
+        LocalDateTime recentlyEarned = LocalDateTime.of(2026, 7, 20, 9, 0);
+        LocalDateTime earlierEarned = LocalDateTime.of(2026, 6, 1, 9, 0);
+        when(badgeQueryService.getMyBadges())
+                .thenReturn(
+                        List.of(
+                                new UserBadgeResponse(
+                                        BadgeType.BOOKMARK_5,
+                                        BadgeType.BOOKMARK_5.getTitle(),
+                                        BadgeType.BOOKMARK_5.getDescription(),
+                                        recentlyEarned),
+                                new UserBadgeResponse(
+                                        BadgeType.FIRST_COMPLETION,
+                                        BadgeType.FIRST_COMPLETION.getTitle(),
+                                        BadgeType.FIRST_COMPLETION.getDescription(),
+                                        earlierEarned)));
+
+        mockMvc.perform(get("/api/v1/mypage/badges"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(2))
+                .andExpect(jsonPath("$.data[0].badgeType").value("BOOKMARK_5"))
+                .andExpect(jsonPath("$.data[0].title").value(BadgeType.BOOKMARK_5.getTitle()))
+                .andExpect(
+                        jsonPath("$.data[0].description")
+                                .value(BadgeType.BOOKMARK_5.getDescription()))
+                .andExpect(jsonPath("$.data[0].earnedAt").value("2026-07-20T09:00:00"))
+                .andExpect(jsonPath("$.data[1].badgeType").value("FIRST_COMPLETION"))
+                .andExpect(jsonPath("$.data[1].earnedAt").value("2026-06-01T09:00:00"));
+    }
 }

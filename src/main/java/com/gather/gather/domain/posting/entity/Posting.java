@@ -199,11 +199,12 @@ public class Posting {
 
     /** 활동종료일이 지났는지 여부. actEndDate가 없으면(개별활동일만 있는 공고) activityDate를 종료일로 취급한다. */
     public boolean isActivityEnded(LocalDate today) {
-        LocalDate endDate = effectiveEndDate();
+        LocalDate endDate = getEffectiveActivityDate();
         return endDate != null && !endDate.isAfter(today);
     }
 
-    private LocalDate effectiveEndDate() {
+    /** 뱃지 판정(활동일 기준 연속 참여 월 계산) 등에 쓰이는 실질 활동일 — actEndDate가 없으면 activityDate로 대체한다. */
+    public LocalDate getEffectiveActivityDate() {
         return actEndDate != null ? actEndDate : activityDate;
     }
 

@@ -8,6 +8,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.gather.gather.domain.badge.event.VolunteerActivityCompletedEvent;
 import com.gather.gather.domain.posting.dto.PostingParticipationResponse;
 import com.gather.gather.domain.posting.entity.Posting;
 import com.gather.gather.domain.posting.entity.PostingCategory;
@@ -28,6 +29,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.MockedStatic;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.test.util.ReflectionTestUtils;
 
@@ -42,9 +44,7 @@ class PostingParticipationServiceTest {
 
     @Mock private PostingParticipationRepository postingParticipationRepository;
     @Mock private PostingRepository postingRepository;
-
-    @Mock
-    private com.gather.gather.domain.badge.service.BadgeEvaluationService badgeEvaluationService;
+    @Mock private ApplicationEventPublisher eventPublisher;
 
     private PostingParticipationService postingParticipationService;
 
@@ -52,7 +52,7 @@ class PostingParticipationServiceTest {
     void setUp() {
         postingParticipationService =
                 new PostingParticipationService(
-                        postingParticipationRepository, postingRepository, badgeEvaluationService);
+                        postingParticipationRepository, postingRepository, eventPublisher);
     }
 
     @Test
@@ -295,7 +295,10 @@ class PostingParticipationServiceTest {
     }
 
     @Test
-    @DisplayName("complete marks an APPLIED participation as COMPLETED once the activity has ended")
+    @DisplayName(
+            "complete marks an APPLIED participation as COMPLETED, stamps completedAt, and"
+                    + " publishes VolunteerActivityCompletedEvent once the activity has ended"
+                    + " (H-5)")
     void complete_marksCompleted_whenActivityEnded() {
         try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
             securityUtil.when(SecurityUtil::getCurrentUserId).thenReturn(USER_ID);
@@ -308,6 +311,48 @@ class PostingParticipationServiceTest {
             postingParticipationService.complete(POSTING_ID);
 
             assertThat(participation.getStatus()).isEqualTo(PostingParticipationStatus.COMPLETED);
+            assertThat(participation.getCompletedAt()).isNotNull();
+            verify(eventPublisher).publishEvent(new VolunteerActivityCompletedEvent(USER_ID));
+        }
+    }
+
+    @Test
+    @DisplayName("complete is allowed when actEndDate is exactly today (inclusive boundary, H-5)")
+    void complete_marksCompleted_whenActEndDateIsToday() {
+        try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
+            securityUtil.when(SecurityUtil::getCurrentUserId).thenReturn(USER_ID);
+            PostingParticipation participation =
+                    participationWithStatus(PostingParticipationStatus.APPLIED);
+            when(postingRepository.findById(POSTING_ID))
+                    .thenReturn(Optional.of(endingTodayPosting()));
+            when(postingParticipationRepository.findByUserIdAndPostingId(USER_ID, POSTING_ID))
+                    .thenReturn(Optional.of(participation));
+
+            postingParticipationService.complete(POSTING_ID);
+
+            assertThat(participation.getStatus()).isEqualTo(PostingParticipationStatus.COMPLETED);
+        }
+    }
+
+    @Test
+    @DisplayName(
+            "complete throws PARTICIPATION_COMPLETE_NOT_ALLOWED when actEndDate is tomorrow"
+                    + " (exclusive boundary, H-5)")
+    void complete_throwsCompleteNotAllowed_whenActEndDateIsTomorrow() {
+        try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
+            securityUtil.when(SecurityUtil::getCurrentUserId).thenReturn(USER_ID);
+            PostingParticipation participation =
+                    participationWithStatus(PostingParticipationStatus.APPLIED);
+            when(postingRepository.findById(POSTING_ID))
+                    .thenReturn(Optional.of(endingTomorrowPosting()));
+            when(postingParticipationRepository.findByUserIdAndPostingId(USER_ID, POSTING_ID))
+                    .thenReturn(Optional.of(participation));
+
+            assertThatThrownBy(() -> postingParticipationService.complete(POSTING_ID))
+                    .isInstanceOf(BusinessException.class)
+                    .hasFieldOrPropertyWithValue(
+                            "errorCode", ErrorCode.PARTICIPATION_COMPLETE_NOT_ALLOWED);
+            verify(eventPublisher, never()).publishEvent(any());
         }
     }
 
@@ -490,6 +535,32 @@ class PostingParticipationServiceTest {
                 .status(PostingStatus.RECRUITING)
                 .activityDate(LocalDate.of(2026, 7, 15))
                 .actEndDate(LocalDate.now().minusDays(1))
+                .category(PostingCategory.ENVIRONMENT)
+                .isActive(true)
+                .build();
+    }
+
+    /** 활동종료일이 오늘인 공고(경계값) — complete()가 허용된다. */
+    private Posting endingTodayPosting() {
+        return Posting.builder()
+                .extId(EXT_ID)
+                .title("테스트 공고")
+                .status(PostingStatus.RECRUITING)
+                .activityDate(LocalDate.of(2026, 7, 15))
+                .actEndDate(LocalDate.now())
+                .category(PostingCategory.ENVIRONMENT)
+                .isActive(true)
+                .build();
+    }
+
+    /** 활동종료일이 내일인 공고(경계값) — complete()가 거부된다. */
+    private Posting endingTomorrowPosting() {
+        return Posting.builder()
+                .extId(EXT_ID)
+                .title("테스트 공고")
+                .status(PostingStatus.RECRUITING)
+                .activityDate(LocalDate.of(2026, 7, 15))
+                .actEndDate(LocalDate.now().plusDays(1))
                 .category(PostingCategory.ENVIRONMENT)
                 .isActive(true)
                 .build();

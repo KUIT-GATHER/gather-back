@@ -22,6 +22,7 @@ public interface MeetingMemberRepository extends JpaRepository<MeetingMember, Lo
             WHERE mm.user.id = :userId
               AND mm.status = :status
               AND m.status = :meetingStatus
+              AND m.deletedAt IS NULL
             """)
     List<MeetingMember> findAllByUserIdAndStatusAndMeetingStatus(
             @Param("userId") Long userId,
