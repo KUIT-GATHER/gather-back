@@ -332,6 +332,26 @@ class PostingParticipationServiceTest {
     }
 
     @Test
+    @DisplayName(
+            "complete marks an APPLIED participation as COMPLETED for a single-day posting"
+                    + " (no actEndDate) once activityDate has passed")
+    void complete_marksCompleted_whenSingleDayActivityDateHasPassed() {
+        try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
+            securityUtil.when(SecurityUtil::getCurrentUserId).thenReturn(USER_ID);
+            PostingParticipation participation =
+                    participationWithStatus(PostingParticipationStatus.APPLIED);
+            when(postingRepository.findById(POSTING_ID))
+                    .thenReturn(Optional.of(singleDayEndedPosting()));
+            when(postingParticipationRepository.findByUserIdAndPostingId(USER_ID, POSTING_ID))
+                    .thenReturn(Optional.of(participation));
+
+            postingParticipationService.complete(POSTING_ID);
+
+            assertThat(participation.getStatus()).isEqualTo(PostingParticipationStatus.COMPLETED);
+        }
+    }
+
+    @Test
     @DisplayName("complete throws PARTICIPATION_ALREADY_COMPLETED when already COMPLETED")
     void complete_throwsAlreadyCompleted_whenAlreadyCompleted() {
         try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
@@ -450,12 +470,13 @@ class PostingParticipationServiceTest {
         return participation;
     }
 
+    /** activityDate가 미래인 공고 — actEndDate가 없어도 아직 종료로 취급되지 않는다. */
     private Posting posting() {
         return Posting.builder()
                 .extId(EXT_ID)
                 .title("테스트 공고")
                 .status(PostingStatus.RECRUITING)
-                .activityDate(LocalDate.of(2026, 7, 15))
+                .activityDate(LocalDate.now().plusMonths(1))
                 .category(PostingCategory.ENVIRONMENT)
                 .isActive(true)
                 .build();
@@ -469,6 +490,18 @@ class PostingParticipationServiceTest {
                 .status(PostingStatus.RECRUITING)
                 .activityDate(LocalDate.of(2026, 7, 15))
                 .actEndDate(LocalDate.now().minusDays(1))
+                .category(PostingCategory.ENVIRONMENT)
+                .isActive(true)
+                .build();
+    }
+
+    /** actEndDate가 없는 개별활동일 공고, activityDate가 어제임 — complete()가 허용된다. */
+    private Posting singleDayEndedPosting() {
+        return Posting.builder()
+                .extId(EXT_ID)
+                .title("테스트 공고")
+                .status(PostingStatus.RECRUITING)
+                .activityDate(LocalDate.now().minusDays(1))
                 .category(PostingCategory.ENVIRONMENT)
                 .isActive(true)
                 .build();
