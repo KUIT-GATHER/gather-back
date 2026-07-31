@@ -1,6 +1,8 @@
 package com.gather.gather.global.config;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.gather.gather.domain.auth.repository.UserRepository;
+import com.gather.gather.domain.auth.service.ProtectedAccessPolicy;
 import com.gather.gather.domain.auth.service.TokenProvider;
 import java.util.List;
 import org.springframework.context.annotation.Bean;
@@ -49,12 +51,20 @@ public class SecurityConfig {
     private static final String[] ADMIN_ONLY_PATHS = {"/api/v1/admin/**"};
 
     private final TokenProvider tokenProvider;
+    private final UserRepository userRepository;
+    private final ProtectedAccessPolicy protectedAccessPolicy;
     private final ObjectMapper objectMapper;
     private final CorsProperties corsProperties;
 
     public SecurityConfig(
-            TokenProvider tokenProvider, ObjectMapper objectMapper, CorsProperties corsProperties) {
+            TokenProvider tokenProvider,
+            UserRepository userRepository,
+            ProtectedAccessPolicy protectedAccessPolicy,
+            ObjectMapper objectMapper,
+            CorsProperties corsProperties) {
         this.tokenProvider = tokenProvider;
+        this.userRepository = userRepository;
+        this.protectedAccessPolicy = protectedAccessPolicy;
         this.objectMapper = objectMapper;
         this.corsProperties = corsProperties;
     }
@@ -114,7 +124,8 @@ public class SecurityConfig {
                                         .anyRequest()
                                         .authenticated())
                 .addFilterBefore(
-                        new JwtAuthenticationFilter(tokenProvider),
+                        new JwtAuthenticationFilter(
+                                tokenProvider, userRepository, protectedAccessPolicy),
                         UsernamePasswordAuthenticationFilter.class)
                 .exceptionHandling(
                         exception ->

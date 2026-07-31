@@ -221,6 +221,147 @@ class AccountRejoinBlockRepositoryTest {
         }
     }
 
+    @Test
+    void upsertExtendingExpiration_insertsAndNeverShortensExistingExpiration() {
+        User user = transactionTemplate().execute(status -> saveUser());
+        String identifierHash = hash();
+        LocalDateTime laterExpiration = NOW.plusDays(10);
+
+        transactionTemplate()
+                .executeWithoutResult(
+                        status ->
+                                accountRejoinBlockRepository.upsertExtendingExpiration(
+                                        "PHONE",
+                                        identifierHash,
+                                        1,
+                                        laterExpiration,
+                                        user.getId(),
+                                        NOW));
+        transactionTemplate()
+                .executeWithoutResult(
+                        status ->
+                                accountRejoinBlockRepository.upsertExtendingExpiration(
+                                        "PHONE",
+                                        identifierHash,
+                                        1,
+                                        NOW.plusDays(7),
+                                        user.getId(),
+                                        NOW.plusHours(1)));
+
+        AccountRejoinBlock found =
+                transactionTemplate()
+                        .execute(
+                                status ->
+                                        accountRejoinBlockRepository
+                                                .findByIdentifierTypeAndIdentifierHash(
+                                                        AccountRejoinBlockIdentifierType.PHONE,
+                                                        identifierHash)
+                                                .orElseThrow());
+        blockIds.add(found.getId());
+
+        assertThat(found.getExpiresAt()).isEqualTo(laterExpiration);
+        assertThat(found.getCreatedAt()).isEqualTo(NOW);
+    }
+
+    @Test
+    void activeLookup_allowsAtExactExpiration() {
+        Fixture fixture = createFixture(AccountRejoinBlockIdentifierType.PHONE, hash());
+
+        boolean beforeExpiration =
+                transactionTemplate()
+                        .execute(
+                                status ->
+                                        accountRejoinBlockRepository
+                                                .existsByIdentifierTypeAndIdentifierHashAndExpiresAtAfter(
+                                                        fixture.block().getIdentifierType(),
+                                                        fixture.block().getIdentifierHash(),
+                                                        fixture.block()
+                                                                .getExpiresAt()
+                                                                .minusNanos(1_000)));
+        boolean atExpiration =
+                transactionTemplate()
+                        .execute(
+                                status ->
+                                        accountRejoinBlockRepository
+                                                .existsByIdentifierTypeAndIdentifierHashAndExpiresAtAfter(
+                                                        fixture.block().getIdentifierType(),
+                                                        fixture.block().getIdentifierHash(),
+                                                        fixture.block().getExpiresAt()));
+
+        assertThat(beforeExpiration).isTrue();
+        assertThat(atExpiration).isFalse();
+    }
+
+    @Test
+    void upsertExtendingExpiration_serializesConcurrentInsertForMissingRow()
+            throws ExecutionException, InterruptedException, TimeoutException {
+        User user = transactionTemplate().execute(status -> saveUser());
+        String identifierHash = hash();
+        LocalDateTime laterExpiration = NOW.plusDays(10);
+        CountDownLatch ready = new CountDownLatch(2);
+        CountDownLatch start = new CountDownLatch(1);
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+
+        try {
+            Future<Void> first =
+                    executor.submit(
+                            () -> {
+                                ready.countDown();
+                                await(start);
+                                transactionTemplate()
+                                        .executeWithoutResult(
+                                                status ->
+                                                        accountRejoinBlockRepository
+                                                                .upsertExtendingExpiration(
+                                                                        "PHONE",
+                                                                        identifierHash,
+                                                                        1,
+                                                                        NOW.plusDays(7),
+                                                                        user.getId(),
+                                                                        NOW));
+                                return null;
+                            });
+            Future<Void> second =
+                    executor.submit(
+                            () -> {
+                                ready.countDown();
+                                await(start);
+                                transactionTemplate()
+                                        .executeWithoutResult(
+                                                status ->
+                                                        accountRejoinBlockRepository
+                                                                .upsertExtendingExpiration(
+                                                                        "PHONE",
+                                                                        identifierHash,
+                                                                        1,
+                                                                        laterExpiration,
+                                                                        user.getId(),
+                                                                        NOW));
+                                return null;
+                            });
+
+            assertThat(ready.await(3, TimeUnit.SECONDS)).isTrue();
+            start.countDown();
+            first.get(3, TimeUnit.SECONDS);
+            second.get(3, TimeUnit.SECONDS);
+
+            AccountRejoinBlock found =
+                    transactionTemplate()
+                            .execute(
+                                    status ->
+                                            accountRejoinBlockRepository
+                                                    .findByIdentifierTypeAndIdentifierHash(
+                                                            AccountRejoinBlockIdentifierType.PHONE,
+                                                            identifierHash)
+                                                    .orElseThrow());
+            blockIds.add(found.getId());
+            assertThat(found.getExpiresAt()).isEqualTo(laterExpiration);
+        } finally {
+            start.countDown();
+            executor.shutdownNow();
+        }
+    }
+
     private Fixture createFixture(
             AccountRejoinBlockIdentifierType identifierType, String identifierHash) {
         return transactionTemplate()

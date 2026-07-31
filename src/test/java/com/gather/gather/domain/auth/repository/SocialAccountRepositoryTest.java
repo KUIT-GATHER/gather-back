@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.gather.gather.domain.auth.entity.EncryptedProviderUserId;
 import com.gather.gather.domain.auth.entity.Gender;
 import com.gather.gather.domain.auth.entity.SocialAccount;
+import com.gather.gather.domain.auth.entity.SocialAccountLinkStatus;
 import com.gather.gather.domain.auth.entity.SocialProvider;
 import com.gather.gather.domain.auth.entity.User;
 import com.gather.gather.domain.posting.entity.PostingCategory;
@@ -86,6 +87,48 @@ class SocialAccountRepositoryTest {
                                                 1,
                                                 "ciphertext-5")))
                 .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    @Test
+    @DisplayName("사용자와 provider로 탈퇴 잠금 전 최소 identity snapshot을 조회한다")
+    void findIdentitySnapshotsByUserIdAndProvider_returnsLifecycleIdentityWithoutLockingEntity() {
+        User user = saveUser("01090000005", "socialrepofive");
+        SocialAccount account = saveAccount(user, "legacy-6", "e".repeat(64), 3, "ciphertext-6");
+        account.markUnlinkPending(NOW.plusMinutes(1));
+        socialAccountRepository.flush();
+
+        List<SocialAccountIdentitySnapshot> snapshots =
+                socialAccountRepository.findIdentitySnapshotsByUserIdAndProvider(
+                        user.getId(), SocialProvider.KAKAO);
+
+        assertThat(snapshots)
+                .containsExactly(
+                        new SocialAccountIdentitySnapshot(
+                                account.getId(),
+                                SocialProvider.KAKAO,
+                                account.getProviderUserKey(),
+                                3,
+                                SocialAccountLinkStatus.UNLINK_PENDING,
+                                1L));
+    }
+
+    @Test
+    @DisplayName("snapshot으로 얻은 ID를 사용해 SocialAccount를 비관적 쓰기 잠금 조회한다")
+    void findByIdForUpdate_returnsExactAccount() {
+        User user = saveUser("01090000006", "socialreposix");
+        SocialAccount account = saveAccount(user, "legacy-7", "f".repeat(64), 4, "ciphertext-7");
+        socialAccountRepository.flush();
+
+        SocialAccount locked =
+                socialAccountRepository.findByIdForUpdate(account.getId()).orElseThrow();
+
+        assertThat(locked).isSameAs(account);
+        assertThat(locked.getUser().getId()).isEqualTo(user.getId());
+        assertThat(locked.getProvider()).isEqualTo(SocialProvider.KAKAO);
+        assertThat(locked.getProviderUserKey()).isEqualTo("f".repeat(64));
+        assertThat(locked.getProviderUserKeyVersion()).isEqualTo(4);
+        assertThat(locked.getLinkStatus()).isEqualTo(SocialAccountLinkStatus.LINKED);
+        assertThat(locked.getGeneration()).isEqualTo(1L);
     }
 
     private SocialAccount saveAccount(

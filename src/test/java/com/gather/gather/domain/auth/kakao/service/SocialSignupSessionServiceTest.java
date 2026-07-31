@@ -3,6 +3,7 @@ package com.gather.gather.domain.auth.kakao.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
@@ -18,6 +19,7 @@ import com.gather.gather.domain.auth.entity.SocialSignupSessionStatus;
 import com.gather.gather.domain.auth.kakao.config.KakaoProperties;
 import com.gather.gather.domain.auth.kakao.token.SocialSignupTokenService;
 import com.gather.gather.domain.auth.repository.SocialSignupSessionRepository;
+import com.gather.gather.domain.auth.service.AccountRejoinBlockService;
 import com.gather.gather.domain.auth.service.RejoinBlockIdentifier;
 import com.gather.gather.global.exception.BusinessException;
 import com.gather.gather.global.exception.ErrorCode;
@@ -49,6 +51,7 @@ class SocialSignupSessionServiceTest {
     @Mock private SocialSignupSessionRepository repository;
     @Mock private SocialSignupSessionPersistenceService persistenceService;
     @Mock private SocialSignupTokenService tokenService;
+    @Mock private AccountRejoinBlockService rejoinBlockService;
 
     private SocialSignupSessionService service;
 
@@ -61,6 +64,7 @@ class SocialSignupSessionServiceTest {
                         persistenceService,
                         new SocialSignupSessionConstraintResolver(),
                         tokenService,
+                        rejoinBlockService,
                         new KakaoProperties(
                                 "rest-api-key",
                                 "client-secret",
@@ -72,17 +76,33 @@ class SocialSignupSessionServiceTest {
     }
 
     @Test
+    @DisplayName("활성 KAKAO 재가입 제한이 있으면 가입 세션을 발급하지 않는다")
+    void issue_rejectsBlockedIdentity() {
+        when(rejoinBlockService.isBlocked(IDENTIFIER, NOW)).thenReturn(true);
+
+        assertThatThrownBy(() -> service.issue(IDENTIFIER, ENCRYPTED_PROVIDER_USER_ID))
+                .isInstanceOf(BusinessException.class)
+                .extracting(exception -> ((BusinessException) exception).getErrorCode())
+                .isEqualTo(ErrorCode.ACCOUNT_REJOIN_BLOCKED);
+
+        verify(tokenService, never()).generateToken();
+        verify(persistenceService, never()).saveNewAttempt(any(), any());
+    }
+
+    @Test
     @DisplayName("세션 발급은 token 원문 대신 SHA-256 hash와 identity snapshot만 저장한다")
     void issue_persistsHashWithoutRawToken() {
         when(tokenService.generateToken()).thenReturn(TOKEN);
         when(tokenService.validateAndHash(TOKEN)).thenReturn(TOKEN_HASH);
-        doNothing().when(persistenceService).saveNewAttempt(any(SocialSignupSession.class));
+        doNothing()
+                .when(persistenceService)
+                .saveNewAttempt(any(SocialSignupSession.class), eq(NOW));
 
         String issued = service.issue(IDENTIFIER, ENCRYPTED_PROVIDER_USER_ID);
 
         ArgumentCaptor<SocialSignupSession> captor =
                 ArgumentCaptor.forClass(SocialSignupSession.class);
-        verify(persistenceService).saveNewAttempt(captor.capture());
+        verify(persistenceService).saveNewAttempt(captor.capture(), eq(NOW));
         SocialSignupSession session = captor.getValue();
         assertThat(issued).isEqualTo(TOKEN);
         assertThat(session.getTokenHash()).isEqualTo(TOKEN_HASH).isNotEqualTo(TOKEN);
@@ -108,13 +128,13 @@ class SocialSignupSessionServiceTest {
         doThrow(tokenHashConflict())
                 .doNothing()
                 .when(persistenceService)
-                .saveNewAttempt(any(SocialSignupSession.class));
+                .saveNewAttempt(any(SocialSignupSession.class), eq(NOW));
 
         String issued = service.issue(IDENTIFIER, ENCRYPTED_PROVIDER_USER_ID);
 
         ArgumentCaptor<SocialSignupSession> captor =
                 ArgumentCaptor.forClass(SocialSignupSession.class);
-        verify(persistenceService, times(2)).saveNewAttempt(captor.capture());
+        verify(persistenceService, times(2)).saveNewAttempt(captor.capture(), eq(NOW));
         assertThat(issued).isEqualTo(secondToken);
         assertThat(captor.getAllValues())
                 .extracting(SocialSignupSession::getTokenHash)
@@ -128,11 +148,13 @@ class SocialSignupSessionServiceTest {
                 new DataIntegrityViolationException("other constraint");
         when(tokenService.generateToken()).thenReturn(TOKEN);
         when(tokenService.validateAndHash(TOKEN)).thenReturn(TOKEN_HASH);
-        doThrow(exception).when(persistenceService).saveNewAttempt(any(SocialSignupSession.class));
+        doThrow(exception)
+                .when(persistenceService)
+                .saveNewAttempt(any(SocialSignupSession.class), eq(NOW));
 
         assertThatThrownBy(() -> service.issue(IDENTIFIER, ENCRYPTED_PROVIDER_USER_ID))
                 .isSameAs(exception);
-        verify(persistenceService).saveNewAttempt(any(SocialSignupSession.class));
+        verify(persistenceService).saveNewAttempt(any(SocialSignupSession.class), eq(NOW));
         verify(tokenService).generateToken();
     }
 
@@ -146,12 +168,13 @@ class SocialSignupSessionServiceTest {
         when(tokenService.validateAndHash(TOKEN)).thenReturn(TOKEN_HASH);
         doThrow(first, second, last)
                 .when(persistenceService)
-                .saveNewAttempt(any(SocialSignupSession.class));
+                .saveNewAttempt(any(SocialSignupSession.class), eq(NOW));
 
         assertThatThrownBy(() -> service.issue(IDENTIFIER, ENCRYPTED_PROVIDER_USER_ID))
                 .isInstanceOf(IllegalStateException.class)
                 .hasCause(last);
-        verify(persistenceService, times(3)).saveNewAttempt(any(SocialSignupSession.class));
+        verify(persistenceService, times(3))
+                .saveNewAttempt(any(SocialSignupSession.class), eq(NOW));
         verify(tokenService, times(3)).generateToken();
     }
 
@@ -281,6 +304,44 @@ class SocialSignupSessionServiceTest {
         assertThat(target.getStatus()).isEqualTo(SocialSignupSessionStatus.CONSUMED);
         assertThat(sibling.getStatus()).isEqualTo(SocialSignupSessionStatus.CANCELLED);
         assertThat(terminal.getStatus()).isEqualTo(SocialSignupSessionStatus.CONSUMED);
+    }
+
+    @Test
+    @DisplayName("identity의 PENDING 가입 세션을 잠금 조회 순서대로 모두 같은 시각에 취소한다")
+    void cancelPendingForIdentity_cancelsAllLockedPendingSessionsAtProvidedTime() {
+        SocialSignupSession first = session(TOKEN_HASH, NOW.plusMinutes(1));
+        SocialSignupSession second = session("d".repeat(64), NOW.plusMinutes(1));
+        when(repository.findAllByIdentityAndStatusForUpdate(
+                        SocialProvider.KAKAO, IDENTIFIER.hash(), SocialSignupSessionStatus.PENDING))
+                .thenReturn(List.of(first, second));
+
+        LockedPendingSocialSignupSessions lockedSessions =
+                service.lockPendingForIdentity(SocialProvider.KAKAO, IDENTIFIER, NOW);
+        lockedSessions.cancelAll(NOW);
+
+        assertThat(first.getStatus()).isEqualTo(SocialSignupSessionStatus.CANCELLED);
+        assertThat(second.getStatus()).isEqualTo(SocialSignupSessionStatus.CANCELLED);
+        assertThat(first.getCancelledAt()).isEqualTo(NOW);
+        assertThat(second.getCancelledAt()).isEqualTo(NOW);
+        verify(repository)
+                .findAllByIdentityAndStatusForUpdate(
+                        SocialProvider.KAKAO, IDENTIFIER.hash(), SocialSignupSessionStatus.PENDING);
+    }
+
+    @Test
+    @DisplayName("취소할 PENDING 가입 세션이 없으면 추가 변경 없이 완료한다")
+    void cancelPendingForIdentity_noPendingSessions_completesWithoutChanges() {
+        when(repository.findAllByIdentityAndStatusForUpdate(
+                        SocialProvider.KAKAO, IDENTIFIER.hash(), SocialSignupSessionStatus.PENDING))
+                .thenReturn(List.of());
+
+        LockedPendingSocialSignupSessions lockedSessions =
+                service.lockPendingForIdentity(SocialProvider.KAKAO, IDENTIFIER, NOW);
+        lockedSessions.cancelAll(NOW);
+
+        verify(repository)
+                .findAllByIdentityAndStatusForUpdate(
+                        SocialProvider.KAKAO, IDENTIFIER.hash(), SocialSignupSessionStatus.PENDING);
     }
 
     private void stubTokenAndCandidate(SocialSignupSession session) {

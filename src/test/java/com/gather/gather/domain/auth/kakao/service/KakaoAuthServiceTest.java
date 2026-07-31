@@ -26,7 +26,8 @@ import com.gather.gather.domain.auth.kakao.dto.KakaoSignupRequest;
 import com.gather.gather.domain.auth.kakao.dto.KakaoUserResponse;
 import com.gather.gather.domain.auth.kakao.dto.SignupStatus;
 import com.gather.gather.domain.auth.repository.UserRepository;
-import com.gather.gather.domain.auth.service.LoginPolicy;
+import com.gather.gather.domain.auth.service.AccountRejoinBlockService;
+import com.gather.gather.domain.auth.service.LockedTokenIssuanceService;
 import com.gather.gather.domain.auth.service.PhoneNumberNormalizer;
 import com.gather.gather.domain.auth.service.RejoinBlockIdentifier;
 import com.gather.gather.domain.auth.service.RejoinBlockIdentifierHasher;
@@ -40,8 +41,11 @@ import com.gather.gather.domain.region.entity.Region;
 import com.gather.gather.domain.region.repository.RegionRepository;
 import com.gather.gather.global.exception.BusinessException;
 import com.gather.gather.global.exception.ErrorCode;
+import java.time.Clock;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
@@ -78,6 +82,8 @@ class KakaoAuthServiceTest {
     @Mock private UserRepository userRepository;
     @Mock private RegionRepository regionRepository;
     @Mock private TokenIssuer tokenIssuer;
+    @Mock private LockedTokenIssuanceService lockedTokenIssuanceService;
+    @Mock private AccountRejoinBlockService accountRejoinBlockService;
 
     private KakaoAuthService kakaoAuthService;
 
@@ -94,8 +100,9 @@ class KakaoAuthServiceTest {
                         signupTransactionService,
                         new SignupValidator(
                                 userRepository, regionRepository, new PhoneNumberNormalizer()),
-                        tokenIssuer,
-                        new LoginPolicy());
+                        lockedTokenIssuanceService,
+                        accountRejoinBlockService,
+                        Clock.fixed(Instant.parse("2026-07-31T05:25:56.123456Z"), ZoneOffset.UTC));
     }
 
     @Test
@@ -105,7 +112,7 @@ class KakaoAuthServiceTest {
         stubKakaoAuthentication("동현");
         when(socialAccountIdentityService.findKakaoAccount(PROVIDER_USER_ID, IDENTIFIER))
                 .thenReturn(Optional.of(linkedSocialAccount(user)));
-        when(tokenIssuer.issue(user))
+        when(lockedTokenIssuanceService.issueForSocialAccount(user.getId(), null))
                 .thenReturn(new TokenIssueResult("access-token", "refresh-token"));
 
         KakaoLoginResult result = kakaoAuthService.login(loginRequest());
@@ -129,6 +136,13 @@ class KakaoAuthServiceTest {
     }
 
     @Test
+    @DisplayName("탈퇴 처리 중인 카카오 회원은 로그인을 거부하고 토큰을 발급하지 않는다")
+    void login_whenWithdrawalPendingMember_throwsPendingUserAndIssuesNoToken() {
+        assertKakaoLoginBlockedByStatus(
+                UserStatus.WITHDRAWAL_PENDING, ErrorCode.WITHDRAWAL_PENDING_USER);
+    }
+
+    @Test
     @DisplayName("LINKED가 아닌 SocialAccount는 User가 ACTIVE여도 로그인시키지 않는다")
     void login_whenSocialAccountNotLinked_throwsConflictAndIssuesNoToken() {
         User user = socialUser();
@@ -137,19 +151,22 @@ class KakaoAuthServiceTest {
         stubKakaoAuthentication("동현");
         when(socialAccountIdentityService.findKakaoAccount(PROVIDER_USER_ID, IDENTIFIER))
                 .thenReturn(Optional.of(account));
+        when(lockedTokenIssuanceService.issueForSocialAccount(user.getId(), account.getId()))
+                .thenThrow(new BusinessException(ErrorCode.SOCIAL_ACCOUNT_NOT_LINKED));
 
         assertErrorCode(
                 () -> kakaoAuthService.login(loginRequest()), ErrorCode.SOCIAL_ACCOUNT_NOT_LINKED);
 
-        verify(tokenIssuer, never()).issue(any());
+        verify(lockedTokenIssuanceService).issueForSocialAccount(user.getId(), account.getId());
     }
 
     private void assertKakaoLoginBlockedByStatus(UserStatus status, ErrorCode expected) {
         User user = mock(User.class);
-        when(user.getStatus()).thenReturn(status);
         stubKakaoAuthentication("동현");
         when(socialAccountIdentityService.findKakaoAccount(PROVIDER_USER_ID, IDENTIFIER))
                 .thenReturn(Optional.of(linkedSocialAccount(user)));
+        when(lockedTokenIssuanceService.issueForSocialAccount(user.getId(), null))
+                .thenThrow(new BusinessException(expected));
 
         assertErrorCode(() -> kakaoAuthService.login(loginRequest()), expected);
 
@@ -169,6 +186,22 @@ class KakaoAuthServiceTest {
         assertThat(result.nickname()).isEqualTo("동현");
         assertThat(result.tokens()).isNull();
         verify(tokenIssuer, never()).issue(any());
+    }
+
+    @Test
+    @DisplayName("재가입 제한 중인 카카오 식별자는 가입 세션을 발급하지 않는다")
+    void login_whenKakaoRejoinBlocked_rejectsBeforeSignupSessionIssue() {
+        stubKakaoAuthentication("동현");
+        when(socialAccountIdentityService.findKakaoAccount(PROVIDER_USER_ID, IDENTIFIER))
+                .thenReturn(Optional.empty());
+        when(accountRejoinBlockService.isKakaoBlocked(
+                        eq(PROVIDER_USER_ID), any(LocalDateTime.class)))
+                .thenReturn(true);
+
+        assertErrorCode(
+                () -> kakaoAuthService.login(loginRequest()), ErrorCode.ACCOUNT_REJOIN_BLOCKED);
+
+        verify(signupSessionService, never()).issue(any(), any());
     }
 
     @Test

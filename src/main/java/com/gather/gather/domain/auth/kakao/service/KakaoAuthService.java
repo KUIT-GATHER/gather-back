@@ -8,17 +8,19 @@ import com.gather.gather.domain.auth.kakao.config.KakaoProperties;
 import com.gather.gather.domain.auth.kakao.dto.KakaoLoginRequest;
 import com.gather.gather.domain.auth.kakao.dto.KakaoSignupRequest;
 import com.gather.gather.domain.auth.kakao.dto.KakaoUserResponse;
-import com.gather.gather.domain.auth.service.LoginPolicy;
+import com.gather.gather.domain.auth.service.AccountRejoinBlockService;
+import com.gather.gather.domain.auth.service.LockedTokenIssuanceService;
 import com.gather.gather.domain.auth.service.RejoinBlockIdentifier;
 import com.gather.gather.domain.auth.service.RejoinBlockIdentifierHasher;
 import com.gather.gather.domain.auth.service.SignupValidator;
 import com.gather.gather.domain.auth.service.SocialAccountIdentityService;
 import com.gather.gather.domain.auth.service.SocialAccountProviderIdCipher;
 import com.gather.gather.domain.auth.service.TokenIssueResult;
-import com.gather.gather.domain.auth.service.TokenIssuer;
 import com.gather.gather.domain.region.entity.Region;
 import com.gather.gather.global.exception.BusinessException;
 import com.gather.gather.global.exception.ErrorCode;
+import java.time.Clock;
+import java.time.LocalDateTime;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -38,8 +40,9 @@ public class KakaoAuthService {
     private final SocialAccountIdentityService socialAccountIdentityService;
     private final KakaoSignupTransactionService signupTransactionService;
     private final SignupValidator signupValidator;
-    private final TokenIssuer tokenIssuer;
-    private final LoginPolicy loginPolicy;
+    private final LockedTokenIssuanceService lockedTokenIssuanceService;
+    private final AccountRejoinBlockService accountRejoinBlockService;
+    private final Clock clock;
 
     /**
      * 카카오 인증 결과로 기존 회원 로그인과 신규 회원 가입 토큰 발급을 분기한다.
@@ -55,29 +58,29 @@ public class KakaoAuthService {
                         request.authorizationCode(), request.redirectUri());
         KakaoUserResponse userInfo = kakaoApiClient.getUserInfo(kakaoAccessToken);
         String providerUserId = String.valueOf(userInfo.id());
+        LocalDateTime now = LocalDateTime.now(clock);
         RejoinBlockIdentifier identifier = identifierHasher.hashKakao(providerUserId);
 
-        return socialAccountIdentityService
-                .findKakaoAccount(providerUserId, identifier)
-                .map(this::loginExistingMember)
-                .orElseGet(
-                        () -> {
-                            EncryptedProviderUserId encryptedProviderUserId =
-                                    providerIdCipher.encrypt(providerUserId);
-                            return KakaoLoginResult.additionalInfoRequired(
-                                    signupSessionService.issue(identifier, encryptedProviderUserId),
-                                    userInfo.nickname());
-                        });
+        Optional<SocialAccount> existingAccount =
+                socialAccountIdentityService.findKakaoAccount(providerUserId, identifier);
+        if (existingAccount.isPresent()) {
+            return loginExistingMember(existingAccount.get());
+        }
+        if (accountRejoinBlockService.isKakaoBlocked(providerUserId, now)) {
+            throw new BusinessException(ErrorCode.ACCOUNT_REJOIN_BLOCKED);
+        }
+        EncryptedProviderUserId encryptedProviderUserId = providerIdCipher.encrypt(providerUserId);
+        return KakaoLoginResult.additionalInfoRequired(
+                signupSessionService.issue(identifier, encryptedProviderUserId),
+                userInfo.nickname());
     }
 
     // row 존재는 현재 연결을 의미하지 않는다. 연결 상태와 User 제재를 각각 확인한 뒤에만 토큰을 발급한다.
     private KakaoLoginResult loginExistingMember(SocialAccount socialAccount) {
-        if (!socialAccount.isLinked()) {
-            throw new BusinessException(ErrorCode.SOCIAL_ACCOUNT_NOT_LINKED);
-        }
         User user = socialAccount.getUser();
-        loginPolicy.validateLoginAllowed(user);
-        return KakaoLoginResult.loginCompleted(tokenIssuer.issue(user));
+        return KakaoLoginResult.loginCompleted(
+                lockedTokenIssuanceService.issueForSocialAccount(
+                        user.getId(), socialAccount.getId()));
     }
 
     /** 가입 토큰과 추가정보를 검증하고, 원자적 저장은 별도 트랜잭션 서비스에 위임한다. */

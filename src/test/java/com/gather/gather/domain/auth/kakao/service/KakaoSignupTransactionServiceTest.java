@@ -20,6 +20,8 @@ import com.gather.gather.domain.auth.entity.SocialSignupSessionStatus;
 import com.gather.gather.domain.auth.entity.User;
 import com.gather.gather.domain.auth.repository.SocialAccountRepository;
 import com.gather.gather.domain.auth.repository.UserRepository;
+import com.gather.gather.domain.auth.service.AccountIdentityGuardService;
+import com.gather.gather.domain.auth.service.AccountRejoinBlockService;
 import com.gather.gather.domain.auth.service.RejoinBlockIdentifier;
 import com.gather.gather.domain.auth.service.SignupValidator;
 import com.gather.gather.domain.auth.service.SocialAccountConstraintResolver;
@@ -69,6 +71,8 @@ class KakaoSignupTransactionServiceTest {
     @Mock private SignupValidator signupValidator;
     @Mock private TokenIssuer tokenIssuer;
     @Mock private SocialAccountProviderIdCipher providerIdCipher;
+    @Mock private AccountRejoinBlockService accountRejoinBlockService;
+    @Mock private AccountIdentityGuardService accountIdentityGuardService;
 
     private KakaoSignupTransactionService service;
     private SocialSignupSession target;
@@ -86,6 +90,8 @@ class KakaoSignupTransactionServiceTest {
                         tokenIssuer,
                         providerIdCipher,
                         new SocialAccountConstraintResolver(),
+                        accountRejoinBlockService,
+                        accountIdentityGuardService,
                         CLOCK);
         target = session(TOKEN_HASH);
         sibling = session("c".repeat(64));
@@ -95,6 +101,11 @@ class KakaoSignupTransactionServiceTest {
         lenient()
                 .when(socialAccountIdentityService.findByProviderAndKey(any(), any()))
                 .thenReturn(Optional.empty());
+        lenient()
+                .when(accountIdentityGuardService.lockPhone("01012345678", NOW))
+                .thenReturn(
+                        new RejoinBlockIdentifier(
+                                AccountRejoinBlockIdentifierType.PHONE, "c".repeat(64), 3));
     }
 
     @Test

@@ -26,10 +26,12 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -155,7 +157,7 @@ class SocialSignupSessionConcurrencyIntegrationTest {
     }
 
     @Test
-    @DisplayName("동일 identity 소비 중 발급된 새 세션은 남더라도 이후 가입에 사용할 수 없다")
+    @DisplayName("동일 identity 소비 중 발급 시도는 최신 SocialAccount를 잠금 재확인해 거부한다")
     void issueDuringConsumption_pendingSessionCannotCreateSecondAccount() throws Exception {
         String consumingToken = issueSession();
         CountDownLatch identityLocked = new CountDownLatch(1);
@@ -187,26 +189,27 @@ class SocialSignupSessionConcurrencyIntegrationTest {
                             return issueSession();
                         });
         assertThat(issueStarted.await(5, TimeUnit.SECONDS)).isTrue();
-        Thread.sleep(200);
+        assertThatThrownBy(() -> issuedDuringConsumption.get(300, TimeUnit.MILLISECONDS))
+                .isInstanceOf(TimeoutException.class);
         allowConsumption.countDown();
 
         assertThat(consumption.get(10, TimeUnit.SECONDS)).isEqualTo(AttemptResult.SUCCESS);
-        String lateToken = issuedDuringConsumption.get(10, TimeUnit.SECONDS);
-        assertThat(findSession(lateToken).getStatus()).isEqualTo(SocialSignupSessionStatus.PENDING);
-
-        User rejectedUser = socialUser(6);
-        assertThatThrownBy(
-                        () ->
-                                signupTransactionService.createAccount(
-                                        rejectedUser,
-                                        lateToken,
-                                        rejectedUser.getPhoneNumber(),
-                                        rejectedUser.getNickname()))
-                .isInstanceOf(BusinessException.class)
+        assertThatThrownBy(() -> issuedDuringConsumption.get(10, TimeUnit.SECONDS))
+                .isInstanceOf(ExecutionException.class)
                 .satisfies(
                         exception ->
-                                assertThat(((BusinessException) exception).getErrorCode())
+                                assertThat(
+                                                ((BusinessException)
+                                                                ((ExecutionException) exception)
+                                                                        .getCause())
+                                                        .getErrorCode())
                                         .isEqualTo(ErrorCode.ALREADY_REGISTERED));
+        assertThat(
+                        jdbcTemplate.queryForObject(
+                                "select count(*) from social_signup_session where provider_user_key = ? and status = 'PENDING'",
+                                Long.class,
+                                identifier.hash()))
+                .isZero();
         assertSingleSignupCommitted();
     }
 
