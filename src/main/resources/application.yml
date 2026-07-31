@@ -75,3 +75,9 @@ volunteer-api:
 kakao:
   redirect-uris: ${KAKAO_REDIRECT_URIS:http://localhost:5173/login/kakao/callback,https://dev.gathernow.kr/login/kakao/callback,https://gathernow.kr/login/kakao/callback}
   signup-token-expiration-seconds: ${KAKAO_SIGNUP_TOKEN_EXPIRATION_SECONDS:900}
+  admin:
+    enabled: ${KAKAO_ADMIN_ENABLED:false}
+    key: ${KAKAO_ADMIN_KEY:}
+    api-base-url: ${KAKAO_ADMIN_API_BASE_URL:https://kapi.kakao.com}
+    connect-timeout: ${KAKAO_ADMIN_CONNECT_TIMEOUT:2s}
+    read-timeout: ${KAKAO_ADMIN_READ_TIMEOUT:5s}
