@@ -29,4 +29,15 @@ public class PostingCleanupScheduler {
             log.error("만료 공고 비활성화 배치 실패", e);
         }
     }
+
+    /** 매일 새벽 4시 10분(KST) 1회 실행. 비활성화된 지 1개월 이상 지난 공고의 content를 비운다. */
+    @Scheduled(cron = "0 10 4 * * *", zone = "Asia/Seoul")
+    public void clearExpiredPostingContent() {
+        try {
+            int count = postingLifecycleService.clearExpiredPostingContent();
+            log.info("만료 공고 content 삭제 완료. count={}", count);
+        } catch (RuntimeException e) {
+            log.error("만료 공고 content 삭제 배치 실패", e);
+        }
+    }
 }
