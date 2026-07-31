@@ -20,6 +20,7 @@ import com.gather.gather.domain.auth.entity.SocialSignupSessionStatus;
 import com.gather.gather.domain.auth.entity.User;
 import com.gather.gather.domain.auth.repository.SocialAccountRepository;
 import com.gather.gather.domain.auth.repository.UserRepository;
+import com.gather.gather.domain.auth.service.AccountRejoinBlockService;
 import com.gather.gather.domain.auth.service.RejoinBlockIdentifier;
 import com.gather.gather.domain.auth.service.SignupValidator;
 import com.gather.gather.domain.auth.service.SocialAccountConstraintResolver;
@@ -69,6 +70,7 @@ class KakaoSignupTransactionServiceTest {
     @Mock private SignupValidator signupValidator;
     @Mock private TokenIssuer tokenIssuer;
     @Mock private SocialAccountProviderIdCipher providerIdCipher;
+    @Mock private AccountRejoinBlockService accountRejoinBlockService;
 
     private KakaoSignupTransactionService service;
     private SocialSignupSession target;
@@ -86,6 +88,7 @@ class KakaoSignupTransactionServiceTest {
                         tokenIssuer,
                         providerIdCipher,
                         new SocialAccountConstraintResolver(),
+                        accountRejoinBlockService,
                         CLOCK);
         target = session(TOKEN_HASH);
         sibling = session("c".repeat(64));

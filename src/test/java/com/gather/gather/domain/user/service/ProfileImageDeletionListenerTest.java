@@ -58,4 +58,14 @@ class ProfileImageDeletionListenerTest {
         assertThatCode(() -> listener.deletePreviousImage(new ProfileImageReplacedEvent(UPLOAD_ID)))
                 .doesNotThrowAnyException();
     }
+
+    @Test
+    void deleteWithdrawnProfileImage_delegatesToSameRetryableCleanup() {
+        ProfileImageDeletionListener listener =
+                new ProfileImageDeletionListener(profileImageCleanupService);
+
+        listener.deleteWithdrawnProfileImage(new ProfileImageDeletionRequestedEvent(UPLOAD_ID));
+
+        verify(profileImageCleanupService).deletePreviousObject(UPLOAD_ID);
+    }
 }

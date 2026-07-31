@@ -5,6 +5,7 @@ import com.gather.gather.domain.auth.entity.SocialAccount;
 import com.gather.gather.domain.auth.entity.User;
 import com.gather.gather.domain.auth.repository.SocialAccountRepository;
 import com.gather.gather.domain.auth.repository.UserRepository;
+import com.gather.gather.domain.auth.service.AccountRejoinBlockService;
 import com.gather.gather.domain.auth.service.SignupValidator;
 import com.gather.gather.domain.auth.service.SocialAccountConstraint;
 import com.gather.gather.domain.auth.service.SocialAccountConstraintResolver;
@@ -35,6 +36,7 @@ public class KakaoSignupTransactionService {
     private final TokenIssuer tokenIssuer;
     private final SocialAccountProviderIdCipher providerIdCipher;
     private final SocialAccountConstraintResolver constraintResolver;
+    private final AccountRejoinBlockService accountRejoinBlockService;
     private final Clock clock;
 
     /**
@@ -48,6 +50,7 @@ public class KakaoSignupTransactionService {
         LockedSocialSignupSession lockedSession =
                 signupSessionService.lockForSignup(signupToken, now);
         SocialSignupIdentitySnapshot identity = lockedSession.identity();
+        validateRejoinAllowed(phoneNumber, identity, now);
         socialAccountIdentityService
                 .findByProviderAndKey(identity.provider(), identity.identifier())
                 .ifPresent(this::rejectExistingSocialAccount);
@@ -92,5 +95,13 @@ public class KakaoSignupTransactionService {
             throw new BusinessException(ErrorCode.ALREADY_REGISTERED);
         }
         throw new BusinessException(ErrorCode.SOCIAL_ACCOUNT_NOT_LINKED);
+    }
+
+    private void validateRejoinAllowed(
+            String phoneNumber, SocialSignupIdentitySnapshot identity, LocalDateTime now) {
+        if (accountRejoinBlockService.isPhoneBlocked(phoneNumber, now)
+                || accountRejoinBlockService.isBlocked(identity.identifier(), now)) {
+            throw new BusinessException(ErrorCode.ACCOUNT_REJOIN_BLOCKED);
+        }
     }
 }

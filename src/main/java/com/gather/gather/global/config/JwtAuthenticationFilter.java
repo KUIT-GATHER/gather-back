@@ -1,8 +1,12 @@
 package com.gather.gather.global.config;
 
+import com.gather.gather.domain.auth.entity.User;
+import com.gather.gather.domain.auth.repository.UserRepository;
 import com.gather.gather.domain.auth.service.AccessTokenPayload;
 import com.gather.gather.domain.auth.service.JwtAuthenticationException;
+import com.gather.gather.domain.auth.service.ProtectedAccessPolicy;
 import com.gather.gather.domain.auth.service.TokenProvider;
+import com.gather.gather.global.exception.BusinessException;
 import com.gather.gather.global.exception.ErrorCode;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -21,8 +25,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
  * Authorization 헤더의 Bearer Access Token을 검증해 SecurityContext에 인증 정보를 채우는 필터.
  *
  * <p>인증 실패(무효/만료) 시 예외를 밖으로 던지지 않고, ErrorCode를 request attribute에 심은 뒤 인증 없이 체인을 이어간다. 최종 401 응답
- * 형식은 {@link CustomAuthenticationEntryPoint}가 담당한다. 상태 저장을 피하기 위해 이 필터는 DB를 조회하지 않는다(정지/탈퇴 차단은
- * login/reissue 시점에서 처리).
+ * 형식은 {@link CustomAuthenticationEntryPoint}가 담당한다. JWT가 유효하면 User의 최신 상태를 DB에서 확인한 뒤 인증을 등록한다.
  */
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
@@ -32,9 +35,16 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     private static final String BEARER_PREFIX = "Bearer ";
 
     private final TokenProvider tokenProvider;
+    private final UserRepository userRepository;
+    private final ProtectedAccessPolicy protectedAccessPolicy;
 
-    public JwtAuthenticationFilter(TokenProvider tokenProvider) {
+    public JwtAuthenticationFilter(
+            TokenProvider tokenProvider,
+            UserRepository userRepository,
+            ProtectedAccessPolicy protectedAccessPolicy) {
         this.tokenProvider = tokenProvider;
+        this.userRepository = userRepository;
+        this.protectedAccessPolicy = protectedAccessPolicy;
     }
 
     @Override
@@ -61,8 +71,15 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
         try {
             AccessTokenPayload payload = tokenProvider.parseAccessToken(token);
-            SecurityContextHolder.getContext().setAuthentication(toAuthentication(payload));
+            User user =
+                    userRepository
+                            .findById(payload.userId())
+                            .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_TOKEN));
+            protectedAccessPolicy.validateAccessAllowed(user);
+            SecurityContextHolder.getContext().setAuthentication(toAuthentication(user));
         } catch (JwtAuthenticationException exception) {
+            request.setAttribute(ERROR_CODE_ATTRIBUTE, exception.getErrorCode());
+        } catch (BusinessException exception) {
             request.setAttribute(ERROR_CODE_ATTRIBUTE, exception.getErrorCode());
         }
         filterChain.doFilter(request, response);
@@ -73,9 +90,9 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         return header.regionMatches(true, 0, BEARER_PREFIX, 0, BEARER_PREFIX.length());
     }
 
-    private UsernamePasswordAuthenticationToken toAuthentication(AccessTokenPayload payload) {
+    private UsernamePasswordAuthenticationToken toAuthentication(User user) {
         List<SimpleGrantedAuthority> authorities =
-                List.of(new SimpleGrantedAuthority("ROLE_" + payload.role().name()));
-        return new UsernamePasswordAuthenticationToken(payload.userId(), null, authorities);
+                List.of(new SimpleGrantedAuthority("ROLE_" + user.getRole().name()));
+        return new UsernamePasswordAuthenticationToken(user.getId(), null, authorities);
     }
 }

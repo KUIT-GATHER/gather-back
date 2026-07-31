@@ -2,11 +2,13 @@ package com.gather.gather.domain.auth.kakao.service;
 
 import com.gather.gather.domain.auth.entity.AccountRejoinBlockIdentifierType;
 import com.gather.gather.domain.auth.entity.EncryptedProviderUserId;
+import com.gather.gather.domain.auth.entity.SocialProvider;
 import com.gather.gather.domain.auth.entity.SocialSignupSession;
 import com.gather.gather.domain.auth.entity.SocialSignupSessionStatus;
 import com.gather.gather.domain.auth.kakao.config.KakaoProperties;
 import com.gather.gather.domain.auth.kakao.token.SocialSignupTokenService;
 import com.gather.gather.domain.auth.repository.SocialSignupSessionRepository;
+import com.gather.gather.domain.auth.service.AccountRejoinBlockService;
 import com.gather.gather.domain.auth.service.RejoinBlockIdentifier;
 import com.gather.gather.global.exception.BusinessException;
 import com.gather.gather.global.exception.ErrorCode;
@@ -31,16 +33,20 @@ public class SocialSignupSessionService {
     private final SocialSignupSessionPersistenceService persistenceService;
     private final SocialSignupSessionConstraintResolver constraintResolver;
     private final SocialSignupTokenService tokenService;
+    private final AccountRejoinBlockService rejoinBlockService;
     private final KakaoProperties kakaoProperties;
     private final Clock clock;
 
     public String issue(
             RejoinBlockIdentifier identifier, EncryptedProviderUserId encryptedProviderUserId) {
+        LocalDateTime now = LocalDateTime.now(clock);
+        if (rejoinBlockService.isBlocked(identifier, now)) {
+            throw new BusinessException(ErrorCode.ACCOUNT_REJOIN_BLOCKED);
+        }
         DataIntegrityViolationException lastConflict = null;
         for (int attempt = 1; attempt <= TOKEN_ISSUE_MAX_ATTEMPTS; attempt++) {
             String token = tokenService.generateToken();
             String tokenHash = tokenService.validateAndHash(token);
-            LocalDateTime now = LocalDateTime.now(clock);
 
             try {
                 persistenceService.saveNewAttempt(
@@ -49,7 +55,8 @@ public class SocialSignupSessionService {
                                 identifier,
                                 encryptedProviderUserId,
                                 now.plusSeconds(kakaoProperties.signupTokenExpirationSeconds()),
-                                now));
+                                now),
+                        now);
                 return token;
             } catch (DataIntegrityViolationException exception) {
                 if (!constraintResolver.isTokenHashConflict(exception)) {
@@ -94,6 +101,15 @@ public class SocialSignupSessionService {
         requireUsable(target, now);
         return new LockedSocialSignupSession(
                 target, lockedPendingSessions, toIdentitySnapshot(target));
+    }
+
+    @Transactional(propagation = Propagation.MANDATORY)
+    public LockedPendingSocialSignupSessions lockPendingForIdentity(
+            SocialProvider provider, RejoinBlockIdentifier identifier, LocalDateTime now) {
+        List<SocialSignupSession> lockedPendingSessions =
+                sessionRepository.findAllByIdentityAndStatusForUpdate(
+                        provider, identifier.hash(), SocialSignupSessionStatus.PENDING);
+        return new LockedPendingSocialSignupSessions(lockedPendingSessions);
     }
 
     private SocialSignupSession findByTokenHash(String tokenHash) {

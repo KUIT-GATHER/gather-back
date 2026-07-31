@@ -83,6 +83,18 @@ public class ProfileImageUpload {
                 userId, objectKey, contentType, expectedSize, expiresAt, createdAt);
     }
 
+    public static ProfileImageUpload createDeletionTask(
+            Long userId, String trackingKey, String deletionTarget, LocalDateTime createdAt) {
+        ProfileImageUpload upload =
+                new ProfileImageUpload(
+                        userId, trackingKey, "application/octet-stream", 0L, createdAt, createdAt);
+        upload.status = ProfileImageUploadStatus.APPLIED;
+        upload.appliedAt = createdAt;
+        upload.previousObjectKey = deletionTarget;
+        upload.previousObjectDeleted = false;
+        return upload;
+    }
+
     public boolean isPending() {
         return status == ProfileImageUploadStatus.PENDING;
     }

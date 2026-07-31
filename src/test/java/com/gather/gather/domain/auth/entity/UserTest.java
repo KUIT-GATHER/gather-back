@@ -14,6 +14,70 @@ import org.springframework.test.util.ReflectionTestUtils;
 class UserTest {
 
     @Test
+    void requestWithdrawal_changesActiveUserToPendingWithoutCompletionFields() {
+        User user = user(1L);
+        LocalDateTime now = LocalDateTime.of(2026, 7, 29, 12, 0);
+
+        user.requestWithdrawal(WithdrawalReason.SELF, now);
+
+        assertThat(user.getStatus()).isEqualTo(UserStatus.WITHDRAWAL_PENDING);
+        assertThat(user.getWithdrawalReason()).isEqualTo(WithdrawalReason.SELF);
+        assertThat(user.getWithdrawnAt()).isNull();
+        assertThat(user.getAnonymizedAt()).isNull();
+    }
+
+    @Test
+    void requestWithdrawal_allowsSuspendedUser() {
+        User user = user(1L);
+        ReflectionTestUtils.setField(user, "status", UserStatus.SUSPENDED);
+        LocalDateTime now = LocalDateTime.of(2026, 7, 29, 12, 0);
+
+        user.requestWithdrawal(WithdrawalReason.ADMIN, now);
+
+        assertThat(user.getStatus()).isEqualTo(UserStatus.WITHDRAWAL_PENDING);
+        assertThat(user.getWithdrawalReason()).isEqualTo(WithdrawalReason.ADMIN);
+    }
+
+    @Test
+    void requestWithdrawal_keepsFirstReasonWhenAlreadyPending() {
+        User user = user(1L);
+        LocalDateTime now = LocalDateTime.of(2026, 7, 29, 12, 0);
+        user.requestWithdrawal(WithdrawalReason.SELF, now);
+
+        user.requestWithdrawal(WithdrawalReason.ADMIN, now.plusDays(1));
+
+        assertThat(user.getWithdrawalReason()).isEqualTo(WithdrawalReason.SELF);
+    }
+
+    @Test
+    void requestWithdrawal_rejectsWithdrawnUser() {
+        User user = user(1L);
+        LocalDateTime now = LocalDateTime.of(2026, 7, 29, 12, 0);
+        user.withdraw(WithdrawalReason.SELF, now);
+
+        assertThatThrownBy(() -> user.requestWithdrawal(WithdrawalReason.ADMIN, now.plusDays(1)))
+                .isInstanceOf(IllegalStateException.class);
+    }
+
+    @Test
+    void requestWithdrawal_rejectsNullReason() {
+        User user = user(1L);
+
+        assertThatThrownBy(() -> user.requestWithdrawal(null, LocalDateTime.of(2026, 7, 29, 12, 0)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("탈퇴 사유는 필수입니다.");
+    }
+
+    @Test
+    void requestWithdrawal_rejectsNullTime() {
+        User user = user(1L);
+
+        assertThatThrownBy(() -> user.requestWithdrawal(WithdrawalReason.SELF, null))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("탈퇴 시각은 필수입니다.");
+    }
+
+    @Test
     void withdraw_changesActiveUserToWithdrawnAndRecordsReasonAndTime() {
         User user = user(1L);
         LocalDateTime withdrawnAt = LocalDateTime.of(2026, 7, 29, 12, 0);
@@ -45,7 +109,7 @@ class UserTest {
 
         assertThatThrownBy(() -> user.withdraw(null, now))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessage("탈퇴 사유와 탈퇴 시각은 필수입니다.");
+                .hasMessage("탈퇴 사유는 필수입니다.");
     }
 
     @Test
@@ -54,7 +118,29 @@ class UserTest {
 
         assertThatThrownBy(() -> user.withdraw(WithdrawalReason.SELF, null))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessage("탈퇴 사유와 탈퇴 시각은 필수입니다.");
+                .hasMessage("탈퇴 시각은 필수입니다.");
+    }
+
+    @Test
+    void withdraw_allowsSuspendedUser() {
+        User user = user(1L);
+        ReflectionTestUtils.setField(user, "status", UserStatus.SUSPENDED);
+        LocalDateTime now = LocalDateTime.of(2026, 7, 29, 12, 0);
+
+        user.withdraw(WithdrawalReason.ADMIN, now);
+
+        assertThat(user.getStatus()).isEqualTo(UserStatus.WITHDRAWN);
+        assertThat(user.getWithdrawnAt()).isEqualTo(now);
+    }
+
+    @Test
+    void withdraw_rejectsPendingUser() {
+        User user = user(1L);
+        LocalDateTime now = LocalDateTime.of(2026, 7, 29, 12, 0);
+        user.requestWithdrawal(WithdrawalReason.SELF, now);
+
+        assertThatThrownBy(() -> user.withdraw(WithdrawalReason.SELF, now.plusMinutes(1)))
+                .isInstanceOf(IllegalStateException.class);
     }
 
     @Test
