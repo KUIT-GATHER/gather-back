@@ -134,6 +134,13 @@ public class PostingRepositoryImpl implements PostingRepositoryCustom {
                                     .otherwise(1)));
         }
         orders.addAll(QueryUtils.toOrders(pageable.getSort(), root, cb));
+
+        boolean containsIdSort =
+                pageable.getSort().stream().anyMatch(order -> order.getProperty().equals("id"));
+        if (!containsIdSort) {
+            orders.add(cb.desc(root.get("id")));
+        }
+
         return orders;
     }
 }
