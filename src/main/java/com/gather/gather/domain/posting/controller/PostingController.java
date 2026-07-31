@@ -43,7 +43,10 @@ public class PostingController {
             summary = "봉사공고 목록 조회",
             description =
                     "봉사공고를 페이지 단위로 조회합니다. 인증이 필요 없습니다. "
-                            + "status를 지정하지 않으면 모집중(RECRUITING)만 반환합니다. "
+                            + "status를 지정하지 않으면 모집중(RECRUITING)과 모집마감(CLOSED) 공고를 함께 반환하며, "
+                            + "모집중 공고가 항상 먼저 오고 그 다음 모집마감 공고가 오는 순서로 정렬한 뒤 각 그룹 안에서 "
+                            + "sort 파라미터를 적용합니다(활동 완료 COMPLETED는 기본 목록에서 제외되며 필요 시 status로 "
+                            + "직접 조회). status를 지정하면 해당 상태만 반환합니다. "
                             + "regionId는 상위 지역(시/도) 선택 시 하위 지역(구/군) 공고까지 포함합니다. "
                             + "regionGroupId는 활동 지역 9버튼(서울/부산/.../경상/전라/충청) 선택 시 그 권역에 속한 "
                             + "모든 시도와 시군구 공고를 포함합니다. regionId와 regionGroupId는 동시에 지정할 수 없습니다. "
@@ -150,7 +153,8 @@ public class PostingController {
             @Parameter(description = "활동 지역 권역 ID (9버튼, regionId와 동시 지정 불가)")
                     @RequestParam(required = false)
                     Long regionGroupId,
-            @Parameter(description = "모집상태 (미지정 시 RECRUITING)") @RequestParam(required = false)
+            @Parameter(description = "모집상태 (미지정 시 RECRUITING+CLOSED, 모집중 우선 정렬)")
+                    @RequestParam(required = false)
                     PostingStatus status,
             @Parameter(description = "모집시작일 하한 (yyyy-MM-dd)") @RequestParam(required = false)
                     LocalDate noticeStartDate,
