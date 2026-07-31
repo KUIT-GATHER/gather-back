@@ -75,29 +75,22 @@ class PostingServiceTest {
     }
 
     @Test
-    @DisplayName("getPostings defaults to RECRUITING when status is not provided")
-    void getPostings_defaultsToRecruiting_whenStatusNull() {
+    @DisplayName("getPostings passes a null status through to the repository unchanged")
+    void getPostings_passesNullStatusThrough_whenStatusNotProvided() {
         Pageable pageable = PageRequest.of(0, 20);
         when(postingRepository.search(
-                        eq(PostingStatus.RECRUITING),
-                        isNull(),
-                        isNull(),
-                        isNull(),
-                        isNull(),
-                        isNull(),
-                        eq(pageable)))
+                        isNull(), isNull(), isNull(), isNull(), isNull(), isNull(), eq(pageable)))
                 .thenReturn(new PageImpl<>(List.of()));
 
         postingService.getPostings(pageable, null, null, null, null, null, null, null);
 
-        verify(postingRepository)
-                .search(PostingStatus.RECRUITING, null, null, null, null, null, pageable);
+        verify(postingRepository).search(null, null, null, null, null, null, pageable);
         verify(regionRepository, never()).findIdsIncludingChildren(any());
         verify(regionRepository, never()).findIdsIncludingChildrenByGroupId(any());
     }
 
     @Test
-    @DisplayName("getPostings uses the given status instead of the RECRUITING default")
+    @DisplayName("getPostings passes an explicitly given status through unchanged")
     void getPostings_usesGivenStatus_whenProvided() {
         Pageable pageable = PageRequest.of(0, 20);
         when(postingRepository.search(
@@ -123,7 +116,7 @@ class PostingServiceTest {
         Pageable pageable = PageRequest.of(0, 20);
         when(regionRepository.findIdsIncludingChildren(1L)).thenReturn(List.of(1L, 2L, 3L));
         when(postingRepository.search(
-                        eq(PostingStatus.RECRUITING),
+                        isNull(),
                         eq(List.of(1L, 2L, 3L)),
                         isNull(),
                         isNull(),
@@ -136,14 +129,7 @@ class PostingServiceTest {
 
         verify(regionRepository).findIdsIncludingChildren(1L);
         verify(postingRepository)
-                .search(
-                        PostingStatus.RECRUITING,
-                        List.of(1L, 2L, 3L),
-                        null,
-                        null,
-                        null,
-                        null,
-                        pageable);
+                .search(null, List.of(1L, 2L, 3L), null, null, null, null, pageable);
     }
 
     @Test
@@ -155,7 +141,7 @@ class PostingServiceTest {
         when(regionRepository.findIdsIncludingChildrenByGroupId(7L))
                 .thenReturn(List.of(10L, 11L, 12L, 13L));
         when(postingRepository.search(
-                        eq(PostingStatus.RECRUITING),
+                        isNull(),
                         eq(List.of(10L, 11L, 12L, 13L)),
                         isNull(),
                         isNull(),
@@ -169,14 +155,7 @@ class PostingServiceTest {
         verify(regionRepository).findIdsIncludingChildrenByGroupId(7L);
         verify(regionRepository, never()).findIdsIncludingChildren(any());
         verify(postingRepository)
-                .search(
-                        PostingStatus.RECRUITING,
-                        List.of(10L, 11L, 12L, 13L),
-                        null,
-                        null,
-                        null,
-                        null,
-                        pageable);
+                .search(null, List.of(10L, 11L, 12L, 13L), null, null, null, null, pageable);
     }
 
     @Test
@@ -215,8 +194,7 @@ class PostingServiceTest {
     @DisplayName("getPostings logs the keyword only after the search succeeds")
     void getPostings_logsKeyword_onlyAfterSearchSucceeds() {
         Pageable pageable = PageRequest.of(0, 20);
-        when(postingRepository.search(
-                        PostingStatus.RECRUITING, null, null, null, "환경", null, pageable))
+        when(postingRepository.search(null, null, null, null, "환경", null, pageable))
                 .thenReturn(new PageImpl<>(List.of()));
 
         postingService.getPostings(pageable, null, null, null, null, null, "환경", null);
@@ -228,8 +206,7 @@ class PostingServiceTest {
     @DisplayName("getPostings still returns results when search-log recording throws")
     void getPostings_returnsResults_whenSearchLoggingThrows() {
         Pageable pageable = PageRequest.of(0, 20);
-        when(postingRepository.search(
-                        PostingStatus.RECRUITING, null, null, null, "환경", null, pageable))
+        when(postingRepository.search(null, null, null, null, "환경", null, pageable))
                 .thenReturn(new PageImpl<>(List.of()));
         doThrow(new RuntimeException("logging failed")).when(postingSearchLogService).log("환경");
 
@@ -245,8 +222,7 @@ class PostingServiceTest {
     void getPostings_returnsResults_whenKeywordExceedsSearchLogColumnLength() {
         String longKeyword = "가".repeat(101);
         Pageable pageable = PageRequest.of(0, 20);
-        when(postingRepository.search(
-                        PostingStatus.RECRUITING, null, null, null, longKeyword, null, pageable))
+        when(postingRepository.search(null, null, null, null, longKeyword, null, pageable))
                 .thenReturn(new PageImpl<>(List.of()));
 
         PageResponse<PostingSummaryResponse> result =
@@ -263,28 +239,24 @@ class PostingServiceTest {
         Pageable pageable = PageRequest.of(0, 20);
         LocalDate from = LocalDate.of(2026, 7, 1);
         LocalDate to = LocalDate.of(2026, 7, 31);
-        when(postingRepository.search(
-                        PostingStatus.RECRUITING, null, from, to, null, null, pageable))
+        when(postingRepository.search(null, null, from, to, null, null, pageable))
                 .thenReturn(new PageImpl<>(List.of()));
 
         postingService.getPostings(pageable, null, null, null, from, to, null, null);
 
-        verify(postingRepository)
-                .search(PostingStatus.RECRUITING, null, from, to, null, null, pageable);
+        verify(postingRepository).search(null, null, from, to, null, null, pageable);
     }
 
     @Test
     @DisplayName("getPostings passes the keyword through to the repository")
     void getPostings_passesKeyword_whenProvided() {
         Pageable pageable = PageRequest.of(0, 20);
-        when(postingRepository.search(
-                        PostingStatus.RECRUITING, null, null, null, "환경", null, pageable))
+        when(postingRepository.search(null, null, null, null, "환경", null, pageable))
                 .thenReturn(new PageImpl<>(List.of()));
 
         postingService.getPostings(pageable, null, null, null, null, null, "환경", null);
 
-        verify(postingRepository)
-                .search(PostingStatus.RECRUITING, null, null, null, "환경", null, pageable);
+        verify(postingRepository).search(null, null, null, null, "환경", null, pageable);
     }
 
     @Test
@@ -292,27 +264,14 @@ class PostingServiceTest {
     void getPostings_passesCategory_whenProvided() {
         Pageable pageable = PageRequest.of(0, 20);
         when(postingRepository.search(
-                        PostingStatus.RECRUITING,
-                        null,
-                        null,
-                        null,
-                        null,
-                        PostingCategory.WELFARE,
-                        pageable))
+                        null, null, null, null, null, PostingCategory.WELFARE, pageable))
                 .thenReturn(new PageImpl<>(List.of()));
 
         postingService.getPostings(
                 pageable, null, null, null, null, null, null, PostingCategory.WELFARE);
 
         verify(postingRepository)
-                .search(
-                        PostingStatus.RECRUITING,
-                        null,
-                        null,
-                        null,
-                        null,
-                        PostingCategory.WELFARE,
-                        pageable);
+                .search(null, null, null, null, null, PostingCategory.WELFARE, pageable);
     }
 
     @Test
@@ -320,8 +279,7 @@ class PostingServiceTest {
     void getPostings_mapsRegionNameAndCategory_whenMatched() {
         Posting posting = postingWithId(1L, "동구 환경정화 봉사", 2L, PostingCategory.ENVIRONMENT);
         Pageable pageable = PageRequest.of(0, 20);
-        when(postingRepository.search(
-                        PostingStatus.RECRUITING, null, null, null, null, null, pageable))
+        when(postingRepository.search(null, null, null, null, null, null, pageable))
                 .thenReturn(new PageImpl<>(List.of(posting)));
         when(regionRepository.findAllById(any())).thenReturn(List.of(regionWithId(2L, "동구")));
 
@@ -340,8 +298,7 @@ class PostingServiceTest {
     void getPostings_regionNameNull_whenRegionIdNullOrUnmatched() {
         Posting posting = postingWithId(1L, "무지역 공고", null, PostingCategory.ENVIRONMENT);
         Pageable pageable = PageRequest.of(0, 20);
-        when(postingRepository.search(
-                        PostingStatus.RECRUITING, null, null, null, null, null, pageable))
+        when(postingRepository.search(null, null, null, null, null, null, pageable))
                 .thenReturn(new PageImpl<>(List.of(posting)));
         when(regionRepository.findAllById(any())).thenReturn(List.of());
 
@@ -358,8 +315,7 @@ class PostingServiceTest {
         Posting first = postingWithId(1L, "공고1", 2L, PostingCategory.ENVIRONMENT);
         Posting second = postingWithId(2L, "공고2", 2L, PostingCategory.ENVIRONMENT);
         Pageable pageable = PageRequest.of(0, 20);
-        when(postingRepository.search(
-                        PostingStatus.RECRUITING, null, null, null, null, null, pageable))
+        when(postingRepository.search(null, null, null, null, null, null, pageable))
                 .thenReturn(new PageImpl<>(List.of(first, second)));
         when(regionRepository.findAllById(any())).thenReturn(List.of(regionWithId(2L, "동구")));
 
@@ -389,22 +345,19 @@ class PostingServiceTest {
     @DisplayName("getPostings allows sorting by a known Posting property")
     void getPostings_allowsSort_whenPropertyKnown() {
         Pageable pageable = PageRequest.of(0, 20, Sort.by("title").ascending());
-        when(postingRepository.search(
-                        PostingStatus.RECRUITING, null, null, null, null, null, pageable))
+        when(postingRepository.search(null, null, null, null, null, null, pageable))
                 .thenReturn(new PageImpl<>(List.of()));
 
         postingService.getPostings(pageable, null, null, null, null, null, null, null);
 
-        verify(postingRepository)
-                .search(PostingStatus.RECRUITING, null, null, null, null, null, pageable);
+        verify(postingRepository).search(null, null, null, null, null, null, pageable);
     }
 
     @Test
     @DisplayName("getPostings returns empty PageResponse when no postings exist")
     void getPostings_returnsEmptyPageResponse_whenNoPostingsExist() {
         Pageable pageable = PageRequest.of(0, 20);
-        when(postingRepository.search(
-                        PostingStatus.RECRUITING, null, null, null, null, null, pageable))
+        when(postingRepository.search(null, null, null, null, null, null, pageable))
                 .thenReturn(new PageImpl<>(List.of()));
 
         PageResponse<PostingSummaryResponse> result =
@@ -541,12 +494,40 @@ class PostingServiceTest {
     }
 
     @ParameterizedTest
-    @CsvSource({"APPLIED, CANCEL", "CONFIRMED, COMPLETE", "COMPLETED, NONE", "REVIEWED, NONE"})
-    @DisplayName("getPosting derives participationAction from the user's participation status")
-    void getPosting_derivesParticipationAction_fromStatus(
+    @CsvSource({"APPLIED, CANCEL", "CONFIRMED, CANCEL", "COMPLETED, NONE", "REVIEWED, NONE"})
+    @DisplayName(
+            "getPosting derives participationAction from status when the activity has not ended"
+                    + " yet")
+    void getPosting_derivesParticipationAction_fromStatus_whenActivityNotEnded(
             PostingParticipationStatus status, PostingParticipationAction expectedAction) {
         Long userId = 1L;
         Posting posting = postingWithId(1L, "동구 환경정화 봉사", 2L, PostingCategory.ENVIRONMENT);
+        when(postingRepository.findById(1L)).thenReturn(Optional.of(posting));
+        when(regionRepository.findById(2L)).thenReturn(Optional.of(regionWithId(2L, "동구")));
+        when(postingLocationRepository.findAllByPostingIdOrderByLocationSeq(1L))
+                .thenReturn(List.of());
+        when(postingParticipationRepository.findByUserIdAndPostingId(userId, 1L))
+                .thenReturn(Optional.of(participationWithStatus(userId, 1L, status)));
+
+        try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
+            securityUtil.when(SecurityUtil::getCurrentUserIdOrNull).thenReturn(userId);
+
+            PostingResponse response = postingService.getPosting(1L);
+
+            assertThat(response.participationStatus()).isEqualTo(status);
+            assertThat(response.participationAction()).isEqualTo(expectedAction);
+        }
+    }
+
+    @ParameterizedTest
+    @CsvSource({"APPLIED, COMPLETE", "CONFIRMED, COMPLETE", "COMPLETED, NONE", "REVIEWED, NONE"})
+    @DisplayName(
+            "getPosting derives participationAction from status once the activity end date has"
+                    + " passed")
+    void getPosting_derivesParticipationAction_fromStatus_whenActivityEnded(
+            PostingParticipationStatus status, PostingParticipationAction expectedAction) {
+        Long userId = 1L;
+        Posting posting = postingWithActEndDate(1L, "동구 환경정화 봉사", 2L, PostingCategory.ENVIRONMENT);
         when(postingRepository.findById(1L)).thenReturn(Optional.of(posting));
         when(regionRepository.findById(2L)).thenReturn(Optional.of(regionWithId(2L, "동구")));
         when(postingLocationRepository.findAllByPostingIdOrderByLocationSeq(1L))
@@ -599,6 +580,22 @@ class PostingServiceTest {
                         .status(PostingStatus.RECRUITING)
                         .regionId(regionId)
                         .category(category)
+                        .build();
+        ReflectionTestUtils.setField(posting, "id", id);
+        return posting;
+    }
+
+    /** 활동종료일이 어제인 공고 — isActivityEnded()가 true를 반환한다. */
+    private Posting postingWithActEndDate(
+            Long id, String title, Long regionId, PostingCategory category) {
+        Posting posting =
+                Posting.builder()
+                        .extId("ext-" + id)
+                        .title(title)
+                        .status(PostingStatus.RECRUITING)
+                        .regionId(regionId)
+                        .category(category)
+                        .actEndDate(LocalDate.now().minusDays(1))
                         .build();
         ReflectionTestUtils.setField(posting, "id", id);
         return posting;

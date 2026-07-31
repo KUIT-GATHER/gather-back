@@ -64,6 +64,8 @@ kakao:
   rest-api-key: test-kakao-rest-api-key
   client-secret: test-kakao-client-secret
   signup-token-expiration-seconds: 900
+  admin:
+    enabled: false
   redirect-uris:
     - http://localhost:5173/login/kakao/callback
     - https://dev.gathernow.kr/login/kakao/callback

@@ -1,5 +1,7 @@
 package com.gather.gather.domain.posting.service;
 
+import com.gather.gather.domain.badge.entity.BadgeType;
+import com.gather.gather.domain.badge.event.BadgeAwardRequestedEvent;
 import com.gather.gather.domain.posting.dto.BookmarkResponse;
 import com.gather.gather.domain.posting.dto.PostingSummaryResponse;
 import com.gather.gather.domain.posting.entity.Bookmark;
@@ -14,6 +16,7 @@ import com.gather.gather.global.util.LikeKeywordEscaper;
 import com.gather.gather.global.util.SecurityUtil;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -26,9 +29,12 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 public class BookmarkService {
 
+    private static final int BOOKMARK_5_THRESHOLD = 5;
+
     private final BookmarkRepository bookmarkRepository;
     private final PostingRepository postingRepository;
     private final RegionNameResolver regionNameResolver;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Transactional
     public BookmarkResponse addBookmark(Long postingId) {
@@ -45,6 +51,9 @@ public class BookmarkService {
             bookmarkRepository.saveAndFlush(Bookmark.create(userId, postingId));
         } catch (DataIntegrityViolationException exception) {
             throw new BusinessException(ErrorCode.BOOKMARK_DUPLICATE);
+        }
+        if (bookmarkRepository.countByUserId(userId) == BOOKMARK_5_THRESHOLD) {
+            eventPublisher.publishEvent(new BadgeAwardRequestedEvent(userId, BadgeType.BOOKMARK_5));
         }
         return BookmarkResponse.of(postingId, true);
     }
