@@ -42,6 +42,17 @@ public class PostingParticipation {
     @Column(nullable = false, length = 20)
     private PostingParticipationStatus status;
 
+    /** 완료 처리 이후 사용자가 직접 입력하는 봉사 인정시간(분 단위, 10분 단위 입력). */
+    @Column(name = "recognized_minutes")
+    private Integer recognizedMinutes;
+
+    /**
+     * 완료 처리 시점(complete() 호출 시각). 뱃지 판정(연속 참여 월 계산)에 이 값을 사용한다 — updatedAt은
+     * submitRecognizedMinutes() 등 완료 이후의 다른 변경으로도 갱신되므로 완료 시점 대용으로 쓸 수 없다.
+     */
+    @Column(name = "completed_at")
+    private LocalDateTime completedAt;
+
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
@@ -58,5 +69,14 @@ public class PostingParticipation {
 
     public static PostingParticipation create(Long userId, Long postingId) {
         return new PostingParticipation(userId, postingId, PostingParticipationStatus.APPLIED);
+    }
+
+    public void complete() {
+        this.status = PostingParticipationStatus.COMPLETED;
+        this.completedAt = LocalDateTime.now();
+    }
+
+    public void submitRecognizedMinutes(Integer recognizedMinutes) {
+        this.recognizedMinutes = recognizedMinutes;
     }
 }

@@ -10,6 +10,7 @@ import com.gather.gather.global.exception.BusinessException;
 import com.gather.gather.global.exception.ErrorCode;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
@@ -20,10 +21,10 @@ public class NotificationCreateService {
     private final UserRepository userRepository;
 
     /**
-     * 현재 호출자의 트랜잭션에 참여해 알림을 생성한다. 핵심 비즈니스 처리와 알림 실패를 분리해야 하는 연동에서는 AFTER_COMMIT 이벤트 또는 별도 트랜잭션과 예외
-     * 격리 정책을 사용해야 한다.
+     * 항상 별도의 새 트랜잭션에서 알림을 생성한다(REQUIRES_NEW). 호출자 트랜잭션에 참여(REQUIRED)하면 알림 생성 실패가 호출자 트랜잭션 전체를
+     * rollback-only로 만들어, catch로 격리한 것처럼 보여도 실제로는 핵심 비즈니스 처리까지 롤백시킨다.
      */
-    @Transactional
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public Notification create(
             Long recipientUserId,
             NotificationType type,

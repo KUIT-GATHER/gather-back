@@ -56,6 +56,7 @@ class MeetingBookmarkQueryControllerTest {
                         MeetingStatus.RECRUITING,
                         LocalDateTime.of(2026, 8, 1, 0, 0),
                         LocalDateTime.of(2026, 8, 5, 10, 0),
+                        null,
                         null);
         Page<MeetingResponse> page = new PageImpl<>(List.of(meeting), PageRequest.of(0, 20), 1);
         when(meetingBookmarkService.getBookmarkedMeetings(isNull(), isNull(), any()))

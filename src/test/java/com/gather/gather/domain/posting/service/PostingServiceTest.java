@@ -541,12 +541,40 @@ class PostingServiceTest {
     }
 
     @ParameterizedTest
-    @CsvSource({"APPLIED, CANCEL", "CONFIRMED, COMPLETE", "COMPLETED, NONE", "REVIEWED, NONE"})
-    @DisplayName("getPosting derives participationAction from the user's participation status")
-    void getPosting_derivesParticipationAction_fromStatus(
+    @CsvSource({"APPLIED, CANCEL", "CONFIRMED, CANCEL", "COMPLETED, NONE", "REVIEWED, NONE"})
+    @DisplayName(
+            "getPosting derives participationAction from status when the activity has not ended"
+                    + " yet")
+    void getPosting_derivesParticipationAction_fromStatus_whenActivityNotEnded(
             PostingParticipationStatus status, PostingParticipationAction expectedAction) {
         Long userId = 1L;
         Posting posting = postingWithId(1L, "동구 환경정화 봉사", 2L, PostingCategory.ENVIRONMENT);
+        when(postingRepository.findById(1L)).thenReturn(Optional.of(posting));
+        when(regionRepository.findById(2L)).thenReturn(Optional.of(regionWithId(2L, "동구")));
+        when(postingLocationRepository.findAllByPostingIdOrderByLocationSeq(1L))
+                .thenReturn(List.of());
+        when(postingParticipationRepository.findByUserIdAndPostingId(userId, 1L))
+                .thenReturn(Optional.of(participationWithStatus(userId, 1L, status)));
+
+        try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
+            securityUtil.when(SecurityUtil::getCurrentUserIdOrNull).thenReturn(userId);
+
+            PostingResponse response = postingService.getPosting(1L);
+
+            assertThat(response.participationStatus()).isEqualTo(status);
+            assertThat(response.participationAction()).isEqualTo(expectedAction);
+        }
+    }
+
+    @ParameterizedTest
+    @CsvSource({"APPLIED, COMPLETE", "CONFIRMED, COMPLETE", "COMPLETED, NONE", "REVIEWED, NONE"})
+    @DisplayName(
+            "getPosting derives participationAction from status once the activity end date has"
+                    + " passed")
+    void getPosting_derivesParticipationAction_fromStatus_whenActivityEnded(
+            PostingParticipationStatus status, PostingParticipationAction expectedAction) {
+        Long userId = 1L;
+        Posting posting = postingWithActEndDate(1L, "동구 환경정화 봉사", 2L, PostingCategory.ENVIRONMENT);
         when(postingRepository.findById(1L)).thenReturn(Optional.of(posting));
         when(regionRepository.findById(2L)).thenReturn(Optional.of(regionWithId(2L, "동구")));
         when(postingLocationRepository.findAllByPostingIdOrderByLocationSeq(1L))
@@ -599,6 +627,22 @@ class PostingServiceTest {
                         .status(PostingStatus.RECRUITING)
                         .regionId(regionId)
                         .category(category)
+                        .build();
+        ReflectionTestUtils.setField(posting, "id", id);
+        return posting;
+    }
+
+    /** 활동종료일이 어제인 공고 — isActivityEnded()가 true를 반환한다. */
+    private Posting postingWithActEndDate(
+            Long id, String title, Long regionId, PostingCategory category) {
+        Posting posting =
+                Posting.builder()
+                        .extId("ext-" + id)
+                        .title(title)
+                        .status(PostingStatus.RECRUITING)
+                        .regionId(regionId)
+                        .category(category)
+                        .actEndDate(LocalDate.now().minusDays(1))
                         .build();
         ReflectionTestUtils.setField(posting, "id", id);
         return posting;

@@ -16,6 +16,8 @@ public interface BookmarkRepository extends JpaRepository<Bookmark, Long> {
 
     boolean existsByUserId(Long userId);
 
+    long countByUserId(Long userId);
+
     Optional<Bookmark> findByUserIdAndPostingId(Long userId, Long postingId);
 
     /** Bookmark는 Posting과 연관관계 없이 FK id만 보관하므로(Bookmark.java 참고) 명시적 ON 절로 조인한다. */

@@ -57,6 +57,10 @@ public class MeetingMember {
     @Column(nullable = false, length = 20)
     private MeetingMemberStatus status;
 
+    /** 모임장이 모임을 완료 처리한 뒤 멤버 본인이 직접 입력하는 봉사 인정시간(분 단위, 10분 단위 입력). */
+    @Column(name = "recognized_minutes")
+    private Integer recognizedMinutes;
+
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
@@ -99,5 +103,9 @@ public class MeetingMember {
 
     public void leave() {
         this.status = MeetingMemberStatus.LEFT;
+    }
+
+    public void submitRecognizedMinutes(Integer recognizedMinutes) {
+        this.recognizedMinutes = recognizedMinutes;
     }
 }
