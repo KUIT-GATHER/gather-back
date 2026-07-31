@@ -539,6 +539,29 @@ class MyPageServiceTest {
         }
     }
 
+    @Test
+    @DisplayName(
+            "getActivityRecords returns an empty page instead of throwing when the requested page"
+                    + " offset overflows int range")
+    void getActivityRecords_returnsEmptyPage_whenOffsetOverflowsInt() {
+        Posting first = posting(601L, LocalDate.of(2026, 7, 1));
+        PostingParticipation p1 = PostingParticipation.create(USER_ID, 601L);
+
+        try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
+            securityUtil.when(SecurityUtil::getCurrentUserId).thenReturn(USER_ID);
+            when(postingParticipationRepository.findAllByUserIdAndStatusIn(
+                            USER_ID, COMPLETED_STATUSES))
+                    .thenReturn(List.of(p1));
+            when(postingRepository.findAllById(List.of(601L))).thenReturn(List.of(first));
+
+            PageResponse<MyPageActivityRecordResponse> page =
+                    myPageService.getActivityRecords(null, PageRequest.of(2_000_000, 2000));
+
+            assertThat(page.content()).isEmpty();
+            assertThat(page.totalElements()).isEqualTo(1);
+        }
+    }
+
     private Pageable defaultPageable() {
         return PageRequest.of(0, 20);
     }

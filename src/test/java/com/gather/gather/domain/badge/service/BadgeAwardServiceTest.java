@@ -7,7 +7,6 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.gather.gather.domain.badge.entity.BadgeType;
-import com.gather.gather.domain.badge.entity.UserBadge;
 import com.gather.gather.domain.badge.repository.UserBadgeRepository;
 import com.gather.gather.domain.notification.entity.NotificationSetting;
 import com.gather.gather.domain.notification.enums.NotificationTargetType;
@@ -15,15 +14,12 @@ import com.gather.gather.domain.notification.enums.NotificationType;
 import com.gather.gather.domain.notification.repository.NotificationSettingRepository;
 import com.gather.gather.domain.notification.service.NotificationCreateService;
 import java.util.Optional;
-import org.assertj.core.api.Assertions;
-import org.hibernate.exception.ConstraintViolationException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.test.util.ReflectionTestUtils;
 
 @ExtendWith(MockitoExtension.class)
@@ -32,6 +28,7 @@ class BadgeAwardServiceTest {
     private static final Long USER_ID = 1L;
 
     @Mock private UserBadgeRepository userBadgeRepository;
+    @Mock private UserBadgeWriter userBadgeWriter;
     @Mock private NotificationCreateService notificationCreateService;
     @Mock private NotificationSettingRepository notificationSettingRepository;
 
@@ -42,6 +39,7 @@ class BadgeAwardServiceTest {
         badgeAwardService =
                 new BadgeAwardService(
                         userBadgeRepository,
+                        userBadgeWriter,
                         notificationCreateService,
                         notificationSettingRepository);
     }
@@ -52,12 +50,12 @@ class BadgeAwardServiceTest {
     void award_savesAndNotifies_whenNotAlreadyAwardedAndNotificationEnabled() {
         when(userBadgeRepository.existsByUserIdAndBadgeType(USER_ID, BadgeType.FIRST_COMPLETION))
                 .thenReturn(false);
+        when(userBadgeWriter.tryInsert(USER_ID, BadgeType.FIRST_COMPLETION)).thenReturn(true);
         when(notificationSettingRepository.findByUser_Id(USER_ID))
                 .thenReturn(Optional.of(badgeEnabledSetting(true)));
 
         badgeAwardService.award(USER_ID, BadgeType.FIRST_COMPLETION);
 
-        verify(userBadgeRepository).saveAndFlush(any(UserBadge.class));
         verify(notificationCreateService)
                 .create(
                         eq(USER_ID),
@@ -75,41 +73,21 @@ class BadgeAwardServiceTest {
 
         badgeAwardService.award(USER_ID, BadgeType.FIRST_COMPLETION);
 
-        verify(userBadgeRepository, never()).saveAndFlush(any());
-        verify(notificationCreateService, never()).create(any(), any(), any(), any(), any());
-    }
-
-    @Test
-    @DisplayName("award swallows a unique constraint race and skips the notification")
-    void award_swallowsRace_whenUniqueConstraintViolated() {
-        when(userBadgeRepository.existsByUserIdAndBadgeType(USER_ID, BadgeType.FIRST_COMPLETION))
-                .thenReturn(false);
-        DataIntegrityViolationException dbException =
-                new DataIntegrityViolationException(
-                        "duplicate",
-                        new ConstraintViolationException("dup", null, "uq_user_badge_user_type"));
-        when(userBadgeRepository.saveAndFlush(any(UserBadge.class))).thenThrow(dbException);
-
-        badgeAwardService.award(USER_ID, BadgeType.FIRST_COMPLETION);
-
+        verify(userBadgeWriter, never()).tryInsert(any(), any());
         verify(notificationCreateService, never()).create(any(), any(), any(), any(), any());
     }
 
     @Test
     @DisplayName(
-            "award rethrows when the violated constraint is not the badge uniqueness one (H-1)")
-    void award_rethrows_whenConstraintViolationIsNotUniqueBadge() {
+            "award skips the notification when the writer reports a duplicate-badge race"
+                    + " (REQUIRES_NEW isolation, M-1)")
+    void award_skipsNotification_whenWriterReportsDuplicate() {
         when(userBadgeRepository.existsByUserIdAndBadgeType(USER_ID, BadgeType.FIRST_COMPLETION))
                 .thenReturn(false);
-        DataIntegrityViolationException fkViolation =
-                new DataIntegrityViolationException(
-                        "fk violation",
-                        new ConstraintViolationException("fk", null, "fk_user_badge_user"));
-        when(userBadgeRepository.saveAndFlush(any(UserBadge.class))).thenThrow(fkViolation);
+        when(userBadgeWriter.tryInsert(USER_ID, BadgeType.FIRST_COMPLETION)).thenReturn(false);
 
-        Assertions.assertThatThrownBy(
-                        () -> badgeAwardService.award(USER_ID, BadgeType.FIRST_COMPLETION))
-                .isSameAs(fkViolation);
+        badgeAwardService.award(USER_ID, BadgeType.FIRST_COMPLETION);
+
         verify(notificationCreateService, never()).create(any(), any(), any(), any(), any());
     }
 
@@ -119,6 +97,7 @@ class BadgeAwardServiceTest {
     void award_keepsBadge_whenNotificationCreationFails() {
         when(userBadgeRepository.existsByUserIdAndBadgeType(USER_ID, BadgeType.FIRST_COMPLETION))
                 .thenReturn(false);
+        when(userBadgeWriter.tryInsert(USER_ID, BadgeType.FIRST_COMPLETION)).thenReturn(true);
         when(notificationSettingRepository.findByUser_Id(USER_ID))
                 .thenReturn(Optional.of(badgeEnabledSetting(true)));
         when(notificationCreateService.create(any(), any(), any(), any(), any()))
@@ -126,7 +105,7 @@ class BadgeAwardServiceTest {
 
         badgeAwardService.award(USER_ID, BadgeType.FIRST_COMPLETION);
 
-        verify(userBadgeRepository).saveAndFlush(any(UserBadge.class));
+        verify(userBadgeWriter).tryInsert(USER_ID, BadgeType.FIRST_COMPLETION);
     }
 
     @Test
@@ -134,12 +113,12 @@ class BadgeAwardServiceTest {
     void award_skipsNotification_whenBadgeNotificationDisabled() {
         when(userBadgeRepository.existsByUserIdAndBadgeType(USER_ID, BadgeType.FIRST_COMPLETION))
                 .thenReturn(false);
+        when(userBadgeWriter.tryInsert(USER_ID, BadgeType.FIRST_COMPLETION)).thenReturn(true);
         when(notificationSettingRepository.findByUser_Id(USER_ID))
                 .thenReturn(Optional.of(badgeEnabledSetting(false)));
 
         badgeAwardService.award(USER_ID, BadgeType.FIRST_COMPLETION);
 
-        verify(userBadgeRepository).saveAndFlush(any(UserBadge.class));
         verify(notificationCreateService, never()).create(any(), any(), any(), any(), any());
     }
 
@@ -150,6 +129,7 @@ class BadgeAwardServiceTest {
     void award_skipsNotification_whenNoNotificationSettingExists() {
         when(userBadgeRepository.existsByUserIdAndBadgeType(USER_ID, BadgeType.FIRST_COMPLETION))
                 .thenReturn(false);
+        when(userBadgeWriter.tryInsert(USER_ID, BadgeType.FIRST_COMPLETION)).thenReturn(true);
         when(notificationSettingRepository.findByUser_Id(USER_ID)).thenReturn(Optional.empty());
 
         badgeAwardService.award(USER_ID, BadgeType.FIRST_COMPLETION);

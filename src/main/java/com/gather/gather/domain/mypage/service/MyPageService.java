@@ -213,10 +213,11 @@ public class MyPageService {
     }
 
     private <T> Page<T> sliceInMemory(List<T> items, Pageable pageable) {
-        int start = (int) pageable.getOffset();
-        if (start >= items.size()) {
+        long offset = pageable.getOffset();
+        if (offset >= items.size()) {
             return new PageImpl<>(List.of(), pageable, items.size());
         }
+        int start = (int) offset;
         int end = Math.min(start + pageable.getPageSize(), items.size());
         return new PageImpl<>(items.subList(start, end), pageable, items.size());
     }

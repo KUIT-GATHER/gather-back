@@ -16,10 +16,6 @@ public interface PostingParticipationRepository extends JpaRepository<PostingPar
     List<PostingParticipation> findByUserIdAndStatusNotIn(
             Long userId, Collection<PostingParticipationStatus> excludedStatuses);
 
-    /** 뱃지 판정(완료 횟수, 연속 참여 월)용 — 완료된 참여 이력만 조회한다. */
-    List<PostingParticipation> findAllByUserIdAndStatus(
-            Long userId, PostingParticipationStatus status);
-
     /**
      * COMPLETED뿐 아니라 REVIEWED(후기 작성됨)까지 포함해 조회한다 — 이 리포 전체가 두 상태를 함께 "완료"로 취급하므로( {@code
      * CALENDAR_EXCLUDED_STATUSES}, {@code PostingParticipationAction} 등과 동일 정책), 뱃지 판정과 마이페이지 활동기록도
