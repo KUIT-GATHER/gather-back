@@ -216,6 +216,21 @@ class PostingRepositoryTest {
     }
 
     @Test
+    void clearExpiredContent_clearsContent_whenExactlyAtCutoffDate() {
+        Posting posting =
+                postingRepository.save(
+                        inactiveLifecyclePosting(
+                                LocalDate.of(2026, 6, 1), LocalDate.of(2026, 7, 1)));
+
+        int count =
+                postingRepository.clearExpiredContent(
+                        LocalDate.of(2026, 7, 1), LocalDateTime.now());
+
+        assertThat(count).isEqualTo(1);
+        assertThat(postingRepository.findById(posting.getId()).orElseThrow().getContent()).isNull();
+    }
+
+    @Test
     void clearExpiredContent_doesNotClear_whenWithinCutoff() {
         Posting posting =
                 postingRepository.save(

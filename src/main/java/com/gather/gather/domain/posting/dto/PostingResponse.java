@@ -13,7 +13,8 @@ public record PostingResponse(
         Long id,
         String title,
         PostingStatus status,
-        String content,
+        @Schema(nullable = true, description = "봉사공고 본문. 활동 종료 후 보존기간(1개월)이 지나면 null일 수 있다")
+                String content,
         String recruitOrg,
         String registerOrg,
         LocalDate actStartDate,

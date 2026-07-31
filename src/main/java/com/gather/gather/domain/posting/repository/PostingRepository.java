@@ -35,7 +35,7 @@ public interface PostingRepository extends JpaRepository<Posting, Long> {
 
     /**
      * 비활성화된 지 오래된 공고의 content(최대 용량 컬럼)를 비운다. isActive=false이고 effective 종료일(actEndDate, 없으면
-     * activityDate)이 cutoffDate 이전인 공고가 대상이다.
+     * activityDate)이 cutoffDate 이하(= 1개월 이상 경과)인 공고가 대상이다.
      */
     @Modifying(clearAutomatically = true)
     @Query(
@@ -43,7 +43,7 @@ public interface PostingRepository extends JpaRepository<Posting, Long> {
             update Posting p set p.content = null, p.updatedAt = :now
             where p.isActive = false
               and p.content is not null
-              and coalesce(p.actEndDate, p.activityDate) < :cutoffDate
+              and coalesce(p.actEndDate, p.activityDate) <= :cutoffDate
             """)
     int clearExpiredContent(
             @Param("cutoffDate") LocalDate cutoffDate, @Param("now") LocalDateTime now);
