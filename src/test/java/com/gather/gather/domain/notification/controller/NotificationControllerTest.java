@@ -10,6 +10,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.gather.gather.domain.notification.dto.NotificationResponse;
+import com.gather.gather.domain.notification.dto.NotificationUnreadCountResponse;
 import com.gather.gather.domain.notification.enums.NotificationCategory;
 import com.gather.gather.domain.notification.enums.NotificationTargetType;
 import com.gather.gather.domain.notification.enums.NotificationType;
@@ -99,5 +100,25 @@ class NotificationControllerTest {
                 .andExpect(jsonPath("$.success").value(true));
 
         verify(notificationQueryService).deleteNotification(1L);
+    }
+
+    @Test
+    @DisplayName("미읽음 알림 개수를 조회한다")
+    void getUnreadCount() throws Exception {
+        // given
+        NotificationUnreadCountResponse response = NotificationUnreadCountResponse.of(2L, 3L);
+
+        when(notificationQueryService.getUnreadCount()).thenReturn(response);
+
+        // when & then
+        mockMvc.perform(get("/api/v1/notifications/unread-count"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.activity").value(2))
+                .andExpect(jsonPath("$.data.meeting").value(3))
+                .andExpect(jsonPath("$.data.total").value(5))
+                .andExpect(jsonPath("$.error").doesNotExist());
+
+        verify(notificationQueryService).getUnreadCount();
     }
 }

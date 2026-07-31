@@ -1,6 +1,7 @@
 package com.gather.gather.domain.notification.service;
 
 import com.gather.gather.domain.notification.dto.NotificationResponse;
+import com.gather.gather.domain.notification.dto.NotificationUnreadCountResponse;
 import com.gather.gather.domain.notification.entity.Notification;
 import com.gather.gather.domain.notification.enums.NotificationCategory;
 import com.gather.gather.domain.notification.repository.NotificationRepository;
@@ -33,6 +34,20 @@ public class NotificationQueryService {
                         .map(NotificationResponse::from);
 
         return PageResponse.from(responses);
+    }
+
+    public NotificationUnreadCountResponse getUnreadCount() {
+        Long userId = SecurityUtil.getCurrentUserId();
+
+        long activityCount =
+                notificationRepository.countByUser_IdAndCategoryAndReadAtIsNullAndDeletedAtIsNull(
+                        userId, NotificationCategory.ACTIVITY);
+
+        long meetingCount =
+                notificationRepository.countByUser_IdAndCategoryAndReadAtIsNullAndDeletedAtIsNull(
+                        userId, NotificationCategory.MEETING);
+
+        return NotificationUnreadCountResponse.of(activityCount, meetingCount);
     }
 
     @Transactional
