@@ -38,10 +38,7 @@ class MeetingDetailBookmarkServiceTest {
     @Mock private RegionRepository regionRepository;
     @Mock private PostingRepository postingRepository;
     @Mock private MeetingSearchLogService meetingSearchLogService;
-    @Mock private com.gather.gather.domain.badge.service.BadgeAwardService badgeAwardService;
-
-    @Mock
-    private com.gather.gather.domain.badge.service.BadgeEvaluationService badgeEvaluationService;
+    @Mock private org.springframework.context.ApplicationEventPublisher eventPublisher;
 
     @InjectMocks private MeetingService meetingService;
 
