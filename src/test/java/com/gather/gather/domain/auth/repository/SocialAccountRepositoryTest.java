@@ -105,7 +105,6 @@ class SocialAccountRepositoryTest {
                 .containsExactly(
                         new SocialAccountIdentitySnapshot(
                                 account.getId(),
-                                user.getId(),
                                 SocialProvider.KAKAO,
                                 account.getProviderUserKey(),
                                 3,

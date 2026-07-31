@@ -5,7 +5,6 @@ import com.gather.gather.domain.auth.entity.SocialProvider;
 
 public record SocialAccountIdentitySnapshot(
         Long id,
-        Long userId,
         SocialProvider provider,
         String providerUserKey,
         Integer providerUserKeyVersion,

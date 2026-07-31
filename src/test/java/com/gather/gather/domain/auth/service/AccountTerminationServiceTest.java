@@ -59,6 +59,7 @@ class AccountTerminationServiceTest {
     @Mock private SocialSignupSessionService signupSessionService;
     @Mock private LockedPendingSocialSignupSessions lockedSignupSessions;
     @Mock private AccountRejoinBlockService rejoinBlockService;
+    @Mock private AccountIdentityGuardService identityGuardService;
     @Mock private RefreshTokenRepository refreshTokenRepository;
     @Mock private EmailVerificationRepository emailVerificationRepository;
     @Mock private KakaoUnlinkTaskRepository unlinkTaskRepository;
@@ -75,6 +76,7 @@ class AccountTerminationServiceTest {
                         socialAccountRepository,
                         signupSessionService,
                         rejoinBlockService,
+                        identityGuardService,
                         refreshTokenRepository,
                         emailVerificationRepository,
                         unlinkTaskRepository,
@@ -86,11 +88,13 @@ class AccountTerminationServiceTest {
     @DisplayName("일반 회원 탈퇴는 동일한 UTC operation timestamp로 완료와 정리를 수행한다")
     void terminate_localAccount_completesWithOneOperationTimestamp() {
         User user = localUser();
+        RejoinBlockIdentifier phoneIdentifier = phoneIdentifier();
         user.changeProfileImageKey("profiles/41/current.jpg");
         when(userRepository.findByIdForUpdate(USER_ID)).thenReturn(Optional.of(user));
         when(socialAccountRepository.findIdentitySnapshotsByUserIdAndProvider(
                         USER_ID, SocialProvider.KAKAO))
                 .thenReturn(List.of());
+        when(identityGuardService.lockPhone("01012345678", NOW)).thenReturn(phoneIdentifier);
 
         AccountTerminationResult result = service.terminate(USER_ID, WithdrawalReason.SELF);
 
@@ -99,7 +103,7 @@ class AccountTerminationServiceTest {
         assertThat(user.getStatus()).isEqualTo(UserStatus.WITHDRAWN);
         assertThat(user.getWithdrawnAt()).isEqualTo(NOW);
         assertThat(user.getAnonymizedAt()).isEqualTo(NOW);
-        verify(rejoinBlockService).createOrExtendPhoneBlock("01012345678", USER_ID, NOW);
+        verify(rejoinBlockService).createOrExtendBlock(phoneIdentifier, USER_ID, NOW);
         verify(refreshTokenRepository).deleteAllByUserId(USER_ID);
         verify(emailVerificationRepository).deleteAllByEmail("member@example.com");
         verify(profileImageDeletionService)
@@ -113,6 +117,7 @@ class AccountTerminationServiceTest {
         User user = socialUser();
         SocialAccount socialAccount = linkedSocialAccount(user);
         SocialAccountIdentitySnapshot snapshot = linkedSnapshot();
+        RejoinBlockIdentifier phoneIdentifier = phoneIdentifier();
         when(userRepository.findByIdForUpdate(USER_ID)).thenReturn(Optional.of(user));
         when(socialAccountRepository.findIdentitySnapshotsByUserIdAndProvider(
                         USER_ID, SocialProvider.KAKAO))
@@ -123,6 +128,7 @@ class AccountTerminationServiceTest {
                 .thenReturn(lockedSignupSessions);
         when(unlinkTaskRepository.saveAndFlush(any(KakaoUnlinkTask.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
+        when(identityGuardService.lockPhone("01012345678", NOW)).thenReturn(phoneIdentifier);
 
         AccountTerminationResult result = service.terminate(USER_ID, WithdrawalReason.SELF);
 
@@ -140,7 +146,7 @@ class AccountTerminationServiceTest {
         verify(signupSessionService)
                 .lockPendingForIdentity(SocialProvider.KAKAO, kakaoIdentifier, NOW);
         verify(lockedSignupSessions).cancelAll(NOW);
-        verify(rejoinBlockService).createOrExtendPhoneBlock("01012345678", USER_ID, NOW);
+        verify(rejoinBlockService).createOrExtendBlock(phoneIdentifier, USER_ID, NOW);
         verify(rejoinBlockService).createOrExtendBlock(kakaoIdentifier, USER_ID, NOW);
         verify(refreshTokenRepository).deleteAllByUserId(USER_ID);
         verify(profileImageDeletionService, never()).scheduleDeletion(any(), any(), any());
@@ -180,7 +186,6 @@ class AccountTerminationServiceTest {
         SocialAccountIdentitySnapshot snapshot =
                 new SocialAccountIdentitySnapshot(
                         SOCIAL_ACCOUNT_ID,
-                        USER_ID,
                         SocialProvider.KAKAO,
                         PROVIDER_KEY,
                         1,
@@ -200,9 +205,77 @@ class AccountTerminationServiceTest {
                 .isEqualTo(new AccountTerminationResult(AccountTerminationOutcome.ACCEPTED, NOW));
         assertThat(user.getWithdrawalReason()).isEqualTo(WithdrawalReason.SELF);
         verify(signupSessionService, never()).lockPendingForIdentity(any(), any(), any());
+        verify(identityGuardService, never()).lockPhone(any(), any());
         verify(rejoinBlockService, never()).createOrExtendBlock(any(), any(), any());
         verify(refreshTokenRepository, never()).deleteAllByUserId(any());
         verify(unlinkTaskRepository, never()).saveAndFlush(any());
+    }
+
+    @Test
+    @DisplayName("withdrawn 중복 요청은 최초 완료 시각과 사유를 유지하고 부수효과를 반복하지 않는다")
+    void terminate_withdrawn_isIdempotent() {
+        User user = localUser();
+        user.changeProfileImageKey("profiles/41/original.jpg");
+        user.withdraw(WithdrawalReason.SELF, NOW);
+        user.anonymize(NOW);
+        when(userRepository.findByIdForUpdate(USER_ID)).thenReturn(Optional.of(user));
+        when(socialAccountRepository.findIdentitySnapshotsByUserIdAndProvider(
+                        USER_ID, SocialProvider.KAKAO))
+                .thenReturn(List.of());
+
+        AccountTerminationResult result = service.terminate(USER_ID, WithdrawalReason.ADMIN);
+
+        assertThat(result)
+                .isEqualTo(new AccountTerminationResult(AccountTerminationOutcome.COMPLETED, NOW));
+        assertThat(user.getWithdrawalReason()).isEqualTo(WithdrawalReason.SELF);
+        assertThat(user.getAnonymizedAt()).isEqualTo(NOW);
+        verify(identityGuardService, never()).lockPhone(any(), any());
+        verify(rejoinBlockService, never()).createOrExtendBlock(any(), any(), any());
+        verify(profileImageDeletionService, never()).scheduleDeletion(any(), any(), any());
+        verify(unlinkTaskRepository, never()).saveAndFlush(any());
+    }
+
+    @Test
+    @DisplayName("pending User에 identity snapshot이 없으면 invariant 오류이고 부수효과가 없다")
+    void terminate_pendingWithoutSnapshot_rejectsWithoutSideEffects() {
+        assertPendingConflict(null, null);
+    }
+
+    @Test
+    @DisplayName("pending User의 SocialAccount가 LINKED이면 invariant 오류이고 부수효과가 없다")
+    void terminate_pendingLinkedSocialAccount_rejectsWithoutSideEffects() {
+        assertPendingConflict(pendingSnapshot(SocialAccountLinkStatus.LINKED, GENERATION), null);
+    }
+
+    @Test
+    @DisplayName("pending User의 generation이 없거나 유효하지 않으면 invariant 오류이고 부수효과가 없다")
+    void terminate_pendingInvalidGeneration_rejectsWithoutSideEffects() {
+        assertPendingConflict(pendingSnapshot(SocialAccountLinkStatus.UNLINK_PENDING, null), null);
+    }
+
+    @Test
+    @DisplayName("pending User의 generation이 0이면 invariant 오류이고 부수효과가 없다")
+    void terminate_pendingZeroGeneration_rejectsWithoutSideEffects() {
+        assertPendingConflict(pendingSnapshot(SocialAccountLinkStatus.UNLINK_PENDING, 0L), null);
+    }
+
+    @Test
+    @DisplayName("pending User에 같은 generation task가 없으면 invariant 오류이고 부수효과가 없다")
+    void terminate_pendingWithoutTask_rejectsWithoutSideEffects() {
+        assertPendingConflict(
+                pendingSnapshot(SocialAccountLinkStatus.UNLINK_PENDING, GENERATION), null);
+    }
+
+    @Test
+    @DisplayName("pending User와 task의 SocialAccount 사용자가 다르면 invariant 오류이고 부수효과가 없다")
+    void terminate_pendingTaskUserMismatch_rejectsWithoutSideEffects() {
+        User otherUser = socialUser();
+        ReflectionTestUtils.setField(otherUser, "id", USER_ID + 1);
+        SocialAccount otherAccount = linkedSocialAccount(otherUser);
+        otherAccount.markUnlinkPending(NOW);
+        KakaoUnlinkTask task = KakaoUnlinkTask.pending(otherAccount, GENERATION, NOW);
+        assertPendingConflict(
+                pendingSnapshot(SocialAccountLinkStatus.UNLINK_PENDING, GENERATION), task);
     }
 
     @Test
@@ -212,7 +285,6 @@ class AccountTerminationServiceTest {
         SocialAccountIdentitySnapshot snapshot =
                 new SocialAccountIdentitySnapshot(
                         SOCIAL_ACCOUNT_ID,
-                        USER_ID,
                         SocialProvider.KAKAO,
                         PROVIDER_KEY,
                         1,
@@ -284,11 +356,48 @@ class AccountTerminationServiceTest {
     private SocialAccountIdentitySnapshot linkedSnapshot() {
         return new SocialAccountIdentitySnapshot(
                 SOCIAL_ACCOUNT_ID,
-                USER_ID,
                 SocialProvider.KAKAO,
                 PROVIDER_KEY,
                 1,
                 SocialAccountLinkStatus.LINKED,
                 GENERATION);
+    }
+
+    private SocialAccountIdentitySnapshot pendingSnapshot(
+            SocialAccountLinkStatus linkStatus, Long generation) {
+        return new SocialAccountIdentitySnapshot(
+                SOCIAL_ACCOUNT_ID, SocialProvider.KAKAO, PROVIDER_KEY, 1, linkStatus, generation);
+    }
+
+    private void assertPendingConflict(
+            SocialAccountIdentitySnapshot snapshot, KakaoUnlinkTask task) {
+        User user = socialUser();
+        user.requestWithdrawal(WithdrawalReason.SELF, NOW);
+        when(userRepository.findByIdForUpdate(USER_ID)).thenReturn(Optional.of(user));
+        when(socialAccountRepository.findIdentitySnapshotsByUserIdAndProvider(
+                        USER_ID, SocialProvider.KAKAO))
+                .thenReturn(snapshot == null ? List.of() : List.of(snapshot));
+        if (snapshot != null
+                && snapshot.linkStatus() == SocialAccountLinkStatus.UNLINK_PENDING
+                && snapshot.generation() != null
+                && snapshot.generation() > 0) {
+            when(unlinkTaskRepository.findBySocialAccountIdAndGeneration(
+                            snapshot.id(), snapshot.generation()))
+                    .thenReturn(Optional.ofNullable(task));
+        }
+
+        assertThatThrownBy(() -> service.terminate(USER_ID, WithdrawalReason.ADMIN))
+                .isInstanceOf(BusinessException.class)
+                .extracting(exception -> ((BusinessException) exception).getErrorCode())
+                .isEqualTo(ErrorCode.ACCOUNT_TERMINATION_STATE_CONFLICT);
+        assertThat(user.getWithdrawalReason()).isEqualTo(WithdrawalReason.SELF);
+        verify(identityGuardService, never()).lockPhone(any(), any());
+        verify(rejoinBlockService, never()).createOrExtendBlock(any(), any(), any());
+        verify(refreshTokenRepository, never()).deleteAllByUserId(any());
+        verify(unlinkTaskRepository, never()).saveAndFlush(any());
+    }
+
+    private RejoinBlockIdentifier phoneIdentifier() {
+        return new RejoinBlockIdentifier(AccountRejoinBlockIdentifierType.PHONE, "b".repeat(64), 1);
     }
 }

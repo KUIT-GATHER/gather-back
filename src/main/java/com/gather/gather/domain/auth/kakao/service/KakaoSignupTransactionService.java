@@ -5,7 +5,9 @@ import com.gather.gather.domain.auth.entity.SocialAccount;
 import com.gather.gather.domain.auth.entity.User;
 import com.gather.gather.domain.auth.repository.SocialAccountRepository;
 import com.gather.gather.domain.auth.repository.UserRepository;
+import com.gather.gather.domain.auth.service.AccountIdentityGuardService;
 import com.gather.gather.domain.auth.service.AccountRejoinBlockService;
+import com.gather.gather.domain.auth.service.RejoinBlockIdentifier;
 import com.gather.gather.domain.auth.service.SignupValidator;
 import com.gather.gather.domain.auth.service.SocialAccountConstraint;
 import com.gather.gather.domain.auth.service.SocialAccountConstraintResolver;
@@ -37,6 +39,7 @@ public class KakaoSignupTransactionService {
     private final SocialAccountProviderIdCipher providerIdCipher;
     private final SocialAccountConstraintResolver constraintResolver;
     private final AccountRejoinBlockService accountRejoinBlockService;
+    private final AccountIdentityGuardService accountIdentityGuardService;
     private final Clock clock;
 
     /**
@@ -50,7 +53,9 @@ public class KakaoSignupTransactionService {
         LockedSocialSignupSession lockedSession =
                 signupSessionService.lockForSignup(signupToken, now);
         SocialSignupIdentitySnapshot identity = lockedSession.identity();
-        validateRejoinAllowed(phoneNumber, identity, now);
+        RejoinBlockIdentifier phoneIdentifier =
+                accountIdentityGuardService.lockPhone(phoneNumber, now);
+        validateRejoinAllowed(phoneIdentifier, identity, now);
         socialAccountIdentityService
                 .findByProviderAndKey(identity.provider(), identity.identifier())
                 .ifPresent(this::rejectExistingSocialAccount);
@@ -98,8 +103,10 @@ public class KakaoSignupTransactionService {
     }
 
     private void validateRejoinAllowed(
-            String phoneNumber, SocialSignupIdentitySnapshot identity, LocalDateTime now) {
-        if (accountRejoinBlockService.isPhoneBlocked(phoneNumber, now)
+            RejoinBlockIdentifier phoneIdentifier,
+            SocialSignupIdentitySnapshot identity,
+            LocalDateTime now) {
+        if (accountRejoinBlockService.isBlockedForUpdate(phoneIdentifier, now)
                 || accountRejoinBlockService.isBlocked(identity.identifier(), now)) {
             throw new BusinessException(ErrorCode.ACCOUNT_REJOIN_BLOCKED);
         }

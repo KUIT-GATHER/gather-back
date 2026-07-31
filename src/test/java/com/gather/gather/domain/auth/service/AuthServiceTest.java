@@ -8,6 +8,7 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -18,6 +19,7 @@ import com.gather.gather.domain.auth.dto.EmailVerificationSendRequest;
 import com.gather.gather.domain.auth.dto.LoginRequest;
 import com.gather.gather.domain.auth.dto.PhoneNumberAvailabilityRequest;
 import com.gather.gather.domain.auth.dto.SignupRequest;
+import com.gather.gather.domain.auth.entity.AccountRejoinBlockIdentifierType;
 import com.gather.gather.domain.auth.entity.EmailVerification;
 import com.gather.gather.domain.auth.entity.Gender;
 import com.gather.gather.domain.auth.entity.RefreshToken;
@@ -59,6 +61,9 @@ import org.springframework.test.util.ReflectionTestUtils;
 @ExtendWith(MockitoExtension.class)
 class AuthServiceTest {
 
+    private static final RejoinBlockIdentifier PHONE_IDENTIFIER =
+            new RejoinBlockIdentifier(AccountRejoinBlockIdentifierType.PHONE, "a".repeat(64), 1);
+
     @Mock private UserRepository userRepository;
     @Mock private EmailVerificationRepository emailVerificationRepository;
     @Mock private RefreshTokenRepository refreshTokenRepository;
@@ -68,6 +73,7 @@ class AuthServiceTest {
     @Mock private TokenProvider tokenProvider;
     @Mock private LockedTokenIssuanceService lockedTokenIssuanceService;
     @Mock private AccountRejoinBlockService accountRejoinBlockService;
+    @Mock private AccountIdentityGuardService accountIdentityGuardService;
 
     private AuthService authService;
 
@@ -89,7 +95,11 @@ class AuthServiceTest {
                                 userRepository, regionRepository, new PhoneNumberNormalizer()),
                         new LoginPolicy(),
                         accountRejoinBlockService,
+                        accountIdentityGuardService,
                         Clock.fixed(Instant.parse("2026-07-31T05:25:56.123456Z"), ZoneOffset.UTC));
+        lenient()
+                .when(accountIdentityGuardService.lockPhone(anyString(), any(LocalDateTime.class)))
+                .thenReturn(PHONE_IDENTIFIER);
     }
 
     @Test
@@ -572,14 +582,15 @@ class AuthServiceTest {
     @Test
     @DisplayName("재가입 제한 중인 전화번호는 회원가입을 거부한다")
     void signup_whenPhoneRejoinBlocked_throwsAccountRejoinBlocked() {
-        prepareVerifiedEmail();
-        when(accountRejoinBlockService.isPhoneBlocked(eq("01012345678"), any(LocalDateTime.class)))
+        when(accountRejoinBlockService.isBlockedForUpdate(
+                        eq(PHONE_IDENTIFIER), any(LocalDateTime.class)))
                 .thenReturn(true);
 
         assertErrorCode(
                 () -> authService.signup(signupRequest(123L)), ErrorCode.ACCOUNT_REJOIN_BLOCKED);
 
         verify(userRepository, never()).saveAndFlush(any(User.class));
+        verify(accountIdentityGuardService).lockPhone(eq("01012345678"), any(LocalDateTime.class));
     }
 
     @Test

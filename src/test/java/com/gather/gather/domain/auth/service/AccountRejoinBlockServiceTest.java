@@ -2,7 +2,6 @@ package com.gather.gather.domain.auth.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatNullPointerException;
-import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -12,7 +11,6 @@ import java.time.LocalDateTime;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -61,10 +59,8 @@ class AccountRejoinBlockServiceTest {
     }
 
     @Test
-    void createOrExtendPhoneBlock_usesCapturedNowAndSevenDayExpiration() {
-        when(identifierHasher.hashPhone("01012345678")).thenReturn(PHONE_IDENTIFIER);
-
-        service.createOrExtendPhoneBlock("01012345678", SOURCE_USER_ID, NOW);
+    void createOrExtendBlock_usesCapturedNowAndSevenDayExpiration() {
+        service.createOrExtendBlock(PHONE_IDENTIFIER, SOURCE_USER_ID, NOW);
 
         verify(blockRepository)
                 .upsertExtendingExpiration(
@@ -91,36 +87,27 @@ class AccountRejoinBlockServiceTest {
     }
 
     @Test
-    void createOrExtendPhoneAndKakaoBlocks_writesPhoneBeforeKakao() {
-        when(identifierHasher.hashPhone("01012345678")).thenReturn(PHONE_IDENTIFIER);
-        when(identifierHasher.hashKakao("123456789")).thenReturn(KAKAO_IDENTIFIER);
+    void isBlockedForUpdateUsesCurrentLockingRead() {
+        when(blockRepository.findByIdentifierForUpdate(
+                        PHONE_IDENTIFIER.type(), PHONE_IDENTIFIER.hash()))
+                .thenReturn(
+                        java.util.Optional.of(
+                                com.gather.gather.domain.auth.entity.AccountRejoinBlock.create(
+                                        PHONE_IDENTIFIER.type(),
+                                        PHONE_IDENTIFIER.hash(),
+                                        PHONE_IDENTIFIER.keyVersion(),
+                                        NOW.plusDays(1),
+                                        SOURCE_USER_ID,
+                                        NOW)));
 
-        service.createOrExtendPhoneAndKakaoBlocks("01012345678", "123456789", SOURCE_USER_ID, NOW);
-
-        InOrder order = inOrder(blockRepository);
-        order.verify(blockRepository)
-                .upsertExtendingExpiration(
-                        "PHONE",
-                        PHONE_IDENTIFIER.hash(),
-                        PHONE_IDENTIFIER.keyVersion(),
-                        NOW.plusDays(7),
-                        SOURCE_USER_ID,
-                        NOW);
-        order.verify(blockRepository)
-                .upsertExtendingExpiration(
-                        "KAKAO",
-                        KAKAO_IDENTIFIER.hash(),
-                        KAKAO_IDENTIFIER.keyVersion(),
-                        NOW.plusDays(7),
-                        SOURCE_USER_ID,
-                        NOW);
+        assertThat(service.isBlockedForUpdate(PHONE_IDENTIFIER, NOW)).isTrue();
     }
 
     @Test
-    void createOrExtendPhoneBlock_rejectsMissingOperationTime() {
+    void createOrExtendBlock_rejectsMissingOperationTime() {
         assertThatNullPointerException()
                 .isThrownBy(
-                        () -> service.createOrExtendPhoneBlock("01012345678", SOURCE_USER_ID, null))
+                        () -> service.createOrExtendBlock(PHONE_IDENTIFIER, SOURCE_USER_ID, null))
                 .withMessage("재가입 제한 기준 시각은 필수입니다.");
     }
 }

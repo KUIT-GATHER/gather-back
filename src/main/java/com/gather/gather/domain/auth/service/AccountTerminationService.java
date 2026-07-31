@@ -34,6 +34,7 @@ public class AccountTerminationService {
     private final SocialAccountRepository socialAccountRepository;
     private final SocialSignupSessionService signupSessionService;
     private final AccountRejoinBlockService rejoinBlockService;
+    private final AccountIdentityGuardService identityGuardService;
     private final RefreshTokenRepository refreshTokenRepository;
     private final EmailVerificationRepository emailVerificationRepository;
     private final KakaoUnlinkTaskRepository unlinkTaskRepository;
@@ -43,7 +44,8 @@ public class AccountTerminationService {
     /**
      * 외부 unlink 호출 없이 탈퇴를 완료하거나 durable task와 함께 접수한다.
      *
-     * <p>한 요청의 모든 상태 전이와 만료 시각이 같은 기준 시각을 사용하도록 현재 시각은 이 진입점에서 한 번만 계산한다.
+     * <p>중복 요청은 최초 완료 또는 접수 시각을 반환하며 block, task, 세션 변경, 개인정보 정리를 다시 수행하지 않는다. 한 요청의 모든 상태 전이와 만료
+     * 시각이 같은 기준 시각을 사용하도록 현재 시각은 이 진입점에서 한 번만 계산한다.
      */
     @Transactional
     public AccountTerminationResult terminate(Long userId, WithdrawalReason reason) {
@@ -61,7 +63,7 @@ public class AccountTerminationService {
 
         SocialAccountIdentitySnapshot snapshot = snapshots.isEmpty() ? null : snapshots.get(0);
         if (user.getStatus() == UserStatus.WITHDRAWAL_PENDING) {
-            return acceptedExisting(snapshot);
+            return acceptedExisting(user, snapshot);
         }
         if (user.getStatus() == UserStatus.WITHDRAWN) {
             return completedExisting(user, snapshot);
@@ -85,7 +87,8 @@ public class AccountTerminationService {
         String email = user.getEmail();
         String profileImageKey = user.getProfileImageKey();
 
-        rejoinBlockService.createOrExtendPhoneBlock(phoneNumber, user.getId(), now);
+        RejoinBlockIdentifier phoneIdentifier = identityGuardService.lockPhone(phoneNumber, now);
+        rejoinBlockService.createOrExtendBlock(phoneIdentifier, user.getId(), now);
         refreshTokenRepository.deleteAllByUserId(user.getId());
         if (email != null) {
             emailVerificationRepository.deleteAllByEmail(email);
@@ -113,11 +116,13 @@ public class AccountTerminationService {
                         .findByIdForUpdate(snapshot.id())
                         .orElseThrow(this::stateConflict);
         validateLockedSocialAccount(user, snapshot, socialAccount);
+        RejoinBlockIdentifier phoneIdentifier =
+                identityGuardService.lockPhone(user.getPhoneNumber(), now);
 
         lockedSignupSessions.cancelAll(now);
         user.requestWithdrawal(reason, now);
         socialAccount.markUnlinkPending(now);
-        rejoinBlockService.createOrExtendPhoneBlock(user.getPhoneNumber(), user.getId(), now);
+        rejoinBlockService.createOrExtendBlock(phoneIdentifier, user.getId(), now);
         rejoinBlockService.createOrExtendBlock(kakaoIdentifier, user.getId(), now);
         refreshTokenRepository.deleteAllByUserId(user.getId());
 
@@ -128,7 +133,8 @@ public class AccountTerminationService {
                 AccountTerminationOutcome.ACCEPTED, task.getCreatedAt());
     }
 
-    private AccountTerminationResult acceptedExisting(SocialAccountIdentitySnapshot snapshot) {
+    private AccountTerminationResult acceptedExisting(
+            User user, SocialAccountIdentitySnapshot snapshot) {
         if (snapshot == null
                 || snapshot.linkStatus() != SocialAccountLinkStatus.UNLINK_PENDING
                 || snapshot.generation() == null
@@ -139,6 +145,15 @@ public class AccountTerminationService {
                 unlinkTaskRepository
                         .findBySocialAccountIdAndGeneration(snapshot.id(), snapshot.generation())
                         .orElseThrow(this::stateConflict);
+        SocialAccount taskAccount = task.getSocialAccount();
+        if (taskAccount == null
+                || taskAccount.getId() == null
+                || !taskAccount.getId().equals(snapshot.id())
+                || taskAccount.getUser() == null
+                || !taskAccount.getUser().getId().equals(user.getId())
+                || task.getGeneration() != snapshot.generation()) {
+            throw stateConflict();
+        }
         return new AccountTerminationResult(
                 AccountTerminationOutcome.ACCEPTED, task.getCreatedAt());
     }

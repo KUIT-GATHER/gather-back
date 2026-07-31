@@ -13,7 +13,7 @@ import org.springframework.transaction.annotation.Transactional;
 /**
  * User 잠금 아래에서 최신 계정 상태를 재검증하고 토큰을 발급한다.
  *
- * <p>카카오 외부 HTTP 호출이 끝난 뒤 이 짧은 트랜잭션에 진입해, 탈퇴가 시작된 계정에 새 Refresh Token이 남는 경쟁을 막는다.
+ * <p>일반 로그인과 카카오 로그인 모두 이 짧은 트랜잭션에 진입해, 탈퇴가 시작된 계정에 새 Refresh Token이 남는 경쟁을 막는다.
  */
 @Service
 @RequiredArgsConstructor

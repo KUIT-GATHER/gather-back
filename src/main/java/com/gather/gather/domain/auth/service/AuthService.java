@@ -59,6 +59,7 @@ public class AuthService {
     private final SignupValidator signupValidator;
     private final LoginPolicy loginPolicy;
     private final AccountRejoinBlockService accountRejoinBlockService;
+    private final AccountIdentityGuardService accountIdentityGuardService;
     private final Clock clock;
     private final SecureRandom secureRandom = new SecureRandom();
 
@@ -176,8 +177,10 @@ public class AuthService {
         String introduction = signupValidator.normalizeNullableText(request.introduction());
         LocalDateTime now = LocalDateTime.now(clock);
 
+        RejoinBlockIdentifier phoneIdentifier =
+                accountIdentityGuardService.lockPhone(phoneNumber, now);
+        validatePhoneRejoinAllowed(phoneIdentifier, now);
         validateEmailVerified(email);
-        validatePhoneRejoinAllowed(phoneNumber, now);
         validateDuplicates(email, phoneNumber, nickname);
 
         Region activityRegion = signupValidator.findActivityRegion(request.activityRegionId());
@@ -260,13 +263,6 @@ public class AuthService {
         refreshToken.revoke(now);
     }
 
-    private RefreshToken findRefreshToken(String rawRefreshToken) {
-        String tokenHash = requireRefreshTokenHash(rawRefreshToken);
-        return refreshTokenRepository
-                .findByTokenHash(tokenHash)
-                .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_TOKEN));
-    }
-
     private RefreshToken findRefreshTokenForUpdate(String tokenHash) {
         return refreshTokenRepository
                 .findByTokenHashForUpdate(tokenHash)
@@ -310,8 +306,9 @@ public class AuthService {
         signupValidator.validateNicknameNotDuplicated(nickname);
     }
 
-    private void validatePhoneRejoinAllowed(String phoneNumber, LocalDateTime now) {
-        if (accountRejoinBlockService.isPhoneBlocked(phoneNumber, now)) {
+    private void validatePhoneRejoinAllowed(
+            RejoinBlockIdentifier phoneIdentifier, LocalDateTime now) {
+        if (accountRejoinBlockService.isBlockedForUpdate(phoneIdentifier, now)) {
             throw new BusinessException(ErrorCode.ACCOUNT_REJOIN_BLOCKED);
         }
     }

@@ -37,38 +37,19 @@ public class AccountRejoinBlockService {
     }
 
     @Transactional(propagation = Propagation.MANDATORY)
-    public void createOrExtendPhoneBlock(String phoneNumber, Long sourceUserId, LocalDateTime now) {
+    public boolean isBlockedForUpdate(RejoinBlockIdentifier identifier, LocalDateTime now) {
+        RejoinBlockIdentifier requiredIdentifier = requireIdentifier(identifier);
         LocalDateTime requiredNow = requireNow(now);
-        Long requiredSourceUserId = requireSourceUserId(sourceUserId);
-        createOrExtendBlock(
-                identifierHasher.hashPhone(phoneNumber), requiredSourceUserId, requiredNow);
-    }
-
-    @Transactional(propagation = Propagation.MANDATORY)
-    public void createOrExtendKakaoBlock(
-            String providerUserId, Long sourceUserId, LocalDateTime now) {
-        LocalDateTime requiredNow = requireNow(now);
-        Long requiredSourceUserId = requireSourceUserId(sourceUserId);
-        createOrExtendBlock(
-                identifierHasher.hashKakao(providerUserId), requiredSourceUserId, requiredNow);
+        return blockRepository
+                .findByIdentifierForUpdate(requiredIdentifier.type(), requiredIdentifier.hash())
+                .map(block -> block.isActiveAt(requiredNow))
+                .orElse(false);
     }
 
     @Transactional(propagation = Propagation.MANDATORY)
     public void createOrExtendBlock(
             RejoinBlockIdentifier identifier, Long sourceUserId, LocalDateTime now) {
         upsert(requireIdentifier(identifier), requireSourceUserId(sourceUserId), requireNow(now));
-    }
-
-    @Transactional(propagation = Propagation.MANDATORY)
-    public void createOrExtendPhoneAndKakaoBlocks(
-            String phoneNumber, String providerUserId, Long sourceUserId, LocalDateTime now) {
-        LocalDateTime requiredNow = requireNow(now);
-        Long requiredSourceUserId = requireSourceUserId(sourceUserId);
-        RejoinBlockIdentifier phoneIdentifier = identifierHasher.hashPhone(phoneNumber);
-        RejoinBlockIdentifier kakaoIdentifier = identifierHasher.hashKakao(providerUserId);
-
-        upsert(phoneIdentifier, requiredSourceUserId, requiredNow);
-        upsert(kakaoIdentifier, requiredSourceUserId, requiredNow);
     }
 
     private void upsert(RejoinBlockIdentifier identifier, Long sourceUserId, LocalDateTime now) {

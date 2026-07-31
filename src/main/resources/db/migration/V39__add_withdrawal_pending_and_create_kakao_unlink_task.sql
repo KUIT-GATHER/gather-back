@@ -1,6 +1,17 @@
 ALTER TABLE users
     MODIFY COLUMN status ENUM ('ACTIVE', 'SUSPENDED', 'WITHDRAWAL_PENDING', 'WITHDRAWN') NOT NULL;
 
+CREATE TABLE account_identity_guard (
+    id BIGINT NOT NULL AUTO_INCREMENT,
+    identity_type VARCHAR(10) NOT NULL,
+    identity_hash VARCHAR(64) NOT NULL,
+    key_version INT NOT NULL,
+    created_at DATETIME(6) NOT NULL,
+    PRIMARY KEY (id),
+    CONSTRAINT uk_account_identity_guard_identity
+        UNIQUE (identity_type, key_version, identity_hash)
+);
+
 CREATE TABLE kakao_unlink_task (
     id BIGINT NOT NULL AUTO_INCREMENT,
     social_account_id BIGINT NOT NULL,

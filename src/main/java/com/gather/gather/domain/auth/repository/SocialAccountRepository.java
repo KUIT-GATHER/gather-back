@@ -25,7 +25,6 @@ public interface SocialAccountRepository extends JpaRepository<SocialAccount, Lo
             """
             SELECT new com.gather.gather.domain.auth.repository.SocialAccountIdentitySnapshot(
                 account.id,
-                account.user.id,
                 account.provider,
                 account.providerUserKey,
                 account.providerUserKeyVersion,
@@ -43,4 +42,16 @@ public interface SocialAccountRepository extends JpaRepository<SocialAccount, Lo
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT account FROM SocialAccount account WHERE account.id = :id")
     Optional<SocialAccount> findByIdForUpdate(@Param("id") Long id);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query(
+            """
+            SELECT account
+            FROM SocialAccount account
+            WHERE account.provider = :provider
+              AND account.providerUserKey = :providerUserKey
+            """)
+    Optional<SocialAccount> findByProviderAndProviderUserKeyForUpdate(
+            @Param("provider") SocialProvider provider,
+            @Param("providerUserKey") String providerUserKey);
 }
