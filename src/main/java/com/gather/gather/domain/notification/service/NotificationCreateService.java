@@ -8,6 +8,7 @@ import com.gather.gather.domain.notification.enums.NotificationType;
 import com.gather.gather.domain.notification.repository.NotificationRepository;
 import com.gather.gather.global.exception.BusinessException;
 import com.gather.gather.global.exception.ErrorCode;
+import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -39,6 +40,37 @@ public class NotificationCreateService {
         Notification notification =
                 Notification.create(recipient, type, message, targetType, targetId);
         return notificationRepository.save(notification);
+    }
+
+    @Transactional
+    public void createAll(
+            List<Long> recipientUserIds,
+            NotificationType type,
+            String message,
+            NotificationTargetType targetType,
+            Long targetId) {
+
+        List<Long> distinctRecipientUserIds = recipientUserIds.stream().distinct().toList();
+
+        if (distinctRecipientUserIds.isEmpty()) {
+            return;
+        }
+
+        List<User> recipients = userRepository.findAllById(distinctRecipientUserIds);
+
+        if (recipients.size() != distinctRecipientUserIds.size()) {
+            throw new BusinessException(ErrorCode.USER_NOT_FOUND);
+        }
+
+        List<Notification> notifications =
+                recipients.stream()
+                        .map(
+                                recipient ->
+                                        Notification.create(
+                                                recipient, type, message, targetType, targetId))
+                        .toList();
+
+        notificationRepository.saveAll(notifications);
     }
 
     @Transactional

@@ -8,6 +8,9 @@ import com.gather.gather.domain.meeting.enums.MeetingMemberRole;
 import com.gather.gather.domain.meeting.enums.MeetingMemberStatus;
 import com.gather.gather.domain.meeting.repository.MeetingMemberRepository;
 import com.gather.gather.domain.meeting.repository.MeetingRepository;
+import com.gather.gather.domain.notification.enums.NotificationTargetType;
+import com.gather.gather.domain.notification.enums.NotificationType;
+import com.gather.gather.domain.notification.service.NotificationCreateService;
 import com.gather.gather.domain.post.dto.PostCreateRequest;
 import com.gather.gather.domain.post.dto.PostResponse;
 import com.gather.gather.domain.post.dto.PostSummaryResponse;
@@ -42,10 +45,15 @@ import org.springframework.transaction.annotation.Transactional;
 @Transactional(readOnly = true)
 public class PostService {
 
+    private static final String NOTICE_CREATED_MESSAGE = "[%s]에 새 공지가 등록되었어요.";
+
+    private static final String POST_CREATED_MESSAGE = "[%s]에 %s님이 새 게시글을 등록했어요.";
+
     private final PostRepository postRepository;
     private final MeetingRepository meetingRepository;
     private final MeetingMemberRepository meetingMemberRepository;
     private final UserRepository userRepository;
+    private final NotificationCreateService notificationCreateService;
 
     public List<PostSummaryResponse> getPosts(Long meetingId, PostType typeFilter) {
         Long userId = SecurityUtil.getCurrentUserId();
@@ -96,7 +104,52 @@ public class PostService {
                         request.type(),
                         request.recruitCapacity());
 
-        return PostResponse.from(postRepository.save(post));
+        Post savedPost = postRepository.save(post);
+        createPostNotifications(meeting, author, savedPost);
+
+        return PostResponse.from(savedPost);
+    }
+
+    private void createPostNotifications(Meeting meeting, User author, Post post) {
+
+        List<Long> recipientUserIds =
+                meetingMemberRepository
+                        .findAllByMeetingIdAndStatusFetchUser(
+                                meeting.getId(), MeetingMemberStatus.APPROVED)
+                        .stream()
+                        .map(MeetingMember::getUser)
+                        .map(User::getId)
+                        .filter(userId -> !userId.equals(author.getId()))
+                        .toList();
+
+        if (recipientUserIds.isEmpty()) {
+            return;
+        }
+
+        NotificationType notificationType = resolveNotificationType(post.getType());
+        String message = createNotificationMessage(meeting, author, post.getType());
+
+        notificationCreateService.createAll(
+                recipientUserIds,
+                notificationType,
+                message,
+                NotificationTargetType.POST,
+                post.getId());
+    }
+
+    private NotificationType resolveNotificationType(PostType postType) {
+        return postType.isNotice()
+                ? NotificationType.MEETING_NOTICE_CREATED
+                : NotificationType.MEETING_POST_CREATED;
+    }
+
+    private String createNotificationMessage(Meeting meeting, User author, PostType postType) {
+
+        if (postType.isNotice()) {
+            return NOTICE_CREATED_MESSAGE.formatted(meeting.getName());
+        }
+
+        return POST_CREATED_MESSAGE.formatted(meeting.getName(), author.getNickname());
     }
 
     @Transactional
