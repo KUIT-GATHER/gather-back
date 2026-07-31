@@ -6,6 +6,7 @@ import com.gather.gather.domain.posting.entity.Posting;
 import com.gather.gather.domain.posting.entity.PostingCategory;
 import com.gather.gather.domain.posting.entity.PostingStatus;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -144,6 +145,114 @@ class PostingRepositoryTest {
                         PostingStatus.RECRUITING, null, null, null, "존재하지않는키워드", null, PAGEABLE);
 
         assertThat(result.getContent()).isEmpty();
+    }
+
+    @Test
+    void deactivateExpired_deactivatesPosting_whenActEndDateIsBeforeToday() {
+        Posting posting =
+                postingRepository.save(
+                        lifecyclePosting(LocalDate.of(2026, 7, 1), LocalDate.of(2026, 7, 10)));
+
+        int count =
+                postingRepository.deactivateExpired(LocalDate.of(2026, 7, 20), LocalDateTime.now());
+
+        assertThat(count).isEqualTo(1);
+        assertThat(postingRepository.findById(posting.getId()).orElseThrow().getIsActive())
+                .isFalse();
+    }
+
+    @Test
+    void deactivateExpired_deactivatesPosting_whenActEndDateMissingAndActivityDateBeforeToday() {
+        Posting posting = postingRepository.save(lifecyclePosting(LocalDate.of(2026, 7, 1), null));
+
+        int count =
+                postingRepository.deactivateExpired(LocalDate.of(2026, 7, 20), LocalDateTime.now());
+
+        assertThat(count).isEqualTo(1);
+        assertThat(postingRepository.findById(posting.getId()).orElseThrow().getIsActive())
+                .isFalse();
+    }
+
+    @Test
+    void deactivateExpired_doesNotDeactivate_whenActEndDateMissingAndActivityDateAfterToday() {
+        Posting posting = postingRepository.save(lifecyclePosting(LocalDate.of(2026, 7, 25), null));
+
+        int count =
+                postingRepository.deactivateExpired(LocalDate.of(2026, 7, 20), LocalDateTime.now());
+
+        assertThat(count).isZero();
+        assertThat(postingRepository.findById(posting.getId()).orElseThrow().getIsActive())
+                .isTrue();
+    }
+
+    @Test
+    void clearExpiredContent_clearsContent_whenInactiveAndCutoffPassed() {
+        Posting posting =
+                postingRepository.save(
+                        inactiveLifecyclePosting(
+                                LocalDate.of(2026, 6, 1), LocalDate.of(2026, 6, 5)));
+
+        int count =
+                postingRepository.clearExpiredContent(
+                        LocalDate.of(2026, 7, 1), LocalDateTime.now());
+
+        assertThat(count).isEqualTo(1);
+        assertThat(postingRepository.findById(posting.getId()).orElseThrow().getContent()).isNull();
+    }
+
+    @Test
+    void clearExpiredContent_doesNotClear_whenStillActive() {
+        Posting posting =
+                postingRepository.save(
+                        lifecyclePosting(LocalDate.of(2026, 6, 1), LocalDate.of(2026, 6, 5)));
+
+        int count =
+                postingRepository.clearExpiredContent(
+                        LocalDate.of(2026, 7, 1), LocalDateTime.now());
+
+        assertThat(count).isZero();
+        assertThat(postingRepository.findById(posting.getId()).orElseThrow().getContent())
+                .isNotNull();
+    }
+
+    @Test
+    void clearExpiredContent_doesNotClear_whenWithinCutoff() {
+        Posting posting =
+                postingRepository.save(
+                        inactiveLifecyclePosting(
+                                LocalDate.of(2026, 7, 10), LocalDate.of(2026, 7, 25)));
+
+        int count =
+                postingRepository.clearExpiredContent(
+                        LocalDate.of(2026, 7, 20), LocalDateTime.now());
+
+        assertThat(count).isZero();
+        assertThat(postingRepository.findById(posting.getId()).orElseThrow().getContent())
+                .isNotNull();
+    }
+
+    private Posting lifecyclePosting(LocalDate activityDate, LocalDate actEndDate) {
+        return Posting.builder()
+                .title("테스트 공고")
+                .status(PostingStatus.RECRUITING)
+                .content("본문 내용")
+                .activityDate(activityDate)
+                .actEndDate(actEndDate)
+                .category(PostingCategory.ENVIRONMENT)
+                .isActive(true)
+                .build();
+    }
+
+    private Posting inactiveLifecyclePosting(LocalDate activityDate, LocalDate actEndDate) {
+        return Posting.builder()
+                .title("테스트 공고")
+                .status(PostingStatus.CLOSED)
+                .content("본문 내용")
+                .activityDate(activityDate)
+                .actEndDate(actEndDate)
+                .category(PostingCategory.ENVIRONMENT)
+                .isActive(false)
+                .build();
     }
 
     private Posting save(PostingStatus status, LocalDate noticeStart, LocalDate noticeEnd) {
