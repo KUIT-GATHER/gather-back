@@ -120,7 +120,8 @@ class PostServiceTest {
                         NotificationType.MEETING_POST_CREATED,
                         "[한강공원 플로깅팀]에 연석님이 새 게시글을 등록했어요.",
                         NotificationTargetType.POST,
-                        POST_ID);
+                        POST_ID,
+                        MEETING_ID);
     }
 
     @Test
@@ -160,6 +161,7 @@ class PostServiceTest {
                         NotificationType.MEETING_NOTICE_CREATED,
                         "[한강공원 플로깅팀]에 새 공지가 등록되었어요.",
                         NotificationTargetType.POST,
-                        POST_ID);
+                        POST_ID,
+                        MEETING_ID);
     }
 }

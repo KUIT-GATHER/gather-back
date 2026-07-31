@@ -134,7 +134,8 @@ public class PostService {
                 notificationType,
                 message,
                 NotificationTargetType.POST,
-                post.getId());
+                post.getId(),
+                meeting.getId());
     }
 
     private NotificationType resolveNotificationType(PostType postType) {

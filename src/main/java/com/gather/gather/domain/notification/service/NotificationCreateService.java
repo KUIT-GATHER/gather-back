@@ -48,7 +48,8 @@ public class NotificationCreateService {
             NotificationType type,
             String message,
             NotificationTargetType targetType,
-            Long targetId) {
+            Long targetId,
+            Long targetMeetingId) {
 
         List<Long> distinctRecipientUserIds = recipientUserIds.stream().distinct().toList();
 
@@ -67,7 +68,12 @@ public class NotificationCreateService {
                         .map(
                                 recipient ->
                                         Notification.create(
-                                                recipient, type, message, targetType, targetId))
+                                                recipient,
+                                                type,
+                                                message,
+                                                targetType,
+                                                targetId,
+                                                targetMeetingId))
                         .toList();
 
         notificationRepository.saveAll(notifications);

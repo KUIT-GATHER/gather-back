@@ -45,6 +45,7 @@ class NotificationControllerTest {
                         "[모임명] 가입이 승인되었어요.",
                         NotificationTargetType.MEETING,
                         10L,
+                        null,
                         false,
                         LocalDateTime.of(2026, 7, 27, 12, 0));
 
@@ -71,6 +72,7 @@ class NotificationControllerTest {
                         "[모임명] 가입이 승인되었어요.",
                         NotificationTargetType.MEETING,
                         10L,
+                        null,
                         true,
                         LocalDateTime.of(2026, 7, 27, 12, 0));
 

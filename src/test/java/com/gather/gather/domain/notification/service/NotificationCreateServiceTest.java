@@ -71,7 +71,8 @@ class NotificationCreateServiceTest {
                 NotificationType.MEETING_POST_CREATED,
                 "[한강공원 플로깅팀]에 팀원님이 새 게시글을 등록했어요.",
                 NotificationTargetType.POST,
-                10L);
+                10L,
+                20L);
 
         verify(notificationRepository).saveAll(anyList());
     }
@@ -84,7 +85,8 @@ class NotificationCreateServiceTest {
                 NotificationType.MEETING_POST_CREATED,
                 "[한강공원 플로깅팀]에 팀원님이 새 게시글을 등록했어요.",
                 NotificationTargetType.POST,
-                10L);
+                10L,
+                20L);
 
         verify(userRepository, never()).findAllById(anyList());
         verify(notificationRepository, never()).saveAll(anyList());

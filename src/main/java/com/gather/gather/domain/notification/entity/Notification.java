@@ -53,6 +53,9 @@ public class Notification {
     @Column(name = "target_id")
     private Long targetId;
 
+    @Column(name = "target_meeting_id")
+    private Long targetMeetingId;
+
     @Column(name = "read_at")
     private LocalDateTime readAt;
 
@@ -68,13 +71,15 @@ public class Notification {
             NotificationType type,
             String message,
             NotificationTargetType targetType,
-            Long targetId) {
+            Long targetId,
+            Long targetMeetingId) {
         this.user = user;
         this.category = type.getCategory();
         this.type = type;
         this.message = message;
         this.targetType = targetType;
         this.targetId = targetId;
+        this.targetMeetingId = targetMeetingId;
     }
 
     public static Notification create(
@@ -83,13 +88,27 @@ public class Notification {
             String message,
             NotificationTargetType targetType,
             Long targetId) {
-        validateTarget(targetType, targetId);
-        return new Notification(user, type, message, targetType, targetId);
+        return create(user, type, message, targetType, targetId, null);
     }
 
-    private static void validateTarget(NotificationTargetType targetType, Long targetId) {
+    public static Notification create(
+            User user,
+            NotificationType type,
+            String message,
+            NotificationTargetType targetType,
+            Long targetId,
+            Long targetMeetingId) {
+        validateTarget(targetType, targetId, targetMeetingId);
+        return new Notification(user, type, message, targetType, targetId, targetMeetingId);
+    }
+
+    private static void validateTarget(
+            NotificationTargetType targetType, Long targetId, Long targetMeetingId) {
         if (targetType != NotificationTargetType.MY_PAGE && targetId == null) {
             throw new IllegalArgumentException("이동 대상 ID가 필요한 알림입니다.");
+        }
+        if (targetType == NotificationTargetType.POST && targetMeetingId == null) {
+            throw new IllegalArgumentException("게시글 이동에 모임 ID가 필요합니다.");
         }
     }
 

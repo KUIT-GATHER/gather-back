@@ -101,6 +101,37 @@ class NotificationTest {
         assertThat(notification.getTargetId()).isNull();
     }
 
+    @Test
+    @DisplayName("게시글 이동 알림은 게시글 ID와 모임 ID를 함께 저장한다")
+    void createPostNotificationStoresPostAndMeetingIds() {
+        Notification notification =
+                Notification.create(
+                        org.mockito.Mockito.mock(User.class),
+                        NotificationType.MEETING_POST_CREATED,
+                        "새 게시글이 등록되었어요.",
+                        NotificationTargetType.POST,
+                        10L,
+                        20L);
+
+        assertThat(notification.getTargetId()).isEqualTo(10L);
+        assertThat(notification.getTargetMeetingId()).isEqualTo(20L);
+    }
+
+    @Test
+    @DisplayName("게시글 이동 알림은 모임 ID 없이 생성할 수 없다")
+    void createPostNotificationRejectsMissingMeetingId() {
+        assertThatThrownBy(
+                        () ->
+                                Notification.create(
+                                        org.mockito.Mockito.mock(User.class),
+                                        NotificationType.MEETING_POST_CREATED,
+                                        "새 게시글이 등록되었어요.",
+                                        NotificationTargetType.POST,
+                                        10L))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("게시글 이동에 모임 ID가 필요합니다.");
+    }
+
     private Notification createMyPageNotification() {
         return Notification.create(
                 org.mockito.Mockito.mock(User.class),
