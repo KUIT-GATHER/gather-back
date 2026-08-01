@@ -11,10 +11,18 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 public class PostingLifecycleService {
 
+    private static final int CONTENT_RETENTION_MONTHS = 1;
+
     private final PostingRepository postingRepository;
 
     @Transactional
     public int deactivateExpiredPostings() {
         return postingRepository.deactivateExpired(LocalDate.now(), LocalDateTime.now());
+    }
+
+    @Transactional
+    public int clearExpiredPostingContent() {
+        LocalDate cutoffDate = LocalDate.now().minusMonths(CONTENT_RETENTION_MONTHS);
+        return postingRepository.clearExpiredContent(cutoffDate, LocalDateTime.now());
     }
 }

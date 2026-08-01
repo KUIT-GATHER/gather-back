@@ -20,6 +20,7 @@ import com.gather.gather.global.exception.BusinessException;
 import com.gather.gather.global.exception.ErrorCode;
 import java.security.SecureRandom;
 import java.sql.SQLException;
+import java.time.Clock;
 import java.time.LocalDateTime;
 import java.util.Locale;
 import lombok.RequiredArgsConstructor;
@@ -54,8 +55,12 @@ public class AuthService {
     private final EmailSender emailSender;
     private final TokenProvider tokenProvider;
     private final TokenIssuer tokenIssuer;
+    private final LockedTokenIssuanceService lockedTokenIssuanceService;
     private final SignupValidator signupValidator;
     private final LoginPolicy loginPolicy;
+    private final AccountRejoinBlockService accountRejoinBlockService;
+    private final AccountIdentityGuardService accountIdentityGuardService;
+    private final Clock clock;
     private final SecureRandom secureRandom = new SecureRandom();
 
     @Transactional
@@ -155,8 +160,11 @@ public class AuthService {
     public PhoneNumberAvailabilityResponse checkPhoneNumberAvailability(
             PhoneNumberAvailabilityRequest request) {
         String phoneNumber = signupValidator.normalizePhoneNumber(request.phoneNumber());
+        LocalDateTime now = LocalDateTime.now(clock);
         return new PhoneNumberAvailabilityResponse(
-                phoneNumber, !userRepository.existsByPhoneNumber(phoneNumber));
+                phoneNumber,
+                !accountRejoinBlockService.isPhoneBlocked(phoneNumber, now)
+                        && !userRepository.existsByPhoneNumber(phoneNumber));
     }
 
     @Transactional
@@ -167,7 +175,11 @@ public class AuthService {
         String phoneNumber = signupValidator.normalizePhoneNumber(request.phoneNumber());
         String nickname = request.nickname();
         String introduction = signupValidator.normalizeNullableText(request.introduction());
+        LocalDateTime now = LocalDateTime.now(clock);
 
+        RejoinBlockIdentifier phoneIdentifier =
+                accountIdentityGuardService.lockPhone(phoneNumber, now);
+        validatePhoneRejoinAllowed(phoneIdentifier, now);
         validateEmailVerified(email);
         validateDuplicates(email, phoneNumber, nickname);
 
@@ -197,7 +209,6 @@ public class AuthService {
         }
     }
 
-    @Transactional
     public TokenIssueResult login(LoginRequest request) {
         String email = normalizeEmail(request.email());
         User user =
@@ -209,15 +220,26 @@ public class AuthService {
             throw new BusinessException(ErrorCode.INVALID_LOGIN);
         }
 
-        loginPolicy.validateLoginAllowed(user);
-        return tokenIssuer.issue(user);
+        return lockedTokenIssuanceService.issue(user.getId());
     }
 
     @Transactional
     public TokenIssueResult reissue(String rawRefreshToken) {
-        RefreshToken refreshToken = findRefreshToken(rawRefreshToken);
-        LocalDateTime now = LocalDateTime.now();
+        String tokenHash = requireRefreshTokenHash(rawRefreshToken);
+        Long userId =
+                refreshTokenRepository
+                        .findUserIdByTokenHash(tokenHash)
+                        .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_TOKEN));
+        User user =
+                userRepository
+                        .findByIdForUpdate(userId)
+                        .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_TOKEN));
+        RefreshToken refreshToken = findRefreshTokenForUpdate(tokenHash);
+        LocalDateTime now = LocalDateTime.now(clock);
 
+        if (!java.util.Objects.equals(refreshToken.getUser().getId(), user.getId())) {
+            throw new BusinessException(ErrorCode.INVALID_TOKEN);
+        }
         if (refreshToken.isRevoked()) {
             throw new BusinessException(ErrorCode.REVOKED_TOKEN);
         }
@@ -225,28 +247,33 @@ public class AuthService {
             throw new BusinessException(ErrorCode.EXPIRED_TOKEN);
         }
 
-        loginPolicy.validateLoginAllowed(refreshToken.getUser());
+        loginPolicy.validateLoginAllowed(user);
         refreshToken.revoke(now);
-        return tokenIssuer.issue(refreshToken.getUser());
+        return tokenIssuer.issue(user);
     }
 
     @Transactional
     public void logout(String rawRefreshToken) {
-        RefreshToken refreshToken = findRefreshToken(rawRefreshToken);
-        if (refreshToken.isRevoked() || refreshToken.isExpired(LocalDateTime.now())) {
+        RefreshToken refreshToken =
+                findRefreshTokenForUpdate(requireRefreshTokenHash(rawRefreshToken));
+        LocalDateTime now = LocalDateTime.now(clock);
+        if (refreshToken.isRevoked() || refreshToken.isExpired(now)) {
             return;
         }
-        refreshToken.revoke(LocalDateTime.now());
+        refreshToken.revoke(now);
     }
 
-    private RefreshToken findRefreshToken(String rawRefreshToken) {
+    private RefreshToken findRefreshTokenForUpdate(String tokenHash) {
+        return refreshTokenRepository
+                .findByTokenHashForUpdate(tokenHash)
+                .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_TOKEN));
+    }
+
+    private String requireRefreshTokenHash(String rawRefreshToken) {
         if (rawRefreshToken == null || rawRefreshToken.isBlank()) {
             throw new BusinessException(ErrorCode.INVALID_TOKEN);
         }
-        String tokenHash = tokenProvider.hashToken(rawRefreshToken);
-        return refreshTokenRepository
-                .findByTokenHash(tokenHash)
-                .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_TOKEN));
+        return tokenProvider.hashToken(rawRefreshToken);
     }
 
     private void validateSignupRequest(SignupRequest request) {
@@ -277,6 +304,13 @@ public class AuthService {
         }
         signupValidator.validatePhoneNumberNotDuplicated(phoneNumber);
         signupValidator.validateNicknameNotDuplicated(nickname);
+    }
+
+    private void validatePhoneRejoinAllowed(
+            RejoinBlockIdentifier phoneIdentifier, LocalDateTime now) {
+        if (accountRejoinBlockService.isBlockedForUpdate(phoneIdentifier, now)) {
+            throw new BusinessException(ErrorCode.ACCOUNT_REJOIN_BLOCKED);
+        }
     }
 
     private String normalizeEmail(String email) {

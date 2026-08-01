@@ -1,6 +1,5 @@
 package com.gather.gather.domain.auth.kakao.config;
 
-import java.util.Base64;
 import java.util.List;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.boot.context.properties.bind.DefaultValue;
@@ -8,7 +7,7 @@ import org.springframework.boot.context.properties.bind.DefaultValue;
 /**
  * 카카오 로그인 연동 설정. {@code @ConfigurationPropertiesScan}으로 자동 등록된다.
  *
- * <p>비밀값(restApiKey/clientSecret/signupTokenSecret)의 환경별 주입 방식은 {@code jwt.secret}과 같다.
+ * <p>비밀값(restApiKey/clientSecret)의 환경별 주입 방식은 {@code jwt.secret}과 같다.
  *
  * <ul>
  *   <li>로컬: {@code application-secret.yml} (application-secret.yml.example 참고)
@@ -22,22 +21,14 @@ public record KakaoProperties(
         String restApiKey,
         String clientSecret,
         List<String> redirectUris,
-        String signupTokenSecret,
         @DefaultValue("900") long signupTokenExpirationSeconds,
         @DefaultValue("https://kauth.kakao.com") String authBaseUrl,
         @DefaultValue("https://kapi.kakao.com") String apiBaseUrl) {
-
-    // 가입 토큰도 HS256으로 서명하므로 jwt.secret과 동일한 최소 길이 요건을 적용한다(RFC 7518).
-    private static final int MIN_SECRET_BYTE_LENGTH = 32;
 
     public KakaoProperties {
         requireConfigured(restApiKey, "kakao.rest-api-key", "KAKAO_REST_API_KEY");
         // Client Secret이 카카오 콘솔에서 활성화돼 있어 토큰 교환에 필수다. 누락 시 KOE010으로 실패한다.
         requireConfigured(clientSecret, "kakao.client-secret", "KAKAO_CLIENT_SECRET");
-        requireConfigured(
-                signupTokenSecret, "kakao.signup-token-secret", "KAKAO_SIGNUP_TOKEN_SECRET");
-        validateSignupTokenSecret(signupTokenSecret);
-
         if (redirectUris == null || redirectUris.isEmpty()) {
             throw new IllegalStateException(
                     "kakao.redirect-uris가 설정되지 않았습니다. 카카오 콘솔에 등록한 Redirect URI와 정확히 같은 값이어야 합니다.");
@@ -62,28 +53,10 @@ public record KakaoProperties(
         }
     }
 
-    private static void validateSignupTokenSecret(String secret) {
-        byte[] decoded;
-        try {
-            decoded = Base64.getDecoder().decode(secret);
-        } catch (IllegalArgumentException exception) {
-            throw new IllegalStateException(
-                    "kakao.signup-token-secret이 Base64 형식이 아닙니다.", exception);
-        }
-        if (decoded.length < MIN_SECRET_BYTE_LENGTH) {
-            throw new IllegalStateException(
-                    "kakao.signup-token-secret은 Base64 디코딩 후 최소 "
-                            + MIN_SECRET_BYTE_LENGTH
-                            + "바이트 이상이어야 합니다. 현재 "
-                            + decoded.length
-                            + "바이트입니다.");
-        }
-    }
-
     /** 기본 record toString()이 비밀값을 그대로 노출하는 것을 막기 위한 마스킹 오버라이드. */
     @Override
     public String toString() {
-        return "KakaoProperties[restApiKey=****, clientSecret=****, signupTokenSecret=****,"
+        return "KakaoProperties[restApiKey=****, clientSecret=****,"
                 + " redirectUris="
                 + redirectUris
                 + ", signupTokenExpirationSeconds="

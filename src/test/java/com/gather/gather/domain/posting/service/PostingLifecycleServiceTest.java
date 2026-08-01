@@ -43,4 +43,21 @@ class PostingLifecycleServiceTest {
                 .deactivateExpired(todayCaptor.capture(), any(LocalDateTime.class));
         assertThat(todayCaptor.getValue()).isEqualTo(LocalDate.now());
     }
+
+    @Test
+    @DisplayName(
+            "clearExpiredPostingContent calls repository with a cutoff date one month ago and"
+                    + " returns updated count")
+    void clearExpiredPostingContent_callsRepositoryWithOneMonthAgo_returnsUpdatedCount() {
+        when(postingRepository.clearExpiredContent(any(LocalDate.class), any(LocalDateTime.class)))
+                .thenReturn(5);
+
+        int result = postingLifecycleService.clearExpiredPostingContent();
+
+        assertThat(result).isEqualTo(5);
+        ArgumentCaptor<LocalDate> cutoffCaptor = ArgumentCaptor.forClass(LocalDate.class);
+        verify(postingRepository)
+                .clearExpiredContent(cutoffCaptor.capture(), any(LocalDateTime.class));
+        assertThat(cutoffCaptor.getValue()).isEqualTo(LocalDate.now().minusMonths(1));
+    }
 }

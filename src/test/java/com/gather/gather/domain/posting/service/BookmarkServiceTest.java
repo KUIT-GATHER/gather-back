@@ -12,6 +12,8 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.gather.gather.domain.badge.entity.BadgeType;
+import com.gather.gather.domain.badge.event.BadgeAwardRequestedEvent;
 import com.gather.gather.domain.posting.dto.BookmarkResponse;
 import com.gather.gather.domain.posting.dto.PostingSummaryResponse;
 import com.gather.gather.domain.posting.entity.Bookmark;
@@ -36,6 +38,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.MockedStatic;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
@@ -52,6 +55,7 @@ class BookmarkServiceTest {
     @Mock private BookmarkRepository bookmarkRepository;
     @Mock private PostingRepository postingRepository;
     @Mock private RegionRepository regionRepository;
+    @Mock private ApplicationEventPublisher eventPublisher;
 
     private BookmarkService bookmarkService;
 
@@ -61,7 +65,8 @@ class BookmarkServiceTest {
                 new BookmarkService(
                         bookmarkRepository,
                         postingRepository,
-                        new RegionNameResolver(regionRepository));
+                        new RegionNameResolver(regionRepository),
+                        eventPublisher);
     }
 
     @Test
@@ -130,6 +135,58 @@ class BookmarkServiceTest {
             assertThatThrownBy(() -> bookmarkService.addBookmark(POSTING_ID))
                     .isInstanceOf(BusinessException.class)
                     .hasFieldOrPropertyWithValue("errorCode", ErrorCode.BOOKMARK_DUPLICATE);
+        }
+    }
+
+    @Test
+    @DisplayName("addBookmark publishes BOOKMARK_5 exactly when the fifth bookmark is added (H-3)")
+    void addBookmark_publishesBookmark5Event_whenCountReachesFive() {
+        try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
+            securityUtil.when(SecurityUtil::getCurrentUserId).thenReturn(USER_ID);
+            when(postingRepository.existsById(POSTING_ID)).thenReturn(true);
+            when(bookmarkRepository.existsByUserIdAndPostingId(USER_ID, POSTING_ID))
+                    .thenReturn(false);
+            when(bookmarkRepository.countByUserId(USER_ID)).thenReturn(5L);
+
+            bookmarkService.addBookmark(POSTING_ID);
+
+            verify(eventPublisher)
+                    .publishEvent(new BadgeAwardRequestedEvent(USER_ID, BadgeType.BOOKMARK_5));
+        }
+    }
+
+    @Test
+    @DisplayName(
+            "addBookmark does not publish BOOKMARK_5 when the count is only four (M-11 boundary)")
+    void addBookmark_doesNotPublishBookmark5Event_whenCountIsFour() {
+        try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
+            securityUtil.when(SecurityUtil::getCurrentUserId).thenReturn(USER_ID);
+            when(postingRepository.existsById(POSTING_ID)).thenReturn(true);
+            when(bookmarkRepository.existsByUserIdAndPostingId(USER_ID, POSTING_ID))
+                    .thenReturn(false);
+            when(bookmarkRepository.countByUserId(USER_ID)).thenReturn(4L);
+
+            bookmarkService.addBookmark(POSTING_ID);
+
+            verify(eventPublisher, never()).publishEvent(any());
+        }
+    }
+
+    @Test
+    @DisplayName(
+            "addBookmark does not re-publish BOOKMARK_5 once the count has already passed five"
+                    + " (L-9)")
+    void addBookmark_doesNotRepublishBookmark5Event_whenCountExceedsFive() {
+        try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
+            securityUtil.when(SecurityUtil::getCurrentUserId).thenReturn(USER_ID);
+            when(postingRepository.existsById(POSTING_ID)).thenReturn(true);
+            when(bookmarkRepository.existsByUserIdAndPostingId(USER_ID, POSTING_ID))
+                    .thenReturn(false);
+            when(bookmarkRepository.countByUserId(USER_ID)).thenReturn(6L);
+
+            bookmarkService.addBookmark(POSTING_ID);
+
+            verify(eventPublisher, never()).publishEvent(any());
         }
     }
 

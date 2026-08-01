@@ -37,6 +37,9 @@ gather:
     rejoin-block-hmac:
       secret: Z2F0aGVyLXRlc3QtcmVqb2luLWJsb2NrLWhtYWMtc2VjcmV0LTIwMjYtMDctMjk=
       key-version: 1
+    social-account-encryption:
+      key: Z2F0aGVyLXRlc3Qtc29jaWFsLWFjY291bnQta2V5ISE=
+      key-version: 1
     refresh-cookie:
       name: gather_refresh_token
       secure: false
@@ -57,12 +60,12 @@ jwt:
   access-token-validity-minutes: 30
 
 # 테스트 전용 더미 값(운영 값 아님). KakaoProperties가 기동 시점에 검증하므로 값이 없으면 컨텍스트가 뜨지 않는다.
-# signup-token-secret은 jwt.secret과 다른 값이어야 키 분리가 실제로 검증된다.
 kakao:
   rest-api-key: test-kakao-rest-api-key
   client-secret: test-kakao-client-secret
-  signup-token-secret: z9tOf6reUdkTRI0KFFiydLKdxpayBBxVWSAm7EJTgKXolFCFvnQ4qViBrdh6y7yP
   signup-token-expiration-seconds: 900
+  admin:
+    enabled: false
   redirect-uris:
     - http://localhost:5173/login/kakao/callback
     - https://dev.gathernow.kr/login/kakao/callback

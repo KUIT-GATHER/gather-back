@@ -17,7 +17,7 @@ import com.gather.gather.domain.meeting.enums.MeetingMemberStatus;
 import com.gather.gather.domain.meeting.enums.MeetingStatus;
 import com.gather.gather.domain.meeting.repository.MeetingMemberRepository;
 import com.gather.gather.domain.meeting.repository.MeetingRepository;
-import com.gather.gather.domain.notification.service.NotificationCreateService;
+import com.gather.gather.domain.notification.event.MeetingJoinResultNotificationRequestedEvent;
 import com.gather.gather.domain.posting.repository.PostingRepository;
 import com.gather.gather.domain.region.repository.RegionRepository;
 import com.gather.gather.global.exception.BusinessException;
@@ -51,7 +51,7 @@ class MeetingJoinApprovalServiceTest {
     @Mock private RegionRepository regionRepository;
     @Mock private PostingRepository postingRepository;
     @Mock private MeetingSearchLogService meetingSearchLogService;
-    @Mock private NotificationCreateService notificationCreateService;
+    @Mock private org.springframework.context.ApplicationEventPublisher eventPublisher;
     @InjectMocks private MeetingService meetingService;
 
     @Mock private Meeting meeting;
@@ -113,8 +113,10 @@ class MeetingJoinApprovalServiceTest {
 
         assertThat(response.status()).isEqualTo(MeetingMemberStatus.APPROVED);
         verify(meeting).increaseMemberCount();
-        verify(notificationCreateService)
-                .createMeetingJoinResultNotification(USER_ID, MEETING_ID, MEETING_NAME, true);
+        verify(eventPublisher)
+                .publishEvent(
+                        new MeetingJoinResultNotificationRequestedEvent(
+                                USER_ID, MEETING_ID, MEETING_NAME, true));
     }
 
     @Test
@@ -216,8 +218,10 @@ class MeetingJoinApprovalServiceTest {
 
         assertThat(response.status()).isEqualTo(MeetingMemberStatus.REJECTED);
         verify(meeting, never()).increaseMemberCount();
-        verify(notificationCreateService)
-                .createMeetingJoinResultNotification(USER_ID, MEETING_ID, MEETING_NAME, false);
+        verify(eventPublisher)
+                .publishEvent(
+                        new MeetingJoinResultNotificationRequestedEvent(
+                                USER_ID, MEETING_ID, MEETING_NAME, false));
     }
 
     private MeetingMember pendingMember() {

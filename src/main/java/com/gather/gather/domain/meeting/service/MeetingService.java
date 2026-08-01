@@ -2,6 +2,9 @@ package com.gather.gather.domain.meeting.service;
 
 import com.gather.gather.domain.auth.entity.User;
 import com.gather.gather.domain.auth.repository.UserRepository;
+import com.gather.gather.domain.badge.entity.BadgeType;
+import com.gather.gather.domain.badge.event.BadgeAwardRequestedEvent;
+import com.gather.gather.domain.badge.event.MeetingCompletedEvent;
 import com.gather.gather.domain.meeting.dto.MeetingCreateRequest;
 import com.gather.gather.domain.meeting.dto.MeetingDetailResponse;
 import com.gather.gather.domain.meeting.dto.MeetingJoinRequestResponse;
@@ -16,7 +19,7 @@ import com.gather.gather.domain.meeting.enums.MeetingStatus;
 import com.gather.gather.domain.meeting.repository.MeetingBookmarkRepository;
 import com.gather.gather.domain.meeting.repository.MeetingMemberRepository;
 import com.gather.gather.domain.meeting.repository.MeetingRepository;
-import com.gather.gather.domain.notification.service.NotificationCreateService;
+import com.gather.gather.domain.notification.event.MeetingJoinResultNotificationRequestedEvent;
 import com.gather.gather.domain.posting.entity.Posting;
 import com.gather.gather.domain.posting.entity.PostingCategory;
 import com.gather.gather.domain.posting.repository.PostingRepository;
@@ -24,6 +27,7 @@ import com.gather.gather.domain.region.repository.RegionRepository;
 import com.gather.gather.global.common.PageResponse;
 import com.gather.gather.global.exception.BusinessException;
 import com.gather.gather.global.exception.ErrorCode;
+import com.gather.gather.global.util.RecognizedMinutesValidator;
 import com.gather.gather.global.util.SecurityUtil;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -34,6 +38,7 @@ import java.util.Set;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -68,7 +73,7 @@ public class MeetingService {
     private final RegionRepository regionRepository;
     private final PostingRepository postingRepository;
     private final MeetingSearchLogService meetingSearchLogService;
-    private final NotificationCreateService notificationCreateService;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Transactional
     public MeetingResponse createMeeting(MeetingCreateRequest request) {
@@ -101,6 +106,7 @@ public class MeetingService {
 
         MeetingMember hostMember = MeetingMember.createHost(host, savedMeeting);
         meetingMemberRepository.save(hostMember);
+        eventPublisher.publishEvent(new BadgeAwardRequestedEvent(userId, BadgeType.TEAM_CREATED));
 
         return MeetingResponse.from(savedMeeting, resolveDisplayStatus(savedMeeting));
     }
@@ -255,9 +261,14 @@ public class MeetingService {
         MeetingMember member = getPendingJoinRequestForUpdate(meetingId, joinRequestId);
         member.approve();
         meeting.increaseMemberCount();
-
-        notificationCreateService.createMeetingJoinResultNotification(
-                member.getUser().getId(), meeting.getId(), meeting.getName(), true);
+        if (member.getRole() == MeetingMemberRole.MEMBER) {
+            eventPublisher.publishEvent(
+                    new BadgeAwardRequestedEvent(
+                            member.getUser().getId(), BadgeType.FIRST_TEAM_JOIN));
+        }
+        eventPublisher.publishEvent(
+                new MeetingJoinResultNotificationRequestedEvent(
+                        member.getUser().getId(), meeting.getId(), meeting.getName(), true));
         return MeetingJoinRequestResponse.from(member);
     }
 
@@ -269,9 +280,53 @@ public class MeetingService {
         MeetingMember member = getPendingJoinRequestForUpdate(meetingId, joinRequestId);
         member.reject();
 
-        notificationCreateService.createMeetingJoinResultNotification(
-                member.getUser().getId(), meeting.getId(), meeting.getName(), false);
+        eventPublisher.publishEvent(
+                new MeetingJoinResultNotificationRequestedEvent(
+                        member.getUser().getId(), meeting.getId(), meeting.getName(), false));
         return MeetingJoinRequestResponse.from(member);
+    }
+
+    /** 모임(그룹) 봉사 완료 판정: 모임장이 직접 완료 처리한다(개인 봉사는 본인이 활동종료일 이후 완료 처리한다). */
+    @Transactional
+    public void completeMeeting(Long meetingId) {
+        Long userId = SecurityUtil.getCurrentUserId();
+        Meeting meeting = getMeetingEntityForUpdate(meetingId);
+        validateHost(meeting, userId);
+
+        if (meeting.getStatus() == MeetingStatus.COMPLETED) {
+            throw new BusinessException(ErrorCode.MEETING_ALREADY_COMPLETED);
+        }
+        if (meeting.hasActivityPeriod() && !meeting.isActivityEnded(LocalDateTime.now())) {
+            throw new BusinessException(ErrorCode.MEETING_COMPLETE_NOT_ALLOWED);
+        }
+
+        meeting.complete();
+        eventPublisher.publishEvent(new MeetingCompletedEvent(meetingId));
+    }
+
+    /** 모임 완료 처리 이후, 승인된 멤버 본인이 직접 인정시간을 입력한다(분 단위, 1회만 입력 가능). */
+    @Transactional
+    public void submitMemberHours(Long meetingId, Integer recognizedMinutes) {
+        RecognizedMinutesValidator.validate(recognizedMinutes);
+
+        Long userId = SecurityUtil.getCurrentUserId();
+        Meeting meeting = getMeetingEntity(meetingId);
+        if (meeting.getStatus() != MeetingStatus.COMPLETED) {
+            throw new BusinessException(ErrorCode.MEETING_HOURS_NOT_ALLOWED);
+        }
+
+        MeetingMember member =
+                meetingMemberRepository
+                        .findByMeeting_IdAndUser_IdAndStatus(
+                                meetingId, userId, MeetingMemberStatus.APPROVED)
+                        .orElseThrow(
+                                () -> new BusinessException(ErrorCode.MEETING_MEMBER_REQUIRED));
+
+        if (member.getRecognizedMinutes() != null) {
+            throw new BusinessException(ErrorCode.MEETING_HOURS_ALREADY_SUBMITTED);
+        }
+
+        member.submitRecognizedMinutes(recognizedMinutes);
     }
 
     public List<MeetingResponse> getMyMeetings() {
@@ -285,7 +340,8 @@ public class MeetingService {
                                 MeetingResponse.from(
                                         member.getMeeting(),
                                         resolveDisplayStatus(member.getMeeting()),
-                                        member.getRole())) // ← HOST/MEMBER
+                                        member.getRole(), // ← HOST/MEMBER
+                                        member.getRecognizedMinutes()))
                 .toList();
     }
 

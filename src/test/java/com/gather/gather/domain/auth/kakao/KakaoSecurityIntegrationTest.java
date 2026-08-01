@@ -5,8 +5,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.gather.gather.domain.auth.entity.SocialProvider;
-import com.gather.gather.domain.auth.kakao.token.SocialSignupTokenProvider;
+import com.gather.gather.domain.auth.kakao.token.SocialSignupTokenService;
 import com.gather.gather.global.config.JwtProperties;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
@@ -55,7 +54,7 @@ class KakaoSecurityIntegrationTest {
             """;
 
     @Autowired private MockMvc mockMvc;
-    @Autowired private SocialSignupTokenProvider socialSignupTokenProvider;
+    @Autowired private SocialSignupTokenService socialSignupTokenService;
     @Autowired private JwtProperties jwtProperties;
 
     @Test
@@ -80,8 +79,7 @@ class KakaoSecurityIntegrationTest {
     @Test
     @DisplayName("가입용 토큰으로는 일반 보호 API에 접근할 수 없다")
     void signupToken_cannotAccessProtectedApi() throws Exception {
-        String signupToken =
-                socialSignupTokenProvider.createSignupToken(SocialProvider.KAKAO, "123456789");
+        String signupToken = socialSignupTokenService.generateToken();
 
         mockMvc.perform(
                         get(SECURED_PATH)

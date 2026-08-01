@@ -197,6 +197,17 @@ public class Posting {
         this.updatedAt = this.createdAt;
     }
 
+    /** 활동종료일이 지났는지 여부. actEndDate가 없으면(개별활동일만 있는 공고) activityDate를 종료일로 취급한다. */
+    public boolean isActivityEnded(LocalDate today) {
+        LocalDate endDate = getEffectiveActivityDate();
+        return endDate != null && !endDate.isAfter(today);
+    }
+
+    /** 뱃지 판정(활동일 기준 연속 참여 월 계산) 등에 쓰이는 실질 활동일 — actEndDate가 없으면 activityDate로 대체한다. */
+    public LocalDate getEffectiveActivityDate() {
+        return actEndDate != null ? actEndDate : activityDate;
+    }
+
     /** 목록조회로 재확인된 기존 공고의 갱신 가능 필드만 반영한다(동기화 배치 update 경로). */
     public void updateFromSync(
             String title,

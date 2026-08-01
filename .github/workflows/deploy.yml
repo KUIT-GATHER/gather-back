@@ -13,7 +13,7 @@ jobs:
     # application-local.yml은 gitignore 대상이라 CI에는 존재하지 않으므로,
     # 파일 없이도 바인딩되는 Spring Boot 표준 환경변수(SPRING_DATASOURCE_*)로 DB를 직접 지정한다
     env:
-      SPRING_DATASOURCE_URL: jdbc:mysql://127.0.0.1:3306/gather?serverTimezone=Asia/Seoul&characterEncoding=UTF-8
+      SPRING_DATASOURCE_URL: jdbc:mysql://127.0.0.1:3306/gather?connectionTimeZone=UTC&forceConnectionTimeZoneToSession=true&characterEncoding=UTF-8
       SPRING_DATASOURCE_USERNAME: root
       SPRING_DATASOURCE_PASSWORD: ci-password
 
