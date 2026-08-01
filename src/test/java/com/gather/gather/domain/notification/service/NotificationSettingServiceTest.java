@@ -100,4 +100,33 @@ class NotificationSettingServiceTest {
         assertThat(response.bookmarkedMeetingDeadlineEnabled()).isTrue();
         assertThat(response.meetingPostCommentEnabled()).isTrue();
     }
+
+    @Test
+    @DisplayName("저장된 모임 가입 결과 알림 설정을 반환한다")
+    void isMeetingJoinResultEnabledReturnsExistingSetting() {
+        NotificationSetting setting = NotificationSetting.createDefault(user);
+        setting.update(true, true, true, true, false, true, true);
+
+        when(notificationSettingRepository.findByUser_Id(USER_ID)).thenReturn(Optional.of(setting));
+
+        boolean enabled = notificationSettingService.isMeetingJoinResultEnabled(USER_ID);
+
+        assertThat(enabled).isFalse();
+    }
+
+    @Test
+    @DisplayName("알림 설정이 없으면 기본 설정을 생성하고 모임 가입 결과 알림을 활성화한다")
+    void isMeetingJoinResultEnabledCreatesDefaultSetting() {
+        when(notificationSettingRepository.findByUser_Id(USER_ID)).thenReturn(Optional.empty());
+        when(userRepository.findById(USER_ID)).thenReturn(Optional.of(user));
+        when(notificationSettingRepository.save(
+                        org.mockito.ArgumentMatchers.any(NotificationSetting.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        boolean enabled = notificationSettingService.isMeetingJoinResultEnabled(USER_ID);
+
+        assertThat(enabled).isTrue();
+        verify(notificationSettingRepository)
+                .save(org.mockito.ArgumentMatchers.any(NotificationSetting.class));
+    }
 }
