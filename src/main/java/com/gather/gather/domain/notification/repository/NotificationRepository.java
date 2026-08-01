@@ -16,6 +16,9 @@ public interface NotificationRepository extends JpaRepository<Notification, Long
     Page<Notification> findAllByUser_IdAndCategoryAndDeletedAtIsNull(
             Long userId, NotificationCategory category, Pageable pageable);
 
+    long countByUser_IdAndCategoryAndReadAtIsNullAndDeletedAtIsNull(
+            Long userId, NotificationCategory category);
+
     Optional<Notification> findByIdAndUser_IdAndDeletedAtIsNull(Long notificationId, Long userId);
 
     @Modifying(clearAutomatically = true, flushAutomatically = true)
