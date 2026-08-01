@@ -6,7 +6,14 @@ import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
+import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
+import java.time.Clock;
+import java.time.Instant;
+import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
+import java.util.List;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -22,6 +29,7 @@ public class KakaoAdminApiClient {
     private static final String UNLINK_PATH = "/v1/user/unlink";
     private static final String ADMIN_AUTHORIZATION_PREFIX = "KakaoAK ";
     private static final String TARGET_ID_TYPE = "user_id";
+    private static final long MAX_RETRY_AFTER_SECONDS = 6 * 60 * 60;
     private static final MediaType FORM_URLENCODED_UTF8 =
             new MediaType(MediaType.APPLICATION_FORM_URLENCODED, StandardCharsets.UTF_8);
 
@@ -47,8 +55,10 @@ public class KakaoAdminApiClient {
     private final RestClient restClient;
     private final ObjectMapper objectMapper;
     private final String adminKey;
+    private final Clock clock;
 
-    public KakaoAdminApiClient(RestClient restClient, ObjectMapper objectMapper, String adminKey) {
+    public KakaoAdminApiClient(
+            RestClient restClient, ObjectMapper objectMapper, String adminKey, Clock clock) {
         this.restClient = restClient;
         this.objectMapper =
                 objectMapper
@@ -56,6 +66,7 @@ public class KakaoAdminApiClient {
                         .enable(JsonParser.Feature.STRICT_DUPLICATE_DETECTION)
                         .enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS);
         this.adminKey = adminKey;
+        this.clock = clock;
     }
 
     /**
@@ -65,7 +76,7 @@ public class KakaoAdminApiClient {
      */
     public KakaoAdminUnlinkResult unlink(long kakaoUserId) {
         if (kakaoUserId <= 0) {
-            return result(KakaoAdminUnlinkDisposition.PERMANENT_REQUEST, null, null);
+            return result(KakaoAdminUnlinkDisposition.PERMANENT_REQUEST, null, null, null, null);
         }
 
         MultiValueMap<String, String> form = new LinkedMultiValueMap<>();
@@ -82,57 +93,108 @@ public class KakaoAdminApiClient {
                     .exchange((request, response) -> classify(response, kakaoUserId));
         } catch (RestClientException exception) {
             // 전송 예외의 원문 메시지나 cause는 민감정보를 포함할 수 있어 결과에 보관하지 않는다.
-            return result(KakaoAdminUnlinkDisposition.RETRYABLE, null, null);
+            return result(KakaoAdminUnlinkDisposition.RETRYABLE, null, null, null, null);
         }
     }
 
     private KakaoAdminUnlinkResult classify(ClientHttpResponse response, long requestedUserId)
             throws IOException {
         int httpStatus = response.getStatusCode().value();
+        Instant responseReceivedAt = Instant.now(clock);
 
         if (response.getStatusCode().is2xxSuccessful()) {
             if (httpStatus != HttpStatus.OK.value()) {
-                return result(KakaoAdminUnlinkDisposition.RESPONSE_FAILURE, httpStatus, null);
+                return result(
+                        KakaoAdminUnlinkDisposition.RESPONSE_FAILURE,
+                        httpStatus,
+                        null,
+                        response.getHeaders(),
+                        responseReceivedAt);
             }
-            return classifySuccess(response, requestedUserId, httpStatus);
+            return classifySuccess(response, requestedUserId, httpStatus, responseReceivedAt);
         }
 
         JsonReadResult jsonReadResult = readJson(response);
         if (jsonReadResult.isBodyReadFailure()) {
-            return result(KakaoAdminUnlinkDisposition.RETRYABLE, httpStatus, null);
+            return result(
+                    KakaoAdminUnlinkDisposition.RETRYABLE,
+                    httpStatus,
+                    null,
+                    response.getHeaders(),
+                    responseReceivedAt);
         }
 
         Integer kakaoCode = readKakaoCode(jsonReadResult.body());
         KakaoAdminUnlinkDisposition knownDisposition = mapKnownKakaoCode(kakaoCode);
         if (knownDisposition != null) {
-            return result(knownDisposition, httpStatus, kakaoCode);
+            return result(
+                    knownDisposition,
+                    httpStatus,
+                    kakaoCode,
+                    response.getHeaders(),
+                    responseReceivedAt);
         }
-        return classifyHttpFallback(httpStatus, kakaoCode);
+        return classifyHttpFallback(
+                httpStatus, kakaoCode, response.getHeaders(), responseReceivedAt);
     }
 
     private KakaoAdminUnlinkResult classifySuccess(
-            ClientHttpResponse response, long requestedUserId, int httpStatus) {
+            ClientHttpResponse response,
+            long requestedUserId,
+            int httpStatus,
+            Instant responseReceivedAt) {
         JsonReadResult jsonReadResult = readJson(response);
         if (jsonReadResult.isBodyReadFailure()) {
-            return result(KakaoAdminUnlinkDisposition.RETRYABLE, httpStatus, null);
+            return result(
+                    KakaoAdminUnlinkDisposition.RETRYABLE,
+                    httpStatus,
+                    null,
+                    response.getHeaders(),
+                    responseReceivedAt);
         }
 
         JsonNode id = jsonReadResult.body() == null ? null : jsonReadResult.body().get("id");
         if (id == null || !id.isIntegralNumber() || !id.canConvertToLong() || id.longValue() <= 0) {
-            return result(KakaoAdminUnlinkDisposition.RESPONSE_FAILURE, httpStatus, null);
+            return result(
+                    KakaoAdminUnlinkDisposition.RESPONSE_FAILURE,
+                    httpStatus,
+                    null,
+                    response.getHeaders(),
+                    responseReceivedAt);
         }
         if (id.longValue() != requestedUserId) {
-            return result(KakaoAdminUnlinkDisposition.SECURITY_FAILURE, httpStatus, null);
+            return result(
+                    KakaoAdminUnlinkDisposition.SECURITY_FAILURE,
+                    httpStatus,
+                    null,
+                    response.getHeaders(),
+                    responseReceivedAt);
         }
-        return result(KakaoAdminUnlinkDisposition.SUCCESS, httpStatus, null);
+        return result(
+                KakaoAdminUnlinkDisposition.SUCCESS,
+                httpStatus,
+                null,
+                response.getHeaders(),
+                responseReceivedAt);
     }
 
-    private KakaoAdminUnlinkResult classifyHttpFallback(int httpStatus, Integer kakaoCode) {
+    private KakaoAdminUnlinkResult classifyHttpFallback(
+            int httpStatus, Integer kakaoCode, HttpHeaders headers, Instant responseReceivedAt) {
         if (httpStatus == HttpStatus.TOO_MANY_REQUESTS.value()
                 || (httpStatus >= 500 && httpStatus < 600)) {
-            return result(KakaoAdminUnlinkDisposition.RETRYABLE, httpStatus, kakaoCode);
+            return result(
+                    KakaoAdminUnlinkDisposition.RETRYABLE,
+                    httpStatus,
+                    kakaoCode,
+                    headers,
+                    responseReceivedAt);
         }
-        return result(KakaoAdminUnlinkDisposition.UNKNOWN_PERMANENT, httpStatus, kakaoCode);
+        return result(
+                KakaoAdminUnlinkDisposition.UNKNOWN_PERMANENT,
+                httpStatus,
+                kakaoCode,
+                headers,
+                responseReceivedAt);
     }
 
     private KakaoAdminUnlinkDisposition mapKnownKakaoCode(Integer kakaoCode) {
@@ -200,7 +262,54 @@ public class KakaoAdminApiClient {
     }
 
     private KakaoAdminUnlinkResult result(
-            KakaoAdminUnlinkDisposition disposition, Integer httpStatus, Integer kakaoCode) {
-        return KakaoAdminUnlinkResult.of(disposition, httpStatus, kakaoCode);
+            KakaoAdminUnlinkDisposition disposition,
+            Integer httpStatus,
+            Integer kakaoCode,
+            HttpHeaders headers,
+            Instant responseReceivedAt) {
+        Instant retryAfterAt = null;
+        if (disposition == KakaoAdminUnlinkDisposition.RETRYABLE
+                && httpStatus != null
+                && (httpStatus == HttpStatus.TOO_MANY_REQUESTS.value()
+                        || (httpStatus >= 500 && httpStatus < 600))) {
+            retryAfterAt = parseRetryAfter(headers, responseReceivedAt);
+        }
+        return KakaoAdminUnlinkResult.of(disposition, httpStatus, kakaoCode, retryAfterAt);
+    }
+
+    private Instant parseRetryAfter(HttpHeaders headers, Instant responseReceivedAt) {
+        if (headers == null || responseReceivedAt == null) {
+            return null;
+        }
+        List<String> values = headers.get(HttpHeaders.RETRY_AFTER);
+        if (values == null || values.size() != 1) {
+            return null;
+        }
+        String value = values.get(0);
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        value = value.trim();
+        if (value.chars().allMatch(Character::isDigit)) {
+            try {
+                BigInteger seconds = new BigInteger(value);
+                long cappedSeconds =
+                        seconds.min(BigInteger.valueOf(MAX_RETRY_AFTER_SECONDS)).longValueExact();
+                return responseReceivedAt.plusSeconds(cappedSeconds);
+            } catch (ArithmeticException | NumberFormatException exception) {
+                return null;
+            }
+        }
+        try {
+            Instant retryAfterAt =
+                    ZonedDateTime.parse(value, DateTimeFormatter.RFC_1123_DATE_TIME).toInstant();
+            if (retryAfterAt.isBefore(responseReceivedAt)) {
+                return null;
+            }
+            Instant cappedAt = responseReceivedAt.plusSeconds(MAX_RETRY_AFTER_SECONDS);
+            return retryAfterAt.isAfter(cappedAt) ? cappedAt : retryAfterAt;
+        } catch (DateTimeParseException exception) {
+            return null;
+        }
     }
 }

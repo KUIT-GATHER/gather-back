@@ -22,6 +22,7 @@ class KakaoUnlinkTaskTest {
         assertThat(task.getSocialAccount()).isSameAs(socialAccount);
         assertThat(task.getGeneration()).isEqualTo(3L);
         assertThat(task.getStatus()).isEqualTo(KakaoUnlinkTaskStatus.PENDING);
+        assertThat(task.getRetryCycle()).isZero();
         assertThat(task.getAttemptCount()).isZero();
         assertThat(task.getNextAttemptAt()).isEqualTo(NOW);
         assertThat(task.getCreatedAt()).isEqualTo(NOW);
@@ -35,6 +36,65 @@ class KakaoUnlinkTaskTest {
         assertThat(task.getLastKakaoCode()).isNull();
         assertThat(task.getLastErrorType()).isNull();
         assertThat(task.getCompletedAt()).isNull();
+    }
+
+    @Test
+    void reservation_incrementsImmediatelyBeforeExternalAttempt() {
+        KakaoUnlinkTask task = KakaoUnlinkTask.pending(new SocialAccount(), 1L, NOW);
+        LocalDateTime leaseExpiresAt = NOW.plusMinutes(2);
+        task.claim("claim-token", "worker-1", NOW, leaseExpiresAt);
+
+        int attemptCount =
+                task.reserveAttempt("claim-token", NOW.plusSeconds(1), NOW.plusSeconds(1), 12);
+
+        assertThat(attemptCount).isOne();
+        assertThat(task.getAttemptCount()).isOne();
+        assertThat(task.getLastAttemptAt()).isEqualTo(NOW.plusSeconds(1));
+        assertThat(task.getStatus()).isEqualTo(KakaoUnlinkTaskStatus.PROCESSING);
+    }
+
+    @Test
+    void reservation_rejectsWrongTokenExpiredLeaseAndExhaustedBudget() {
+        KakaoUnlinkTask task = KakaoUnlinkTask.pending(new SocialAccount(), 1L, NOW);
+        task.claim("claim-token", "worker-1", NOW, NOW.plusSeconds(2));
+
+        assertThatThrownBy(
+                        () ->
+                                task.reserveAttempt(
+                                        "other-token", NOW.plusSeconds(1), NOW.plusSeconds(1), 12))
+                .isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(
+                        () ->
+                                task.reserveAttempt(
+                                        "claim-token", NOW.plusSeconds(2), NOW.plusSeconds(2), 12))
+                .isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(
+                        () ->
+                                task.reserveAttempt(
+                                        "claim-token", NOW.plusSeconds(1), NOW.plusSeconds(1), 0))
+                .isInstanceOf(IllegalStateException.class);
+    }
+
+    @Test
+    void configurationDeadTask_startsNewRetryCycleOnlyOnExplicitResume() {
+        KakaoUnlinkTask task = KakaoUnlinkTask.pending(new SocialAccount(), 1L, NOW);
+        task.claim("claim-token", "worker-1", NOW, NOW.plusMinutes(2));
+        task.reserveAttempt("claim-token", NOW.plusSeconds(1), NOW.plusSeconds(1), 12);
+        task.dead(
+                "claim-token",
+                NOW.plusSeconds(2),
+                NOW.plusSeconds(2),
+                401,
+                -401,
+                KakaoUnlinkTaskErrorType.CONFIGURATION);
+
+        task.startNewRetryCycle(NOW.plusHours(1));
+
+        assertThat(task.getStatus()).isEqualTo(KakaoUnlinkTaskStatus.PENDING);
+        assertThat(task.getRetryCycle()).isOne();
+        assertThat(task.getAttemptCount()).isZero();
+        assertThat(task.getNextAttemptAt()).isEqualTo(NOW.plusHours(1));
+        assertThat(task.getLastErrorType()).isNull();
     }
 
     @Test

@@ -14,6 +14,17 @@
 - `[권장 구현]`: 확정 정책을 안전하게 구현하기 위한 기술 권장사항
 - `[운영·법적 검토]`: 기술 구현은 진행할 수 있지만 운영 공개 전 별도 검토가 필요한 사항
 
+## PR 6 구현 반영 상태 (2026-08-01)
+
+- V41 migration에 직접 provider 식별자 nullable 전환, `retry_cycle`, DB singleton worker control을 반영했다.
+- application 공통 Clock은 UTC로 고정했으며 claim·reservation·result 단계가 각 operation별 now를 한 번만 사용한다.
+- `claim → preflight → attempt reservation → transaction 밖 HTTP → result/finalizer` 경계와 lock order, token·lease·generation·retry cycle fencing을 구현했다.
+- Retry-After 두 형식, full jitter, reservation 최대 12회, 6시간 상한을 구현했다.
+- configuration 오류는 현재 task를 DEAD로 만들고 DB control을 차단하며, 명시적 내부 resume만 새 retry cycle을 시작한다.
+- 동일 generation의 이미 UNLINKED인 계정은 reservation과 HTTP 없이 local finalization한다.
+- 성공 finalizer는 직접 provider 식별자를 파기하고 HMAC을 유지하며 User 탈퇴·익명화·프로필 이미지 durable deletion 등록·task 성공을 하나의 transaction으로 처리한다.
+- MySQL 8.4 fresh migration, `ddl-auto=validate`, 실제 DB claim 동시성 및 전체 회귀 테스트로 구현 계약을 검증했다.
+
 ## 1. 문서 목적
 
 이 문서는 Gather 회원 탈퇴와 카카오 연결 해제를 하나의 동기 HTTP 요청으로 취급하지 않고, 다음 조건을 함께 만족하는 내구성 있는 처리 흐름으로 정의한다.
@@ -438,10 +449,10 @@ KakaoUnlinkTask: PROCESSING → STALE
 ### 7.1 Claim 트랜잭션
 
 1. singleton `KakaoUnlinkWorkerControl` row를 먼저 잠그고 상태가 `ACTIVE`인지 확인한다. `CONFIGURATION_BLOCKED`이면 task를 claim하지 않고 종료한다.
-2. `status=PENDING`이고 `next_attempt_at <= DB UTC now`인 행, 또는 DB UTC now 기준으로 lease가 만료된 `PROCESSING` 행을 찾는다.
-3. MySQL의 `FOR UPDATE SKIP LOCKED`를 사용해 due task는 `(next_attempt_at, id)`, expired lease는 `(lease_expires_at, id)` 순서로 제한된 batch를 잠근다.
-4. 각 행을 `PROCESSING`으로 바꾸고 새 `claim_token`, `claimed_by`, `claimed_at`, `lease_expires_at`을 기록한다.
-5. `claimed_at`과 `lease_expires_at`은 `UTC_TIMESTAMP(6)`과 동등한 동일 transaction의 DB UTC 시각으로 계산한다.
+2. 같은 claim transaction에서 `databaseNow = SELECT UTC_TIMESTAMP(6)`을 정확히 한 번 구한다.
+3. `status=PENDING AND next_attempt_at <= :databaseNow`인 행 또는 `status=PROCESSING AND lease_expires_at <= :databaseNow`인 행을 찾는다. native query 내부에서 별도의 `UTC_TIMESTAMP(6)`을 다시 평가하지 않는다.
+4. MySQL의 `FOR UPDATE SKIP LOCKED`를 사용해 due task는 `(next_attempt_at, id)`, expired lease는 `(lease_expires_at, id)` 순서로 제한된 batch를 잠근다.
+5. 각 행을 `PROCESSING`으로 바꾸고 새 `claim_token`, `claimed_by`, `claimed_at = databaseNow`, `lease_expires_at = databaseNow + leaseDuration`을 기록한다. entity의 claim/reclaim invariant도 같은 `databaseNow`를 사용한다.
 6. 커밋한다.
 
 lease는 HTTP connect/read timeout과 정상적인 결과 처리 시간을 합친 값보다 충분히 길어야 한다. batch 크기와 worker 동시성은 DB connection pool과 카카오 호출량 제한을 함께 고려한다.
@@ -529,15 +540,15 @@ result/finalizer transaction마다 `resultNow = LocalDateTime.now(Clock.systemUT
 
 | 책임 | 기준 시각 |
 |---|---|
-| due task eligibility, expired lease eligibility | DB UTC, `UTC_TIMESTAMP(6)`과 동등한 시각 |
-| `claimedAt`, `leaseExpiresAt` | 같은 claim/reclaim transaction의 DB UTC 시각 |
+| due task eligibility, expired lease eligibility | claim transaction에서 한 번 읽은 DB UTC `databaseNow` |
+| `claimedAt`, `leaseExpiresAt` | eligibility와 동일한 `databaseNow`, `databaseNow + leaseDuration` |
 | attempt reservation, `lastAttemptAt` | `Clock.systemUTC()`의 `attemptNow` |
 | Retry-After, backoff, `nextAttemptAt` | `Clock.systemUTC()`의 `resultNow` |
 | result 처리, `completedAt`, User/SocialAccount 상태 전이 | `Clock.systemUTC()`의 `resultNow` |
 
 `operation당 now 한 번`은 전체 task 생명주기에서 한 번이 아니라 각 transaction 단계에서 한 번이라는 뜻이다. claim transaction은 DB의 `claimNow`, reservation transaction은 application의 `attemptNow`, result/finalizer transaction은 application의 `resultNow`를 각각 한 번만 사용한다.
 
-운영 계약은 DB session timezone UTC, JVM timezone UTC, EC2 시스템 시각의 NTP 동기화다. local example의 `Asia/Seoul` JDBC 설정은 PR 6 구현에서 UTC로 변경한다. 배포 전 기존 `DATETIME` 데이터가 KST wall-clock으로 저장됐는지 표본 검증하며, UTC 설정 변경이 기존 데이터의 자동 변환을 뜻하지 않는다.
+운영 계약은 DB session timezone UTC, JVM timezone UTC, EC2 시스템 시각의 NTP 동기화다. 애플리케이션은 `hibernate.jdbc.time_zone=UTC`도 명시해 Hibernate timestamp binding을 JVM 기본 timezone에만 맡기지 않는다. local example의 `Asia/Seoul` JDBC 설정은 PR 6 구현에서 UTC로 변경한다. 배포 전 기존 `DATETIME` 데이터가 KST wall-clock으로 저장됐는지 표본 검증하며, UTC 설정 변경이 기존 데이터의 자동 변환을 뜻하지 않는다.
 
 ### 7.7 Admin client와 worker 기본값
 
@@ -555,7 +566,14 @@ result/finalizer transaction마다 `resultNow = LocalDateTime.now(Clock.systemUT
 
 retry는 HTTP client가 아니라 durable task가 담당한다. 현재 단일 EC2와 낮은 처리량에서는 worker 1개가 충분하고, batch 10개 순차 처리의 예상 최악 시간에 여유를 둔 lease를 사용한다. lease 만료 task는 scheduler가 회수한다.
 
-local/test에도 명시적 UTC 기본값을 두고 운영에서는 Admin client enabled 여부를 분리한다. concurrency를 늘릴 때 batch와 lease를 함께 재검토한다. 현재 값은 확정 기본값이지만 운영 지표에 따라 configuration으로 조정할 수 있다.
+local/test에도 명시적 UTC 기본값을 두고 운영에서는 Admin client enabled 여부를 분리한다. worker가 활성화되려면 Admin client도 활성화되어야 하며 `worker=true`, `admin=false` 조합은 설정 오류로 애플리케이션 기동을 실패시킨다. concurrency를 늘릴 때 batch와 lease를 함께 재검토한다. 현재 값은 확정 기본값이지만 운영 지표에 따라 configuration으로 조정할 수 있다.
+
+| Admin | Worker | 기동 결과 |
+|---|---:|---|
+| false | false | 정상 기동, Admin client와 worker 비활성 |
+| true | false | 정상 기동, Admin client만 활성 |
+| false | true | 설정 오류로 startup 실패 |
+| true | true | Admin client와 worker 활성 |
 
 ## 8. Generation과 stale task
 
@@ -703,7 +721,37 @@ User = WITHDRAWAL_PENDING
 
 PR 6에는 공개 수동 retry API나 범용 관리자 UI를 넣지 않는다. DB 직접 UPDATE를 금지하고 권한 있는 운영 절차와 application service로만 worker control resume와 task requeue를 수행한다.
 
-configuration 복구 순서는 Admin 설정 수정, 안전한 설정 검증 또는 운영자 확인, worker control의 `ACTIVE` 전환, `CONFIGURATION` 원인으로 `DEAD`가 된 task의 명시적 requeue, worker 재개다. control resume와 task requeue는 자동 동작이 아니다.
+configuration 복구 순서는 Admin 설정 수정, 안전한 설정 검증 또는 운영자 확인, `CONFIGURATION` 원인으로 `DEAD`가 된 모든 task의 원자적 requeue, worker control의 `ACTIVE` 전환, worker 재개다. control resume와 task requeue는 자동 동작이 아니다.
+
+PR 6의 production 복구 진입점은 공개 Controller가 아니라 `kakao-unlink-resume` profile의 one-shot command다. command bean은 해당 profile과 `gather.kakao.unlink-resume.enabled=true`가 모두 있을 때만 등록된다. 실제 non-web application context, `gather.scheduling.enabled=false`, `kakao.admin.unlink-worker.enabled=false`, task ID 목록, 허용된 actor와 normalized reason을 DB 변경 전에 검증하며 하나라도 어긋나면 service를 호출하지 않고 non-zero로 종료한다. resume profile에서는 property 값과 무관하게 scheduling infrastructure 자체를 등록하지 않는다.
+
+Resume command는 운영자가 선택한 일부 task만 복구하는 기능이 아니다. service는 control row를 먼저 잠가 `CONFIGURATION_BLOCKED`를 확인한 뒤 DB에 존재하는 모든 `DEAD + CONFIGURATION` task를 ID 오름차순으로 잠금 조회한다. 요청 task ID를 정렬·중복 제거한 목록과 DB 전체 대상 ID 목록이 정확히 같을 때만 모든 task의 새 retry cycle을 시작하고 마지막에 control을 `ACTIVE`로 바꾼다. 누락 ID, 추가 ID, 존재하지 않는 ID, 다른 상태의 task, 빈 요청 또는 control/task 상태 불일치가 하나라도 있으면 control과 모든 task 변경을 rollback해 부분 성공을 금지한다. command 재실행은 control이 더 이상 blocked가 아니므로 명확히 거부하며 retry cycle을 다시 증가시키지 않는다.
+
+권장 실행 예시는 다음과 같다. 실행 전에 Kakao Admin 설정을 먼저 수정하고 검증한다. 운영자는 다음 조회 결과의 전체 ID를 command에 전달해야 하며 일부만 전달하면 command가 실패한다. command는 Kakao API를 호출하지 않고 worker control과 DB 전체 configuration-dead task를 하나의 transaction으로 복구한다.
+
+```sql
+SELECT id
+FROM kakao_unlink_task
+WHERE status = 'DEAD'
+  AND last_error_type = 'CONFIGURATION'
+ORDER BY id;
+```
+
+```powershell
+java -jar gather.jar `
+  --spring.profiles.active=prod,kakao-unlink-resume `
+  --spring.main.web-application-type=none `
+  --gather.scheduling.enabled=false `
+  --kakao.admin.unlink-worker.enabled=false `
+  --gather.kakao.unlink-resume.enabled=true `
+  --gather.kakao.unlink-resume.task-ids=123,124 `
+  --gather.kakao.unlink-resume.actor=operator-name `
+  --gather.kakao.unlink-resume.reason=ADMIN_KEY_CORRECTED
+```
+
+허용 reason은 `ADMIN_KEY_CORRECTED`, `APP_ID_CORRECTED`, `KAKAO_PERMISSION_CORRECTED`, `CONFIGURATION_VERIFIED`다. 종료 코드는 `0` 성공, `2` 입력·실행 환경 오류, `3` control/task invariant 불일치, `4` transaction 또는 예기치 못한 실행 실패다. 성공 로그는 transactional service가 정상 반환해 commit이 완료된 뒤 executor에서 resumed count, actor, normalized reason만 기록한다. 성공·실패 모두 Spring context를 닫은 뒤 종료하며 command-line 전체, Admin key, provider ID, 원문 예외 메시지를 로그에 기록하지 않는다.
+
+Acceptance criteria는 A와 B가 모두 `DEAD/CONFIGURATION`일 때 A만 요청하거나 A/B 외 ID를 추가하면 control이 blocked로 유지되고 A/B의 status, retry cycle과 attempt count가 모두 불변인 것이다. A/B 전체를 순서 변경·중복 포함해 요청하면 두 task 모두 `PENDING`, retry cycle은 각각 1 증가, attempt count는 0이 되고 control은 `ACTIVE`가 된다.
 
 자동 worker는 한 retry cycle에서 `attemptCount` 12를 초과하지 않는다. 운영자가 새 retry cycle을 승인하면 `retryCycle + 1`, `attemptCount = 0`, task `PENDING`, `nextAttemptAt = resumeNow`로 전환하고 claim 정보와 이전 terminal 시각을 새 cycle 규칙에 맞게 정리한다. 이전 실패 이력은 구조화 로그 또는 별도 감사 정보로 추적한다. 이 계약에는 `retryCycle`과 동등한 감사 필드가 필요하며 자동 처리 중에는 변경하지 않는다.
 
@@ -837,7 +885,7 @@ Scheduler claim은 control row를 먼저 확인하고 잠근다. task와 SocialA
 SELECT *
 FROM kakao_unlink_task
 WHERE status = 'PENDING'
-  AND next_attempt_at <= UTC_TIMESTAMP(6)
+  AND next_attempt_at <= :databaseNow
 ORDER BY next_attempt_at, id
 LIMIT :batchSize
 FOR UPDATE SKIP LOCKED;
@@ -855,7 +903,7 @@ FOR UPDATE SKIP LOCKED;
 SELECT *
 FROM kakao_unlink_task
 WHERE status = 'PROCESSING'
-  AND lease_expires_at <= UTC_TIMESTAMP(6)
+  AND lease_expires_at <= :databaseNow
 ORDER BY lease_expires_at, id
 LIMIT :batchSize
 FOR UPDATE SKIP LOCKED;
@@ -1154,7 +1202,7 @@ PR 6 migration 번호는 구현 또는 restack 직전 최신 `develop` 기준으
 | 선행 조건 | PR 4, PR 5 |
 | 완료 조건 | 중복 실행과 worker crash에도 같은 generation만 안전하게 완료되고 외부 HTTP 동안 DB lock을 유지하지 않으며 설정 오류가 전 인스턴스 claim을 지속적으로 차단함 |
 | 테스트 | UTC 책임 분리, timeout·내부 retry 부재, Retry-After 형식·조건·cap, due·expired lease `SKIP LOCKED`, lease 회수, reservation invariant·crash·12회, configuration atomic block·batch 중단·resume, unknown 오류, ID 불일치, 동일 generation `UNLINKED` local finalization, 직접 identifier 제거·HMAC 유지, 카카오 익명화, HTTP 중 transaction 부재, MySQL `EXPLAIN ANALYZE` |
-| migration | 실제 번호는 구현 직전 결정: 직접 identifier nullable, worker control, retry cycle 감사 필드와 필요한 constraint 소유 |
+| migration | `V41`: 직접 identifier nullable, worker control, retry cycle 감사 필드와 필요한 constraint 소유 |
 
 영구 실패에서는 User와 SocialAccount를 pending으로 유지한다. configuration 오류는 현재 task `DEAD`와 전역 worker `CONFIGURATION_BLOCKED`를 원자적으로 적용하고, 설정 수정·검증 뒤 권한 있는 운영 절차만 control resume와 새 retry cycle을 시작할 수 있다. PR 5에는 unlink worker나 finalizer가 포함되지 않는다.
 
