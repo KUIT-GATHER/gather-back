@@ -3,7 +3,6 @@ package com.gather.gather.domain.auth.kakao.worker;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
-import java.util.regex.Pattern;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -24,9 +23,6 @@ public class KakaoUnlinkResumeCommandExecutor {
     static final int EXIT_INPUT_OR_ENVIRONMENT = 2;
     static final int EXIT_INVARIANT = 3;
     static final int EXIT_EXECUTION_FAILURE = 4;
-
-    private static final int MAX_ACTOR_LENGTH = 64;
-    private static final Pattern ACTOR_PATTERN = Pattern.compile("[A-Za-z0-9._@-]+");
 
     private final ConfigurableApplicationContext applicationContext;
     private final Environment environment;
@@ -59,7 +55,8 @@ public class KakaoUnlinkResumeCommandExecutor {
         } catch (RuntimeException exception) {
             log.error(
                     "Kakao unlink resume command failed: failureType={}",
-                    exception.getClass().getSimpleName());
+                    exception.getClass().getName(),
+                    exception);
             return EXIT_EXECUTION_FAILURE;
         }
     }
@@ -102,16 +99,11 @@ public class KakaoUnlinkResumeCommandExecutor {
     }
 
     private static String normalizeActor(String rawActor) {
-        if (rawActor == null) {
+        try {
+            return KakaoUnlinkResumeActor.normalize(rawActor);
+        } catch (IllegalArgumentException exception) {
             throw new KakaoUnlinkResumeCommandValidationException();
         }
-        String actor = rawActor.trim();
-        if (actor.isEmpty()
-                || actor.length() > MAX_ACTOR_LENGTH
-                || !ACTOR_PATTERN.matcher(actor).matches()) {
-            throw new KakaoUnlinkResumeCommandValidationException();
-        }
-        return actor;
     }
 
     private static KakaoUnlinkResumeReason parseReason(String rawReason) {

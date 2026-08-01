@@ -26,7 +26,8 @@ public class KakaoUnlinkWorkerScheduler {
         } catch (RuntimeException exception) {
             log.error(
                     "Kakao unlink worker batch failed: failureType={}",
-                    exception.getClass().getSimpleName());
+                    exception.getClass().getName(),
+                    exception);
         }
     }
 }

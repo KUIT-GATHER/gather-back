@@ -1,5 +1,6 @@
 package com.gather.gather.domain.auth.kakao.worker;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
@@ -7,10 +8,14 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InOrder;
 import org.springframework.boot.DefaultApplicationArguments;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.context.ConfigurableApplicationContext;
 
+@ExtendWith(OutputCaptureExtension.class)
 class KakaoUnlinkResumeCommandRunnerTest {
 
     @Test
@@ -31,7 +36,8 @@ class KakaoUnlinkResumeCommandRunnerTest {
     }
 
     @Test
-    void contextCloseFailureTerminatesWithExecutionFailureCode() {
+    void contextCloseFailureTerminatesWithExecutionFailureCodeAndLogsStackTrace(
+            CapturedOutput output) {
         KakaoUnlinkResumeCommandExecutor executor = mock(KakaoUnlinkResumeCommandExecutor.class);
         ConfigurableApplicationContext context = mock(ConfigurableApplicationContext.class);
         ProcessTerminator terminator = mock(ProcessTerminator.class);
@@ -43,5 +49,8 @@ class KakaoUnlinkResumeCommandRunnerTest {
         runner.run(new DefaultApplicationArguments(new String[0]));
 
         verify(terminator).terminate(KakaoUnlinkResumeCommandExecutor.EXIT_EXECUTION_FAILURE);
+        assertThat(output)
+                .contains("failureType=java.lang.IllegalStateException")
+                .contains("java.lang.IllegalStateException: close failed");
     }
 }

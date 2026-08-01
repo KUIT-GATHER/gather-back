@@ -6,7 +6,6 @@ import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
-import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Instant;
@@ -30,6 +29,7 @@ public class KakaoAdminApiClient {
     private static final String ADMIN_AUTHORIZATION_PREFIX = "KakaoAK ";
     private static final String TARGET_ID_TYPE = "user_id";
     private static final long MAX_RETRY_AFTER_SECONDS = 6 * 60 * 60;
+    private static final int MAX_RETRY_AFTER_DELTA_DIGITS = 10;
     private static final MediaType FORM_URLENCODED_UTF8 =
             new MediaType(MediaType.APPLICATION_FORM_URLENCODED, StandardCharsets.UTF_8);
 
@@ -290,11 +290,13 @@ public class KakaoAdminApiClient {
             return null;
         }
         value = value.trim();
-        if (value.chars().allMatch(Character::isDigit)) {
+        if (value.chars().allMatch(KakaoAdminApiClient::isAsciiDigit)) {
+            if (value.length() > MAX_RETRY_AFTER_DELTA_DIGITS) {
+                return null;
+            }
             try {
-                BigInteger seconds = new BigInteger(value);
-                long cappedSeconds =
-                        seconds.min(BigInteger.valueOf(MAX_RETRY_AFTER_SECONDS)).longValueExact();
+                long seconds = Long.parseLong(value);
+                long cappedSeconds = Math.min(seconds, MAX_RETRY_AFTER_SECONDS);
                 return responseReceivedAt.plusSeconds(cappedSeconds);
             } catch (ArithmeticException | NumberFormatException exception) {
                 return null;
@@ -311,5 +313,9 @@ public class KakaoAdminApiClient {
         } catch (DateTimeParseException exception) {
             return null;
         }
+    }
+
+    private static boolean isAsciiDigit(int character) {
+        return character >= '0' && character <= '9';
     }
 }

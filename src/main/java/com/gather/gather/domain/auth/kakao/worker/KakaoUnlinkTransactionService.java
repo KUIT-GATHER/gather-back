@@ -72,11 +72,12 @@ public class KakaoUnlinkTransactionService {
             return KakaoUnlinkReservation.of(KakaoUnlinkReservation.Outcome.BLOCKED);
         }
 
-        SocialAccount account =
-                socialAccountRepository.findByIdForUpdate(claim.socialAccountId()).orElse(null);
-        KakaoUnlinkTask task = taskRepository.findByIdForUpdate(claim.taskId()).orElse(null);
-        User user = userRepository.findByIdForUpdate(claim.userId()).orElse(null);
-        LocalDateTime leaseNow = taskRepository.currentUtcDateTime();
+        // Global lock order: WorkerControl -> SocialAccount -> KakaoUnlinkTask -> User.
+        LockedEntities locked = lockEntities(claim);
+        SocialAccount account = locked.account();
+        KakaoUnlinkTask task = locked.task();
+        User user = locked.user();
+        LocalDateTime leaseNow = locked.leaseNow();
         if (task == null || !matchesClaim(task, claim, leaseNow)) {
             return KakaoUnlinkReservation.of(KakaoUnlinkReservation.Outcome.CLAIM_LOST);
         }
@@ -146,11 +147,12 @@ public class KakaoUnlinkTransactionService {
 
     @Transactional
     public void markStale(KakaoUnlinkClaim claim) {
-        SocialAccount account =
-                socialAccountRepository.findByIdForUpdate(claim.socialAccountId()).orElse(null);
-        KakaoUnlinkTask task = taskRepository.findByIdForUpdate(claim.taskId()).orElse(null);
-        User user = userRepository.findByIdForUpdate(claim.userId()).orElse(null);
-        LocalDateTime leaseNow = taskRepository.currentUtcDateTime();
+        // This path starts at SocialAccount because it does not require the global control lock.
+        LockedEntities locked = lockEntities(claim);
+        SocialAccount account = locked.account();
+        KakaoUnlinkTask task = locked.task();
+        User user = locked.user();
+        LocalDateTime leaseNow = locked.leaseNow();
         if (account != null
                 && task != null
                 && user != null
@@ -174,4 +176,15 @@ public class KakaoUnlinkTransactionService {
                 && account.getProvider() == SocialProvider.KAKAO
                 && account.matchesGeneration(claim.generation());
     }
+
+    private LockedEntities lockEntities(KakaoUnlinkClaim claim) {
+        SocialAccount account =
+                socialAccountRepository.findByIdForUpdate(claim.socialAccountId()).orElse(null);
+        KakaoUnlinkTask task = taskRepository.findByIdForUpdate(claim.taskId()).orElse(null);
+        User user = userRepository.findByIdForUpdate(claim.userId()).orElse(null);
+        return new LockedEntities(account, task, user, taskRepository.currentUtcDateTime());
+    }
+
+    private record LockedEntities(
+            SocialAccount account, KakaoUnlinkTask task, User user, LocalDateTime leaseNow) {}
 }

@@ -6,5 +6,4 @@ public record KakaoUnlinkClaim(
         Long userId,
         long generation,
         String claimToken,
-        int retryCycle,
-        int attemptCount) {}
+        int retryCycle) {}

@@ -191,10 +191,10 @@ public class KakaoUnlinkTask {
             Integer httpStatus,
             Integer kakaoCode,
             KakaoUnlinkTaskErrorType errorType) {
-        requireOwnedClaim(expectedClaimToken, leaseNow);
-        if (errorType == null) {
-            throw new IllegalArgumentException("DEAD 오류 분류는 필수입니다.");
+        if (errorType == null || !errorType.isDeadCompatible()) {
+            throw new IllegalArgumentException("DEAD와 결합할 수 있는 terminal 오류 분류가 필요합니다.");
         }
+        requireOwnedClaim(expectedClaimToken, leaseNow);
         transitionTerminal(
                 KakaoUnlinkTaskStatus.DEAD, completedAt, httpStatus, kakaoCode, errorType);
     }

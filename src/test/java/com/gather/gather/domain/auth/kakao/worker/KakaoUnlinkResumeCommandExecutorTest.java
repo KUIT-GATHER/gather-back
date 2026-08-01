@@ -9,10 +9,14 @@ import static org.mockito.Mockito.when;
 import java.time.Duration;
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.mock.env.MockEnvironment;
 import org.springframework.web.context.ConfigurableWebApplicationContext;
 
+@ExtendWith(OutputCaptureExtension.class)
 class KakaoUnlinkResumeCommandExecutorTest {
 
     @Test
@@ -41,7 +45,7 @@ class KakaoUnlinkResumeCommandExecutorTest {
     }
 
     @Test
-    void missingInput_returnsEnvironmentExitWithoutCallingService() {
+    void missingInput_returnsEnvironmentExitWithoutUnexpectedStackTrace(CapturedOutput output) {
         KakaoUnlinkWorkerResumeService resumeService = mock(KakaoUnlinkWorkerResumeService.class);
         KakaoUnlinkResumeCommandExecutor executor =
                 executor(
@@ -58,6 +62,10 @@ class KakaoUnlinkResumeCommandExecutorTest {
                         org.mockito.ArgumentMatchers.anyList(),
                         org.mockito.ArgumentMatchers.anyString(),
                         org.mockito.ArgumentMatchers.any());
+        assertThat(output)
+                .contains("Kakao unlink resume command rejected")
+                .doesNotContain("Kakao unlink resume command failed")
+                .doesNotContain("\tat com.gather.gather.domain.auth.kakao.worker");
     }
 
     @Test
@@ -88,7 +96,7 @@ class KakaoUnlinkResumeCommandExecutorTest {
     }
 
     @Test
-    void unexpectedFailure_returnsExecutionFailureExit() {
+    void unexpectedFailure_returnsExecutionFailureExitAndLogsStackTrace(CapturedOutput output) {
         KakaoUnlinkWorkerResumeService resumeService = mock(KakaoUnlinkWorkerResumeService.class);
         when(resumeService.resumeConfigurationTasks(
                         List.of(123L), "operator", KakaoUnlinkResumeReason.CONFIGURATION_VERIFIED))
@@ -97,6 +105,9 @@ class KakaoUnlinkResumeCommandExecutorTest {
 
         assertThat(executor.execute())
                 .isEqualTo(KakaoUnlinkResumeCommandExecutor.EXIT_EXECUTION_FAILURE);
+        assertThat(output)
+                .contains("failureType=java.lang.IllegalStateException")
+                .contains("java.lang.IllegalStateException: transaction failed");
     }
 
     private void assertUnsafeEnvironmentRejected(

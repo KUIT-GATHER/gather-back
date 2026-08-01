@@ -310,10 +310,26 @@ class KakaoAdminApiClientTest {
 
     @Test
     void unlink_withExcessiveRetryAfter_capsAtSixHours() {
-        respondWithRetryAfter(HttpStatus.TOO_MANY_REQUESTS, "{}", "999999999999999999999999");
+        respondWithRetryAfter(HttpStatus.TOO_MANY_REQUESTS, "{}", "9999999999");
 
         assertThat(client.unlink(TARGET_ID).retryAfterAt()).isEqualTo(NOW.plusSeconds(6 * 60 * 60));
         server.verify();
+    }
+
+    @ParameterizedTest(name = "oversized delta-seconds case {index}")
+    @MethodSource("oversizedDeltaSeconds")
+    void unlink_withOversizedDeltaSeconds_ignoresHeader(String retryAfter) {
+        respondWithRetryAfter(HttpStatus.TOO_MANY_REQUESTS, "{}", retryAfter);
+
+        assertThat(client.unlink(TARGET_ID).retryAfterAt()).isNull();
+        server.verify();
+    }
+
+    static Stream<Arguments> oversizedDeltaSeconds() {
+        return Stream.of(
+                Arguments.of("99999999999"),
+                Arguments.of("9".repeat(1_000)),
+                Arguments.of("9223372036854775808"));
     }
 
     @Test
@@ -343,7 +359,11 @@ class KakaoAdminApiClientTest {
 
     static Stream<Arguments> invalidRetryAfterValues() {
         return Stream.of(
-                Arguments.of("-1"), Arguments.of("+1"), Arguments.of("1.5"), Arguments.of(" "));
+                Arguments.of("-1"),
+                Arguments.of("+1"),
+                Arguments.of("1.5"),
+                Arguments.of(" "),
+                Arguments.of("１２"));
     }
 
     @Test

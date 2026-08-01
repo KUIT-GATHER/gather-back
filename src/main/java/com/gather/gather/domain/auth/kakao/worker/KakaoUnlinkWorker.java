@@ -45,7 +45,8 @@ public class KakaoUnlinkWorker {
                 log.error(
                         "Kakao unlink task processing failed unexpectedly: taskId={}, failureType={}",
                         claim.taskId(),
-                        exception.getClass().getSimpleName());
+                        exception.getClass().getName(),
+                        exception);
             }
         }
         log.info(

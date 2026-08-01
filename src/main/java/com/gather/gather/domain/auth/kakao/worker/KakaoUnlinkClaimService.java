@@ -23,6 +23,10 @@ public class KakaoUnlinkClaimService {
 
     @Transactional
     public List<KakaoUnlinkClaim> claimBatch() {
+        /*
+         * Global lock order: WorkerControl -> SocialAccount -> KakaoUnlinkTask -> User.
+         * Claim only needs WorkerControl -> KakaoUnlinkTask and must preserve that subsequence.
+         */
         KakaoUnlinkWorkerControl control =
                 controlRepository
                         .findSingletonForUpdate()
@@ -65,7 +69,6 @@ public class KakaoUnlinkClaimService {
                 task.getSocialAccount().getUser().getId(),
                 task.getGeneration(),
                 claimToken,
-                task.getRetryCycle(),
-                task.getAttemptCount());
+                task.getRetryCycle());
     }
 }

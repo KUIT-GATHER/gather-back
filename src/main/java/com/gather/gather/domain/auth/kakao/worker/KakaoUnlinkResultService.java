@@ -158,6 +158,7 @@ public class KakaoUnlinkResultService {
     }
 
     private LockedContext lockAndValidate(KakaoUnlinkClaim claim, Integer expectedAttemptCount) {
+        // Global lock order after an optional WorkerControl lock: SocialAccount -> Task -> User.
         SocialAccount account =
                 socialAccountRepository.findByIdForUpdate(claim.socialAccountId()).orElse(null);
         KakaoUnlinkTask task = taskRepository.findByIdForUpdate(claim.taskId()).orElse(null);

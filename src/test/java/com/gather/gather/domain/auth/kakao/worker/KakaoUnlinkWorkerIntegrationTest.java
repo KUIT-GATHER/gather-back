@@ -14,6 +14,7 @@ import com.gather.gather.domain.auth.entity.EncryptedProviderUserId;
 import com.gather.gather.domain.auth.entity.KakaoUnlinkTask;
 import com.gather.gather.domain.auth.entity.KakaoUnlinkTaskErrorType;
 import com.gather.gather.domain.auth.entity.KakaoUnlinkTaskStatus;
+import com.gather.gather.domain.auth.entity.KakaoUnlinkWorkerControl;
 import com.gather.gather.domain.auth.entity.KakaoUnlinkWorkerControlStatus;
 import com.gather.gather.domain.auth.entity.SocialAccount;
 import com.gather.gather.domain.auth.entity.SocialProvider;
@@ -36,6 +37,11 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -82,7 +88,8 @@ class KakaoUnlinkWorkerIntegrationTest {
                 .executeWithoutResult(
                         status -> {
                             jdbcTemplate.update(
-                                    "UPDATE kakao_unlink_worker_control SET status = 'ACTIVE', blocked_at = NULL, blocked_reason = NULL, last_http_status = NULL, last_kakao_code = NULL WHERE id = 1");
+                                    "UPDATE kakao_unlink_worker_control SET status = 'ACTIVE', blocked_at = NULL, blocked_reason = NULL, last_http_status = NULL, last_kakao_code = NULL WHERE id = ?",
+                                    KakaoUnlinkWorkerControl.SINGLETON_ID);
                             for (Long createdUserId : createdUserIds) {
                                 jdbcTemplate.update(
                                         "DELETE FROM profile_image_upload WHERE user_id = ?",
@@ -125,6 +132,58 @@ class KakaoUnlinkWorkerIntegrationTest {
         assertThat(combined).hasSize(1);
         assertThat(taskRepository.findById(fixture.taskId()).orElseThrow().getStatus())
                 .isEqualTo(KakaoUnlinkTaskStatus.PROCESSING);
+    }
+
+    @Test
+    void claimsUnlockedTaskWhileEarlierDueTaskIsLocked() throws Exception {
+        Fixture earlier = createFixture(false, false);
+        Fixture later = createFixture(false, false);
+        CountDownLatch taskLocked = new CountDownLatch(1);
+        CountDownLatch releaseTaskLock = new CountDownLatch(1);
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        Future<?> locker =
+                executor.submit(
+                        () ->
+                                new TransactionTemplate(transactionManager)
+                                        .executeWithoutResult(
+                                                status -> {
+                                                    taskRepository
+                                                            .findByIdForUpdate(earlier.taskId())
+                                                            .orElseThrow();
+                                                    taskLocked.countDown();
+                                                    await(releaseTaskLock);
+                                                }));
+
+        try {
+            assertThat(taskLocked.await(5, TimeUnit.SECONDS)).isTrue();
+
+            Future<List<KakaoUnlinkClaim>> claimFuture = executor.submit(claimService::claimBatch);
+            List<KakaoUnlinkClaim> claims = claimFuture.get(5, TimeUnit.SECONDS);
+
+            assertThat(locker).isNotDone();
+            assertThat(claims)
+                    .extracting(KakaoUnlinkClaim::taskId)
+                    .contains(later.taskId())
+                    .doesNotContain(earlier.taskId());
+
+            KakaoUnlinkTask lockedTask = taskRepository.findById(earlier.taskId()).orElseThrow();
+            assertThat(lockedTask.getStatus()).isEqualTo(KakaoUnlinkTaskStatus.PENDING);
+            assertThat(lockedTask.getClaimToken()).isNull();
+            assertThat(lockedTask.getLeaseExpiresAt()).isNull();
+
+            KakaoUnlinkTask claimedTask = taskRepository.findById(later.taskId()).orElseThrow();
+            assertThat(claimedTask.getStatus()).isEqualTo(KakaoUnlinkTaskStatus.PROCESSING);
+            assertThat(claimedTask.getClaimToken()).isNotBlank();
+            assertThat(claimedTask.getLeaseExpiresAt()).isNotNull();
+        } finally {
+            releaseTaskLock.countDown();
+            try {
+                locker.get(5, TimeUnit.SECONDS);
+            } finally {
+                executor.shutdownNow();
+                assertThat(executor.awaitTermination(5, TimeUnit.SECONDS)).isTrue();
+            }
+        }
     }
 
     @Test
@@ -296,7 +355,11 @@ class KakaoUnlinkWorkerIntegrationTest {
         assertThat(blockedTask.getStatus()).isEqualTo(KakaoUnlinkTaskStatus.DEAD);
         assertThat(blockedTask.getLastErrorType())
                 .isEqualTo(KakaoUnlinkTaskErrorType.CONFIGURATION);
-        assertThat(controlRepository.findById(1L).orElseThrow().getStatus())
+        assertThat(
+                        controlRepository
+                                .findById(KakaoUnlinkWorkerControl.SINGLETON_ID)
+                                .orElseThrow()
+                                .getStatus())
                 .isEqualTo(KakaoUnlinkWorkerControlStatus.CONFIGURATION_BLOCKED);
         assertThat(claimService.claimBatch()).isEmpty();
 
@@ -310,7 +373,11 @@ class KakaoUnlinkWorkerIntegrationTest {
         assertThat(resumedTask.getStatus()).isEqualTo(KakaoUnlinkTaskStatus.PENDING);
         assertThat(resumedTask.getRetryCycle()).isOne();
         assertThat(resumedTask.getAttemptCount()).isZero();
-        assertThat(controlRepository.findById(1L).orElseThrow().getStatus())
+        assertThat(
+                        controlRepository
+                                .findById(KakaoUnlinkWorkerControl.SINGLETON_ID)
+                                .orElseThrow()
+                                .getStatus())
                 .isEqualTo(KakaoUnlinkWorkerControlStatus.ACTIVE);
     }
 
@@ -446,7 +513,11 @@ class KakaoUnlinkWorkerIntegrationTest {
         KakaoUnlinkTask secondAfter = taskRepository.findById(second.taskId()).orElseThrow();
         assertThat(firstAfter.getStatus()).isEqualTo(KakaoUnlinkTaskStatus.DEAD);
         assertThat(firstAfter.getLastErrorType()).isEqualTo(KakaoUnlinkTaskErrorType.CONFIGURATION);
-        assertThat(controlRepository.findById(1L).orElseThrow().getStatus())
+        assertThat(
+                        controlRepository
+                                .findById(KakaoUnlinkWorkerControl.SINGLETON_ID)
+                                .orElseThrow()
+                                .getStatus())
                 .isEqualTo(KakaoUnlinkWorkerControlStatus.CONFIGURATION_BLOCKED);
         assertThat(secondAfter.getStatus()).isEqualTo(KakaoUnlinkTaskStatus.PROCESSING);
         assertThat(secondAfter.getClaimToken()).isEqualTo(secondToken);
@@ -576,7 +647,11 @@ class KakaoUnlinkWorkerIntegrationTest {
 
         assertResumed(first.taskId());
         assertResumed(second.taskId());
-        assertThat(controlRepository.findById(1L).orElseThrow().getStatus())
+        assertThat(
+                        controlRepository
+                                .findById(KakaoUnlinkWorkerControl.SINGLETON_ID)
+                                .orElseThrow()
+                                .getStatus())
                 .isEqualTo(KakaoUnlinkWorkerControlStatus.ACTIVE);
         assertThatThrownBy(
                         () ->
@@ -606,7 +681,11 @@ class KakaoUnlinkWorkerIntegrationTest {
 
         assertResumeRejected(first.taskId(), firstBefore);
         assertResumeRejected(second.taskId(), secondBefore);
-        assertThat(controlRepository.findById(1L).orElseThrow().getStatus())
+        assertThat(
+                        controlRepository
+                                .findById(KakaoUnlinkWorkerControl.SINGLETON_ID)
+                                .orElseThrow()
+                                .getStatus())
                 .isEqualTo(KakaoUnlinkWorkerControlStatus.CONFIGURATION_BLOCKED);
     }
 
@@ -628,7 +707,11 @@ class KakaoUnlinkWorkerIntegrationTest {
 
         assertResumeRejected(first.taskId(), firstBefore);
         assertResumeRejected(second.taskId(), secondBefore);
-        assertThat(controlRepository.findById(1L).orElseThrow().getStatus())
+        assertThat(
+                        controlRepository
+                                .findById(KakaoUnlinkWorkerControl.SINGLETON_ID)
+                                .orElseThrow()
+                                .getStatus())
                 .isEqualTo(KakaoUnlinkWorkerControlStatus.CONFIGURATION_BLOCKED);
     }
 
@@ -654,7 +737,8 @@ class KakaoUnlinkWorkerIntegrationTest {
 
     private void markConfigurationBlocked(List<Long> taskIds) {
         jdbcTemplate.update(
-                "UPDATE kakao_unlink_worker_control SET status = 'CONFIGURATION_BLOCKED', blocked_at = UTC_TIMESTAMP(6), blocked_reason = 'CONFIGURATION' WHERE id = 1");
+                "UPDATE kakao_unlink_worker_control SET status = 'CONFIGURATION_BLOCKED', blocked_at = UTC_TIMESTAMP(6), blocked_reason = 'CONFIGURATION' WHERE id = ?",
+                KakaoUnlinkWorkerControl.SINGLETON_ID);
         taskIds.forEach(
                 taskId ->
                         jdbcTemplate.update(
@@ -693,6 +777,17 @@ class KakaoUnlinkWorkerIntegrationTest {
                 .filter(claim -> claim.taskId().equals(taskId))
                 .findFirst()
                 .orElseThrow();
+    }
+
+    private static void await(CountDownLatch latch) {
+        try {
+            if (!latch.await(10, TimeUnit.SECONDS)) {
+                throw new IllegalStateException("Timed out waiting to release locked task");
+            }
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("Interrupted while holding task lock", exception);
+        }
     }
 
     private Fixture createFixture(boolean alreadyUnlinked, boolean withProfileImage) {

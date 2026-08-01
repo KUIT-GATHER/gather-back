@@ -2,6 +2,18 @@ package com.gather.gather.domain.auth.kakao.worker;
 
 public record KakaoUnlinkReservation(Outcome outcome, KakaoUnlinkAttempt attempt) {
 
+    public KakaoUnlinkReservation {
+        if (outcome == null) {
+            throw new IllegalArgumentException("reservation outcome은 필수입니다.");
+        }
+        if (outcome == Outcome.RESERVED && attempt == null) {
+            throw new IllegalArgumentException("RESERVED 결과에는 attempt가 필수입니다.");
+        }
+        if (outcome != Outcome.RESERVED && attempt != null) {
+            throw new IllegalArgumentException("RESERVED가 아닌 결과에는 attempt가 없어야 합니다.");
+        }
+    }
+
     public enum Outcome {
         RESERVED,
         BLOCKED,

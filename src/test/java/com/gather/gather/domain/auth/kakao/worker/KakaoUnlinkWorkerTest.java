@@ -1,5 +1,6 @@
 package com.gather.gather.domain.auth.kakao.worker;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -13,8 +14,10 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 
-@ExtendWith(MockitoExtension.class)
+@ExtendWith({MockitoExtension.class, OutputCaptureExtension.class})
 class KakaoUnlinkWorkerTest {
 
     @Mock private KakaoUnlinkClaimService claimService;
@@ -67,7 +70,22 @@ class KakaoUnlinkWorkerTest {
         verify(transactionService, never()).reserveAttempt(second);
     }
 
+    @Test
+    void unexpectedTaskFailure_logsStackTraceWithoutClaimToken(CapturedOutput output) {
+        KakaoUnlinkClaim claim = claim(1L);
+        when(claimService.claimBatch()).thenReturn(List.of(claim));
+        when(transactionService.preflight(claim))
+                .thenThrow(new IllegalStateException("unexpected-worker-failure"));
+
+        worker.runBatch();
+
+        assertThat(output)
+                .contains("failureType=java.lang.IllegalStateException")
+                .contains("java.lang.IllegalStateException: unexpected-worker-failure")
+                .doesNotContain(claim.claimToken());
+    }
+
     private KakaoUnlinkClaim claim(Long taskId) {
-        return new KakaoUnlinkClaim(taskId, taskId, taskId, 1L, "opaque-token", 0, 0);
+        return new KakaoUnlinkClaim(taskId, taskId, taskId, 1L, "opaque-token", 0);
     }
 }

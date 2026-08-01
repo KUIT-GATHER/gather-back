@@ -28,7 +28,8 @@ public class KakaoUnlinkResumeCommandRunner implements ApplicationRunner {
         } catch (RuntimeException exception) {
             log.error(
                     "Kakao unlink resume context shutdown failed: failureType={}",
-                    exception.getClass().getSimpleName());
+                    exception.getClass().getName(),
+                    exception);
             exitCode = KakaoUnlinkResumeCommandExecutor.EXIT_EXECUTION_FAILURE;
         }
         processTerminator.terminate(exitCode);
