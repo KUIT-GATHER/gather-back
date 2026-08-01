@@ -222,6 +222,19 @@ public class User {
         this.withdrawnAt = now;
     }
 
+    public void completePendingWithdrawal(LocalDateTime now) {
+        if (isWithdrawn()) {
+            return;
+        }
+        if (status != UserStatus.WITHDRAWAL_PENDING) {
+            throw new IllegalStateException("탈퇴 대기 중인 사용자만 비동기 탈퇴를 완료할 수 있습니다.");
+        }
+        requireWithdrawalReason(withdrawalReason);
+        requireWithdrawalTime(now);
+        status = UserStatus.WITHDRAWN;
+        withdrawnAt = now;
+    }
+
     public void anonymize(LocalDateTime now) {
         if (isAnonymized()) {
             return;

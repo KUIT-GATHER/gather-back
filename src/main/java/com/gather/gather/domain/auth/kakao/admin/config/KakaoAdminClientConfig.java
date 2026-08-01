@@ -2,6 +2,7 @@ package com.gather.gather.domain.auth.kakao.admin.config;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.gather.gather.domain.auth.kakao.admin.client.KakaoAdminApiClient;
+import java.time.Clock;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.http.client.ClientHttpRequestFactoryBuilder;
@@ -32,8 +33,9 @@ public class KakaoAdminClientConfig {
     KakaoAdminApiClient kakaoAdminApiClient(
             @Qualifier(REST_CLIENT_BEAN_NAME) RestClient restClient,
             ObjectMapper objectMapper,
-            KakaoAdminProperties properties) {
-        return new KakaoAdminApiClient(restClient, objectMapper, properties.key());
+            KakaoAdminProperties properties,
+            Clock clock) {
+        return new KakaoAdminApiClient(restClient, objectMapper, properties.key(), clock);
     }
 
     static ClientHttpRequestFactorySettings requestFactorySettings(

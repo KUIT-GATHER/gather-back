@@ -3,6 +3,7 @@ package com.gather.gather.domain.auth.kakao.admin.config;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.gather.gather.domain.auth.kakao.admin.client.KakaoAdminApiClient;
+import com.gather.gather.global.config.ApplicationTimeConfig;
 import java.time.Duration;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -96,6 +97,6 @@ class KakaoAdminClientConfigTest {
 
     @Configuration(proxyBeanMethods = false)
     @EnableConfigurationProperties(KakaoAdminProperties.class)
-    @Import(KakaoAdminClientConfig.class)
+    @Import({KakaoAdminClientConfig.class, ApplicationTimeConfig.class})
     static class TestConfiguration {}
 }

@@ -19,6 +19,11 @@ import java.net.SocketTimeoutException;
 import java.net.URI;
 import java.net.UnknownHostException;
 import java.nio.charset.StandardCharsets;
+import java.time.Clock;
+import java.time.Instant;
+import java.time.ZoneOffset;
+import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -51,6 +56,8 @@ class KakaoAdminApiClientTest {
     private static final String BASE_URL = "http://localhost/kakao-admin";
     private static final String TEST_KEY = "unit-test-admin-key";
     private static final long TARGET_ID = 41L;
+    private static final Instant NOW = Instant.parse("2026-08-01T00:00:00Z");
+    private static final Clock CLOCK = Clock.fixed(NOW, ZoneOffset.UTC);
     private static final MediaType FORM_URLENCODED_UTF8 =
             new MediaType(MediaType.APPLICATION_FORM_URLENCODED, StandardCharsets.UTF_8);
 
@@ -61,7 +68,7 @@ class KakaoAdminApiClientTest {
     void setUp() {
         RestClient.Builder builder = RestClient.builder().baseUrl(BASE_URL);
         server = MockRestServiceServer.bindTo(builder).build();
-        client = new KakaoAdminApiClient(builder.build(), new ObjectMapper(), TEST_KEY);
+        client = new KakaoAdminApiClient(builder.build(), new ObjectMapper(), TEST_KEY, CLOCK);
     }
 
     @Test
@@ -278,6 +285,127 @@ class KakaoAdminApiClientTest {
         server.verify();
     }
 
+    @Test
+    void unlink_withDeltaSecondsRetryAfter_returnsAbsoluteRetryTime() {
+        respondWithRetryAfter(HttpStatus.TOO_MANY_REQUESTS, "{\"code\":-7777}", "120");
+
+        KakaoAdminUnlinkResult result = client.unlink(TARGET_ID);
+
+        assertThat(result.retryAfterAt()).isEqualTo(NOW.plusSeconds(120));
+        server.verify();
+    }
+
+    @Test
+    void unlink_withHttpDateRetryAfter_returnsAbsoluteRetryTime() {
+        String retryAfter =
+                DateTimeFormatter.RFC_1123_DATE_TIME.format(
+                        ZonedDateTime.ofInstant(NOW.plusSeconds(300), ZoneOffset.UTC));
+        respondWithRetryAfter(HttpStatus.SERVICE_UNAVAILABLE, "{}", retryAfter);
+
+        KakaoAdminUnlinkResult result = client.unlink(TARGET_ID);
+
+        assertThat(result.retryAfterAt()).isEqualTo(NOW.plusSeconds(300));
+        server.verify();
+    }
+
+    @Test
+    void unlink_withExcessiveRetryAfter_capsAtSixHours() {
+        respondWithRetryAfter(HttpStatus.TOO_MANY_REQUESTS, "{}", "9999999999");
+
+        assertThat(client.unlink(TARGET_ID).retryAfterAt()).isEqualTo(NOW.plusSeconds(6 * 60 * 60));
+        server.verify();
+    }
+
+    @ParameterizedTest(name = "oversized delta-seconds case {index}")
+    @MethodSource("oversizedDeltaSeconds")
+    void unlink_withOversizedDeltaSeconds_ignoresHeader(String retryAfter) {
+        respondWithRetryAfter(HttpStatus.TOO_MANY_REQUESTS, "{}", retryAfter);
+
+        assertThat(client.unlink(TARGET_ID).retryAfterAt()).isNull();
+        server.verify();
+    }
+
+    static Stream<Arguments> oversizedDeltaSeconds() {
+        return Stream.of(
+                Arguments.of("99999999999"),
+                Arguments.of("9".repeat(1_000)),
+                Arguments.of("9223372036854775808"));
+    }
+
+    @Test
+    void unlink_withZeroRetryAfter_acceptsCurrentResponseTime() {
+        respondWithRetryAfter(HttpStatus.TOO_MANY_REQUESTS, "{}", "0");
+
+        assertThat(client.unlink(TARGET_ID).retryAfterAt()).isEqualTo(NOW);
+        server.verify();
+    }
+
+    @Test
+    void unlink_withPastOrMalformedRetryAfter_ignoresHeader() {
+        respondWithRetryAfter(HttpStatus.TOO_MANY_REQUESTS, "{}", "not-a-date");
+
+        assertThat(client.unlink(TARGET_ID).retryAfterAt()).isNull();
+        server.verify();
+    }
+
+    @ParameterizedTest
+    @MethodSource("invalidRetryAfterValues")
+    void unlink_withInvalidRetryAfter_ignoresHeader(String retryAfter) {
+        respondWithRetryAfter(HttpStatus.TOO_MANY_REQUESTS, "{}", retryAfter);
+
+        assertThat(client.unlink(TARGET_ID).retryAfterAt()).isNull();
+        server.verify();
+    }
+
+    static Stream<Arguments> invalidRetryAfterValues() {
+        return Stream.of(
+                Arguments.of("-1"),
+                Arguments.of("+1"),
+                Arguments.of("1.5"),
+                Arguments.of(" "),
+                Arguments.of("１２"));
+    }
+
+    @Test
+    void unlink_withPastHttpDate_ignoresHeader() {
+        String retryAfter =
+                DateTimeFormatter.RFC_1123_DATE_TIME.format(
+                        ZonedDateTime.ofInstant(NOW.minusSeconds(1), ZoneOffset.UTC));
+        respondWithRetryAfter(HttpStatus.TOO_MANY_REQUESTS, "{}", retryAfter);
+
+        assertThat(client.unlink(TARGET_ID).retryAfterAt()).isNull();
+        server.verify();
+    }
+
+    @Test
+    void unlink_withMultipleRetryAfterValues_ignoresAmbiguousHeader() {
+        server.expect(requestTo(BASE_URL + "/v1/user/unlink"))
+                .andRespond(
+                        withStatus(HttpStatus.TOO_MANY_REQUESTS)
+                                .header(HttpHeaders.RETRY_AFTER, "1", "2")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .body("{}"));
+
+        assertThat(client.unlink(TARGET_ID).retryAfterAt()).isNull();
+        server.verify();
+    }
+
+    @Test
+    void unlink_withPermanentKnownCode_ignoresRetryAfter() {
+        respondWithRetryAfter(HttpStatus.TOO_MANY_REQUESTS, "{\"code\":-401}", "120");
+
+        assertThat(client.unlink(TARGET_ID).retryAfterAt()).isNull();
+        server.verify();
+    }
+
+    @Test
+    void unlink_withRetryableKnownCodeOnFourHundred_ignoresRetryAfter() {
+        respondWithRetryAfter(HttpStatus.BAD_REQUEST, "{\"code\":-1}", "120");
+
+        assertThat(client.unlink(TARGET_ID).retryAfterAt()).isNull();
+        server.verify();
+    }
+
     @ParameterizedTest(name = "targetId {0}")
     @MethodSource("invalidTargetIds")
     void unlink_withNonPositiveTargetId_doesNotMakeHttpRequest(long targetId) {
@@ -303,7 +431,8 @@ class KakaoAdminApiClientTest {
                                                 requestCount, responseStatus))
                                 .build(),
                         new ObjectMapper(),
-                        TEST_KEY);
+                        TEST_KEY,
+                        CLOCK);
 
         assertResult(
                 bodyReadFailureClient.unlink(TARGET_ID),
@@ -359,6 +488,36 @@ class KakaoAdminApiClientTest {
         server.expect(requestTo(BASE_URL + "/v1/user/unlink")).andRespond(withException(exception));
     }
 
+    @Test
+    void unlink_whenFiveHundredBodyReadFails_preservesRetryAfterHeader() {
+        AtomicInteger requestCount = new AtomicInteger();
+        KakaoAdminApiClient bodyReadFailureClient =
+                new KakaoAdminApiClient(
+                        RestClient.builder()
+                                .requestFactory(
+                                        new BodyReadFailureRequestFactory(
+                                                requestCount,
+                                                HttpStatus.SERVICE_UNAVAILABLE,
+                                                "120"))
+                                .build(),
+                        new ObjectMapper(),
+                        TEST_KEY,
+                        CLOCK);
+
+        assertThat(bodyReadFailureClient.unlink(TARGET_ID).retryAfterAt())
+                .isEqualTo(NOW.plusSeconds(120));
+        assertThat(requestCount).hasValue(1);
+    }
+
+    private void respondWithRetryAfter(HttpStatus status, String body, String retryAfter) {
+        server.expect(requestTo(BASE_URL + "/v1/user/unlink"))
+                .andRespond(
+                        withStatus(status)
+                                .header(HttpHeaders.RETRY_AFTER, retryAfter)
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .body(body));
+    }
+
     private void assertTransportFailure(KakaoAdminUnlinkResult result) {
         assertResult(result, KakaoAdminUnlinkDisposition.RETRYABLE, null, null);
         server.verify();
@@ -378,11 +537,18 @@ class KakaoAdminApiClientTest {
 
         private final AtomicInteger requestCount;
         private final HttpStatus responseStatus;
+        private final String retryAfter;
 
         private BodyReadFailureRequestFactory(
                 AtomicInteger requestCount, HttpStatus responseStatus) {
+            this(requestCount, responseStatus, null);
+        }
+
+        private BodyReadFailureRequestFactory(
+                AtomicInteger requestCount, HttpStatus responseStatus, String retryAfter) {
             this.requestCount = requestCount;
             this.responseStatus = responseStatus;
+            this.retryAfter = retryAfter;
         }
 
         @Override
@@ -433,7 +599,11 @@ class KakaoAdminApiClientTest {
 
                         @Override
                         public HttpHeaders getHeaders() {
-                            return new HttpHeaders();
+                            HttpHeaders responseHeaders = new HttpHeaders();
+                            if (retryAfter != null) {
+                                responseHeaders.add(HttpHeaders.RETRY_AFTER, retryAfter);
+                            }
+                            return responseHeaders;
                         }
 
                         @Override
