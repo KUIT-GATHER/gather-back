@@ -18,6 +18,9 @@ public class LoginPolicy {
         if (user.getStatus() == UserStatus.SUSPENDED) {
             throw new BusinessException(ErrorCode.SUSPENDED_USER);
         }
+        if (user.getStatus() == UserStatus.WITHDRAWAL_PENDING) {
+            throw new BusinessException(ErrorCode.WITHDRAWAL_PENDING_USER);
+        }
         if (user.getStatus() == UserStatus.WITHDRAWN) {
             throw new BusinessException(ErrorCode.WITHDRAWN_USER);
         }

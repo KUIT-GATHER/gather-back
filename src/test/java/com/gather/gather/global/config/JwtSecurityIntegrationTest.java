@@ -1,6 +1,7 @@
 package com.gather.gather.global.config;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -11,6 +12,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.gather.gather.domain.auth.entity.User;
 import com.gather.gather.domain.auth.entity.UserRole;
+import com.gather.gather.domain.auth.entity.UserStatus;
+import com.gather.gather.domain.auth.repository.UserRepository;
 import com.gather.gather.domain.auth.service.TokenProvider;
 import com.gather.gather.domain.posting.service.PostingSyncResult;
 import com.gather.gather.domain.posting.service.PostingSyncService;
@@ -18,7 +21,9 @@ import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 import java.util.Base64;
 import java.util.Date;
+import java.util.Optional;
 import javax.crypto.SecretKey;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -52,12 +57,25 @@ class JwtSecurityIntegrationTest {
     private static final String PROFILE_IMAGE_PATH = "/api/v1/users/me/profile-image";
     private static final String MYPAGE_HOME_PATH = "/api/v1/mypage/home";
     private static final String MYPAGE_ACTIVITIES_PATH = "/api/v1/mypage/activities";
+    private static final String MEETING_RECOMMENDED_PATH = "/api/v1/meetings/recommended";
     private static final String PARTICIPATION_PATH = "/api/v1/postings/1/participations";
 
     @Autowired private MockMvc mockMvc;
     @Autowired private TokenProvider tokenProvider;
     @Autowired private JwtProperties jwtProperties;
     @MockitoBean private PostingSyncService postingSyncService;
+    @MockitoBean private UserRepository userRepository;
+
+    @BeforeEach
+    void setUpCurrentUsers() {
+        when(userRepository.findById(anyLong()))
+                .thenAnswer(
+                        invocation -> {
+                            Long userId = invocation.getArgument(0);
+                            UserRole role = userId.equals(200L) ? UserRole.ADMIN : UserRole.USER;
+                            return Optional.of(newUser(userId, role, UserStatus.ACTIVE));
+                        });
+    }
 
     @Test
     @DisplayName("보호 API에 토큰 없이 요청하면 401 UNAUTHORIZED이다")
@@ -201,6 +219,14 @@ class JwtSecurityIntegrationTest {
     }
 
     @Test
+    @DisplayName("모임 추천 목록 조회(/api/v1/meetings/recommended)는 토큰 없이 통과한다(401이 아니다)")
+    void permitAllPath_meetingRecommended_passesWithoutToken() throws Exception {
+        mockMvc.perform(get(MEETING_RECOMMENDED_PATH))
+                .andExpect(
+                        result -> assertThat(result.getResponse().getStatus()).isNotEqualTo(401));
+    }
+
+    @Test
     @DisplayName(
             "봉사공고 북마크 목록 조회(/api/v1/postings/bookmarks)는 /api/v1/postings/** permitAll"
                     + " 와일드카드에 묻히지 않고 토큰 없이 요청하면 401 UNAUTHORIZED이다")
@@ -253,6 +279,53 @@ class JwtSecurityIntegrationTest {
                 .andExpect(jsonPath("$.data.principal").value(100))
                 .andExpect(jsonPath("$.data.principalType").value("Long"))
                 .andExpect(jsonPath("$.data.authorities[0]").value("ROLE_USER"));
+    }
+
+    @Test
+    @DisplayName("탈퇴 처리 중인 사용자의 기존 Access Token은 보호 API에서 차단한다")
+    void withdrawalPendingUserToken_returns403PendingUser() throws Exception {
+        User user = newUser(300L, UserRole.USER, UserStatus.WITHDRAWAL_PENDING);
+        when(userRepository.findById(300L)).thenReturn(Optional.of(user));
+        String token = tokenProvider.createAccessToken(user);
+
+        mockMvc.perform(get(SECURED_PATH).header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error.code").value("WITHDRAWAL_PENDING_USER"));
+    }
+
+    @Test
+    @DisplayName("탈퇴한 사용자의 기존 Access Token은 보호 API에서 차단한다")
+    void withdrawnUserToken_returns403WithdrawnUser() throws Exception {
+        User user = newUser(301L, UserRole.USER, UserStatus.WITHDRAWN);
+        when(userRepository.findById(301L)).thenReturn(Optional.of(user));
+        String token = tokenProvider.createAccessToken(user);
+
+        mockMvc.perform(get(SECURED_PATH).header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error.code").value("WITHDRAWN_USER"));
+    }
+
+    @Test
+    @DisplayName("정지된 사용자의 기존 Access Token 접근 정책은 유지한다")
+    void suspendedUserToken_preservesExistingAccessPolicy() throws Exception {
+        User user = newUser(302L, UserRole.USER, UserStatus.SUSPENDED);
+        when(userRepository.findById(302L)).thenReturn(Optional.of(user));
+        String token = tokenProvider.createAccessToken(user);
+
+        mockMvc.perform(get(SECURED_PATH).header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    @DisplayName("JWT 사용자가 DB에 없으면 INVALID_TOKEN으로 차단한다")
+    void tokenForMissingUser_returns401InvalidToken() throws Exception {
+        User tokenUser = newUser(999L, UserRole.USER, UserStatus.ACTIVE);
+        when(userRepository.findById(999L)).thenReturn(Optional.empty());
+        String token = tokenProvider.createAccessToken(tokenUser);
+
+        mockMvc.perform(get(SECURED_PATH).header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.error.code").value("INVALID_TOKEN"));
     }
 
     @Test
@@ -320,7 +393,7 @@ class JwtSecurityIntegrationTest {
     @Test
     @DisplayName("관리자 전용 API에 USER 토큰으로 요청하면 403 FORBIDDEN이다")
     void adminOnlyPath_withUserToken_returns403Forbidden() throws Exception {
-        String token = tokenProvider.createAccessToken(newUser(200L, UserRole.USER));
+        String token = tokenProvider.createAccessToken(newUser(201L, UserRole.USER));
 
         mockMvc.perform(
                         post("/api/v1/admin/postings/keywords/aggregate")
@@ -343,12 +416,17 @@ class JwtSecurityIntegrationTest {
     }
 
     private static User newUser(Long id, UserRole role) {
+        return newUser(id, role, UserStatus.ACTIVE);
+    }
+
+    private static User newUser(Long id, UserRole role, UserStatus status) {
         try {
             var constructor = User.class.getDeclaredConstructor();
             constructor.setAccessible(true);
             User user = constructor.newInstance();
             ReflectionTestUtils.setField(user, "id", id);
             ReflectionTestUtils.setField(user, "role", role);
+            ReflectionTestUtils.setField(user, "status", status);
             return user;
         } catch (ReflectiveOperationException exception) {
             throw new IllegalStateException(exception);

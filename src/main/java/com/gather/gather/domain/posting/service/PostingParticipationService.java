@@ -1,5 +1,6 @@
 package com.gather.gather.domain.posting.service;
 
+import com.gather.gather.domain.badge.event.VolunteerActivityCompletedEvent;
 import com.gather.gather.domain.posting.dto.PostingParticipationResponse;
 import com.gather.gather.domain.posting.entity.Posting;
 import com.gather.gather.domain.posting.entity.PostingParticipation;
@@ -9,11 +10,14 @@ import com.gather.gather.domain.posting.repository.PostingParticipationRepositor
 import com.gather.gather.domain.posting.repository.PostingRepository;
 import com.gather.gather.global.exception.BusinessException;
 import com.gather.gather.global.exception.ErrorCode;
+import com.gather.gather.global.util.RecognizedMinutesValidator;
 import com.gather.gather.global.util.SecurityUtil;
+import java.time.LocalDate;
 import java.util.Locale;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.hibernate.exception.ConstraintViolationException;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -32,6 +36,7 @@ public class PostingParticipationService {
 
     private final PostingParticipationRepository postingParticipationRepository;
     private final PostingRepository postingRepository;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Transactional
     public PostingParticipationResponse apply(Long postingId) {
@@ -74,6 +79,57 @@ public class PostingParticipationService {
                 participation.getId(),
                 participation.getStatus(),
                 VOLUNTEER_1365_APPLICATION_URL_PREFIX + posting.getExtId());
+    }
+
+    /** 개인 봉사 완료 판정: 활동종료일이 지난 뒤 본인이 직접 완료 처리한다(모임 봉사는 모임장이 별도로 완료 처리한다). */
+    @Transactional
+    public void complete(Long postingId) {
+        Long userId = SecurityUtil.getCurrentUserId();
+
+        Posting posting =
+                postingRepository
+                        .findById(postingId)
+                        .orElseThrow(() -> new BusinessException(ErrorCode.POSTING_NOT_FOUND));
+
+        PostingParticipation participation =
+                postingParticipationRepository
+                        .findByUserIdAndPostingId(userId, postingId)
+                        .orElseThrow(
+                                () -> new BusinessException(ErrorCode.PARTICIPATION_NOT_FOUND));
+
+        if (participation.getStatus() == PostingParticipationStatus.COMPLETED
+                || participation.getStatus() == PostingParticipationStatus.REVIEWED) {
+            throw new BusinessException(ErrorCode.PARTICIPATION_ALREADY_COMPLETED);
+        }
+        if (!posting.isActivityEnded(LocalDate.now())) {
+            throw new BusinessException(ErrorCode.PARTICIPATION_COMPLETE_NOT_ALLOWED);
+        }
+
+        participation.complete();
+        eventPublisher.publishEvent(new VolunteerActivityCompletedEvent(userId));
+    }
+
+    /** 완료 처리 이후 사용자가 직접 인정시간을 입력한다(분 단위, 1회만 입력 가능). */
+    @Transactional
+    public void submitRecognizedMinutes(Long postingId, Integer recognizedMinutes) {
+        RecognizedMinutesValidator.validate(recognizedMinutes);
+
+        Long userId = SecurityUtil.getCurrentUserId();
+        PostingParticipation participation =
+                postingParticipationRepository
+                        .findByUserIdAndPostingId(userId, postingId)
+                        .orElseThrow(
+                                () -> new BusinessException(ErrorCode.PARTICIPATION_NOT_FOUND));
+
+        if (participation.getStatus() != PostingParticipationStatus.COMPLETED
+                && participation.getStatus() != PostingParticipationStatus.REVIEWED) {
+            throw new BusinessException(ErrorCode.PARTICIPATION_HOURS_NOT_ALLOWED);
+        }
+        if (participation.getRecognizedMinutes() != null) {
+            throw new BusinessException(ErrorCode.PARTICIPATION_HOURS_ALREADY_SUBMITTED);
+        }
+
+        participation.submitRecognizedMinutes(recognizedMinutes);
     }
 
     @Transactional

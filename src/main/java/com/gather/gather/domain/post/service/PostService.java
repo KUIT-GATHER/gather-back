@@ -2,15 +2,16 @@ package com.gather.gather.domain.post.service;
 
 import com.gather.gather.domain.auth.entity.User;
 import com.gather.gather.domain.auth.repository.UserRepository;
+import com.gather.gather.domain.badge.entity.BadgeType;
+import com.gather.gather.domain.badge.event.BadgeAwardRequestedEvent;
 import com.gather.gather.domain.meeting.entity.Meeting;
 import com.gather.gather.domain.meeting.entity.MeetingMember;
 import com.gather.gather.domain.meeting.enums.MeetingMemberRole;
 import com.gather.gather.domain.meeting.enums.MeetingMemberStatus;
 import com.gather.gather.domain.meeting.repository.MeetingMemberRepository;
 import com.gather.gather.domain.meeting.repository.MeetingRepository;
-import com.gather.gather.domain.notification.enums.NotificationTargetType;
 import com.gather.gather.domain.notification.enums.NotificationType;
-import com.gather.gather.domain.notification.service.NotificationCreateService;
+import com.gather.gather.domain.notification.event.MeetingPostNotificationRequestedEvent;
 import com.gather.gather.domain.post.dto.PostCreateRequest;
 import com.gather.gather.domain.post.dto.PostResponse;
 import com.gather.gather.domain.post.dto.PostSummaryResponse;
@@ -25,6 +26,7 @@ import java.util.EnumSet;
 import java.util.List;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -46,14 +48,13 @@ import org.springframework.transaction.annotation.Transactional;
 public class PostService {
 
     private static final String NOTICE_CREATED_MESSAGE = "[%s]에 새 공지가 등록되었어요.";
-
     private static final String POST_CREATED_MESSAGE = "[%s]에 %s님이 새 게시글을 등록했어요.";
 
     private final PostRepository postRepository;
     private final MeetingRepository meetingRepository;
     private final MeetingMemberRepository meetingMemberRepository;
     private final UserRepository userRepository;
-    private final NotificationCreateService notificationCreateService;
+    private final ApplicationEventPublisher eventPublisher;
 
     public List<PostSummaryResponse> getPosts(Long meetingId, PostType typeFilter) {
         Long userId = SecurityUtil.getCurrentUserId();
@@ -105,13 +106,15 @@ public class PostService {
                         request.recruitCapacity());
 
         Post savedPost = postRepository.save(post);
-        createPostNotifications(meeting, author, savedPost);
-
+        if (request.type() == PostType.REVIEW) {
+            eventPublisher.publishEvent(
+                    new BadgeAwardRequestedEvent(userId, BadgeType.FIRST_REVIEW));
+        }
+        publishPostNotificationEvent(meeting, author, savedPost);
         return PostResponse.from(savedPost);
     }
 
-    private void createPostNotifications(Meeting meeting, User author, Post post) {
-
+    private void publishPostNotificationEvent(Meeting meeting, User author, Post post) {
         List<Long> recipientUserIds =
                 meetingMemberRepository
                         .findAllByMeetingIdAndStatusFetchUser(
@@ -120,37 +123,25 @@ public class PostService {
                         .map(MeetingMember::getUser)
                         .map(User::getId)
                         .filter(userId -> !userId.equals(author.getId()))
+                        .distinct()
                         .toList();
 
         if (recipientUserIds.isEmpty()) {
             return;
         }
 
-        NotificationType notificationType = resolveNotificationType(post.getType());
-        String message = createNotificationMessage(meeting, author, post.getType());
+        NotificationType type =
+                post.getType().isNotice()
+                        ? NotificationType.MEETING_NOTICE_CREATED
+                        : NotificationType.MEETING_POST_CREATED;
+        String message =
+                post.getType().isNotice()
+                        ? NOTICE_CREATED_MESSAGE.formatted(meeting.getName())
+                        : POST_CREATED_MESSAGE.formatted(meeting.getName(), author.getNickname());
 
-        notificationCreateService.createAll(
-                recipientUserIds,
-                notificationType,
-                message,
-                NotificationTargetType.POST,
-                post.getId(),
-                meeting.getId());
-    }
-
-    private NotificationType resolveNotificationType(PostType postType) {
-        return postType.isNotice()
-                ? NotificationType.MEETING_NOTICE_CREATED
-                : NotificationType.MEETING_POST_CREATED;
-    }
-
-    private String createNotificationMessage(Meeting meeting, User author, PostType postType) {
-
-        if (postType.isNotice()) {
-            return NOTICE_CREATED_MESSAGE.formatted(meeting.getName());
-        }
-
-        return POST_CREATED_MESSAGE.formatted(meeting.getName(), author.getNickname());
+        eventPublisher.publishEvent(
+                new MeetingPostNotificationRequestedEvent(
+                        recipientUserIds, type, message, post.getId(), meeting.getId()));
     }
 
     @Transactional

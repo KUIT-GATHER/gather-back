@@ -4,6 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.gather.gather.domain.auth.repository.UserRepository;
+import com.gather.gather.domain.auth.service.ProtectedAccessPolicy;
 import com.gather.gather.domain.auth.service.TokenProvider;
 import java.util.List;
 import org.junit.jupiter.api.DisplayName;
@@ -25,6 +27,8 @@ class SecurityConfigTest {
     private final SecurityConfig securityConfig =
             new SecurityConfig(
                     mock(TokenProvider.class),
+                    mock(UserRepository.class),
+                    mock(ProtectedAccessPolicy.class),
                     new ObjectMapper(),
                     new CorsProperties(List.of(FRONT_ORIGIN, LOCAL_ORIGIN, DEV_ORIGIN)));
 

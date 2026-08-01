@@ -13,6 +13,23 @@ import org.springframework.data.repository.query.Param;
 public interface MeetingMemberRepository extends JpaRepository<MeetingMember, Long> {
     Optional<MeetingMember> findByMeeting_IdAndUser_Id(Long meetingId, Long userId);
 
+    /** 뱃지 판정용 — 완료된 모임에서 승인된 멤버십만 조회한다(완료 횟수, 연속 참여 월 계산). */
+    @Query(
+            """
+            SELECT mm
+            FROM MeetingMember mm
+            JOIN FETCH mm.meeting m
+            WHERE mm.user.id = :userId
+              AND mm.status = :status
+              AND m.status = :meetingStatus
+              AND m.deletedAt IS NULL
+            """)
+    List<MeetingMember> findAllByUserIdAndStatusAndMeetingStatus(
+            @Param("userId") Long userId,
+            @Param("status") MeetingMemberStatus status,
+            @Param("meetingStatus")
+                    com.gather.gather.domain.meeting.enums.MeetingStatus meetingStatus);
+
     boolean existsByMeeting_IdAndUser_IdAndStatus(
             Long meetingId, Long userId, MeetingMemberStatus status);
 

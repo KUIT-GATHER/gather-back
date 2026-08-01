@@ -61,13 +61,23 @@ gather:
       - https://dev.gathernow.kr
   email:
     mode: log
+  recommendation:
+    category-weight: ${GATHER_RECOMMENDATION_CATEGORY_WEIGHT:0.7}
+    deadline-weight: ${GATHER_RECOMMENDATION_DEADLINE_WEIGHT:0.3}
+    deadline-window-days: ${GATHER_RECOMMENDATION_DEADLINE_WINDOW_DAYS:30}
 
 volunteer-api:
   base-url: https://apis.data.go.kr/1741000/volunteerPartcptnService
 
-# 비밀값(rest-api-key/client-secret/signup-token-secret)은 여기 두지 않는다.
+# 비밀값(rest-api-key/client-secret)은 여기 두지 않는다.
 # 로컬은 application-secret.yml, 운영은 /etc/gather/gather.env 환경변수로 주입한다.
 # redirect-uris는 카카오 콘솔 등록값과 문자열까지 정확히 같아야 한다(불일치 시 KOE006).
 kakao:
   redirect-uris: ${KAKAO_REDIRECT_URIS:http://localhost:5173/login/kakao/callback,https://dev.gathernow.kr/login/kakao/callback,https://gathernow.kr/login/kakao/callback}
   signup-token-expiration-seconds: ${KAKAO_SIGNUP_TOKEN_EXPIRATION_SECONDS:900}
+  admin:
+    enabled: ${KAKAO_ADMIN_ENABLED:false}
+    key: ${KAKAO_ADMIN_KEY:}
+    api-base-url: ${KAKAO_ADMIN_API_BASE_URL:https://kapi.kakao.com}
+    connect-timeout: ${KAKAO_ADMIN_CONNECT_TIMEOUT:2s}
+    read-timeout: ${KAKAO_ADMIN_READ_TIMEOUT:5s}

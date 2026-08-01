@@ -197,13 +197,26 @@ public class User {
         this.profileImageKey = profileImageKey;
     }
 
+    public void requestWithdrawal(WithdrawalReason reason, LocalDateTime now) {
+        if (status == UserStatus.WITHDRAWAL_PENDING) {
+            return;
+        }
+        requireTerminationStartStatus();
+        requireWithdrawalReason(reason);
+        requireWithdrawalTime(now);
+
+        this.status = UserStatus.WITHDRAWAL_PENDING;
+        this.withdrawalReason = reason;
+    }
+
     public void withdraw(WithdrawalReason reason, LocalDateTime now) {
         if (isWithdrawn()) {
             return;
         }
-        if (reason == null || now == null) {
-            throw new IllegalArgumentException("탈퇴 사유와 탈퇴 시각은 필수입니다.");
-        }
+        requireTerminationStartStatus();
+        requireWithdrawalReason(reason);
+        requireWithdrawalTime(now);
+
         this.status = UserStatus.WITHDRAWN;
         this.withdrawalReason = reason;
         this.withdrawnAt = now;
@@ -245,6 +258,24 @@ public class User {
 
     public boolean isAnonymized() {
         return anonymizedAt != null;
+    }
+
+    private void requireTerminationStartStatus() {
+        if (status != UserStatus.ACTIVE && status != UserStatus.SUSPENDED) {
+            throw new IllegalStateException("활성 또는 정지 상태의 사용자만 탈퇴를 시작할 수 있습니다.");
+        }
+    }
+
+    private static void requireWithdrawalReason(WithdrawalReason reason) {
+        if (reason == null) {
+            throw new IllegalArgumentException("탈퇴 사유는 필수입니다.");
+        }
+    }
+
+    private static void requireWithdrawalTime(LocalDateTime now) {
+        if (now == null) {
+            throw new IllegalArgumentException("탈퇴 시각은 필수입니다.");
+        }
     }
 
     /** 마이페이지 프로필 편집. 회원가입과 동일한 필드 집합을 갱신하며, 이메일·전화번호·비밀번호는 이 화면의 편집 대상이 아니다. */
