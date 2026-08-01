@@ -101,10 +101,10 @@
 ## 4. 핵심 설계 원칙
 
 1. `[Gather 확정 정책]` 탈퇴 접수와 durable task enqueue는 하나의 원자적 트랜잭션이다.
-2. `[Gather 확정 정책]` worker의 claim과 결과 반영은 각각 짧은 트랜잭션이며 카카오 HTTP 호출은 그 사이의 트랜잭션 밖에서 실행한다.
+2. `[Gather 확정 정책]` worker의 claim, attempt reservation과 결과 반영은 각각 짧은 트랜잭션이며 카카오 HTTP 호출은 reservation commit 뒤 결과 트랜잭션 전까지 DB 트랜잭션 밖에서 실행한다.
 3. `[Gather 확정 정책]` `KakaoUnlinkTask`가 retry와 운영 이력의 유일한 source of truth다. `SocialAccount`는 계정 상태를 표현할 뿐 queue가 아니다.
 4. `[Gather 확정 정책]` worker는 at-least-once 실행을 전제로 멱등하게 동작한다.
-5. `[Gather 확정 정책]` 모든 task는 생성 당시 `SocialAccount.generation`을 캡처한다. generation·대상 상태 invariant가 다르면 호출하지 않고 `STALE`로 종료하며, 결과 반영 직전 잠금 아래 다시 검증한다. claim 소유권이 없으면 task를 변경하지 않고 실행을 중단한다.
+5. `[Gather 확정 정책]` 모든 task는 생성 당시 `SocialAccount.generation`을 캡처한다. generation mismatch는 호출하지 않고 `STALE`로 종료한다. 같은 generation의 `UNLINK_PENDING`만 외부 호출하고, 같은 generation의 `UNLINKED`와 pending User는 HTTP 없는 local finalization으로 수렴시킨다. 결과 반영 직전 잠금 아래 다시 검증하며 claim 소유권이 없으면 task를 변경하지 않고 실행을 중단한다.
 6. `[Gather 확정 정책]` 미분류 4xx나 파싱 실패를 성공으로 간주하지 않는다.
 7. `[Gather 확정 정책]` pending 사용자는 새 로그인뿐 아니라 이미 발급된 access token으로도 모든 보호 API를 사용할 수 없다.
 8. `[권장 구현]` 로그에는 Admin key, 복호화한 카카오 회원번호, 암호문, 사용자 토큰, 응답 원문을 남기지 않는다.
@@ -121,15 +121,15 @@
 | Refresh Token 전체 폐기 | `[Gather 확정 정책]` 접수 트랜잭션에서 사용자 전체 refresh token을 삭제한다. | 다른 기기의 로그인 세션이 남는 것을 막는다. | `RefreshTokenRepository`, `AccountTerminationService` | 사용자 상태·task enqueue와 같은 트랜잭션, 실패 시 전체 rollback | 전량 삭제, 삭제 실패 rollback, 재발급 실패 | PR 5 |
 | 기존 Access Token 중앙 차단 | `[Gather 확정 정책]` JWT 자체가 유효해도 pending/withdrawn이면 인증을 거부한다. | access token 잔여 유효기간의 보호 API 접근을 막는다. | JWT 인증 필터 또는 동등한 중앙 Security 경로 | 매 요청 최신 사용자 상태 확인, 허용 상태만 `SecurityContext` 등록 | ACTIVE 성공, pending/withdrawn 실패, 접수 직전 token 차단 | 주 PR 5, 검증 PR 7 |
 | relink 금지 | `[Gather 확정 정책]` PR 4~8에서는 relink API·service 흐름을 구현하지 않는다. | 과거 generation task가 새 연결까지 해제하는 race를 막는다. | 인증·소셜 계정 application service 경계 | `UNLINK_PENDING/UNLINKED` 연결 대상 제외, block 유효 중 금지 | non-LINKED 로그인·가입·relink 거부 | PR 5~8 공통 |
-| generation mismatch → `STALE` | `[Gather 확정 정책]` generation·대상 상태 invariant 위반은 API 미호출 후 `STALE`로 종료한다. | 오래된 task의 외부 부작용을 방지한다. | worker preflight와 result finalizer | 호출 전·결과 저장 시 이중 검증, 자동 retry 금지, claim 미소유자는 쓰기 금지 | mismatch/status/user 오류의 API 미호출, claim 오류의 실행 중단 | PR 6 |
-| 지수 backoff + full jitter | `[Gather 확정 정책]` 기본 1분, 지수 증가, 6시간 상한, 최대 외부 호출 12회다. | 일시 장애의 동시 재시도 폭주를 줄인다. | retry policy와 `nextAttemptAt` 계산기 | 실제 HTTP 호출만 `attempt_count` 증가, 신뢰 가능한 `Retry-After` 우선 | jitter 범위, 상한, 호출 횟수, 12회 소진 | PR 6 |
-| DEAD 자동 재시도 금지 | `[Gather 확정 정책]` scheduler는 `DEAD`를 claim하지 않으며 사용자와 소셜 계정은 pending 상태를 유지한다. | 완료되지 않은 unlink를 성공으로 위장하지 않는다. | task claim query, result handler, alert | terminal 상태, 수동 재처리는 별도 운영 경로 | 자동 claim 금지, 상태 유지, sanitize 저장 | PR 6 |
+| generation mismatch → `STALE` | `[Gather 확정 정책]` generation mismatch는 API 미호출 후 `STALE`로 종료하되 같은 generation의 `UNLINKED`와 pending User는 local finalization한다. | 오래된 task의 외부 부작용을 방지하면서 이미 완료된 unlink의 로컬 후처리를 복구한다. | worker preflight와 result finalizer | 호출 전·결과 저장 시 이중 검증, 자동 retry 금지, claim 미소유자는 쓰기 금지 | mismatch API 미호출, `UNLINKED` HTTP 0회, claim 오류 실행 중단 | PR 6 |
+| 지수 backoff + full jitter | `[Gather 확정 정책]` 기본 1분, 지수 증가, 6시간 상한이며 자동 retry cycle당 attempt reservation은 최대 12회다. | 일시 장애의 동시 재시도 폭주와 crash window의 호출 상한 초과를 막는다. | reservation service, retry policy와 `nextAttemptAt` 계산기 | HTTP 직전 reservation에서 `attempt_count` 증가, 조건부 `Retry-After` 반영 | jitter 범위, 상한, reservation crash, 12회 소진 | PR 6 |
+| DEAD 자동 재시도 금지 | `[Gather 확정 정책]` scheduler는 `DEAD`를 claim하지 않으며 사용자와 소셜 계정은 pending 상태를 유지한다. 설정 오류는 현재 task를 `DEAD`로 만들고 DB 전역 worker control을 `CONFIGURATION_BLOCKED`로 전환한다. | 완료되지 않은 unlink를 성공으로 위장하거나 전역 설정 오류로 backlog를 연속 소진하지 않는다. | task result handler, worker control, claim query, alert | terminal task와 전역 circuit breaker 원자 전이, 운영 retry cycle만 명시적 resume | 자동 claim 금지, batch 중단, 다중 인스턴스 차단, sanitize 저장 | PR 6 |
 | AccountTermination·enqueue 원자성 | `[Gather 확정 정책]` 접수 부수효과와 task insert를 하나의 트랜잭션으로 묶는다. | task 없는 pending 상태와 고아 task를 막는다. | `AccountTerminationService`, enqueue service | outer `REQUIRED`; enqueue는 동일 트랜잭션 참여, `REQUIRES_NEW` 금지 | block/session/task 실패 rollback과 task·상태 원자성 | PR 5 |
 | HTTP 중 DB transaction 금지 | `[Gather 확정 정책]` claim commit 후 transaction 없이 호출하고 별도 결과 트랜잭션에서 반영한다. | 외부 timeout 중 lock·connection 점유와 장애 전파를 막는다. | worker orchestration | claim token, lease, `claimedBy`, 결과 시 소유권·generation 재검증 | 호출 중 transaction 비활성, lease 회수, 동시 claim | PR 6 |
 | PR 3 가입 세션 계약 유지 | `[Gather 확정 정책]` 같은 identity의 pending 세션을 ID 오름차순으로 비관적 잠금하고 `cancel()`한다. | 가입·탈퇴 race와 persistence context 불일치를 막는다. | `SocialSignupSessionService`의 service-level 진입점 | outer 접수 트랜잭션 참여, bulk update·잠금 순서 변경 금지 | ID 순서 잠금, cancel 실패 rollback, 가입 경쟁 | PR 5 |
 | PHONE identity 직렬화 | `[Gather 확정 정책]` 가입과 탈퇴는 전화번호별로 동일한 `account_identity_guard` row를 잠근다. | User 전화번호 익명화와 block 확인 사이의 재가입 우회 경쟁을 막는다. | `AccountIdentityGuardService` | active HMAC identity upsert 후 `FOR UPDATE`, 기존 application transaction 참여 | 가입 선점·탈퇴 선점 두 순서, rollback | PR 5 |
 | 재가입 제한 | `[Gather 확정 정책]` PHONE과 KAKAO 모두 7일이며 `now < expiresAt`만 차단한다. 활성 PHONE block이 있는 identity에 신규 ACTIVE User를 만들지 않는다. | cleanup 지연과 무관하게 동일한 cooldown 경계를 보장한다. | `AccountRejoinBlock` 생성·locking read·cleanup | PHONE guard 안에서 최종 block 조회·중복 검사·User flush, 기존 block은 `max(existing.expiresAt, now+7일)` | 정확히 7일, 경계 허용, 연장, cleanup 지연, 가입·탈퇴 경쟁 | PR 5 |
-| 식별자 생명주기 | `[Gather 확정 정책]` unlink 성공 시 reversible identifier를 제거하고 HMAC은 cooldown까지만 유지한다. | 재처리 가능성과 개인정보 최소화를 함께 만족한다. | worker finalizer, retention cleanup | task에는 식별자 복제 금지, 결과 트랜잭션에서 즉시 파기 | 성공·STALE·해결 DEAD 파기, 미해결 DEAD 유지 | PR 6 |
+| 식별자 생명주기 | `[Gather 확정 정책]` unlink 성공 시 복구 가능한 직접 identifier를 제거하고 HMAC과 key version은 cooldown 동안 유지한 뒤 후속 retention PR에서 제거한다. | 재처리 가능성, 재가입 제한과 개인정보 최소화를 함께 만족한다. | worker finalizer, 후속 retention cleanup | task에는 식별자 복제 금지, 결과 트랜잭션에서 직접 식별자 즉시 파기 | 성공·local finalization·STALE·미해결 DEAD·HMAC 유지 | PR 6·후속 retention |
 | 운영 기본값 | `[Gather 확정 정책]` connect 2초/read 5초, scheduler 30초, batch 10, concurrency 1, lease 120초다. | 단일 EC2의 낮은 처리량에서 예측 가능한 복구와 자원 사용을 제공한다. | Admin/worker configuration properties | client 내부 retry 없음, UTC, `SKIP LOCKED` | 값 바인딩, timeout, lease 회수, 중복 claim 방지 | PR 4·6 |
 
 ### 4.2 최종 기술·운영 정책 연결표
@@ -139,12 +139,12 @@
 | 일반 회원 동기 완료 | 외부 unlink 없음; `ACTIVE/SUSPENDED → WITHDRAWN`, `200` | 유형 판별 service result, 즉시 익명화·durable 후처리 | User→PHONE guard→PHONE block 순서의 단일 트랜잭션 | 원문 제거, User tombstone 유지 | 두 시작 상태, 중복 `200`, rollback | PR 5·7 |
 | 카카오 회원 비동기 완료 | `ACTIVE/SUSPENDED → PENDING → WITHDRAWN`, 접수 `202` | task enqueue와 worker finalizer | 접수 원자성, claim/call/result 분리 | pending 중 ciphertext 최소 유지 | 두 시작 상태, 중복 `202`, finalizer | PR 5·6·7 |
 | 재가입 7일 | PHONE/KAKAO 동일 cooldown, `now >= expiresAt` 허용 | 고정된 active HMAC, UTC Clock, max 연장 | PHONE guard·locking read·멱등 block upsert | 원문/HMAC 전체 로그 금지 | 경계·연장·24시간 cleanup 지연·가입 경쟁 | PR 5 |
-| SocialAccount lifecycle | unlink 성공 시 reversible ID 제거, HMAC은 cooldown까지만 | nullable migration과 최소 tombstone | 같은 result transaction에서 파기 | task에 ID/ciphertext 복제 금지 | 상태별 식별자 존재·제거 | PR 6 |
+| SocialAccount lifecycle | unlink 성공 또는 동일 generation의 기존 `UNLINKED` local finalization 시 직접 ID 제거, HMAC은 cooldown 동안 유지 | nullable migration, local finalizer와 최소 tombstone | 같은 result/finalizer transaction에서 직접 식별자 파기 | task에 ID/ciphertext 복제 금지 | 상태별 직접 식별자 제거와 HMAC 유지 | PR 6·후속 retention |
 | DEAD ciphertext | 미해결 동안 유지, 해결 성공 시 제거 | SLA와 application-service manual retry | `DEAD` 자동 claim 금지 | retention 만료 자동 파기 금지 | 유지·해결 후 제거·민감 로그 부재 | PR 6·후속 운영 |
 | User 익명화 | 일반 즉시, 카카오 unlink 성공 시 | 필드별 null/고유 익명값과 S3 durable 삭제 | 상태 전이와 같은 트랜잭션 | 가역 접두어 익명화 금지 | nullable·unique·관계·S3 retry | PR 5·6 |
 | 타 도메인 FK | 연쇄 삭제로 다른 사용자 데이터 훼손 방지 | anonymized User tombstone과 domain event/outbox | auth는 cascade delete하지 않음 | 공개 작성자 DTO 치환 | FK 유지·외부 응답 익명화 | 후속 domain PR |
 | retention | task 30/90일, block 7일, tombstone 90일; guard는 현재 삭제하지 않음 | 별도 cleanup scheduler와 안전한 guard cleanup 설계 | terminal claim 정보 즉시 최소화, guard를 block과 함께 삭제 금지 | 미해결 DEAD 예외, guard에 원문 비저장 | 각 경계와 cleanup 멱등성 | 후속 retention PR |
-| DEAD SLA | 즉시 경보, 24h 확인, 72h 복구, 7d 책임자 검토 | 구조화 metric·log, manual retry 최대 2회 | DB 직접 UPDATE 금지 | 허용 필드만 기록 | SLA event·권한·감사 이력 | PR 6·후속 운영 |
+| DEAD SLA | 즉시 경보, 24h 확인, 72h 복구, 7d 책임자 검토 | 구조화 metric·log, DB worker control과 감사 가능한 retry cycle | DB 직접 UPDATE와 자동 configuration resume 금지 | 허용 필드만 기록 | SLA event·권한·감사 이력·resume 원자성 | PR 6·후속 운영 |
 | Admin/worker 기본값 | 빠른 실패와 단일 EC2 처리량 기준 | properties 외부화 | batch 10, concurrency 1, lease 120초 | secret masking | timeout·내부 retry 부재·lease | PR 4·6 |
 | unknown 오류 | 검증 불가 성공과 무한 retry 방지 | 4xx DEAD_UNKNOWN, 5xx retry, malformed/ID mismatch DEAD | durable 12회 정책만 retry | body 원문 저장 금지 | 네 분류와 상태 전이 | PR 4·6 |
 | API DTO·중복 | 완료/진행 의미 분리, polling 불필요 | 일반 completedAt, 카카오 requestedAt | 중복은 부수효과 없이 기존 결과 | 내부 task 정보 비노출 | 200/202·중복·polling 부재 | PR 7 |
@@ -240,6 +240,20 @@ PROCESSING -> STALE
 `[Gather 확정 정책]` `DEAD`는 scheduler가 자동 claim하지 않는다. `DEAD`가 되어도 `SocialAccount=UNLINK_PENDING`, `User=WITHDRAWAL_PENDING`을 유지하며 자동으로 `UNLINKED` 또는 `WITHDRAWN`을 만들지 않는다.
 
 `[Gather 확정 정책]` `STALE`은 현재 상태에서 실행하면 안 되는 task다. 외부 API를 호출하지 않고 자동 재시도하지 않는다. 반면 `DEAD`는 해야 할 작업이지만 영구 오류 또는 재시도 소진으로 완료하지 못한 상태다.
+
+`PERMANENT_CONFIGURATION`에서는 현재 task가 `DEAD`가 되는 것과 전역 worker control이 `CONFIGURATION_BLOCKED`가 되는 것을 구분한다. task terminal 상태는 해당 실행 결과를 보존하고, 전역 control 상태는 모든 인스턴스의 이후 claim을 차단한다.
+
+| 현재 task | 조건 | 다음 task | worker control | HTTP | User / SocialAccount |
+|---|---|---|---|---|---|
+| `PENDING` | control `ACTIVE`, due | `PROCESSING` | `ACTIVE` | 아직 없음 | 변경 없음 |
+| `PROCESSING` | generation mismatch | `STALE` | 유지 | 없음 | 변경 없음 |
+| `PROCESSING` | same generation + `UNLINK_PENDING` + reservation 가능 | `PROCESSING` | `ACTIVE` | reservation commit 뒤 1회 | 결과 전까지 유지 |
+| `PROCESSING` | same generation + `UNLINKED` + User pending | `SUCCEEDED` | 유지 | 없음 | 직접 ID 제거, User `WITHDRAWN`·익명화 |
+| `PROCESSING` | success / `-101` 성공 동등 | `SUCCEEDED` | 유지 | 완료됨 | `UNLINKED`, 직접 ID 제거, User `WITHDRAWN`·익명화 |
+| `PROCESSING` | retryable, reservation 예산 잔여 | `PENDING` | 유지 | 완료 또는 결과 불명 | pending 유지 |
+| `PROCESSING` | 12번째 reservation 소진 또는 영구 task 오류 | `DEAD` | 유지 | 추가 호출 없음 | pending 유지 |
+| `PROCESSING` | `PERMANENT_CONFIGURATION` | `DEAD` | `CONFIGURATION_BLOCKED` | 추가 호출 없음 | pending 유지 |
+| `DEAD` | 설정 복구와 운영자 승인 retry cycle | `PENDING` | `ACTIVE` | scheduler 재개 후 가능 | pending 유지 |
 
 `[권장 구현]` 외부 unlink 성공 뒤 finalizer 트랜잭션 전에 프로세스가 종료되면 같은 task가 다시 호출될 수 있다. 카카오가 이미 연결 해제되었다는 공식 오류가 확인되고 로컬 invariant가 유효할 때만 Gather의 멱등 정책으로 성공 동등 결과를 적용한다.
 
@@ -419,69 +433,113 @@ KakaoUnlinkTask: PROCESSING → STALE
 
 ## 7. Worker 흐름
 
-`[Gather 확정 정책]` worker는 claim transaction, transaction 없는 외부 호출, result transaction의 세 단계로 분리한다. 카카오 HTTP 요청 중에는 DB transaction이나 row lock을 유지하지 않는다.
+`[Gather 확정 정책]` worker는 claim transaction, preflight, attempt reservation transaction, transaction 없는 외부 호출, result/finalizer transaction으로 분리한다. 카카오 HTTP 요청 중에는 DB transaction이나 row lock을 유지하지 않는다.
 
 ### 7.1 Claim 트랜잭션
 
-1. `status=PENDING`이고 `next_attempt_at <= now`인 행, 또는 lease가 만료된 `PROCESSING` 행을 찾는다.
-2. MySQL의 `FOR UPDATE SKIP LOCKED`를 사용해 `(next_attempt_at, id)` 순서로 제한된 batch를 잠근다.
-3. 각 행을 `PROCESSING`으로 바꾸고 `claim_token`, `claimed_by`, `claimed_at`, `lease_expires_at`을 기록한다.
-4. 커밋한다.
+1. singleton `KakaoUnlinkWorkerControl` row를 먼저 잠그고 상태가 `ACTIVE`인지 확인한다. `CONFIGURATION_BLOCKED`이면 task를 claim하지 않고 종료한다.
+2. `status=PENDING`이고 `next_attempt_at <= DB UTC now`인 행, 또는 DB UTC now 기준으로 lease가 만료된 `PROCESSING` 행을 찾는다.
+3. MySQL의 `FOR UPDATE SKIP LOCKED`를 사용해 due task는 `(next_attempt_at, id)`, expired lease는 `(lease_expires_at, id)` 순서로 제한된 batch를 잠근다.
+4. 각 행을 `PROCESSING`으로 바꾸고 새 `claim_token`, `claimed_by`, `claimed_at`, `lease_expires_at`을 기록한다.
+5. `claimed_at`과 `lease_expires_at`은 `UTC_TIMESTAMP(6)`과 동등한 동일 transaction의 DB UTC 시각으로 계산한다.
+6. 커밋한다.
 
 lease는 HTTP connect/read timeout과 정상적인 결과 처리 시간을 합친 값보다 충분히 길어야 한다. batch 크기와 worker 동시성은 DB connection pool과 카카오 호출량 제한을 함께 고려한다.
 
-### 7.2 외부 호출
+### 7.2 Preflight와 동일 generation `UNLINKED` 분기
 
-트랜잭션 밖에서 각 claim에 대해 다음을 수행한다.
+각 claim에 대해 다음 상태를 확인한다.
 
-1. 다음 호출 전 invariant를 전부 확인한다.
+1. 공통 invariant를 확인한다.
    - `SocialAccount`가 존재한다.
    - provider가 `KAKAO`다.
    - task의 `socialAccountId`와 조회된 계정 ID가 일치한다.
    - `SocialAccount.generation == task.generation`이다.
-   - `SocialAccount.status == UNLINK_PENDING`이다.
    - 연결된 `User.status == WITHDRAWAL_PENDING`이다.
    - task가 현재 worker의 유효한 `PROCESSING` claim과 claim token을 가진다.
-2. 대상·generation·상태 invariant가 불일치하면 HTTP를 호출하지 않고 `STALE` 후보로 반환한다. claim 소유권이 유효하지 않으면 task 상태를 변경하지 않고 실행을 중단한다.
-3. `SocialAccount`의 암호문을 읽고 카카오 회원번호를 메모리에서만 복호화한다.
-4. invariant가 모두 맞을 때만 Admin unlink client를 호출한다.
-5. HTTP status, Kakao `code`, 응답 `id`, timeout·network·parse 결과를 typed result로 변환한다.
-6. 민감한 요청·응답 원문은 로그에 기록하지 않는다.
+2. generation이 다르면 HTTP를 호출하지 않고 `STALE` 후보로 반환한다.
+3. 같은 generation의 `UNLINK_PENDING`이면 attempt reservation 후보로 반환한다.
+4. 같은 generation의 `UNLINKED`이고 User가 `WITHDRAWAL_PENDING`이면 attempt reservation과 HTTP 호출 없이 local finalization 후보로 반환한다.
+5. 같은 generation이라도 그 밖의 상태 조합이면 `STALE` 또는 명시적인 local invariant failure로 분류한다.
+6. claim 소유권이 유효하지 않으면 task 상태를 변경하지 않고 실행을 중단한다.
 
 사전 generation 검사는 불필요한 호출을 줄이는 최적화다. 정확성을 위해 결과 트랜잭션에서 반드시 다시 검증한다.
 
-### 7.3 결과 트랜잭션
+### 7.3 Attempt reservation 트랜잭션과 외부 호출
 
-1. `SocialAccount`를 잠근다.
-2. `KakaoUnlinkTask`를 잠근다.
-3. 연결된 `User`와 pending 상태를 재검증한다.
-4. task가 아직 같은 `claim_token`의 `PROCESSING`인지 확인한다.
-5. 현재 `SocialAccount.generation == task.generation`인지 확인한다.
-6. 세대가 다르면 task를 `STALE`로 종료하고 현재 소셜 계정은 변경하지 않는다.
-7. 성공 또는 검증된 성공 동등 결과라면:
+HTTP 호출 직전의 짧은 reservation transaction에서 `attemptNow = LocalDateTime.now(Clock.systemUTC())`를 한 번 캡처하고 다음을 수행한다.
+
+1. `KakaoUnlinkWorkerControl → SocialAccount → KakaoUnlinkTask → User` 순서로 row lock을 획득한다.
+2. worker control이 여전히 `ACTIVE`인지 확인한다. 이미 `CONFIGURATION_BLOCKED`이면 reservation을 만들지 않고 현재 batch 실행을 중단한다.
+3. task가 `PROCESSING`이고 claim token이 일치하며 lease가 DB UTC 시각 기준으로 유효한지 확인한다.
+4. 현재 retry cycle의 `attemptCount < 12`인지 확인한다.
+5. provider `KAKAO`, task와 SocialAccount generation 일치, User `WITHDRAWAL_PENDING`, SocialAccount `UNLINK_PENDING`을 다시 확인한다.
+6. 호출에 필요한 직접 provider identifier가 존재하고 복호화 가능하며 복호화 결과가 양의 Kakao ID인지 확인한다.
+7. `attemptCount + 1`, `lastAttemptAt = attemptNow`를 반영하고 커밋한다.
+
+`attemptCount`는 실제 HTTP 호출 횟수가 아니라 commit된 attempt reservation 횟수다. reservation commit 직후 프로세스가 종료되어 실제 요청이 전송되지 않은 경우도 포함할 수 있으며 실제 외부 호출 횟수는 항상 `attemptCount` 이하이다. preflight에서 `STALE` 또는 local finalization으로 분류된 task에는 reservation을 만들지 않는다.
+
+reservation commit 뒤 transaction 없이 Admin unlink client를 호출한다. client는 HTTP status, Kakao `code`, 응답 `id`, timeout·network·parse 결과와 안전하게 파싱한 `retryAfterAt`만 typed result로 반환한다. 민감한 요청·응답 원문, raw `Retry-After`, 전체 header와 파싱 오류 원문은 task나 로그에 기록하지 않는다.
+
+12번째 reservation commit 직후 프로세스가 종료되면 실제 외부 호출이 12회보다 적더라도 lease 회수 후 추가 HTTP 호출을 하지 않는다. 자동 처리 예산이 소진된 것으로 보고 terminal 처리한다.
+
+### 7.4 결과·finalizer 트랜잭션
+
+result/finalizer transaction마다 `resultNow = LocalDateTime.now(Clock.systemUTC())`를 한 번 캡처한다. HTTP 호출 전의 `attemptNow`를 완료 시각이나 retry 기준 시각으로 재사용하지 않는다.
+
+1. 필요한 경우 `KakaoUnlinkWorkerControl`을 가장 먼저 잠그고, 그 뒤 `SocialAccount → KakaoUnlinkTask → User` 순서로 잠근다.
+2. task가 아직 같은 `claim_token`의 `PROCESSING`이고 lease가 유효한지 확인한다.
+3. 현재 `SocialAccount.generation == task.generation`, provider `KAKAO`, 연결된 User `WITHDRAWAL_PENDING`을 다시 확인한다.
+4. 세대가 다르면 task를 `STALE`로 종료하고 현재 소셜 계정과 사용자는 변경하지 않는다.
+5. 성공 또는 검증된 성공 동등 결과라면:
    - task를 `SUCCEEDED`로 전환한다.
-   - `SocialAccount`를 `UNLINKED`로 전환한다.
-   - legacy provider ID, ciphertext와 encryption key version을 제거하고 cooldown이 끝났으면 HMAC·provider key version도 제거한다.
+   - `UNLINK_PENDING`인 `SocialAccount`만 `UNLINKED`로 전환한다.
+   - legacy provider ID, ciphertext와 encryption key version을 즉시 제거한다.
+   - providerUserKey HMAC과 provider key version은 cooldown 동안 유지한다.
    - `User`가 여전히 `WITHDRAWAL_PENDING`인지 확인한다.
    - 사용자를 `WITHDRAWN`으로 전환하고 같은 트랜잭션에서 개인정보를 익명화한다.
    - 필요한 프로필 이미지 durable 삭제 처리를 등록한다.
-8. retryable 결과라면 attempts를 증가시키고 backoff를 계산해 `PENDING`으로 되돌린다.
-9. 영구 실패 또는 실제 외부 호출 12회 소진이면 `DEAD`로 전환한다.
-10. 커밋한다.
+6. 동일 generation의 `UNLINKED` local finalization이라면:
+   - `markUnlinked()`를 다시 호출하거나 기존 `unlinkedAt`을 덮어쓰지 않는다.
+   - 남은 legacy provider ID, ciphertext와 encryption key version을 제거한다.
+   - User를 `WITHDRAWN`으로 전환하고 개인정보 익명화와 프로필 이미지 durable 삭제를 등록한다.
+   - task를 `SUCCEEDED`로 전환한다.
+7. retryable 결과라면 이미 증가한 reservation 수를 유지하고 backoff를 계산해 `PENDING`으로 되돌리거나, 12번째 reservation이면 `DEAD`로 종료한다.
+8. `PERMANENT_CONFIGURATION`이면 현재 task를 `DEAD`, worker control을 `CONFIGURATION_BLOCKED`로 같은 transaction에서 전환하고 현재 batch를 즉시 중단한다.
+9. 그 밖의 영구 실패는 현재 task를 `DEAD`로 전환한다.
+10. terminal 전이에서는 claim token과 lease 정보를 정리하고 `completedAt = resultNow`를 기록한 뒤 커밋한다.
 
 `[Gather 확정 정책]` `SUCCEEDED`는 카카오 HTTP 성공만이 아니라 로컬 상태 전이와 필수 개인정보 파기까지 같은 결과 트랜잭션에서 완료되었음을 뜻한다.
 
-### 7.4 Lease 회수와 fencing
+### 7.5 Lease 회수와 fencing
 
 - lease가 만료된 `PROCESSING` task는 새 worker가 다시 claim할 수 있다.
 - claim마다 예측 불가능한 `claim_token`을 새로 발급한다.
 - 늦게 돌아온 이전 worker는 task ID와 claim token이 모두 일치할 때만 결과를 기록할 수 있다.
 - lease 연장이 필요하다면 같은 claim token의 소유자만 갱신한다.
-- worker clock 차이를 줄이기 위해 claim과 만료 판정은 가능한 한 DB 시각을 사용한다.
+- due eligibility, expired lease eligibility, `claimedAt`과 `leaseExpiresAt`은 JVM 시각이 아니라 DB UTC 시각을 사용한다.
 
 이 분리는 외부 timeout 중 DB lock 유지, connection pool 고갈, deadlock 가능성, 카카오 장애의 DB 전파를 방지하고 worker crash·재시작과 stuck task 회수를 가능하게 한다. 필수 보완 장치는 claim token, lease expiration, `claimedBy`, generation·상태 재검증, 결과 트랜잭션의 claim 소유권 검증과 멱등성이다.
 
-### 7.5 Admin client와 worker 기본값
+### 7.6 시간 책임과 운영 계약
+
+`[Gather 확정 정책]` 애플리케이션 공통 Clock은 `Clock.systemUTC()`를 사용한다. 현재 구현의 `KakaoTimeConfig`와 `kakaoClock`은 여러 auth service가 공통 사용하므로 PR 6 구현 단계에서 공통 시간 설정 책임이 드러나는 이름과 위치로 정리한다.
+
+시간 책임은 다음처럼 분리한다.
+
+| 책임 | 기준 시각 |
+|---|---|
+| due task eligibility, expired lease eligibility | DB UTC, `UTC_TIMESTAMP(6)`과 동등한 시각 |
+| `claimedAt`, `leaseExpiresAt` | 같은 claim/reclaim transaction의 DB UTC 시각 |
+| attempt reservation, `lastAttemptAt` | `Clock.systemUTC()`의 `attemptNow` |
+| Retry-After, backoff, `nextAttemptAt` | `Clock.systemUTC()`의 `resultNow` |
+| result 처리, `completedAt`, User/SocialAccount 상태 전이 | `Clock.systemUTC()`의 `resultNow` |
+
+`operation당 now 한 번`은 전체 task 생명주기에서 한 번이 아니라 각 transaction 단계에서 한 번이라는 뜻이다. claim transaction은 DB의 `claimNow`, reservation transaction은 application의 `attemptNow`, result/finalizer transaction은 application의 `resultNow`를 각각 한 번만 사용한다.
+
+운영 계약은 DB session timezone UTC, JVM timezone UTC, EC2 시스템 시각의 NTP 동기화다. local example의 `Asia/Seoul` JDBC 설정은 PR 6 구현에서 UTC로 변경한다. 배포 전 기존 `DATETIME` 데이터가 KST wall-clock으로 저장됐는지 표본 검증하며, UTC 설정 변경이 기존 데이터의 자동 변환을 뜻하지 않는다.
+
+### 7.7 Admin client와 worker 기본값
 
 `[Gather 확정 정책]` 다음 값은 configuration properties로 외부화하는 기본값이다.
 
@@ -497,7 +555,7 @@ lease는 HTTP connect/read timeout과 정상적인 결과 처리 시간을 합�
 
 retry는 HTTP client가 아니라 durable task가 담당한다. 현재 단일 EC2와 낮은 처리량에서는 worker 1개가 충분하고, batch 10개 순차 처리의 예상 최악 시간에 여유를 둔 lease를 사용한다. lease 만료 task는 scheduler가 회수한다.
 
-모든 시간 계산은 UTC를 사용한다. local/test에도 명시적 기본값을 두고 운영에서는 Admin client enabled 여부를 분리한다. concurrency를 늘릴 때 batch와 lease를 함께 재검토한다. 현재 값은 확정 기본값이지만 운영 지표에 따라 configuration으로 조정할 수 있다.
+local/test에도 명시적 UTC 기본값을 두고 운영에서는 Admin client enabled 여부를 분리한다. concurrency를 늘릴 때 batch와 lease를 함께 재검토한다. 현재 값은 확정 기본값이지만 운영 지표에 따라 configuration으로 조정할 수 있다.
 
 ## 8. Generation과 stale task
 
@@ -518,9 +576,11 @@ generation 검증이 없으면 과거 결과가 새 연결을 `UNLINKED`로 덮�
 
 - task 생성 시 현재 generation을 저장한다.
 - `(social_account_id, generation)`은 유일하다.
-- HTTP 호출 전 `SocialAccount` 존재, provider `KAKAO`, generation 일치, `UNLINK_PENDING`, 연결 사용자 `WITHDRAWAL_PENDING`을 모두 검증한다.
+- HTTP 호출 전 `SocialAccount` 존재, provider `KAKAO`, generation 일치와 연결 사용자 `WITHDRAWAL_PENDING`을 검증한다.
+- 같은 generation의 `UNLINK_PENDING`만 reservation 뒤 HTTP 호출 대상으로 삼는다.
+- 같은 generation의 `UNLINKED`는 `STALE`이 아니라 reservation과 HTTP 호출 없는 local finalization 대상으로 삼는다.
 - 결과 반영 직전 잠금 아래 같은 invariant를 다시 검증한다.
-- 불일치하면 현재 계정과 사용자를 변경하지 않고 task를 `STALE`로 종료한다.
+- generation mismatch는 현재 계정과 사용자를 변경하지 않고 task를 `STALE`로 종료한다. 그 밖의 허용되지 않은 상태 조합은 `STALE` 또는 명시적인 invariant failure로 분류한다.
 - mismatch를 retryable failure로 취급하지 않으며 `STALE`은 자동 재시도하지 않는다.
 - `STALE` metric에는 원인만 남기고 식별정보를 출력하지 않는다.
 - future relink는 동일 계정의 unresolved task와 active lease가 없는지 확인한 뒤 generation을 증가시켜야 한다.
@@ -557,7 +617,7 @@ generation 3 요청이 카카오에서 실제 성공한 직후 로컬 재연결�
 
 ### 9.1 Retry 계산과 attempt 정의
 
-`[Gather 확정 정책]` retryable 오류에는 기본 지연 1분의 지수 backoff와 full jitter를 적용한다. 계산된 지연 상한은 6시간이고 실제 카카오 외부 API 호출은 최대 12회다. 최초 task는 즉시 실행할 수 있으며, 신뢰 가능한 `Retry-After`가 있으면 우선 적용한다.
+`[Gather 확정 정책]` retryable 오류에는 기본 지연 1분의 지수 backoff와 full jitter를 적용한다. 계산된 지연 상한은 6시간이고 자동 worker는 한 retry cycle에서 최대 12개의 attempt reservation만 허용한다. 최초 task는 즉시 실행할 수 있다.
 
 ```text
 1차 실패: 최대 1분 범위에서 무작위 지연
@@ -568,15 +628,45 @@ generation 3 요청이 카카오에서 실제 성공한 직후 로컬 재연결�
 상한: 최대 6시간 범위에서 무작위 지연
 ```
 
-full jitter는 `0 ~ min(1분 × 2^(실패 횟수-1), 6시간)` 범위에서 다음 지연을 선택하므로 정확히 표의 최대 시간 뒤에 실행된다는 뜻이 아니다.
+full jitter는 `0 ~ min(1분 × 2^(retryableFailureIndex-1), 6시간)` 범위에서 다음 지연을 선택하므로 정확히 표의 최대 시간 뒤에 실행된다는 뜻이 아니다.
 
-`attempt_count`는 scheduler 조회나 claim 횟수가 아니라 실제 카카오 외부 API 호출 횟수다. claim 뒤 invariant 위반으로 HTTP를 호출하지 않고 `STALE`이 된 task는 증가시키지 않는다.
+현재 자동 retry cycle에서는 영구 결과가 즉시 terminal로 끝나므로 `retryableFailureIndex`는 retryable result를 만든 현재 reservation의 `attemptCount`와 같다. 운영자가 새 cycle을 시작하면 둘 다 1차 시도 기준으로 다시 시작한다.
+
+`attempt_count`는 scheduler 조회나 claim 횟수, 실제 HTTP 응답 횟수가 아니라 Kakao Admin API 호출을 위해 commit된 attempt reservation 횟수다. 프로세스 장애로 실제 HTTP 요청이 전송되지 않은 reservation도 포함할 수 있으며 실제 외부 호출 횟수는 `attempt_count` 이하이다. preflight에서 `STALE` 또는 동일 generation `UNLINKED` local finalization으로 분기한 task는 증가시키지 않는다.
 
 재시도 대상은 network·DNS·connect/read timeout, 일시적 5xx, rate limit과 공식 계약상 카카오 측 일시 오류다. Admin key 오류, 콘솔 권한 미설정, 잘못된 요청 형식, 응답 ID 불일치, provider ID 복호화 불가, generation mismatch와 local invariant 위반은 재시도하지 않는다.
 
-### 9.2 DEAD 정책
+### 9.2 Retry-After 계약
 
-`[Gather 확정 정책]` 영구 설정·요청 오류, 응답 ID 불일치, provider ID 복호화 불가, `STALE`로 분류되지 않는 데이터 무결성 오류 또는 최대 12회 외부 호출 소진은 `DEAD`로 종료한다. scheduler는 `DEAD` task를 다시 claim하지 않는다.
+`[Gather 확정 정책]` `Retry-After`는 typed result의 disposition이 `RETRYABLE`이고 HTTP status가 `429` 또는 `5xx`일 때만 적용한다. Kakao code 분류가 HTTP status fallback보다 우선하므로 Kakao code가 영구 오류이면 HTTP status가 `429` 또는 `5xx`여도 무시한다. Kakao code 때문에 `RETRYABLE`이지만 HTTP status가 `400`인 경우와 network 오류처럼 HTTP 응답이 없는 경우에도 적용하지 않는다.
+
+`KakaoAdminUnlinkResult`에는 raw header나 전체 response header가 아니라 client가 안전하게 파싱한 `Instant retryAfterAt`만 추가한다. 값이 없거나 신뢰할 수 없으면 `null`이다. client도 애플리케이션 공통 UTC Clock으로 응답 수신 시각을 한 번 캡처해 delta-seconds를 절대 시각으로 변환한다. 지원 형식은 `delta-seconds`와 RFC 1123 HTTP-date다.
+
+- `0` delta-seconds는 유효하다.
+- 음수, 부호가 붙은 숫자, 소수, 빈 값과 공백만 있는 값은 무효다.
+- 과거 HTTP-date와 의미가 모호한 복수 header 값은 무효다.
+- 숫자 overflow와 파싱 실패는 외부 예외로 노출하지 않는다.
+- raw header, 전체 response header와 파싱 오류 원문을 task나 로그에 저장하지 않는다.
+- `5xx` body read failure에서도 응답 header를 안전하게 확보했다면 적용할 수 있다.
+
+result transaction의 `resultNow`를 기준으로 다음처럼 계산한다.
+
+```text
+fullJitterDelay =
+    random(0, min(1분 × 2^(retryableFailureIndex - 1), 6시간))
+
+retryAfterDelay =
+    max(0, retryAfterAt - resultNow)
+
+effectiveDelay =
+    min(max(fullJitterDelay, retryAfterDelay), 6시간)
+```
+
+지나치게 큰 `retryAfterAt`도 최종 6시간 cap을 넘지 않는다. `nextAttemptAt = resultNow + effectiveDelay`로 계산한다.
+
+### 9.3 DEAD와 configuration circuit breaker 정책
+
+`[Gather 확정 정책]` 영구 설정·요청 오류, 응답 ID 불일치, provider ID 복호화 불가, `STALE`로 분류되지 않는 데이터 무결성 오류 또는 한 retry cycle의 12개 reservation 소진은 `DEAD`로 종료한다. scheduler는 `DEAD` task를 다시 claim하지 않는다.
 
 ```text
 KakaoUnlinkTask = DEAD
@@ -586,16 +676,21 @@ User = WITHDRAWAL_PENDING
 
 `DEAD`에서 `SocialAccount → UNLINKED` 또는 `User → WITHDRAWN`을 자동 수행하지 않는다. 운영 알림을 발생시키고 오류 code와 sanitize된 설명만 저장하며 원문 요청·응답은 저장하지 않는다.
 
-### 9.3 최종 오류 분류 원칙
+`PERMANENT_CONFIGURATION`은 개별 사용자 데이터 문제가 아니라 Admin key, App ID, 권한과 같은 전역 환경 오류다. 해당 result transaction은 DB 기반 singleton worker control을 `CONFIGURATION_BLOCKED`로 바꾸고 현재 task를 `DEAD`로 종료하며 claim·lease 정보를 정리한다. task에는 HTTP status, Kakao code, normalized error type `CONFIGURATION`과 `completedAt`만 저장한다. Admin key, Authorization header, provider ID와 원문 응답은 저장하지 않는다.
+
+현재 batch는 즉시 중단하고 이후 scheduler는 control row가 `ACTIVE`로 복구될 때까지 claim하지 않는다. 인메모리 pause는 재시작 시 해제되고 다중 인스턴스가 공유하지 못하므로 correctness 수단으로 사용하지 않는다. 자동 worker는 configuration block을 스스로 해제하지 않는다.
+
+### 9.4 최종 오류 분류 원칙
 
 - `[공식 계약]` `-101`은 해당 앱과 연결되지 않은 사용자 오류다.
-- `[Gather 확정 정책]` local account ID, generation, `UNLINK_PENDING`, `WITHDRAWAL_PENDING`과 복호화한 요청 대상 검증이 모두 맞을 때만 목표 상태가 이미 충족된 것으로 보고 멱등 성공 처리한다.
+- `[Gather 확정 정책]` local account ID, generation, `UNLINK_PENDING`, `WITHDRAWAL_PENDING`과 복호화한 요청 대상 검증이 모두 맞을 때만 `-101`을 목표 상태가 이미 충족된 것으로 보고 멱등 성공 처리한다.
+- `[Gather 확정 정책]` local `SocialAccount`가 이미 동일 generation의 `UNLINKED`이고 User가 `WITHDRAWAL_PENDING`이면 외부 성공을 추정하지 않고 HTTP 없는 local finalization 경로로 처리한다.
 - network, DNS, connect/read timeout, `500/502/503`, rate limit과 공식 문서상 일시·점검 오류만 자동 retry한다.
 - 잘못된 parameter, Admin key·앱 불일치, Admin API 설정 누락, 허용되지 않은 operation, 권한 부족, 종료 API, 앱·개발자 제재, 복호화 실패와 응답 ID 불일치는 즉시 `DEAD`다.
 - HTTP `429`는 방어적으로 retryable로 처리하되 unlink 쿼터 분류는 body `code`를 우선한다.
 - `msg` 문자열에는 의존하지 않는다.
 
-### 9.4 DEAD 운영 SLA와 수동 재처리
+### 9.5 DEAD 운영 SLA와 운영 retry cycle
 
 `[Gather 확정 정책]`
 
@@ -606,7 +701,11 @@ User = WITHDRAWAL_PENDING
 
 로그·metric에는 task ID, socialAccount ID, generation, attempt count, normalized error code와 발생 시각만 사용한다. Admin key, provider user ID, providerUserKey 전체, ciphertext, form body, 카카오 원문, 전화번호와 이메일은 금지한다.
 
-PR 6에는 수동 retry API를 넣지 않는다. 후속 운영 기능은 DB 직접 UPDATE를 금지하고 권한 있는 운영자가 application service로만 실행한다. 자동 12회 소진 원인이 해결된 경우 새 retry cycle을 최대 2회 시작할 수 있으며 재처리 이력과 이전 오류 metadata를 보존한다.
+PR 6에는 공개 수동 retry API나 범용 관리자 UI를 넣지 않는다. DB 직접 UPDATE를 금지하고 권한 있는 운영 절차와 application service로만 worker control resume와 task requeue를 수행한다.
+
+configuration 복구 순서는 Admin 설정 수정, 안전한 설정 검증 또는 운영자 확인, worker control의 `ACTIVE` 전환, `CONFIGURATION` 원인으로 `DEAD`가 된 task의 명시적 requeue, worker 재개다. control resume와 task requeue는 자동 동작이 아니다.
+
+자동 worker는 한 retry cycle에서 `attemptCount` 12를 초과하지 않는다. 운영자가 새 retry cycle을 승인하면 `retryCycle + 1`, `attemptCount = 0`, task `PENDING`, `nextAttemptAt = resumeNow`로 전환하고 claim 정보와 이전 terminal 시각을 새 cycle 규칙에 맞게 정리한다. 이전 실패 이력은 구조화 로그 또는 별도 감사 정보로 추적한다. 이 계약에는 `retryCycle`과 동등한 감사 필드가 필요하며 자동 처리 중에는 변경하지 않는다.
 
 `[운영·법적 검토]` 실제 운영 알림 채널과 담당자를 운영 공개 전에 지정한다.
 
@@ -620,18 +719,18 @@ PR 6에는 수동 retry API를 넣지 않는다. 후속 운영 기능은 DB 직�
 | `social_account_id` | 예 | 대상 `SocialAccount` 참조 | API에 노출하지 않음 | FK `RESTRICT`, generation과 unique |
 | `generation` | 예 | 생성 시점 연결 세대 snapshot | 비민감 상태 값 | unique `(social_account_id, generation)` |
 | `status` | 예 | `PENDING`, `PROCESSING`, `SUCCEEDED`, `DEAD`, `STALE` | 비민감 | claim·lease 복합 index |
-| `attempt_count` | 예 | 실제 카카오 외부 API 호출 횟수 | 비민감 | 기본값 `0`, `0..12` |
+| `retry_cycle` | 예 | 운영 승인으로 시작한 retry cycle 번호 | 비민감 감사 값 | 기본값 `0`, 자동 worker 변경 금지 |
+| `attempt_count` | 예 | 현재 cycle에서 commit된 attempt reservation 횟수 | 비민감 | 기본값 `0`, cycle별 `0..12` |
 | `next_attempt_at` | 예 | 다음 claim 가능 시각 | 비민감 | `(status, next_attempt_at, id)` |
-| `last_attempt_at` | 아니요 | 마지막 외부 호출 시각 | 비민감 | 운영 조회용 선택 index |
+| `last_attempt_at` | 아니요 | 마지막 attempt reservation 시각 | 비민감 | 운영 조회용 선택 index |
 | `claimed_at` | 아니요 | 현재 claim 획득 시각 | 비민감 | 진단용 |
 | `lease_expires_at` | 아니요 | `PROCESSING` claim 만료 시각 | 비민감 | `(status, lease_expires_at, id)` |
 | `claim_token` | 아니요 | 늦은 worker 결과를 막는 fencing token | 충분한 entropy, 로그·API 노출 금지 | 활성 claim 내 검증 |
 | `claimed_by` | 아니요 | worker instance 식별자 | hostname 등에 비밀을 넣지 않음 | 진단용 |
 | `completed_at` | 아니요 | terminal 상태 도달 시각 | 비민감 | retention 조회용 선택 index |
 | `last_http_status` | 아니요 | 마지막 HTTP status | 비민감 | index 불필요 |
-| `last_error_code` | 아니요 | Kakao code 또는 정규화된 내부 code | provider ID를 넣지 않음 | 운영 집계용 선택 index |
+| `last_kakao_code` | 아니요 | 마지막 Kakao code | provider ID를 넣지 않음 | 운영 집계용 선택 index |
 | `last_error_type` | 아니요 | retryable/config/security/unknown 등 분류 | 비민감 enum | 운영 집계용 선택 index |
-| `last_error_message` | 아니요 | 길이 제한된 비민감 진단 | 원문 body·회원번호·key 금지 | index 불필요 |
 | `created_at`, `updated_at` | 예 | 생성·갱신 감사 시각 | 비민감 | retention 필요 시 index |
 | `version` | 예 | 방어적 낙관적 잠금 | 비민감 | version invariant |
 
@@ -645,9 +744,25 @@ PR 6에는 수동 retry API를 넣지 않는다. 후속 운영 기능은 DB 직�
 
 `[권장 구현]` task에는 Admin key, 카카오 회원번호의 평문, 암호문, HMAC 조회 키, 카카오 응답 원문, unlink 요청 body를 저장하지 않는다. 호출 시 동일 generation의 `SocialAccount`에서 읽는다. task가 민감정보의 두 번째 보관소가 되면 키 회전과 파기 범위가 불필요하게 커진다.
 
+### 10.1 전역 worker control 모델
+
+PR 6은 모든 인스턴스가 공유하는 singleton `KakaoUnlinkWorkerControl` row를 둔다.
+
+| 컬럼 | 용도 | 보안·동시성 |
+|---|---|---|
+| `status` | `ACTIVE`, `CONFIGURATION_BLOCKED` | scheduler claim 전 잠금·확인 |
+| `blocked_at` | 설정 오류로 전역 차단된 UTC 시각 | 비민감 진단 |
+| `blocked_reason` | 정규화된 설정 오류 분류 | 원문·비밀값 금지 |
+| `last_http_status` | 설정 오류의 HTTP status | nullable |
+| `last_kakao_code` | 설정 오류의 Kakao code | provider ID 금지 |
+| `updated_at` | 마지막 전이 시각 | application UTC |
+| `version` | 동시 resume·block 방어 | 낙관적 잠금 보조 |
+
+configuration failure transaction은 control row를 먼저 잠그고 `CONFIGURATION_BLOCKED` 전이와 현재 task `DEAD` 전이를 함께 commit한다. scheduler claim transaction도 control row를 먼저 잠근 뒤 due/expired task를 claim한다.
+
 ## 11. 잠금 순서와 동시성
 
-`[Gather 확정 정책]` 다음 잠금 순서를 핵심 invariant로 사용한다.
+`[Gather 확정 정책]` worker control이 필요한 트랜잭션은 `KakaoUnlinkWorkerControl → SocialAccount → KakaoUnlinkTask → User` 순서를, control row가 필요 없는 worker 트랜잭션은 `SocialAccount → KakaoUnlinkTask → User` 순서를 핵심 invariant로 사용한다. 해당 transaction에서 필요하지 않은 row는 잠그지 않지만 두 종류 이상의 row를 함께 잠글 때 순서를 바꾸지 않는다.
 
 ### 11.1 일반 회원가입
 
@@ -708,11 +823,13 @@ User PESSIMISTIC_WRITE
 ### 11.5 Worker 결과 반영
 
 ```text
-SocialAccount
+KakaoUnlinkWorkerControl (필요한 경우)
+  -> SocialAccount
   -> KakaoUnlinkTask
+  -> User
 ```
 
-task와 SocialAccount를 함께 잠그는 향후 흐름도 같은 순서를 사용한다. User finalization은 잠긴 SocialAccount가 가리키는 user를 검증한 후 처리하며, 반대 순서로 SocialAccount를 다시 획득하는 호출을 만들지 않는다.
+Scheduler claim은 control row를 먼저 확인하고 잠근다. task와 SocialAccount를 함께 잠그는 reservation·result·finalizer도 같은 순서를 사용한다. User finalization은 잠긴 SocialAccount가 가리키는 user를 검증한 후 처리하며, 반대 순서로 SocialAccount를 다시 획득하는 호출을 만들지 않는다.
 
 ### 11.6 MySQL due task claim
 
@@ -720,7 +837,7 @@ task와 SocialAccount를 함께 잠그는 향후 흐름도 같은 순서를 사�
 SELECT *
 FROM kakao_unlink_task
 WHERE status = 'PENDING'
-  AND next_attempt_at <= :now
+  AND next_attempt_at <= UTC_TIMESTAMP(6)
 ORDER BY next_attempt_at, id
 LIMIT :batchSize
 FOR UPDATE SKIP LOCKED;
@@ -738,7 +855,7 @@ FOR UPDATE SKIP LOCKED;
 SELECT *
 FROM kakao_unlink_task
 WHERE status = 'PROCESSING'
-  AND lease_expires_at <= :now
+  AND lease_expires_at <= UTC_TIMESTAMP(6)
 ORDER BY lease_expires_at, id
 LIMIT :batchSize
 FOR UPDATE SKIP LOCKED;
@@ -750,7 +867,7 @@ FOR UPDATE SKIP LOCKED;
 (status, lease_expires_at, id)
 ```
 
-native query 여부는 PR 6에서 정할 수 있지만 SQL 의미와 정렬·잠금 계약은 유지한다.
+native query 여부는 PR 6에서 정할 수 있지만 DB UTC 시각, SQL 의미와 정렬·잠금 계약은 유지한다. 실제 claim/reclaim transaction은 먼저 singleton worker control을 잠가 `ACTIVE`인지 확인한 뒤 이 query를 수행한다.
 
 ### 11.8 PHONE 가입·탈퇴 경쟁의 허용 결과
 
@@ -793,7 +910,7 @@ MySQL 8에서 두 worker의 동시 claim, 중복 claim 방지, `SKIP LOCKED`, du
 
 ### 12.3 권장 파기 시점과 범위
 
-`[Gather 확정 정책]` 일반 회원은 탈퇴 트랜잭션에서 즉시 익명화한다. 카카오 회원은 `WITHDRAWAL_PENDING`에서 접근만 차단하고, unlink 성공 결과 트랜잭션에서 `SocialAccount.UNLINKED`, reversible identifier 파기, User 익명화, `User.WITHDRAWN`, task `SUCCEEDED`를 함께 반영한다.
+`[Gather 확정 정책]` 일반 회원은 탈퇴 트랜잭션에서 즉시 익명화한다. 카카오 회원은 `WITHDRAWAL_PENDING`에서 접근만 차단하고, unlink 성공 결과 또는 동일 generation `UNLINKED` local finalization 트랜잭션에서 `SocialAccount.UNLINKED`, 복구 가능한 직접 identifier 파기, User 익명화, `User.WITHDRAWN`, task `SUCCEEDED`를 함께 반영한다. legacy provider ID, ciphertext 또는 encryption key version이 남아 있으면 local finalization을 완료한 것으로 보지 않는다.
 
 ### 12.4 SocialAccount 식별자 lifecycle
 
@@ -815,9 +932,15 @@ connectedAt, unlinkedAt, createdAt, updatedAt
 
 unlink 성공 후 기본 90일이 지나고 non-terminal task가 없으며, block이 만료됐고, 동일 identity의 진행 중 가입 세션·운영 hold·FK 제약이 없을 때 삭제할 수 있다. FK·task history·generation 계약이 깨지면 최소 tombstone을 더 오래 유지한다. 실제 cleanup은 후속 retention PR 범위다.
 
-unlink 성공 시점에 7일 cooldown이 이미 끝났다면 HMAC과 provider key version도 즉시 제거한다.
+`[Gather 확정 정책]` PR 6 finalizer는 cooldown이 이미 끝났더라도 providerUserKey HMAC과 provider key version을 제거하지 않는다. 복구 가능한 직접 식별자 파기와 단방향 identity retention cleanup의 책임을 분리하기 위해 HMAC 제거는 후속 retention PR만 담당한다.
 
-`UNLINK_PENDING`이 7일을 넘는 예외 상황에서도 worker는 task의 `social_account_id`와 ciphertext로 호출하므로 cooldown 종료 뒤 HMAC을 task 재처리 목적으로 연장 보관하지 않는다. 미해결 task에는 ciphertext와 encryption key version만 유지한다.
+후속 HMAC cleanup은 `SocialAccount=UNLINKED`, `User=WITHDRAWN`, KAKAO `AccountRejoinBlock` 만료, 진행 중 unlink task 없음, providerUserKey 존재를 모두 확인한다. 이 cleanup은 providerUserKey HMAC과 provider key version만 제거하며 `AccountIdentityGuard`, `KakaoUnlinkTask` 감사 데이터와 아직 활성인 `AccountRejoinBlock`을 삭제하지 않는다.
+
+```text
+복구 가능한 Kakao 직접 식별자는 unlink 성공 시 즉시 파기한다.
+단방향 provider HMAC과 keyVersion은 재가입 제한 기간 동안 유지하며,
+만료 후 제거는 별도 retention cleanup PR에서 구현한다.
+```
 
 ### 12.5 DEAD와 ciphertext
 
@@ -970,15 +1093,14 @@ User status가 VARCHAR이면 DB constraint 변경이 실제 필요한지 먼저 
 
 #### PR 6
 
-- unlink 성공 뒤 `social_accounts` identifier를 null 처리할 수 있는 schema
-- finalizer에 실제 필요한 완료 시각 컬럼
-- retention metadata
+- unlink 성공 뒤 `social_account.provider_user_id`, `provider_user_id_ciphertext`, `encryption_key_version`을 null 처리할 수 있는 schema
+- singleton Kakao unlink worker control table 또는 동등한 row와 `ACTIVE`/`CONFIGURATION_BLOCKED` 상태
+- `KakaoUnlinkTask.retry_cycle`과 동등한 운영 retry cycle 감사 필드
+- 필요한 enum/check constraint와 finalizer·retention metadata 정렬
 
-PR 6의 예상 파일명은 설명용이며 번호를 확정하지 않는다.
+현재 V39에는 claim token, `claimedBy`, `claimedAt`, `leaseExpiresAt`, `attemptCount`, `lastAttemptAt`, `nextAttemptAt`, `lastHttpStatus`, `lastKakaoCode`, `lastErrorType`, `completedAt`, `version`, due/lease index가 이미 포함되어 있으므로 해당 foundation은 재생성하지 않는다.
 
-```text
-V{N}__allow_social_account_identifier_cleanup.sql
-```
+PR 6 migration 번호는 구현 또는 restack 직전 최신 `develop` 기준으로 정하며 이 문서에서 파일 번호를 확정하지 않는다.
 
 ### 14.2 데이터 전환
 
@@ -1027,14 +1149,14 @@ V{N}__allow_social_account_identifier_cleanup.sql
 | 항목 | 내용 |
 |---|---|
 | 목적 | task를 lease 기반으로 실행하고 unlink 완료 후 탈퇴와 개인정보 파기를 확정한다. |
-| 포함 | scheduler 30초, batch 10, concurrency 1, lease 120초, claim token·`SKIP LOCKED`, generation `STALE`, full-jitter retry·최대 12회, `DEAD`, unlink 성공 시 task `SUCCEEDED`, SocialAccount `UNLINKED`·provider identifier 제거, User `WITHDRAWN`·익명화, 필요한 프로필 이미지 durable 삭제, retention metadata |
-| 제외 | public 탈퇴 API, 공개 수동 retry API, retention cleanup scheduler, webhook, future relink |
+| 포함 | UTC Clock 정리, DB UTC claim/lease, scheduler 30초, batch 10, concurrency 1, lease 120초, claim token·`SKIP LOCKED`, preflight와 attempt reservation, generation `STALE`, 동일 generation `UNLINKED` local finalization, 조건부 `Retry-After`, full-jitter retry·cycle당 reservation 최대 12회, terminal disposition, DB 기반 configuration circuit breaker와 batch 중단, 운영 resume/retry cycle 기반, unlink 성공 시 task `SUCCEEDED`, SocialAccount `UNLINKED`·직접 provider identifier 제거, User `WITHDRAWN`·익명화, 필요한 프로필 이미지 durable 삭제, 구조화 로그와 필수 테스트 |
+| 제외 | public 탈퇴 API와 Controller `200/202`·cookie 계약, 공개 수동 retry API, 범용 관리자 UI, webhook, future relink, HMAC keyring·rotation, cooldown 만료 HMAC cleanup, task 장기 retention, `AccountIdentityGuard` cleanup, JWT DB 조회 최적화, Redis/cache |
 | 선행 조건 | PR 4, PR 5 |
-| 완료 조건 | 중복 실행과 worker crash에도 같은 generation만 안전하게 완료되고 외부 HTTP 동안 DB lock을 유지하지 않음 |
-| 테스트 | timeout·retry 부재, due `SKIP LOCKED`, lease 회수, unknown 오류, ID 불일치, jitter·6시간·12회, identifier 제거, tombstone, 카카오 익명화, HTTP 중 transaction 부재, MySQL `EXPLAIN ANALYZE` |
-| migration | 실제 번호는 restack 직전 결정: identifier nullable·finalizer/retention schema 소유 |
+| 완료 조건 | 중복 실행과 worker crash에도 같은 generation만 안전하게 완료되고 외부 HTTP 동안 DB lock을 유지하지 않으며 설정 오류가 전 인스턴스 claim을 지속적으로 차단함 |
+| 테스트 | UTC 책임 분리, timeout·내부 retry 부재, Retry-After 형식·조건·cap, due·expired lease `SKIP LOCKED`, lease 회수, reservation invariant·crash·12회, configuration atomic block·batch 중단·resume, unknown 오류, ID 불일치, 동일 generation `UNLINKED` local finalization, 직접 identifier 제거·HMAC 유지, 카카오 익명화, HTTP 중 transaction 부재, MySQL `EXPLAIN ANALYZE` |
+| migration | 실제 번호는 구현 직전 결정: 직접 identifier nullable, worker control, retry cycle 감사 필드와 필요한 constraint 소유 |
 
-영구 실패 시 User와 SocialAccount를 언제까지 pending으로 유지하고 어떤 수동 복구·종결 경로를 제공할지는 PR 6 설계에서 확정한다. PR 5에는 unlink worker나 finalizer가 포함되지 않는다.
+영구 실패에서는 User와 SocialAccount를 pending으로 유지한다. configuration 오류는 현재 task `DEAD`와 전역 worker `CONFIGURATION_BLOCKED`를 원자적으로 적용하고, 설정 수정·검증 뒤 권한 있는 운영 절차만 control resume와 새 retry cycle을 시작할 수 있다. PR 5에는 unlink worker나 finalizer가 포함되지 않는다.
 
 ### PR 7 — 탈퇴 API
 
@@ -1077,15 +1199,45 @@ V{N}__allow_social_account_identifier_cleanup.sql
 
 #### PR 6
 
-- connect/read timeout 적용과 client 내부 retry 없음
-- due·expired lease `SKIP LOCKED`, 두 worker 중복 claim 방지
-- generation mismatch `STALE`·HTTP 미호출, `STALE` 자동 retry 금지
+시간:
+
+- application 공통 `Clock.systemUTC()`와 단계별 `claimNow`·`attemptNow`·`resultNow` 분리
+- DB UTC due/expired lease 판정과 JVM/DB clock 차이 경계
+- 기존 `DATETIME(6)` UTC round-trip과 과거 KST wall-clock 표본 검증
+
+Retry-After와 retry:
+
+- delta-seconds, RFC 1123 HTTP-date, zero, 과거 시각, malformed, overflow와 다중 값
+- `429/5xx` 조건, permanent Kakao code 우선, network exception 미적용과 6시간 cap
 - unknown 4xx `DEAD_UNKNOWN`, unknown 5xx retry, malformed 2xx `DEAD_RESPONSE`, ID 불일치 `DEAD_SECURITY`
-- full jitter 범위, 6시간 상한과 실제 API 호출 12회
-- `DEAD` 자동 claim 금지와 pending 상태 유지
-- `SUCCEEDED` identifier 제거, 카카오 User 익명화, 최소 tombstone
-- HTTP 호출 중 transaction 비활성
-- MySQL `EXPLAIN ANALYZE`, lock wait·deadlock 검증
+- full jitter 범위와 6시간 상한
+
+Reservation과 fencing:
+
+- attempt reservation commit 뒤 HTTP 호출, stale claim token과 reservation 중 invariant 변경 거부
+- reservation commit 뒤 crash, 12번째 reservation 뒤 lease 만료와 추가 HTTP 금지
+- 실제 HTTP 호출 횟수 `<= attemptCount`, retry cycle당 reservation 12회
+- due·expired lease DB UTC `SKIP LOCKED`, 두 worker 중복 claim 방지와 HTTP 중 transaction 비활성
+
+Configuration failure:
+
+- 현재 task `DEAD`와 worker control `CONFIGURATION_BLOCKED`의 원자 전이
+- 같은 batch 즉시 중단과 다음 scheduler claim 0건
+- 애플리케이션 재시작 뒤 차단 유지와 다중 인스턴스 공유
+- 설정 복구 뒤 `ACTIVE`, configuration 원인 `DEAD` task만 명시적 requeue, 새 retry cycle 감사
+
+동일 generation `UNLINKED` local finalization:
+
+- HTTP 0회, `markUnlinked()` 재호출 없음과 기존 `unlinkedAt` 유지
+- 직접 identifier 제거, provider HMAC 유지, User `WITHDRAWN`, task `SUCCEEDED`
+- finalizer 중간 실패 시 전체 rollback
+
+Cleanup 제외:
+
+- PR 6에서 provider HMAC·provider key version, `AccountIdentityGuard`와 활성 `AccountRejoinBlock` 유지
+- HMAC 제거는 후속 retention cleanup 계약으로만 검증
+
+MySQL 8에서 `EXPLAIN ANALYZE`, lock wait와 deadlock도 검증한다.
 
 #### PR 7
 
@@ -1104,6 +1256,7 @@ PR 4를 client 단독으로 먼저 분리하면 HTTP 계약과 오류 분류를 
 - 만료된 `SocialSignupSession` retention cleanup
 - 완료된 unlink task retention cleanup
 - 운영자용 task 조회·재시도·보류 절차와 감사 로그
+- cooldown 만료 후 providerUserKey HMAC·provider key version retention cleanup
 - 로컬 상태와 카카오 연결 상태의 reconciliation 절차
 - Admin key 회전, 최소 권한, 비밀 저장소, 비상 폐기 절차
 - HMAC/AES key rotation과 과거 keyring 지원
@@ -1152,5 +1305,11 @@ timeout, lease, scheduler cadence, batch size, worker concurrency와 retention p
 17. 활성 PHONE block의 non-locking 선조회만으로 신규 User 생성을 최종 허용하는 방식
 18. `AccountRejoinBlock` 만료 또는 cleanup과 함께 `account_identity_guard`를 삭제하는 방식
 19. HMAC keyring과 previous-key lookup 없이 7일 경과만을 근거로 HMAC secret 또는 key version을 회전하는 방식
+20. claim과 lease eligibility를 JVM clock만으로 판단하는 방식
+21. `attemptCount`를 결과 transaction에서 증가시키거나 실제 HTTP 응답 횟수로 정의하는 방식
+22. `PERMANENT_CONFIGURATION` 뒤 다음 task를 계속 처리하거나 인메모리 pause만으로 전역 차단을 표현하는 방식
+23. 설정 오류로 막힌 worker를 자동으로 resume하거나 감사 가능한 새 retry cycle 없이 `attemptCount`를 초기화하는 방식
+24. 동일 generation의 이미 `UNLINKED`인 계정을 무조건 `STALE`로 종료하거나 Admin API를 다시 호출하는 방식
+25. PR 6 finalizer가 cooldown 종료를 판단해 providerUserKey HMAC과 key version까지 제거하는 방식
 
 이 목록과 충돌하는 과거 문서, 이슈 설명 또는 코드 주석은 본 문서와 카카오 공식 계약을 기준으로 재검토한다.
