@@ -21,6 +21,13 @@ spring:
 volunteer-api:
   base-url: https://apis.data.go.kr/1741000/volunteerPartcptnService
 
+
+notification:
+  volunteer-schedule:
+    scheduler-enabled: false
+    cron: "0 0 9 * * *"
+
+
 gather:
   aws:
     s3:

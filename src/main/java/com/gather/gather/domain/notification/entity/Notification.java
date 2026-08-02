@@ -67,6 +67,9 @@ public class Notification {
     @Column(name = "deleted_at")
     private LocalDateTime deletedAt;
 
+    @Column(name = "deduplication_key", length = 120, unique = true)
+    private String deduplicationKey;
+
     private Notification(
             User user,
             NotificationType type,
@@ -112,6 +115,23 @@ public class Notification {
                 NotificationTargetType.POST,
                 target.postId(),
                 target.meetingId());
+    }
+
+    public static Notification createScheduled(
+            User user,
+            NotificationType type,
+            String message,
+            NotificationTargetType targetType,
+            Long targetId,
+            String deduplicationKey) {
+
+        validateTarget(targetType, targetId, null);
+
+        Notification notification =
+                new Notification(user, type, message, targetType, targetId, null);
+        notification.deduplicationKey = deduplicationKey;
+
+        return notification;
     }
 
     private static void validateTarget(
