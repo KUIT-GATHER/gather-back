@@ -190,6 +190,13 @@ public class Meeting {
         }
     }
 
+    public void decreaseMemberCount() {
+        if (this.currentMemberCount > 0) {
+            this.currentMemberCount--;
+        }
+        // 정원이 차 CLOSED가 된 모임에서 인원이 빠질 때 다시 RECRUITING으로 되돌릴지 정해야함
+    }
+
     public void close() {
         this.status = MeetingStatus.CLOSED;
     }
