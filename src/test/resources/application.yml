@@ -26,6 +26,9 @@ notification:
   volunteer-schedule:
     scheduler-enabled: false
     cron: "0 0 9 * * *"
+  bookmarked-posting-deadline:
+    scheduler-enabled: false
+    cron: "0 10 9 * * *"
 
 
 gather:
