@@ -27,6 +27,10 @@ notification:
     scheduler-enabled: false
     cron: "0 0 9 * * *"
 
+  bookmarked-meeting-deadline:
+    scheduler-enabled: false
+    cron: "0 20 9 * * *"
+
 
 gather:
   aws:
