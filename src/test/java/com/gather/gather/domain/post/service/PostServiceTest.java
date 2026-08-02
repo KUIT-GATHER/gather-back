@@ -1,8 +1,10 @@
 package com.gather.gather.domain.post.service;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.AdditionalAnswers.returnsFirstArg;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.never;
@@ -19,6 +21,8 @@ import com.gather.gather.domain.meeting.enums.MeetingMemberRole;
 import com.gather.gather.domain.meeting.enums.MeetingMemberStatus;
 import com.gather.gather.domain.meeting.repository.MeetingMemberRepository;
 import com.gather.gather.domain.meeting.repository.MeetingRepository;
+import com.gather.gather.domain.notification.enums.NotificationType;
+import com.gather.gather.domain.notification.event.MeetingPostNotificationRequestedEvent;
 import com.gather.gather.domain.post.dto.PostCreateRequest;
 import com.gather.gather.domain.post.entity.Post;
 import com.gather.gather.domain.post.enums.PostType;
@@ -31,10 +35,13 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.MockedStatic;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.test.util.ReflectionTestUtils;
 
 /** H-3: PostService에 테스트 클래스가 전무했다 — createPost의 FIRST_REVIEW 뱃지 트리거 경로를 최소한으로 커버한다. */
 @ExtendWith(MockitoExtension.class)
@@ -69,6 +76,8 @@ class PostServiceTest {
     void createPost_awardsFirstReview_whenTypeIsReview() {
         try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
             securityUtil.when(SecurityUtil::getCurrentUserId).thenReturn(USER_ID);
+            when(meeting.getId()).thenReturn(MEETING_ID);
+            when(meeting.getName()).thenReturn("한강공원 플로깅팀");
             when(meetingRepository.findByIdAndDeletedAtIsNull(MEETING_ID))
                     .thenReturn(Optional.of(meeting));
             MeetingMember membership = approvedMember(MeetingMemberRole.MEMBER);
@@ -76,14 +85,34 @@ class PostServiceTest {
                             MEETING_ID, USER_ID, MeetingMemberStatus.APPROVED))
                     .thenReturn(Optional.of(membership));
             User author = mock(User.class);
+            when(author.getId()).thenReturn(USER_ID);
+            when(author.getNickname()).thenReturn("연석");
             when(userRepository.findById(USER_ID)).thenReturn(Optional.of(author));
-            when(postRepository.save(any(Post.class))).thenAnswer(returnsFirstArg());
+            when(postRepository.save(any(Post.class)))
+                    .thenAnswer(
+                            invocation -> {
+                                Post post = invocation.getArgument(0);
+                                ReflectionTestUtils.setField(post, "id", 30L);
+                                return post;
+                            });
 
             postService.createPost(
                     MEETING_ID, new PostCreateRequest("후기 제목", "내용", PostType.REVIEW, null));
 
-            verify(eventPublisher)
+            InOrder eventOrder = inOrder(eventPublisher);
+            eventOrder
+                    .verify(eventPublisher)
                     .publishEvent(new BadgeAwardRequestedEvent(USER_ID, BadgeType.FIRST_REVIEW));
+            eventOrder
+                    .verify(eventPublisher)
+                    .publishEvent(
+                            new MeetingPostNotificationRequestedEvent(
+                                    MEETING_ID,
+                                    30L,
+                                    USER_ID,
+                                    NotificationType.MEETING_POST_CREATED,
+                                    "[한강공원 플로깅팀]에 연석님이 새 게시글을 등록했어요."));
+            eventOrder.verifyNoMoreInteractions();
             verify(postRepository).save(any(Post.class));
         }
     }
@@ -100,13 +129,95 @@ class PostServiceTest {
                             MEETING_ID, USER_ID, MeetingMemberStatus.APPROVED))
                     .thenReturn(Optional.of(membership));
             User author = mock(User.class);
+            when(author.getId()).thenReturn(USER_ID);
             when(userRepository.findById(USER_ID)).thenReturn(Optional.of(author));
             when(postRepository.save(any(Post.class))).thenAnswer(returnsFirstArg());
 
             postService.createPost(
                     MEETING_ID, new PostCreateRequest("자유 게시글", "내용", PostType.FREE, null));
 
-            verify(eventPublisher, never()).publishEvent(any());
+            verify(eventPublisher, never()).publishEvent(any(BadgeAwardRequestedEvent.class));
+        }
+    }
+
+    @Test
+    @DisplayName("createPost publishes a meeting post notification event")
+    void createPostPublishesMeetingPostNotificationEvent() {
+        try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
+            securityUtil.when(SecurityUtil::getCurrentUserId).thenReturn(USER_ID);
+            when(meeting.getId()).thenReturn(MEETING_ID);
+            when(meeting.getName()).thenReturn("한강공원 플로깅팀");
+            when(meetingRepository.findByIdAndDeletedAtIsNull(MEETING_ID))
+                    .thenReturn(Optional.of(meeting));
+            MeetingMember membership = approvedMember(MeetingMemberRole.MEMBER);
+            when(meetingMemberRepository.findByMeeting_IdAndUser_IdAndStatus(
+                            MEETING_ID, USER_ID, MeetingMemberStatus.APPROVED))
+                    .thenReturn(Optional.of(membership));
+
+            User author = mock(User.class);
+            when(author.getId()).thenReturn(USER_ID);
+            when(author.getNickname()).thenReturn("연석");
+            when(userRepository.findById(USER_ID)).thenReturn(Optional.of(author));
+
+            when(postRepository.save(any(Post.class)))
+                    .thenAnswer(
+                            invocation -> {
+                                Post post = invocation.getArgument(0);
+                                ReflectionTestUtils.setField(post, "id", 30L);
+                                return post;
+                            });
+
+            postService.createPost(
+                    MEETING_ID, new PostCreateRequest("자유 게시글", "내용", PostType.FREE, null));
+
+            ArgumentCaptor<Object> eventCaptor = ArgumentCaptor.forClass(Object.class);
+            verify(eventPublisher).publishEvent(eventCaptor.capture());
+            assertThat(eventCaptor.getValue())
+                    .isEqualTo(
+                            new MeetingPostNotificationRequestedEvent(
+                                    MEETING_ID,
+                                    30L,
+                                    USER_ID,
+                                    NotificationType.MEETING_POST_CREATED,
+                                    "[한강공원 플로깅팀]에 연석님이 새 게시글을 등록했어요."));
+        }
+    }
+
+    @Test
+    @DisplayName("createPost publishes the notice notification type and message")
+    void createPostPublishesMeetingNoticeNotificationEvent() {
+        try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
+            securityUtil.when(SecurityUtil::getCurrentUserId).thenReturn(USER_ID);
+            when(meeting.getId()).thenReturn(MEETING_ID);
+            when(meeting.getName()).thenReturn("한강공원 플로깅팀");
+            when(meetingRepository.findByIdAndDeletedAtIsNull(MEETING_ID))
+                    .thenReturn(Optional.of(meeting));
+            MeetingMember membership = approvedMember(MeetingMemberRole.HOST);
+            when(meetingMemberRepository.findByMeeting_IdAndUser_IdAndStatus(
+                            MEETING_ID, USER_ID, MeetingMemberStatus.APPROVED))
+                    .thenReturn(Optional.of(membership));
+            User author = mock(User.class);
+            when(author.getId()).thenReturn(USER_ID);
+            when(userRepository.findById(USER_ID)).thenReturn(Optional.of(author));
+            when(postRepository.save(any(Post.class)))
+                    .thenAnswer(
+                            invocation -> {
+                                Post post = invocation.getArgument(0);
+                                ReflectionTestUtils.setField(post, "id", 30L);
+                                return post;
+                            });
+
+            postService.createPost(
+                    MEETING_ID, new PostCreateRequest("공지", "내용", PostType.NOTICE, null));
+
+            verify(eventPublisher)
+                    .publishEvent(
+                            new MeetingPostNotificationRequestedEvent(
+                                    MEETING_ID,
+                                    30L,
+                                    USER_ID,
+                                    NotificationType.MEETING_NOTICE_CREATED,
+                                    "[한강공원 플로깅팀]에 새 공지가 등록되었어요."));
         }
     }
 

@@ -10,6 +10,8 @@ import com.gather.gather.domain.meeting.enums.MeetingMemberRole;
 import com.gather.gather.domain.meeting.enums.MeetingMemberStatus;
 import com.gather.gather.domain.meeting.repository.MeetingMemberRepository;
 import com.gather.gather.domain.meeting.repository.MeetingRepository;
+import com.gather.gather.domain.notification.enums.NotificationType;
+import com.gather.gather.domain.notification.event.MeetingPostNotificationRequestedEvent;
 import com.gather.gather.domain.post.dto.PostCreateRequest;
 import com.gather.gather.domain.post.dto.PostResponse;
 import com.gather.gather.domain.post.dto.PostSummaryResponse;
@@ -44,6 +46,9 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
 public class PostService {
+
+    private static final String NOTICE_CREATED_MESSAGE = "[%s]에 새 공지가 등록되었어요.";
+    private static final String POST_CREATED_MESSAGE = "[%s]에 %s님이 새 게시글을 등록했어요.";
 
     private final PostRepository postRepository;
     private final MeetingRepository meetingRepository;
@@ -105,7 +110,23 @@ public class PostService {
             eventPublisher.publishEvent(
                     new BadgeAwardRequestedEvent(userId, BadgeType.FIRST_REVIEW));
         }
+        publishPostNotificationEvent(meeting, author, savedPost);
         return PostResponse.from(savedPost);
+    }
+
+    private void publishPostNotificationEvent(Meeting meeting, User author, Post post) {
+        NotificationType type =
+                post.getType().isNotice()
+                        ? NotificationType.MEETING_NOTICE_CREATED
+                        : NotificationType.MEETING_POST_CREATED;
+        String message =
+                post.getType().isNotice()
+                        ? NOTICE_CREATED_MESSAGE.formatted(meeting.getName())
+                        : POST_CREATED_MESSAGE.formatted(meeting.getName(), author.getNickname());
+
+        eventPublisher.publishEvent(
+                new MeetingPostNotificationRequestedEvent(
+                        meeting.getId(), post.getId(), author.getId(), type, message));
     }
 
     @Transactional

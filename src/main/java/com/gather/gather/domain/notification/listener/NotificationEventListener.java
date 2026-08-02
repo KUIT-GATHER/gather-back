@@ -1,6 +1,8 @@
 package com.gather.gather.domain.notification.listener;
 
 import com.gather.gather.domain.notification.event.MeetingJoinResultNotificationRequestedEvent;
+import com.gather.gather.domain.notification.event.MeetingPostNotificationRequestedEvent;
+import com.gather.gather.domain.notification.service.MeetingPostNotificationService;
 import com.gather.gather.domain.notification.service.NotificationCreateService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -14,6 +16,7 @@ import org.springframework.transaction.event.TransactionalEventListener;
 public class NotificationEventListener {
 
     private final NotificationCreateService notificationCreateService;
+    private final MeetingPostNotificationService meetingPostNotificationService;
 
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void onMeetingJoinResultNotificationRequested(
@@ -30,6 +33,25 @@ public class NotificationEventListener {
                     event.recipientUserId(),
                     event.meetingId(),
                     event.approved(),
+                    exception);
+        }
+    }
+
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    public void onMeetingPostNotificationRequested(MeetingPostNotificationRequestedEvent event) {
+        try {
+            meetingPostNotificationService.createNotifications(
+                    event.meetingId(),
+                    event.postId(),
+                    event.authorId(),
+                    event.type(),
+                    event.message());
+        } catch (RuntimeException exception) {
+            log.warn(
+                    "모임 게시글 알림 처리 실패(게시글은 이미 커밋되어 유지됨). postId={}, meetingId={}, authorId={}",
+                    event.postId(),
+                    event.meetingId(),
+                    event.authorId(),
                     exception);
         }
     }
