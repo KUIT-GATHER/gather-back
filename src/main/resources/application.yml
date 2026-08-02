@@ -1,6 +1,11 @@
 server:
   forward-headers-strategy: framework
 
+notification:
+  volunteer-schedule:
+    scheduler-enabled: ${NOTIFICATION_VOLUNTEER_SCHEDULE_SCHEDULER_ENABLED:true}
+    cron: ${NOTIFICATION_VOLUNTEER_SCHEDULE_CRON:0 0 9 * * *}
+
 spring:
   application:
     name: gather
