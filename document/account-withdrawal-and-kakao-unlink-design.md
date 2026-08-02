@@ -1,11 +1,11 @@
 # 계정 탈퇴 및 카카오 연결 해제 설계
 
 - 조사 시작 기준 브랜치: `feature/auth-kakao-signup-session`
-- 현재 작업 브랜치: `feature/auth-withdrawal-task-foundation`
-- 기준 HEAD: `3154965`
-- 코드 기준: PR 5 및 현재 로컬 working tree
+- 현재 작업 브랜치: `feature/auth-kakao-unlink-worker-finalizer`
+- 기준 HEAD: `1f8396a`
+- 코드 기준: PR 4~6 및 현재 PR 6 구현 브랜치
 - 공식 문서 확인일: 2026-07-30
-- 문서 상태: PR 5 구현 반영, PR 6 worker·finalizer 구현 전 설계안
+- 문서 상태: PR 6 worker·finalizer 구현 반영, PR 7 공개 API 구현 전 확정 계약
 
 이 문서의 문장은 다음 네 가지 근거 수준으로 구분한다.
 
@@ -51,6 +51,8 @@
 | 가입 세션 | `SocialSignupSession`은 DB에 영속화되며 `PENDING`, `CONSUMED`, `CANCELLED` 상태를 가진다. 토큰은 opaque token의 SHA-256 해시로 조회한다. |
 | 가입 세션 동시성 | 동일 identity의 pending 세션을 ID 순서로 비관적 잠금하고, 선택한 세션 소비와 나머지 세션 취소를 한 트랜잭션에서 처리한다. |
 | 탈퇴 접수 기반 | `WITHDRAWAL_PENDING`, `AccountTerminationService`, 일반 회원 동기 완료, 카카오 회원 pending 접수와 `KakaoUnlinkTask` 저장이 구현됐다. |
+| 카카오 unlink worker | DB UTC claim·lease, preflight, attempt reservation, transaction 밖 Admin HTTP 호출, retry·terminal 분류와 DB 기반 configuration circuit breaker가 구현됐다. |
+| worker finalizer | unlink 성공 또는 동일 generation `UNLINKED` local finalization에서 SocialAccount 직접 식별자 제거, User `WITHDRAWN`·익명화, 프로필 이미지 durable deletion 등록과 task `SUCCEEDED` 전이가 구현됐다. |
 | 재가입 제한 | `AccountRejoinBlock`의 `PHONE`/`KAKAO` 7일 생성·연장과 가입 시 조회가 실제 인증 흐름에 연결됐다. |
 | PHONE 동시성 | `account_identity_guard`와 `AccountIdentityGuardService`가 가입·탈퇴에 동일 PHONE HMAC row의 안정적인 비관적 잠금을 제공한다. |
 | 인증 차단 | `JwtAuthenticationFilter`가 유효한 Access Token 요청마다 User를 PK로 조회해 최신 탈퇴 상태를 검사한다. |
@@ -62,18 +64,16 @@
 | 영역 | 현재 한계 |
 |---|---|
 | `User.anonymize()` | 개별 사용자 필드는 정리하지만 관련 도메인 데이터 전체의 개인정보 파기 범위는 정의하지 않는다. |
-| `SocialAccount.markUnlinked()` | PR 5는 `UNLINK_PENDING` 접수까지만 연결한다. `UNLINKED` 전이와 식별자 파기는 PR 6 worker·finalizer 책임이다. |
 | `SocialAccount.relink()` | 세대 증가 기능은 있으나 실제 재연결 흐름이 아직 없다. |
 | 재가입 제한 정리 | 만료 판정은 연결됐지만 만료 block cleanup과 identity guard의 장기 retention·안전한 cleanup은 아직 구현하지 않았다. |
 | `KakaoApiClient` | OAuth token과 사용자 정보 조회용이며 connect timeout 3초, read timeout 5초다. 429·4xx·5xx를 사용자-facing `BusinessException`으로 바꾸므로 Admin unlink worker의 typed error와 민감정보 로그 정책에 적합하지 않다. |
-| 스케줄링 기반 | scheduler는 활성화되어 있지만 카카오 task claim, lease, recovery 구현은 없다. |
+| 공개 탈퇴 adapter | `AccountTerminationService`와 worker 기반은 준비됐지만 `DELETE /api/v1/users/me`, 결과별 `200/202`, refresh cookie 만료와 DELETE 전용 Security 예외는 아직 연결되지 않았다. |
 
 ### 2.3 미구현
 
 - 탈퇴 API
-- task claim, lease, retry, stale 판정, finalizer
 - 외부 카카오 연결 해제 webhook
-- 운영자 재처리 및 `DEAD` task 관측 기능
+- 공개 운영자 재처리 API와 `DEAD` task metric·dashboard
 
 ### 2.4 오래된 문서와의 불일치
 
@@ -88,7 +88,7 @@
 - 가입 세션을 조건 없는 bulk update로 취소하는 설계
 - 가입 토큰을 JWT로 가정한 설명
 - 다음 migration을 `V29`로 가정한 설명
-- `AccountTerminationService`, `UserWithdrawnEvent`, unlink worker, 탈퇴 API가 이미 구현되었다는 설명
+- 존재하지 않는 `UserWithdrawnEvent`와 공개 탈퇴 API가 이미 구현되었다는 설명
 - 카카오 연결 해제 전에 Gather 탈퇴와 개인정보 파기를 먼저 완료하는 설명
 
 ## 3. 카카오 공식 계약
@@ -117,7 +117,7 @@
 4. `[Gather 확정 정책]` worker는 at-least-once 실행을 전제로 멱등하게 동작한다.
 5. `[Gather 확정 정책]` 모든 task는 생성 당시 `SocialAccount.generation`을 캡처한다. generation mismatch는 호출하지 않고 `STALE`로 종료한다. 같은 generation의 `UNLINK_PENDING`만 외부 호출하고, 같은 generation의 `UNLINKED`와 pending User는 HTTP 없는 local finalization으로 수렴시킨다. 결과 반영 직전 잠금 아래 다시 검증하며 claim 소유권이 없으면 task를 변경하지 않고 실행을 중단한다.
 6. `[Gather 확정 정책]` 미분류 4xx나 파싱 실패를 성공으로 간주하지 않는다.
-7. `[Gather 확정 정책]` pending 사용자는 새 로그인뿐 아니라 이미 발급된 access token으로도 모든 보호 API를 사용할 수 없다.
+7. `[Gather 확정 정책]` pending/withdrawn 사용자는 새 로그인과 이미 발급된 access token의 보호 API 접근을 차단한다. 단, 유효한 기존 access token으로 정확히 `DELETE /api/v1/users/me`를 재호출하는 경우에만 서비스 멱등 결과에 도달하도록 상태 접근 정책에서 예외 처리한다.
 8. `[권장 구현]` 로그에는 Admin key, 복호화한 카카오 회원번호, 암호문, 사용자 토큰, 응답 원문을 남기지 않는다.
 9. `[권장 구현]` 법적 파기 의무와 재가입 제한은 별개의 목적으로 설계한다.
 10. `[권장 구현]` 기존 legacy 호환 범위를 제외하고 raw provider user ID를 새 컬럼, task, 로그에 평문으로 추가 저장하지 않는다.
@@ -127,10 +127,10 @@
 | 정책 | 확정 내용 | 해결하는 문제 | 권장 구현 위치 | 주요 transaction·동시성 요구사항 | 필수 테스트 | 담당 PR |
 |---|---|---|---|---|---|---|
 | 회원 유형별 탈퇴 상태 | `[Gather 확정 정책]` 일반 회원은 `ACTIVE/SUSPENDED → WITHDRAWN`, 카카오 `LINKED` 회원만 `WITHDRAWAL_PENDING → WITHDRAWN`을 사용한다. | 외부 unlink가 없는 일반 회원을 불필요하게 pending에 두지 않는다. | `User`, `AccountTerminationService`, worker finalizer | 일반 회원은 접수 트랜잭션에서 완료, 카카오 회원은 task와 원자적으로 접수 | 일반·카카오 두 시작 상태, 중복 요청, `DEAD` 시 카카오 pending 유지 | 주 PR 5, 검증 PR 6·7 |
-| 회원 유형별 API 응답 | `[Gather 확정 정책]` 일반 회원은 최종 완료 `200`, 카카오 회원은 durable 접수 `202`다. | 완료와 비동기 진행을 응답에서 구분한다. | `UserController`, service result, 응답 DTO, OpenAPI | 응답 전 각 유형의 접수/완료 트랜잭션 커밋 | 일반 `200`, 카카오 `202`, 중복 상태별 동일 응답 | PR 7 |
+| 회원 유형별 API 응답 | `[Gather 확정 정책]` `COMPLETED`는 `200`, `ACCEPTED`는 `202`와 `ApiResponse<AccountTerminationResponse>`로 반환한다. | 완료와 비동기 진행을 응답에서 구분한다. | `UserController`, service result, 응답 DTO, OpenAPI | 응답 전 각 유형의 접수/완료 트랜잭션 커밋 | 일반 `200`, 카카오 `202`, 중복 상태별 동일 응답 | PR 7 |
 | pending 사용자 접근 차단 | `[Gather 확정 정책]` 로그인·가입 세션·relink·새 인증 세션을 모두 차단한다. | 탈퇴 접수 직후 서비스 재진입을 막는다. | 중앙 인증 경로, 카카오 로그인·가입 세션 경계 | 개별 Controller 검사 금지, 가입 제출 트랜잭션에서도 재검증 | 일반·카카오 로그인, 세션 발급·제출 차단 | 주 PR 5, API 검증 PR 7 |
 | Refresh Token 전체 폐기 | `[Gather 확정 정책]` 접수 트랜잭션에서 사용자 전체 refresh token을 삭제한다. | 다른 기기의 로그인 세션이 남는 것을 막는다. | `RefreshTokenRepository`, `AccountTerminationService` | 사용자 상태·task enqueue와 같은 트랜잭션, 실패 시 전체 rollback | 전량 삭제, 삭제 실패 rollback, 재발급 실패 | PR 5 |
-| 기존 Access Token 중앙 차단 | `[Gather 확정 정책]` JWT 자체가 유효해도 pending/withdrawn이면 인증을 거부한다. | access token 잔여 유효기간의 보호 API 접근을 막는다. | JWT 인증 필터 또는 동등한 중앙 Security 경로 | 매 요청 최신 사용자 상태 확인, 허용 상태만 `SecurityContext` 등록 | ACTIVE 성공, pending/withdrawn 실패, 접수 직전 token 차단 | 주 PR 5, 검증 PR 7 |
+| 기존 Access Token 중앙 차단 | `[Gather 확정 정책]` JWT 자체가 유효해도 pending/withdrawn이면 인증을 거부하되, 인증된 `DELETE /api/v1/users/me`만 멱등 재호출을 허용한다. | access token 잔여 유효기간의 일반 보호 API 접근을 막으면서 HTTP 멱등성을 제공한다. | JWT 인증 필터 또는 동등한 중앙 Security 경로 | 서명·만료·폐기와 User 조회를 마친 뒤 method·path가 정확히 일치할 때만 상태 정책 예외 | ACTIVE DELETE 성공, pending/withdrawn DELETE 성공, 그 밖의 보호 API 실패 | 주 PR 5, 검증 PR 7 |
 | relink 금지 | `[Gather 확정 정책]` PR 4~8에서는 relink API·service 흐름을 구현하지 않는다. | 과거 generation task가 새 연결까지 해제하는 race를 막는다. | 인증·소셜 계정 application service 경계 | `UNLINK_PENDING/UNLINKED` 연결 대상 제외, block 유효 중 금지 | non-LINKED 로그인·가입·relink 거부 | PR 5~8 공통 |
 | generation mismatch → `STALE` | `[Gather 확정 정책]` generation mismatch는 API 미호출 후 `STALE`로 종료하되 같은 generation의 `UNLINKED`와 pending User는 local finalization한다. | 오래된 task의 외부 부작용을 방지하면서 이미 완료된 unlink의 로컬 후처리를 복구한다. | worker preflight와 result finalizer | 호출 전·결과 저장 시 이중 검증, 자동 retry 금지, claim 미소유자는 쓰기 금지 | mismatch API 미호출, `UNLINKED` HTTP 0회, claim 오류 실행 중단 | PR 6 |
 | 지수 backoff + full jitter | `[Gather 확정 정책]` 기본 1분, 지수 증가, 6시간 상한이며 자동 retry cycle당 attempt reservation은 최대 12회다. | 일시 장애의 동시 재시도 폭주와 crash window의 호출 상한 초과를 막는다. | reservation service, retry policy와 `nextAttemptAt` 계산기 | HTTP 직전 reservation에서 `attempt_count` 증가, 조건부 `Retry-After` 반영 | jitter 범위, 상한, reservation crash, 12회 소진 | PR 6 |
@@ -158,7 +158,7 @@
 | DEAD SLA | 즉시 경보, 24h 확인, 72h 복구, 7d 책임자 검토 | 구조화 metric·log, DB worker control과 감사 가능한 retry cycle | DB 직접 UPDATE와 자동 configuration resume 금지 | 허용 필드만 기록 | SLA event·권한·감사 이력·resume 원자성 | PR 6·후속 운영 |
 | Admin/worker 기본값 | 빠른 실패와 단일 EC2 처리량 기준 | properties 외부화 | batch 10, concurrency 1, lease 120초 | secret masking | timeout·내부 retry 부재·lease | PR 4·6 |
 | unknown 오류 | 검증 불가 성공과 무한 retry 방지 | 4xx DEAD_UNKNOWN, 5xx retry, malformed/ID mismatch DEAD | durable 12회 정책만 retry | body 원문 저장 금지 | 네 분류와 상태 전이 | PR 4·6 |
-| API DTO·중복 | 완료/진행 의미 분리, polling 불필요 | 일반 completedAt, 카카오 requestedAt | 중복은 부수효과 없이 기존 결과 | 내부 task 정보 비노출 | 200/202·중복·polling 부재 | PR 7 |
+| API DTO·중복 | 완료/진행 의미 분리, polling 불필요 | `status=COMPLETED/ACCEPTED`, UTC `occurredAt` | 중복은 부수효과 없이 최초 결과와 시각 유지 | 내부 task·worker 정보 비노출 | 200/202·중복·UTC·polling 부재 | PR 7 |
 | lock·claim SQL | deadlock과 중복 claim 억제 | 고정 lock order, 두 `SKIP LOCKED` query | 짧은 claim tx, MySQL 8 검증 | 로그에 identity 비노출 | 동시 claim·EXPLAIN·lease 경쟁 | PR 5·6 |
 | migration ownership | PR별 schema 책임 분리 | PR 5 `V39`, PR 6 cleanup schema | PR 5 foundation, PR 6 cleanup schema | merge된 migration 변경 금지 | validate·실행계획·rollback | PR 5·6 |
 
@@ -181,8 +181,8 @@
 |---|---|---|---|---|---|---|---|
 | `ACTIVE` | 허용 | 허용 | 허용 | 카카오 신규 identity 정책에 따라 허용 | 유효 세션이면 허용 | 회원 유형별 최초 접수 | 일반 회원은 접수에서, 카카오는 worker에서 수행 |
 | `SUSPENDED` | 현재 `LoginPolicy` 기준 | 현재 정책 기준 | 현재 정책 기준 | 현재 정책 재확인 | 현재 정책 재확인 | 회원 유형별 최초 접수 | 일반 회원은 접수에서, 카카오는 worker에서 수행 |
-| `WITHDRAWAL_PENDING` | 거부 | 모두 거부 | 거부 | 거부 | 거부 | 멱등하게 `202` | 수행하지 않음 |
-| `WITHDRAWN` | 거부 | 모두 거부 | 거부 | 거부 | 거부 | 멱등하게 `200` | 이미 완료됨 |
+| `WITHDRAWAL_PENDING` | 거부 | `DELETE /api/v1/users/me`만 허용, 그 외 거부 | 거부 | 거부 | 거부 | 멱등하게 `202` | 수행하지 않음 |
+| `WITHDRAWN` | 거부 | `DELETE /api/v1/users/me`만 허용, 그 외 거부 | 거부 | 거부 | 거부 | 멱등하게 `200` | 이미 완료됨 |
 
 `[Gather 확정 정책]` `WITHDRAWAL_PENDING`과 `WITHDRAWN`은 일반 로그인, 카카오 로그인, refresh 재발급, 기존 access token 보호 API, 가입 세션 발급·제출, relink와 새 인증 세션 생성을 모두 차단한다. 단, network timeout과 client 재전송을 위해 인증된 `DELETE /api/v1/users/me`만 멱등 재호출할 수 있다.
 
@@ -195,12 +195,13 @@
 ```text
 JWT 서명·만료 검증
 → 현재 User 조회
-→ User 상태 확인
-→ WITHDRAWAL_PENDING 또는 WITHDRAWN이면 인증 거부
-→ 허용 상태만 SecurityContext 등록
+→ 토큰 폐기와 JWT subject·User 일치 검증
+→ User 상태와 HTTP method·path 확인
+→ WITHDRAWAL_PENDING 또는 WITHDRAWN이면 정확한 DELETE /api/v1/users/me만 상태 정책 예외
+→ 허용된 요청만 SecurityContext 등록
 ```
 
-refresh token 삭제만으로는 이미 발급된 access token을 즉시 무효화할 수 없다. 따라서 `JwtAuthenticationFilter`는 JWT가 유효한 인증 요청마다 User를 PK로 단건 조회하고 `WITHDRAWAL_PENDING` 또는 `WITHDRAWN`이면 인증을 등록하지 않는다. 현재는 매 요청 DB 조회 비용보다 즉시 접근 차단의 정확성을 우선한다. 성능은 운영 지표를 확인한 뒤 별도로 최적화하며 Redis 또는 cache 도입은 이번 설계 범위가 아니다.
+refresh token 삭제만으로는 이미 발급된 access token을 즉시 무효화할 수 없다. 따라서 `JwtAuthenticationFilter`는 JWT가 유효한 인증 요청마다 User를 PK로 단건 조회하고 `WITHDRAWAL_PENDING` 또는 `WITHDRAWN`이면 정확한 탈퇴 DELETE 예외 외에는 인증을 등록하지 않는다. 현재는 매 요청 DB 조회 비용보다 즉시 접근 차단의 정확성을 우선한다. 성능은 운영 지표를 확인한 뒤 별도로 최적화하며 Redis 또는 cache 도입은 이번 설계 범위가 아니다.
 
 `[권장 구현]` 인증 거부는 기존 인증 `ErrorCode` 체계에 맞추고, DELETE 재호출 예외의 실제 Security 경로는 PR 5·7에서 현재 필터 구조에 맞춰 구현한다.
 
@@ -392,7 +393,8 @@ KakaoUnlinkTask: PROCESSING → STALE
 ### 6.1 사전 조건
 
 - 인증된 현재 사용자만 요청할 수 있다.
-- 요청 본문의 탈퇴 사유 형식과 길이는 API 계층에서 검증한다.
+- 공개 `DELETE /api/v1/users/me`는 request body를 받지 않으며 사용자 직접 탈퇴 원천을 `WithdrawalReason.SELF`로 고정한다.
+- `KAKAO_UNLINK`, `ADMIN`은 내부 처리 전용이고 공개 입력으로 노출하지 않는다. 사용자 설문형 상세 탈퇴 사유가 필요하면 별도의 `WithdrawalSurveyReason`과 후속 PR로 설계한다.
 - 사용자에게 카카오 `LINKED` 계정이 있는지 잠금 아래 다시 확인해 일반·카카오 경로를 선택한다.
 
 ### 6.2 일반 회원 완료 트랜잭션
@@ -432,7 +434,7 @@ KakaoUnlinkTask: PROCESSING → STALE
 - task insert가 실패하면 사용자와 소셜 계정의 pending 전이도 롤백한다.
 - refresh token 폐기나 재가입 block 생성이 실패해도 전체 접수를 롤백한다.
 - 중복 요청이 unique constraint와 경쟁하면 기존 task와 최신 사용자 상태를 다시 조회해 멱등 결과로 변환한다.
-- 카카오 계정이 이미 `UNLINKED`라면 외부 task를 만들지 않고, 상태·세대 검증 후 로컬 finalization 후보로 처리한다.
+- 탈퇴 API service가 `WITHDRAWAL_PENDING + UNLINKED` 등 허용되지 않은 조합을 발견하면 `ACCOUNT_TERMINATION_STATE_CONFLICT`로 거부한다. 동일 generation `UNLINKED`의 local finalization은 이미 claim된 task를 처리하는 PR 6 worker 책임이다.
 
 `[Gather 확정 정책]` 위 작업은 하나의 AccountTermination 트랜잭션이다. task enqueue는 별도 `REQUIRES_NEW`를 사용하지 않고 동일 트랜잭션에 참여한다. task 저장 실패 시 전체 접수를 rollback하고, 상태 전이 실패 시 task도 저장하지 않는다. task 없는 `UNLINK_PENDING`과 탈퇴와 관계없는 고아 task를 허용하지 않는다.
 
@@ -441,6 +443,21 @@ KakaoUnlinkTask: PROCESSING → STALE
 `[Gather 확정 정책]` refresh token 삭제는 단일 token이 아니라 해당 사용자의 모든 로그인 세션을 대상으로 하며 상태 전이와 같은 트랜잭션에서 수행한다. 삭제 실패 시 접수 전체를 rollback한다.
 
 `[권장 구현]` repository 메서드는 `deleteAllByUserId(userId)`처럼 사용자 전체 삭제 의미를 드러내야 한다. 실제 엔티티 연관관계에 따라 이름은 조정할 수 있다.
+
+### 6.5 PR 7 HTTP adapter와 transaction 경계
+
+PR 7은 탈퇴 로직을 다시 구현하지 않고 다음 흐름으로 기존 application service를 공개 API에 연결한다.
+
+```text
+UserController
+  -> SecurityUtil.getCurrentUserId()
+  -> AccountTerminationService.terminate(userId, WithdrawalReason.SELF)
+  -> service transaction commit
+  -> COMPLETED/ACCEPTED를 200/202로 매핑
+  -> RefreshTokenCookieProvider.clear()로 Set-Cookie 반환
+```
+
+Controller에는 `@Transactional`을 선언하지 않는다. DB transaction은 `AccountTerminationService`의 public transactional method가 소유하고, 서비스가 정상 반환하면 commit이 완료된 상태에서 Controller가 HTTP status, 응답 DTO와 cookie header를 조립한다. Controller는 Repository를 직접 호출하지 않고, 요청 처리 중 Kakao Admin API나 S3 API도 직접 호출하지 않는다.
 
 ## 7. Worker 흐름
 
@@ -575,6 +592,10 @@ local/test에도 명시적 UTC 기본값을 두고 운영에서는 Admin client 
 | false | true | 설정 오류로 startup 실패 |
 | true | true | Admin client와 worker 활성 |
 
+`[Gather 확정 정책]` 공개 탈퇴 API는 위 가용성을 사전 확인하거나 `KakaoUnlinkWorkerControl`을 직접 조회하지 않는다. Admin client 또는 worker가 비활성이거나 control이 `CONFIGURATION_BLOCKED`여도 카카오 탈퇴 의사를 `WITHDRAWAL_PENDING`, `UNLINK_PENDING`, `KakaoUnlinkTask.PENDING`으로 durable하게 저장하고 `202 Accepted`를 반환한다. 운영 장애를 이유로 공개 탈퇴 요청을 `503`으로 거부하지 않는다.
+
+처리되지 않은 `PENDING` task는 backlog에 유지되고 worker와 Admin client가 활성화되며 control이 `ACTIVE`로 복구된 뒤 기존 claim query의 대상이 된다. 공개 응답에는 worker disabled·blocked 여부를 노출하지 않는다.
+
 ## 8. Generation과 stale task
 
 ### 8.1 필요한 이유
@@ -698,6 +719,8 @@ User = WITHDRAWAL_PENDING
 
 현재 batch는 즉시 중단하고 이후 scheduler는 control row가 `ACTIVE`로 복구될 때까지 claim하지 않는다. 인메모리 pause는 재시작 시 해제되고 다중 인스턴스가 공유하지 못하므로 correctness 수단으로 사용하지 않는다. 자동 worker는 configuration block을 스스로 해제하지 않는다.
 
+`CONFIGURATION_BLOCKED` 중 공개 API가 새로 저장한 task는 처음부터 `PENDING`이므로 one-shot resume command의 `DEAD + CONFIGURATION` requeue 대상이 아니다. 운영자가 configuration 원인의 모든 `DEAD` task를 requeue하고 control을 `ACTIVE`로 복구하면, 차단 중 생성된 `PENDING` backlog도 별도 상태 변경 없이 scheduler가 자연스럽게 claim한다.
+
 ### 9.4 최종 오류 분류 원칙
 
 - `[공식 계약]` `-101`은 해당 앱과 연결되지 않은 사용자 오류다.
@@ -716,6 +739,8 @@ User = WITHDRAWAL_PENDING
 - 24시간 이내 원인 확인
 - 72시간 이내 설정 수정 또는 복구 시도
 - 7일 이상 미해결이면 서비스 책임자와 개인정보 담당 검토
+
+운영자는 오류 task뿐 아니라 `PENDING` backlog 수, 가장 오래된 `PENDING` task 체류 시간, `DEAD`·`STALE` 수, `KakaoUnlinkWorkerControl` 상태와 `WITHDRAWAL_PENDING` 사용자 체류 시간을 함께 모니터링한다. worker disabled 또는 configuration block 중에도 신규 접수를 허용하므로 backlog와 체류 시간은 공개 API 가용성과 분리된 필수 운영 지표다.
 
 로그·metric에는 task ID, socialAccount ID, generation, attempt count, normalized error code와 발생 시각만 사용한다. Admin key, provider user ID, providerUserKey 전체, ciphertext, form body, 카카오 원문, 전화번호와 이메일은 금지한다.
 
@@ -1054,70 +1079,151 @@ User row는 FK 정합성을 위한 tombstone으로 유지한다. `id`, `status`,
 
 ## 13. 탈퇴 API 계약
 
-후보 endpoint:
+PR 7은 공개 회원 탈퇴 HTTP API를 기존 `AccountTerminationService` 계약에 연결하는 adapter PR이다. endpoint는 다음으로 확정한다.
 
 ```http
 DELETE /api/v1/users/me
-Content-Type: application/json
 Authorization: Bearer <access-token>
-
-{
-  "reason": "..."
-}
 ```
 
-### 13.1 일반 회원
+### 13.1 요청과 호출 계약
 
-`[Gather 확정 정책]` 일반 회원은 탈퇴와 개인정보 익명화가 최종 완료된 뒤 `200 OK`를 반환한다.
+- request body를 받지 않으며 OpenAPI에도 request body를 선언하지 않는다.
+- `SecurityUtil.getCurrentUserId()`로 인증된 현재 사용자 ID를 얻는다.
+- 사용자 직접 탈퇴 원천은 `WithdrawalReason.SELF`로 고정해 `AccountTerminationService.terminate(userId, SELF)`를 호출한다.
+- 내부 원천인 `KAKAO_UNLINK`, `ADMIN`은 공개 입력으로 노출하지 않는다.
+- 사용자 설문형 상세 탈퇴 사유는 PR 7 범위가 아니며 필요하면 별도의 `WithdrawalSurveyReason` 모델과 후속 PR로 구현한다.
+
+### 13.2 성공 응답과 시간 계약
+
+`AccountTerminationResult.outcome`을 다음과 같이 HTTP status와 `AccountTerminationResponse`에 매핑한다.
+
+| service outcome | HTTP | `data.status` | `data.occurredAt` 의미 |
+|---|---:|---|---|
+| `COMPLETED` | `200 OK` | `COMPLETED` | 최초 탈퇴 완료 시각 |
+| `ACCEPTED` | `202 Accepted` | `ACCEPTED` | 최초 durable 탈퇴 접수 시각 |
+
+`204 No Content`는 사용하지 않는다. 일반 동기 완료와 카카오 비동기 접수를 프론트가 구분해야 하고, 프로젝트의 `ApiResponse<T>` 성공 wrapper를 유지하며, 멱등 재요청에서도 기존 결과를 일관되게 반환해야 하기 때문이다.
+
+일반 회원 또는 이미 완료된 요청의 응답은 다음과 같다.
+
 
 ```json
 {
   "success": true,
   "data": {
-    "status": "WITHDRAWN",
-    "completedAt": "2026-07-30T08:00:00Z"
-  }
+    "status": "COMPLETED",
+    "occurredAt": "2026-08-01T14:00:00Z"
+  },
+  "error": null
 }
 ```
 
-### 13.2 카카오 회원
-
-`[Gather 확정 정책]` 카카오 회원은 접근 차단과 durable task 저장까지 완료한 뒤 `202 Accepted`를 반환한다. 이 응답은 unlink, `SocialAccount.UNLINKED`, `User.WITHDRAWN`, 개인정보 최종 파기 또는 task `SUCCEEDED`를 의미하지 않는다.
+카카오 회원의 신규 또는 기존 접수 응답은 다음과 같다.
 
 ```json
 {
   "success": true,
   "data": {
-    "status": "WITHDRAWAL_PENDING",
-    "requestedAt": "2026-07-30T08:00:00Z"
-  }
+    "status": "ACCEPTED",
+    "occurredAt": "2026-08-01T14:00:00Z"
+  },
+  "error": null
 }
 ```
 
-프론트는 `200`과 `202`를 모두 성공으로 처리하되 완료 상태를 구분한다. 실제 DTO 이름과 공통 `ApiResponse` wrapping은 PR 7 convention에 맞춘다.
+`occurredAt`은 UTC ISO-8601 형식으로 노출한다. 응답 DTO 타입은 `Instant` 또는 `OffsetDateTime`을 사용하고, 서비스의 UTC 기준 `LocalDateTime`을 그대로 직렬화하지 않고 PR 7 adapter에서 `ZoneOffset.UTC`를 명시해 변환한다. 서버 기본 timezone에 의존하거나 timezone 없는 값을 반환하면서 문서 예시에만 `Z`를 붙이지 않는다. 두 결과 모두 필드 이름은 `occurredAt`으로 통일한다.
 
-### 13.3 중복 DELETE
+`ACCEPTED`는 실패나 미접수가 아니라 접근 차단과 durable task insert가 commit된 상태다. 아직 unlink, `SocialAccount.UNLINKED`, `User.WITHDRAWN`, 개인정보 최종 파기 또는 task `SUCCEEDED`를 의미하지 않는다.
 
-- `WITHDRAWAL_PENDING`: 추가 부수효과 없이 동일 의미의 `202`
-- `WITHDRAWN`: 추가 익명화·event·task 없이 동일 의미의 `200`
+### 13.3 상태별 HTTP·멱등 계약
 
-### 13.4 공개 상태 조회
+| User/SocialAccount 상태 | 서비스 결과 | HTTP | DB 변경 | Cookie |
+|---|---|---:|---|---|
+| `ACTIVE/SUSPENDED`, 카카오 없음 | `COMPLETED` | `200` | 동기 탈퇴 완료 | 만료 |
+| `ACTIVE/SUSPENDED`, `LINKED` 카카오 | `ACCEPTED` | `202` | pending 전환 및 task 생성 | 만료 |
+| `WITHDRAWAL_PENDING` + 정상 `UNLINK_PENDING`/task | `ACCEPTED` | `202` | 없음 | 만료 |
+| `WITHDRAWN` + SocialAccount 없음 또는 `UNLINKED` | `COMPLETED` | `200` | 없음 | 만료 |
+| `WITHDRAWAL_PENDING` + 잘못된 SocialAccount/task 상태 | 오류 | `409` | 없음 | 성공 계약으로 보장하지 않음 |
+| `WITHDRAWN` + `LINKED/UNLINK_PENDING` | 오류 | `409` | 없음 | 성공 계약으로 보장하지 않음 |
+| 인증 없음 | 필터 오류 | `401` | 없음 | 없음 |
+| JWT 사용자 DB 미존재 | 필터 오류 | `401` | 없음 | 없음 |
+
+중복 DELETE는 최초 결과를 그대로 반환하며 `occurredAt`, `withdrawalReason`, `withdrawnAt`, `KakaoUnlinkTask.createdAt`, `retryCycle`, `attemptCount`와 `AccountRejoinBlock` 만료 시각을 변경하지 않는다. 새 task, block, 가입 세션 취소, 익명화, event 또는 프로필 이미지 durable deletion 요청을 만들지 않는다.
+
+### 13.4 Security 예외 계약
+
+현재 중앙 인증 경로는 JWT 검증 뒤 User를 조회해 `WITHDRAWAL_PENDING`과 `WITHDRAWN`의 보호 API 접근을 차단한다. PR 7은 서비스 수준 멱등성에 HTTP 요청이 도달할 수 있도록 정확히 `DELETE /api/v1/users/me`에만 상태 정책 예외를 둔다.
+
+| User 상태 | `DELETE /api/v1/users/me` | `GET/PATCH /api/v1/users/me`와 다른 보호 API |
+|---|---|---|
+| `ACTIVE/SUSPENDED` | 허용 | 기존 정책 유지 |
+| `WITHDRAWAL_PENDING` | 허용 | `403 WITHDRAWAL_PENDING_USER` |
+| `WITHDRAWN` | 허용 | `403 WITHDRAWN_USER` |
+
+이 예외는 인증 생략이나 `permitAll`이 아니다. Authorization header, JWT 서명·만료·폐기, User DB 조회와 JWT subject·User 일치 검증을 그대로 수행한 다음 HTTP method와 정확한 path가 일치할 때만 상태 접근 정책을 예외 처리하고 인증 principal을 만든다. 로그인, refresh token 재발급, GET/PATCH와 다른 보호 API는 예외에 포함하지 않는다. 기존 access token 자체가 만료되거나 잘못됐다면 DELETE도 `401`이다.
+
+### 13.5 Refresh Token과 Cookie 계약
+
+DB Refresh Token 전량 삭제는 `AccountTerminationService` 책임이다. PR 7 Controller는 `RefreshTokenRepository`를 직접 호출하지 않는다. 브라우저 Refresh Cookie 만료는 HTTP adapter 책임이며 기존 `RefreshTokenCookieProvider.clear()`를 재사용한다.
+
+| 속성 | 삭제 Cookie 값 |
+|---|---|
+| Name | `gather_refresh_token` |
+| Value | 빈 문자열 |
+| Max-Age | `0` |
+| Path | `/api/v1/auth` |
+| HttpOnly | `true` |
+| SameSite | `Lax` |
+| Secure | `GATHER_REFRESH_COOKIE_SECURE` 설정값 |
+| Domain | 설정하지 않음 |
+
+발급 Cookie와 삭제 Cookie의 Path와 Domain은 동일해야 한다. 신규·멱등 `COMPLETED`와 신규·멱등 `ACCEPTED`의 모든 성공 응답에 만료 Cookie를 반환한다. 상태 충돌이나 인증·서버 오류에서는 Cookie 만료를 성공 계약으로 보장하지 않는다.
+
+### 13.6 공개 오류 계약
+
+| 상황 | HTTP | Error code |
+|---|---:|---|
+| 인증 정보 없음 | `401` | `UNAUTHORIZED` |
+| 토큰 만료 | `401` | `EXPIRED_TOKEN` |
+| 잘못된 토큰 | `401` | `INVALID_TOKEN` |
+| 폐기된 토큰 | `401` | `REVOKED_TOKEN` |
+| JWT 사용자가 DB에 없음 | `401` | `INVALID_TOKEN` |
+| User/SocialAccount/task 상태 불일치 | `409` | `ACCOUNT_TERMINATION_STATE_CONFLICT` |
+| 예상하지 못한 서버 오류 | `500` | `INTERNAL_SERVER_ERROR` |
+
+request body를 받지 않으므로 PR 7 탈퇴 API에 사유 enum validation 오류 계약을 추가하지 않는다. API 문서에는 body가 없다고 명시하며, 잘못된 body가 전송된 경우의 Jackson 동작을 공개 핵심 계약으로 확대하지 않는다.
+
+### 13.7 Worker 가용성과 접수 계약
+
+공개 탈퇴 API는 worker·Admin client 가용성이나 `KakaoUnlinkWorkerControl` 상태를 사전 확인하지 않는다. worker disabled, Admin client 비활성 또는 `CONFIGURATION_BLOCKED` 상태에서도 카카오 탈퇴 요청을 `WITHDRAWAL_PENDING`, `UNLINK_PENDING`, `KakaoUnlinkTask.PENDING`으로 commit하고 `202 Accepted`를 반환한다.
+
+`DEAD + CONFIGURATION` task는 설정 복구 뒤 one-shot resume command로 requeue한다. 차단 중 새로 생성된 `PENDING` task는 resume 대상이 아니며 control이 `ACTIVE`가 되면 별도 requeue 없이 자연스럽게 claim된다. 공개 응답에는 worker disabled·blocked 여부나 backlog 정보를 노출하지 않는다.
+
+### 13.8 OpenAPI와 프론트 계약
+
+Springdoc/OpenAPI에는 Bearer 인증 필수, request body 없음, `200 COMPLETED`, `202 ACCEPTED`, `401`, `409`, `500`, `Set-Cookie`, 멱등 재호출과 카카오 비동기 처리 의미를 문서화한다.
+
+- `200 COMPLETED`: 탈퇴 완료로 처리하고 Access Token을 폐기한 뒤 즉시 로그아웃해 로그인 또는 탈퇴 완료 화면으로 이동한다.
+- `202 ACCEPTED`: durable 탈퇴 접수 완료로 처리하고 Access Token을 폐기한 뒤 즉시 로그아웃한다. 카카오 연결 해제가 비동기임을 안내하되 별도 polling은 하지 않는다.
+
+### 13.9 공개 상태 조회
 
 `[Gather 확정 정책]` 탈퇴 상태 polling endpoint는 제공하지 않는다. 탈퇴 접수 뒤 사용자는 로그아웃·접근 차단되고, polling token을 새로 만들면 인증·내부 task 노출 위험이 생긴다. 운영 상태는 DB task, metric과 구조화 로그로 확인한다.
 
-### 13.5 외부 응답 금지 정보
+### 13.10 외부 응답 금지 정보
 
-task ID, socialAccount ID, generation, attempt count, next attempt, 내부 `DEAD/STALE`, 카카오 code·회원번호는 응답하지 않는다.
+task ID, socialAccount ID, generation, attempt count, retry cycle, next attempt, worker control 상태, 내부 `DEAD/STALE`, Kakao code·회원번호, provider ID, 암호문·HMAC·claim token과 raw Kakao 응답은 성공·오류 응답 또는 예시에 포함하지 않는다.
 
 ## 14. Migration 계획
 
-PR 5 working tree의 migration 기준은 다음과 같다.
+현재 PR 6 구현 브랜치의 migration 기준은 다음과 같다.
 
 | 기준 | 최신 번호 |
 |---|---|
-| 현재 local branch | `V39` |
+| 현재 local branch | `V41` |
 | PR 5 소유 migration | `V39__add_withdrawal_pending_and_create_kakao_unlink_task.sql` |
-| 후속 번호 | merge된 migration과 충돌하지 않도록 PR별 확정 |
+| PR 6 소유 migration | `V41__add_kakao_unlink_worker_control.sql` |
 
 `[Gather 확정 정책]` PR 5의 사용자 상태, PHONE identity guard와 task foundation은 V39가 소유한다. 후속 PR은 구현 또는 restack 직전에 최신 `origin/develop` migration을 확인해 다음 사용 가능한 번호를 결정한다.
 
@@ -1148,7 +1254,11 @@ User status가 VARCHAR이면 DB constraint 변경이 실제 필요한지 먼저 
 
 현재 V39에는 claim token, `claimedBy`, `claimedAt`, `leaseExpiresAt`, `attemptCount`, `lastAttemptAt`, `nextAttemptAt`, `lastHttpStatus`, `lastKakaoCode`, `lastErrorType`, `completedAt`, `version`, due/lease index가 이미 포함되어 있으므로 해당 foundation은 재생성하지 않는다.
 
-PR 6 migration 번호는 구현 또는 restack 직전 최신 `develop` 기준으로 정하며 이 문서에서 파일 번호를 확정하지 않는다.
+PR 6의 위 변경은 `V41__add_kakao_unlink_worker_control.sql`에 구현됐다. 기존 migration은 수정하거나 rename하지 않는다.
+
+#### PR 7
+
+신규 migration 없음. User status·withdrawalReason·withdrawnAt, SocialAccount unlink 상태, `KakaoUnlinkTask`, `AccountRejoinBlock`, `AccountIdentityGuard`와 `KakaoUnlinkWorkerControl`이 이미 존재하며 PR 7은 Controller, response DTO, Security, Cookie, Springdoc/OpenAPI와 테스트만 변경한다. PR 7은 V39·V41을 포함한 기존 migration을 수정하거나 rename하지 않는다.
 
 ### 14.2 데이터 전환
 
@@ -1210,13 +1320,28 @@ PR 6 migration 번호는 구현 또는 restack 직전 최신 `develop` 기준으
 
 | 항목 | 내용 |
 |---|---|
-| 목적 | 검증된 durable 처리 흐름을 사용자 API로 공개한다. |
-| 포함 | `DELETE /api/v1/users/me`, 일반 `200`, 카카오 `202`, refresh cookie 만료, 중복 상태별 멱등성, DELETE 재호출 예외, 내부정보 비노출 DTO, OpenAPI·프론트 계약, 보호 API 차단 통합 검증 |
-| 제외 | webhook, 상태 조회 UI, 운영자 재처리 API, future relink |
+| 목적 | 공개 회원 탈퇴 HTTP API를 기존 `AccountTerminationService` 계약에 연결하는 adapter PR |
+| 포함 | `DELETE /api/v1/users/me`, `SecurityUtil` 현재 사용자 ID, `WithdrawalReason.SELF` 고정, service 호출, `COMPLETED/ACCEPTED → 200/202`, `AccountTerminationResponse`, UTC `occurredAt`, 기존 helper를 이용한 refresh cookie 만료, pending/withdrawn DELETE 전용 Security 예외, Springdoc/OpenAPI·프론트 계약과 Controller/API/Security 테스트 |
+| 제외 | `AccountTerminationService` 재구현, Kakao Admin API·S3 직접 호출, task·worker control·User·SocialAccount·재가입 block·Repository 직접 조작, 프로필 이미지 deletion task 직접 생성, polling·retry·admin·탈퇴 취소 API, 상세 탈퇴 설문, worker retry/resume 변경, webhook, future relink |
 | 선행 조건 | PR 5, PR 6 |
-| 완료 조건 | 응답 전에 접수 트랜잭션이 커밋되고, pending 사용자의 기존·신규 인증 접근이 차단되며, 중복 요청이 멱등함 |
-| 테스트 | 일반 `200`, 카카오 `202`, pending 중복 `202`, withdrawn 중복 `200`, cookie 만료, 내부 task 정보 부재, polling endpoint 부재, OpenAPI 일치 |
-| migration | 없음 예상 |
+| 완료 조건 | request body 없이 기존 service transaction을 commit한 뒤 결과·최초 시각을 응답하고, pending/withdrawn의 DELETE만 인증된 상태로 재호출할 수 있으며, 모든 성공·멱등 응답이 cookie를 만료하고 다른 보호 API 차단은 유지됨 |
+| 테스트 | 일반·카카오 신규 및 멱등 결과, UTC 응답, cookie, DELETE 전용 Security 예외, worker disabled/blocked 접수, 상태 충돌, 내부정보 비노출, 외부 호출 분리, polling 부재와 OpenAPI 일치 |
+| migration | 없음. V39·V41을 포함한 기존 migration 수정·rename 금지 |
+
+PR 7 Controller에는 `@Transactional`을 사용하지 않는다. `AccountTerminationService`가 DB transaction을 소유하며 Controller는 서비스 정상 반환 뒤 HTTP status, response DTO와 `Set-Cookie`만 조립한다. Controller는 `RefreshTokenRepository`, `KakaoUnlinkTask`, `KakaoUnlinkWorkerControl`, User, SocialAccount, S3 또는 Kakao Admin client를 직접 조작하지 않는다.
+
+worker disabled, Admin client 비활성 또는 control `CONFIGURATION_BLOCKED`여도 카카오 탈퇴를 `202`로 접수한다. 신규 task는 `PENDING` backlog로 durable하게 보존하며 control 복구 후 자연스럽게 처리한다. 이 운영 상태는 공개 응답에 포함하지 않는다.
+
+#### PR 7 acceptance criteria
+
+- 일반 회원 신규 탈퇴: body 없는 DELETE가 `200 COMPLETED`, UTC `occurredAt`과 만료 Cookie를 반환하고 User `WITHDRAWN`이 commit된다.
+- 카카오 회원 신규 탈퇴: body 없는 DELETE가 `202 ACCEPTED`, UTC `occurredAt`과 만료 Cookie를 반환하고 User `WITHDRAWAL_PENDING`, SocialAccount `UNLINK_PENDING`, task 한 건이 commit된다. Controller 경로에서 Kakao Admin API는 호출하지 않는다.
+- pending 멱등 요청: 유효한 같은 access token으로 재호출할 수 있고 최초 `occurredAt`을 유지한 `202`를 반환한다. task, retry cycle·attempt count, block과 durable deletion 요청은 변경하지 않는다.
+- withdrawn 멱등 요청: 유효한 같은 access token으로 재호출할 수 있고 최초 `occurredAt`을 유지한 `200`을 반환한다. 재익명화나 프로필 이미지 삭제 요청 중복이 없다.
+- Security: pending/withdrawn은 탈퇴 DELETE만 허용하고 GET/PATCH 및 다른 보호 API는 `403`, 인증 없는 DELETE와 유효하지 않은 token은 `401`이다.
+- 상태 충돌: 허용되지 않은 User/SocialAccount/task 조합은 `409 ACCOUNT_TERMINATION_STATE_CONFLICT`이며 DB 변경이 없다.
+- worker 운영 상태: worker disabled 또는 control `CONFIGURATION_BLOCKED`에서도 카카오 탈퇴를 `202`로 접수하고 task를 `PENDING` backlog에 보존한다.
+- 외부 호출 분리: Controller 요청 처리 중 Kakao Admin API와 S3 API를 직접 호출하지 않는다.
 
 ### PR 8 — 외부 카카오 unlink webhook
 
@@ -1289,17 +1414,32 @@ MySQL 8에서 `EXPLAIN ANALYZE`, lock wait와 deadlock도 검증한다.
 
 #### PR 7
 
-- 일반 회원 `200`, 카카오 회원 `202`
-- pending 중복 `202`, withdrawn 중복 `200`
-- refresh cookie 만료
-- 응답에 내부 task 정보 미포함
-- 공개 status polling endpoint 없음
-- 프론트 계약과 OpenAPI 일치
+- Controller/API:
+  - body 없는 일반 회원 신규 DELETE는 `200 COMPLETED`와 UTC `occurredAt`
+  - body 없는 카카오 회원 신규 DELETE는 `202 ACCEPTED`와 UTC `occurredAt`
+  - pending 멱등 DELETE는 최초 시각을 유지한 `202`, withdrawn 멱등 DELETE는 최초 시각을 유지한 `200`
+  - 인증 없음은 `401`, 허용되지 않은 User/SocialAccount/task 조합은 `409`
+  - 모든 신규·멱등 성공 결과에서 기존 속성과 같은 refresh cookie 만료
+  - 응답에 task·worker·provider 내부정보가 없고 공개 status polling endpoint가 없음
+- Security:
+  - `ACTIVE/SUSPENDED/WITHDRAWAL_PENDING/WITHDRAWN`의 인증된 DELETE 허용
+  - pending/withdrawn의 GET/PATCH와 다른 보호 API는 기존 `403` 유지
+  - 유효하지 않거나 만료·폐기된 JWT는 DELETE 예외 없이 `401`
+- Integration:
+  - DB Refresh Token 전량 삭제, 카카오 task 정확히 한 건, 반복 DELETE에서 task·durable deletion 중복과 block 연장 없음
+  - worker disabled 또는 `CONFIGURATION_BLOCKED` 중에도 `202`와 `PENDING` backlog 보존
+  - Controller 요청 중 Kakao Admin API와 S3 직접 호출 없음
+  - Springdoc/OpenAPI와 프론트 계약 일치
 
-PR 4를 client 단독으로 먼저 분리하면 HTTP 계약과 오류 분류를 worker 코드와 독립적으로 검증할 수 있다. PR 7은 worker가 준비된 뒤 공개해 사용자가 장시간 처리되지 않는 pending 상태에 빠지는 것을 막는다.
+일반 회원 신규 탈퇴는 응답 전에 User `WITHDRAWN`, 카카오 신규 탈퇴는 User `WITHDRAWAL_PENDING`, SocialAccount `UNLINK_PENDING`과 task 한 건이 commit돼야 한다. pending/withdrawn 재요청은 기존 access token이 유효한 동안 Controller까지 도달하고 각각 `202/200`을 반환하되 `occurredAt`, withdrawal reason, task 시각·retry 상태, block 만료와 프로필 이미지 삭제 요청을 변경하지 않는다.
+
+기존 `AccountTerminationService`와 worker 테스트에서 이미 검증한 내부 상태 전이·retry·finalizer 행렬을 Controller 테스트에 불필요하게 복제하지 않는다. PR 7 테스트는 HTTP mapping, 인증 경계, cookie, adapter 위임과 실제 application service 연결에 집중한다.
+
+PR 4를 client 단독으로 먼저 분리하면 HTTP 계약과 오류 분류를 worker 코드와 독립적으로 검증할 수 있다. PR 7은 worker 가용성과 공개 접수 가용성을 분리해 사용자 탈퇴 의사를 먼저 durable하게 보존하고, backlog와 pending 체류 시간은 운영 지표로 관리한다.
 
 ## 16. 후속 작업
 
+- 사용자 설문형 상세 탈퇴 사유가 필요할 때 내부 `WithdrawalReason`과 분리된 `WithdrawalSurveyReason` 모델·저장·공개 DTO 설계
 - task `DEAD`, 처리 지연, lease 회수 횟수, 오류 code별 metric과 alert
 - 만료된 `SocialSignupSession` retention cleanup
 - 완료된 unlink task retention cleanup
