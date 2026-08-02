@@ -8,6 +8,7 @@ import static org.mockito.Mockito.when;
 
 import com.gather.gather.domain.auth.entity.User;
 import com.gather.gather.domain.notification.dto.NotificationResponse;
+import com.gather.gather.domain.notification.dto.NotificationUnreadCountResponse;
 import com.gather.gather.domain.notification.entity.Notification;
 import com.gather.gather.domain.notification.enums.NotificationCategory;
 import com.gather.gather.domain.notification.enums.NotificationTargetType;
@@ -138,5 +139,33 @@ class NotificationQueryServiceTest {
         ReflectionTestUtils.setField(notification, "id", NOTIFICATION_ID);
 
         return notification;
+    }
+
+    @Test
+    @DisplayName("활동과 모임의 미읽음 알림 개수를 조회한다")
+    void getUnreadCountReturnsCategoryAndTotalCounts() {
+        // given
+        when(notificationRepository.countByUser_IdAndCategoryAndReadAtIsNullAndDeletedAtIsNull(
+                        USER_ID, NotificationCategory.ACTIVITY))
+                .thenReturn(2L);
+
+        when(notificationRepository.countByUser_IdAndCategoryAndReadAtIsNullAndDeletedAtIsNull(
+                        USER_ID, NotificationCategory.MEETING))
+                .thenReturn(3L);
+
+        // when
+        NotificationUnreadCountResponse response = notificationQueryService.getUnreadCount();
+
+        // then
+        assertThat(response.activity()).isEqualTo(2L);
+        assertThat(response.meeting()).isEqualTo(3L);
+        assertThat(response.total()).isEqualTo(5L);
+
+        verify(notificationRepository)
+                .countByUser_IdAndCategoryAndReadAtIsNullAndDeletedAtIsNull(
+                        USER_ID, NotificationCategory.ACTIVITY);
+        verify(notificationRepository)
+                .countByUser_IdAndCategoryAndReadAtIsNullAndDeletedAtIsNull(
+                        USER_ID, NotificationCategory.MEETING);
     }
 }

@@ -15,6 +15,8 @@ spring:
     properties:
       hibernate:
         format_sql: true
+        jdbc:
+          time_zone: UTC
   mail:
     host: smtp.gmail.com
     port: 587
@@ -32,6 +34,14 @@ spring:
 # 이메일 발송 방식. log = 서버 로그로만 인증코드 출력(기본), smtp = 실제 발송.
 # smtp 모드는 spring.mail.username/password 필요 (로컬: application-secret.yml, 운영: 환경변수).
 gather:
+  scheduling:
+    enabled: ${GATHER_SCHEDULING_ENABLED:true}
+  kakao:
+    unlink-resume:
+      enabled: ${KAKAO_UNLINK_RESUME_ENABLED:false}
+      task-ids: ${KAKAO_UNLINK_RESUME_TASK_IDS:}
+      actor: ${KAKAO_UNLINK_RESUME_ACTOR:}
+      reason: ${KAKAO_UNLINK_RESUME_REASON:}
   aws:
     s3:
       region: ${GATHER_AWS_REGION:ap-northeast-2}
@@ -81,3 +91,12 @@ kakao:
     api-base-url: ${KAKAO_ADMIN_API_BASE_URL:https://kapi.kakao.com}
     connect-timeout: ${KAKAO_ADMIN_CONNECT_TIMEOUT:2s}
     read-timeout: ${KAKAO_ADMIN_READ_TIMEOUT:5s}
+    unlink-worker:
+      enabled: ${KAKAO_UNLINK_WORKER_ENABLED:false}
+      poll-interval: ${KAKAO_UNLINK_WORKER_POLL_INTERVAL:30s}
+      batch-size: ${KAKAO_UNLINK_WORKER_BATCH_SIZE:10}
+      lease-duration: ${KAKAO_UNLINK_WORKER_LEASE_DURATION:120s}
+      maximum-attempts: ${KAKAO_UNLINK_WORKER_MAXIMUM_ATTEMPTS:12}
+      base-backoff: ${KAKAO_UNLINK_WORKER_BASE_BACKOFF:1m}
+      maximum-backoff: ${KAKAO_UNLINK_WORKER_MAXIMUM_BACKOFF:6h}
+      worker-identifier: ${KAKAO_UNLINK_WORKER_IDENTIFIER:${HOSTNAME:local}}

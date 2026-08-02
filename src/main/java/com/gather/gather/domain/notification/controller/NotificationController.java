@@ -1,6 +1,7 @@
 package com.gather.gather.domain.notification.controller;
 
 import com.gather.gather.domain.notification.dto.NotificationResponse;
+import com.gather.gather.domain.notification.dto.NotificationUnreadCountResponse;
 import com.gather.gather.domain.notification.enums.NotificationCategory;
 import com.gather.gather.domain.notification.service.NotificationQueryService;
 import com.gather.gather.global.common.ApiResponse;
@@ -64,5 +65,11 @@ public class NotificationController {
 
         notificationQueryService.deleteNotification(notificationId);
         return ApiResponse.success(null);
+    }
+
+    @Operation(summary = "미읽음 알림 개수 조회", description = "현재 사용자의 활동, 모임 및 전체 미읽음 알림 개수를 조회합니다.")
+    @GetMapping("/unread-count")
+    public ApiResponse<NotificationUnreadCountResponse> getUnreadCount() {
+        return ApiResponse.success(notificationQueryService.getUnreadCount());
     }
 }

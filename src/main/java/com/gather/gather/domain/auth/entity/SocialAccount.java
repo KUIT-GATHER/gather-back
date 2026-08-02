@@ -46,7 +46,7 @@ public class SocialAccount {
     private SocialProvider provider;
 
     // staged migration 동안 기존·신규 row 모두 dual-write한다. getter 제한은 일반 애플리케이션 접근만 줄인다.
-    @Column(name = "provider_user_id", nullable = false, length = 100)
+    @Column(name = "provider_user_id", length = 100)
     @Getter(AccessLevel.NONE)
     private String legacyProviderUserId;
 
@@ -164,6 +164,39 @@ public class SocialAccount {
         this.linkStatus = SocialAccountLinkStatus.UNLINKED;
         this.unlinkedAt = now;
         this.updatedAt = now;
+    }
+
+    public EncryptedProviderUserId encryptedProviderUserId() {
+        if (providerUserIdCiphertext == null
+                || providerUserIdCiphertext.isBlank()
+                || encryptionKeyVersion == null
+                || encryptionKeyVersion <= 0) {
+            throw new IllegalStateException("복호화 가능한 소셜 식별자가 없습니다.");
+        }
+        return new EncryptedProviderUserId(providerUserIdCiphertext, encryptionKeyVersion);
+    }
+
+    /** unlink 상태와 직접 식별자 파기를 한 entity invariant로 묶고 단방향 HMAC은 유지한다. */
+    public void finalizeUnlinkAndPurgeDirectIdentifiers(LocalDateTime now) {
+        requireNow(now);
+        if (linkStatus == SocialAccountLinkStatus.UNLINK_PENDING) {
+            linkStatus = SocialAccountLinkStatus.UNLINKED;
+            unlinkedAt = now;
+        } else if (linkStatus != SocialAccountLinkStatus.UNLINKED) {
+            throw new IllegalStateException("연결 해제 대기 또는 완료 상태만 finalization할 수 있습니다.");
+        }
+        legacyProviderUserId = null;
+        providerUserIdCiphertext = null;
+        encryptionKeyVersion = null;
+        updatedAt = now;
+    }
+
+    public boolean isUnlinkPending() {
+        return linkStatus == SocialAccountLinkStatus.UNLINK_PENDING;
+    }
+
+    public boolean isUnlinked() {
+        return linkStatus == SocialAccountLinkStatus.UNLINKED;
     }
 
     public void relink(
