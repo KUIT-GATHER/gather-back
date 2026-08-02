@@ -26,12 +26,8 @@ public class VolunteerScheduleNotificationScheduler {
     public void createNotifications() {
         LocalDate today = LocalDate.now(SEOUL_ZONE);
 
-        try {
-            int count = volunteerScheduleNotificationService.createNotifications(today);
+        int count = volunteerScheduleNotificationService.createNotifications(today);
 
-            log.info("봉사 일정 알림 스케줄러 완료. today={}, count={}", today, count);
-        } catch (RuntimeException exception) {
-            log.error("봉사 일정 알림 스케줄러 실패. today={}", today, exception);
-        }
+        log.info("봉사 일정 알림 스케줄러 완료. today={}, count={}", today, count);
     }
 }

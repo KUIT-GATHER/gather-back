@@ -2,8 +2,8 @@ package com.gather.gather.domain.notification.service;
 
 import com.gather.gather.domain.notification.enums.NotificationTargetType;
 import com.gather.gather.domain.notification.enums.NotificationType;
-import com.gather.gather.domain.notification.model.VolunteerScheduleTarget;
 import com.gather.gather.domain.notification.repository.NotificationSettingRepository;
+import com.gather.gather.domain.posting.dto.VolunteerScheduleTarget;
 import com.gather.gather.domain.posting.repository.PostingParticipationRepository;
 import java.time.LocalDate;
 import java.util.HashSet;
@@ -32,24 +32,29 @@ public class VolunteerScheduleNotificationService {
     private final NotificationWriter notificationWriter;
 
     public int createNotifications(LocalDate today) {
-        int weekBeforeCount =
+        NotificationBatchResult weekBeforeResult =
                 createNotificationsFor(
                         today.plusDays(WEEK_BEFORE), WEEK_BEFORE, WEEK_BEFORE_MESSAGE);
 
-        int dayBeforeCount =
+        NotificationBatchResult dayBeforeResult =
                 createNotificationsFor(today.plusDays(DAY_BEFORE), DAY_BEFORE, DAY_BEFORE_MESSAGE);
 
-        return weekBeforeCount + dayBeforeCount;
+        int failureCount = weekBeforeResult.failureCount() + dayBeforeResult.failureCount();
+        if (failureCount > 0) {
+            throw new IllegalStateException("봉사 일정 알림 생성 중 %d건이 실패했습니다.".formatted(failureCount));
+        }
+
+        return weekBeforeResult.successCount() + dayBeforeResult.successCount();
     }
 
-    private int createNotificationsFor(
+    private NotificationBatchResult createNotificationsFor(
             LocalDate activityDate, int daysBefore, String messageFormat) {
 
         List<VolunteerScheduleTarget> targets =
                 postingParticipationRepository.findVolunteerScheduleTargets(activityDate);
 
         if (targets.isEmpty()) {
-            return 0;
+            return NotificationBatchResult.EMPTY;
         }
 
         Set<Long> disabledUserIds =
@@ -61,6 +66,7 @@ public class VolunteerScheduleNotificationService {
                                         .toList()));
 
         int successCount = 0;
+        int failureCount = 0;
 
         for (VolunteerScheduleTarget target : targets) {
             if (disabledUserIds.contains(target.userId())) {
@@ -82,14 +88,26 @@ public class VolunteerScheduleNotificationService {
 
                 successCount++;
             } catch (DataIntegrityViolationException exception) {
-                log.debug(
-                        "이미 생성된 봉사 일정 알림입니다. userId={}, postingId={}, activityDate={}, daysBefore={}",
-                        target.userId(),
-                        target.postingId(),
-                        activityDate,
-                        daysBefore);
+                if (isDuplicateNotification(exception)) {
+                    log.debug(
+                            "이미 생성된 봉사 일정 알림입니다. userId={}, postingId={}, activityDate={}, daysBefore={}",
+                            target.userId(),
+                            target.postingId(),
+                            activityDate,
+                            daysBefore);
+                } else {
+                    failureCount++;
+                    log.error(
+                            "봉사 일정 알림 저장 무결성 오류. userId={}, postingId={}, activityDate={}, daysBefore={}",
+                            target.userId(),
+                            target.postingId(),
+                            activityDate,
+                            daysBefore,
+                            exception);
+                }
             } catch (RuntimeException exception) {
-                log.warn(
+                failureCount++;
+                log.error(
                         "봉사 일정 알림 생성 실패. userId={}, postingId={}, activityDate={}, daysBefore={}",
                         target.userId(),
                         target.postingId(),
@@ -100,13 +118,29 @@ public class VolunteerScheduleNotificationService {
         }
 
         log.info(
-                "봉사 일정 알림 생성 완료. activityDate={}, daysBefore={}, requestedCount={}, successCount={}",
+                "봉사 일정 알림 생성 완료. activityDate={}, daysBefore={}, requestedCount={}, successCount={}, failureCount={}",
                 activityDate,
                 daysBefore,
                 targets.size(),
-                successCount);
+                successCount,
+                failureCount);
 
-        return successCount;
+        return new NotificationBatchResult(successCount, failureCount);
+    }
+
+    private boolean isDuplicateNotification(DataIntegrityViolationException exception) {
+        Throwable cause = exception;
+
+        while (cause != null) {
+            String message = cause.getMessage();
+            if (message != null
+                    && message.toLowerCase().contains("uq_notification_deduplication_key")) {
+                return true;
+            }
+            cause = cause.getCause();
+        }
+
+        return false;
     }
 
     private String createDeduplicationKey(
@@ -122,5 +156,10 @@ public class VolunteerScheduleNotificationService {
         }
 
         return title.substring(0, MAX_TITLE_LENGTH - 1) + "…";
+    }
+
+    private record NotificationBatchResult(int successCount, int failureCount) {
+
+        private static final NotificationBatchResult EMPTY = new NotificationBatchResult(0, 0);
     }
 }

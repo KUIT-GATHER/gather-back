@@ -1,6 +1,6 @@
 package com.gather.gather.domain.posting.repository;
 
-import com.gather.gather.domain.notification.model.VolunteerScheduleTarget;
+import com.gather.gather.domain.posting.dto.VolunteerScheduleTarget;
 import com.gather.gather.domain.posting.entity.PostingParticipation;
 import com.gather.gather.domain.posting.entity.PostingParticipationStatus;
 import java.time.LocalDate;
@@ -37,7 +37,7 @@ public interface PostingParticipationRepository extends JpaRepository<PostingPar
 
     @Query(
             """
-            SELECT new com.gather.gather.domain.notification.model.VolunteerScheduleTarget(
+            SELECT new com.gather.gather.domain.posting.dto.VolunteerScheduleTarget(
                 participation.userId,
                 posting.id,
                 posting.title
