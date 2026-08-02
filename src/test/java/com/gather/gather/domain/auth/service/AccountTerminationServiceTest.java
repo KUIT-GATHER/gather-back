@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -233,6 +234,44 @@ class AccountTerminationServiceTest {
         verify(rejoinBlockService, never()).createOrExtendBlock(any(), any(), any());
         verify(profileImageDeletionService, never()).scheduleDeletion(any(), any(), any());
         verify(unlinkTaskRepository, never()).saveAndFlush(any());
+    }
+
+    @Test
+    @DisplayName("SocialAccount snapshot이 두 개 이상이면 상태 변경 없이 충돌한다")
+    void multipleSocialAccountSnapshots_returnsStateConflictWithoutMutation() {
+        User user = spy(localUser());
+        SocialAccountIdentitySnapshot firstSnapshot = linkedSnapshot();
+        SocialAccountIdentitySnapshot secondSnapshot =
+                new SocialAccountIdentitySnapshot(
+                        SOCIAL_ACCOUNT_ID + 1,
+                        SocialProvider.KAKAO,
+                        "c".repeat(64),
+                        1,
+                        SocialAccountLinkStatus.LINKED,
+                        GENERATION);
+        when(userRepository.findByIdForUpdate(USER_ID)).thenReturn(Optional.of(user));
+        when(socialAccountRepository.findIdentitySnapshotsByUserIdAndProvider(
+                        USER_ID, SocialProvider.KAKAO))
+                .thenReturn(List.of(firstSnapshot, secondSnapshot));
+
+        assertThatThrownBy(() -> service.terminate(USER_ID, WithdrawalReason.SELF))
+                .isInstanceOf(BusinessException.class)
+                .extracting(exception -> ((BusinessException) exception).getErrorCode())
+                .isEqualTo(ErrorCode.ACCOUNT_TERMINATION_STATE_CONFLICT);
+        assertThat(user.getStatus()).isEqualTo(UserStatus.ACTIVE);
+        assertThat(user.getWithdrawalReason()).isNull();
+        assertThat(user.getWithdrawnAt()).isNull();
+        verify(user, never()).requestWithdrawal(any(), any());
+        verify(user, never()).withdraw(any(), any());
+        verify(user, never()).anonymize(any());
+        verify(socialAccountRepository, never()).findByIdForUpdate(any());
+        verify(signupSessionService, never()).lockPendingForIdentity(any(), any(), any());
+        verify(identityGuardService, never()).lockPhone(any(), any());
+        verify(rejoinBlockService, never()).createOrExtendBlock(any(), any(), any());
+        verify(refreshTokenRepository, never()).deleteAllByUserId(any());
+        verify(emailVerificationRepository, never()).deleteAllByEmail(any());
+        verify(unlinkTaskRepository, never()).saveAndFlush(any());
+        verify(profileImageDeletionService, never()).scheduleDeletion(any(), any(), any());
     }
 
     @Test

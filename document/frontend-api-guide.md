@@ -67,6 +67,36 @@ Authorization: Bearer <accessToken>
 - 개발 중 30분 만료가 불편하면 백엔드에 요청하세요 — 서버 설정으로 늘릴 수 있습니다
 - JWT payload(`sub`=userId, `role`)는 디코딩해 볼 수 있지만 **표시 용도로만** 사용하고, 권한 판단의 근거로 신뢰하지 마세요
 
+## 5️⃣ 회원 탈퇴
+
+```http
+DELETE /api/v1/users/me
+Authorization: Bearer <accessToken>
+```
+
+- 요청 body는 보내지 않습니다.
+- 쿠키를 포함할 수 있도록 `withCredentials: true` 또는 `credentials: "include"`를 사용합니다.
+- `200 COMPLETED`와 `202 ACCEPTED`를 모두 탈퇴 요청 성공으로 처리하고, 메모리·상태 저장소의 Access Token을 즉시 폐기한 뒤 로그아웃 화면으로 이동합니다.
+- `200 COMPLETED`는 일반 회원의 동기 탈퇴 완료 또는 이미 완료된 요청의 멱등 결과입니다.
+- `202 ACCEPTED`는 카카오 연결 해제 작업이 안전하게 접수됐거나 이미 접수된 요청의 멱등 결과입니다. 카카오 연결 해제는 서버에서 비동기로 처리됩니다.
+- 성공 응답의 `Set-Cookie`가 Refresh Token 쿠키를 만료시키므로 프론트에서 Refresh Token 값을 직접 다루지 않습니다.
+- 탈퇴 상태 polling API는 제공하지 않습니다.
+- `401`이면 `error.code`에 따라 인증 실패를 처리합니다. 탈퇴 성공 뒤에는 재발급을 시도하지 않습니다.
+- `409 ACCOUNT_TERMINATION_STATE_CONFLICT`이면 로그아웃 성공으로 간주하지 말고 오류 안내 후 고객지원 또는 재시도를 안내합니다.
+
+응답 예시:
+
+```json
+{
+  "success": true,
+  "data": {
+    "status": "ACCEPTED",
+    "occurredAt": "2026-08-01T14:00:00Z"
+  },
+  "error": null
+}
+```
+
 ## 🔍 문제 발생 시 빠른 진단표
 
 | 증상 | 원인 | 해결 |
