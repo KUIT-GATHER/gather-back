@@ -36,35 +36,36 @@ public class BookmarkedPostingDeadlineNotificationService {
         List<BookmarkedPostingDeadlineTarget> targets =
                 bookmarkRepository.findPostingDeadlineNotificationTargets(deadlineDate);
 
-        if (targets.isEmpty()) {
-            return 0;
-        }
-
-        Set<Long> enabledUserIds = findEnabledUserIds(targets);
+        Set<Long> enabledUserIds = targets.isEmpty() ? Set.of() : findEnabledUserIds(targets);
 
         int successCount = 0;
+        int duplicateCount = 0;
+        int disabledCount = 0;
         int failureCount = 0;
 
         for (BookmarkedPostingDeadlineTarget target : targets) {
             if (!enabledUserIds.contains(target.userId())) {
+                disabledCount++;
                 continue;
             }
 
             NotificationCreationResult result = createNotification(target, deadlineDate);
 
-            if (result == NotificationCreationResult.CREATED) {
-                successCount++;
-            } else if (result == NotificationCreationResult.FAILED) {
-                failureCount++;
+            switch (result) {
+                case CREATED -> successCount++;
+                case DUPLICATE -> duplicateCount++;
+                case FAILED -> failureCount++;
             }
         }
 
         log.info(
-                "북마크 공고 마감 알림 생성 완료. deadlineDate={}, requestedCount={}, "
-                        + "successCount={}, failureCount={}",
+                "북마크 공고 마감 알림 생성 완료. deadlineDate={}, targetCount={}, "
+                        + "successCount={}, duplicateCount={}, disabledCount={}, failureCount={}",
                 deadlineDate,
                 targets.size(),
                 successCount,
+                duplicateCount,
+                disabledCount,
                 failureCount);
 
         if (failureCount > 0) {

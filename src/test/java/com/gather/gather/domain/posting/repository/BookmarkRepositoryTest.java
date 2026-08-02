@@ -3,13 +3,21 @@ package com.gather.gather.domain.posting.repository;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.gather.gather.domain.auth.entity.Gender;
+import com.gather.gather.domain.auth.entity.User;
+import com.gather.gather.domain.auth.entity.UserStatus;
+import com.gather.gather.domain.auth.repository.UserRepository;
+import com.gather.gather.domain.posting.dto.BookmarkedPostingDeadlineTarget;
 import com.gather.gather.domain.posting.entity.Bookmark;
 import com.gather.gather.domain.posting.entity.Posting;
 import com.gather.gather.domain.posting.entity.PostingCategory;
 import com.gather.gather.domain.posting.entity.PostingStatus;
+import com.gather.gather.domain.region.entity.Region;
+import com.gather.gather.domain.region.repository.RegionRepository;
 import com.gather.gather.global.util.LikeKeywordEscaper;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -29,8 +37,9 @@ import org.springframework.transaction.annotation.Transactional;
 class BookmarkRepositoryTest {
 
     @Autowired private BookmarkRepository bookmarkRepository;
-
+    @Autowired private UserRepository userRepository;
     @Autowired private PostingRepository postingRepository;
+    @Autowired private RegionRepository regionRepository;
 
     @Test
     void existsByUserIdAndPostingId_returnsTrue_whenBookmarkExists() {
@@ -260,6 +269,120 @@ class BookmarkRepositoryTest {
         assertThat(secondPage.getTotalPages()).isEqualTo(2);
     }
 
+    @Test
+    void findPostingDeadlineNotificationTargets_returnsOnlyPostingEndingOnDeadlineDate() {
+        LocalDate deadlineDate = LocalDate.of(2026, 8, 5);
+        User user = activeUser();
+
+        Posting matching =
+                postingRepository.save(
+                        deadlinePosting(
+                                "마감 3일 전 공고", deadlineDate, PostingStatus.RECRUITING, true));
+
+        Posting oneDayEarlier =
+                postingRepository.save(
+                        deadlinePosting(
+                                "하루 빠른 공고",
+                                deadlineDate.minusDays(1),
+                                PostingStatus.RECRUITING,
+                                true));
+
+        Posting oneDayLater =
+                postingRepository.save(
+                        deadlinePosting(
+                                "하루 늦은 공고",
+                                deadlineDate.plusDays(1),
+                                PostingStatus.RECRUITING,
+                                true));
+
+        bookmarkRepository.save(Bookmark.create(user.getId(), matching.getId()));
+        bookmarkRepository.save(Bookmark.create(user.getId(), oneDayEarlier.getId()));
+        bookmarkRepository.save(Bookmark.create(user.getId(), oneDayLater.getId()));
+        bookmarkRepository.flush();
+
+        List<BookmarkedPostingDeadlineTarget> result =
+                bookmarkRepository.findPostingDeadlineNotificationTargets(deadlineDate);
+
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).userId()).isEqualTo(user.getId());
+        assertThat(result.get(0).postingId()).isEqualTo(matching.getId());
+        assertThat(result.get(0).postingTitle()).isEqualTo("마감 3일 전 공고");
+    }
+
+    @Test
+    void findPostingDeadlineNotificationTargets_excludesInactiveAndNullActivePosting() {
+        LocalDate deadlineDate = LocalDate.of(2026, 8, 5);
+        User user = activeUser();
+
+        Posting inactive =
+                postingRepository.save(
+                        deadlinePosting("비활성화 공고", deadlineDate, PostingStatus.RECRUITING, false));
+
+        Posting nullActive =
+                postingRepository.save(
+                        deadlinePosting(
+                                "활성 상태가 없는 공고", deadlineDate, PostingStatus.RECRUITING, null));
+
+        bookmarkRepository.save(Bookmark.create(user.getId(), inactive.getId()));
+        bookmarkRepository.save(Bookmark.create(user.getId(), nullActive.getId()));
+        bookmarkRepository.flush();
+
+        List<BookmarkedPostingDeadlineTarget> result =
+                bookmarkRepository.findPostingDeadlineNotificationTargets(deadlineDate);
+
+        assertThat(result).isEmpty();
+    }
+
+    @Test
+    void findPostingDeadlineNotificationTargets_excludesNonRecruitingPosting() {
+        LocalDate deadlineDate = LocalDate.of(2026, 8, 5);
+        User user = activeUser();
+
+        Posting closed =
+                postingRepository.save(
+                        deadlinePosting("마감된 공고", deadlineDate, PostingStatus.CLOSED, true));
+
+        Posting completed =
+                postingRepository.save(
+                        deadlinePosting("완료된 공고", deadlineDate, PostingStatus.COMPLETED, true));
+
+        bookmarkRepository.save(Bookmark.create(user.getId(), closed.getId()));
+        bookmarkRepository.save(Bookmark.create(user.getId(), completed.getId()));
+        bookmarkRepository.flush();
+
+        List<BookmarkedPostingDeadlineTarget> result =
+                bookmarkRepository.findPostingDeadlineNotificationTargets(deadlineDate);
+
+        assertThat(result).isEmpty();
+    }
+
+    @Test
+    void findPostingDeadlineNotificationTargets_returnsOnlyActiveUser() {
+        LocalDate deadlineDate = LocalDate.of(2026, 8, 5);
+
+        User activeUser = userWithStatus(UserStatus.ACTIVE);
+        User suspendedUser = userWithStatus(UserStatus.SUSPENDED);
+        User withdrawalPendingUser = userWithStatus(UserStatus.WITHDRAWAL_PENDING);
+        User withdrawnUser = userWithStatus(UserStatus.WITHDRAWN);
+
+        Posting posting =
+                postingRepository.save(
+                        deadlinePosting("마감 임박 공고", deadlineDate, PostingStatus.RECRUITING, true));
+
+        bookmarkRepository.save(Bookmark.create(activeUser.getId(), posting.getId()));
+        bookmarkRepository.save(Bookmark.create(suspendedUser.getId(), posting.getId()));
+        bookmarkRepository.save(Bookmark.create(withdrawalPendingUser.getId(), posting.getId()));
+        bookmarkRepository.save(Bookmark.create(withdrawnUser.getId(), posting.getId()));
+        bookmarkRepository.flush();
+
+        List<BookmarkedPostingDeadlineTarget> result =
+                bookmarkRepository.findPostingDeadlineNotificationTargets(deadlineDate);
+
+        assertThat(result)
+                .extracting(BookmarkedPostingDeadlineTarget::userId)
+                .containsExactly(activeUser.getId());
+    }
+
     private Posting posting() {
         return posting("테스트 공고", PostingCategory.ENVIRONMENT);
     }
@@ -276,5 +399,48 @@ class BookmarkRepositoryTest {
                 .activityDate(LocalDate.of(2026, 7, 15))
                 .category(category)
                 .build();
+    }
+
+    private Posting deadlinePosting(
+            String title, LocalDate noticeEndDate, PostingStatus status, Boolean isActive) {
+        return Posting.builder()
+                .title(title)
+                .status(status)
+                .activityDate(LocalDate.of(2026, 9, 1))
+                .noticeEndDate(noticeEndDate)
+                .isActive(isActive)
+                .category(PostingCategory.ENVIRONMENT)
+                .build();
+    }
+
+    private User activeUser() {
+        return userWithStatus(UserStatus.ACTIVE);
+    }
+
+    private User userWithStatus(UserStatus status) {
+        long suffix = Math.abs(System.nanoTime() % 1_000_000_000L);
+
+        Region region =
+                regionRepository.save(Region.create("알림테스트구", 2, "deadline-" + suffix, null));
+
+        User user =
+                User.create(
+                        "알림 테스트 사용자",
+                        LocalDate.of(1995, 1, 1),
+                        Gender.MALE,
+                        "010123" + suffix,
+                        null,
+                        null,
+                        "deadline" + suffix,
+                        null,
+                        true,
+                        true,
+                        false,
+                        region,
+                        List.of());
+
+        ReflectionTestUtils.setField(user, "status", status);
+
+        return userRepository.save(user);
     }
 }
