@@ -35,6 +35,13 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Test deploy environment validator
+        run: |
+          bash -n scripts/deploy.sh
+          bash -n scripts/validate-deploy-env.sh
+          bash -n scripts/test/validate-deploy-env-test.sh
+          bash scripts/test/validate-deploy-env-test.sh
+
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
