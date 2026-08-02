@@ -1,11 +1,11 @@
 # 계정 탈퇴 및 카카오 연결 해제 설계
 
-- 조사 시작 기준 브랜치: `feature/auth-kakao-signup-session`
-- 현재 작업 브랜치: `feature/auth-kakao-unlink-worker-finalizer`
-- 기준 HEAD: `1f8396a`
-- 코드 기준: PR 4~6 및 현재 PR 6 구현 브랜치
+- 검증 기준일: 2026-08-02
+- 기준 브랜치: `feature/auth-account-withdrawal-api`
+- 구현 기준: PR 4~7 회원 탈퇴·카카오 연결 해제 흐름 구현 완료
+- 현재 단계: PR 7 공개 회원 탈퇴 API 구현 완료, `develop` 병합 전 리뷰 단계
+- 조사 시점 HEAD: `9643c93`
 - 공식 문서 확인일: 2026-07-30
-- 문서 상태: PR 6 worker·finalizer 구현 반영, PR 7 공개 API 구현 전 확정 계약
 
 이 문서의 문장은 다음 네 가지 근거 수준으로 구분한다.
 
@@ -14,7 +14,7 @@
 - `[권장 구현]`: 확정 정책을 안전하게 구현하기 위한 기술 권장사항
 - `[운영·법적 검토]`: 기술 구현은 진행할 수 있지만 운영 공개 전 별도 검토가 필요한 사항
 
-## PR 6 구현 반영 상태 (2026-08-01)
+## PR 4~7 구현 반영 상태 (2026-08-02)
 
 - V41 migration에 직접 provider 식별자 nullable 전환, `retry_cycle`, DB singleton worker control을 반영했다.
 - application 공통 Clock은 UTC로 고정했으며 claim·reservation·result 단계가 각 operation별 now를 한 번만 사용한다.
@@ -24,6 +24,9 @@
 - 동일 generation의 이미 UNLINKED인 계정은 reservation과 HTTP 없이 local finalization한다.
 - 성공 finalizer는 직접 provider 식별자를 파기하고 HMAC을 유지하며 User 탈퇴·익명화·프로필 이미지 durable deletion 등록·task 성공을 하나의 transaction으로 처리한다.
 - MySQL 8.4 fresh migration, `ddl-auto=validate`, 실제 DB claim 동시성 및 전체 회귀 테스트로 구현 계약을 검증했다.
+- PR 7은 body 없는 `DELETE /api/v1/users/me`, `WithdrawalReason.SELF`, `COMPLETED → 200`과 `ACCEPTED → 202`, UTC `occurredAt` 응답을 구현했다.
+- 모든 신규·멱등 성공은 Refresh Cookie를 만료하며, `WITHDRAWAL_PENDING`과 `WITHDRAWN` 사용자는 정확한 탈퇴 DELETE만 재호출할 수 있다.
+- 공개 API의 Springdoc/Swagger, 프론트 API 가이드와 Controller·API·Security 통합 테스트를 반영했으며 신규 migration은 없다.
 
 ## 1. 문서 목적
 
@@ -36,7 +39,7 @@
 5. 카카오 연결 해제가 완료된 뒤 서비스 탈퇴를 확정하고 개인정보를 파기한다.
 6. 중복 요청, worker 중단, lease 만료, webhook 도착에도 멱등성을 유지한다.
 
-이 문서는 PR 4부터 PR 8까지의 구현 경계를 정하지만, 현재 세션에서는 구현하지 않는다.
+이 문서는 PR 4~7의 구현 결과와 PR 8의 별도 구현 경계를 기록하며, 이번 문서 정정은 새로운 기능 구현을 포함하지 않는다.
 
 ## 2. 현재 구현 상태
 
@@ -56,24 +59,30 @@
 | 재가입 제한 | `AccountRejoinBlock`의 `PHONE`/`KAKAO` 7일 생성·연장과 가입 시 조회가 실제 인증 흐름에 연결됐다. |
 | PHONE 동시성 | `account_identity_guard`와 `AccountIdentityGuardService`가 가입·탈퇴에 동일 PHONE HMAC row의 안정적인 비관적 잠금을 제공한다. |
 | 인증 차단 | `JwtAuthenticationFilter`가 유효한 Access Token 요청마다 User를 PK로 조회해 최신 탈퇴 상태를 검사한다. |
+| 공개 탈퇴 API | body 없는 `DELETE /api/v1/users/me`가 `WithdrawalReason.SELF`로 기존 service를 호출하고 `COMPLETED/ACCEPTED`를 `200/202`로 반환한다. `occurredAt`은 UTC `Instant`로 노출한다. |
+| HTTP 멱등성과 Cookie | pending/withdrawn 사용자의 정확한 탈퇴 DELETE만 재호출할 수 있고, 모든 신규·멱등 성공 응답에서 기존 Refresh Cookie를 만료한다. |
+| API 문서와 검증 | Springdoc/Swagger, 프론트 API 가이드, Controller·실제 DB API·Security 통합 테스트가 PR 7 계약을 반영한다. |
 | PR 5 migration | `V39__add_withdrawal_pending_and_create_kakao_unlink_task.sql`에 사용자 상태, `account_identity_guard`, `kakao_unlink_task` DDL이 포함됐다. |
 | 비동기 정리 선례 | 프로필 이미지 정리용 after-commit listener, retry row, scheduler가 존재한다. |
 
-### 2.2 기반만 존재하고 연결되지 않은 부분
+### 2.2 구현 완료 후 남은 운영·후속 영역
 
 | 영역 | 현재 한계 |
 |---|---|
 | `User.anonymize()` | 개별 사용자 필드는 정리하지만 관련 도메인 데이터 전체의 개인정보 파기 범위는 정의하지 않는다. |
 | `SocialAccount.relink()` | 세대 증가 기능은 있으나 실제 재연결 흐름이 아직 없다. |
 | 재가입 제한 정리 | 만료 판정은 연결됐지만 만료 block cleanup과 identity guard의 장기 retention·안전한 cleanup은 아직 구현하지 않았다. |
-| `KakaoApiClient` | OAuth token과 사용자 정보 조회용이며 connect timeout 3초, read timeout 5초다. 429·4xx·5xx를 사용자-facing `BusinessException`으로 바꾸므로 Admin unlink worker의 typed error와 민감정보 로그 정책에 적합하지 않다. |
-| 공개 탈퇴 adapter | `AccountTerminationService`와 worker 기반은 준비됐지만 `DELETE /api/v1/users/me`, 결과별 `200/202`, refresh cookie 만료와 DELETE 전용 Security 예외는 아직 연결되지 않았다. |
+| 운영 활성화 | 운영 환경변수, 운영 DB의 V39/V41, WorkerControl singleton과 기존 backlog를 확인한 뒤 Admin client와 worker를 단계적으로 활성화해야 한다. |
+| 운영 관측 | 구조화 로그는 존재하지만 backlog·`DEAD`·pending 체류시간 metric과 alert는 아직 구현하지 않았다. |
+| 운영 복구 | one-shot command는 configuration 원인의 전체 `DEAD` task 복구만 지원한다. 비-configuration `DEAD`의 감사 가능한 내부 복구 수단은 별도 후속 작업이다. |
 
-### 2.3 미구현
+### 2.3 운영 준비·별도 후속·의도적 범위 밖
 
-- 탈퇴 API
-- 외부 카카오 연결 해제 webhook
-- 공개 운영자 재처리 API와 `DEAD` task metric·dashboard
+기능 구현은 사용자 요청 접수, 일반 회원 동기 탈퇴, 카카오 비동기 unlink와 finalizer, 공개 HTTP API와 멱등성까지 완료됐다. 남은 항목은 다음처럼 구분한다.
+
+- 운영 준비: 운영 환경변수 최종 검증, 운영 DB V39/V41과 WorkerControl singleton 확인, 기존 backlog 확인, Admin client와 worker 단계 활성화
+- 별도 후속 PR: backlog·`DEAD`·pending 체류시간 metric/alert, 비-configuration `DEAD` 내부 복구 수단, retention cleanup, HMAC/AES keyring·rotation, 타 도메인 개인정보 보존·익명화 정책
+- 의도적 범위 밖: 탈퇴 완료 polling API, 탈퇴 취소, 공개 관리자 retry API, 외부 카카오 unlink webhook, relink, 다중 provider 확장
 
 ### 2.4 오래된 문서와의 불일치
 
@@ -88,7 +97,7 @@
 - 가입 세션을 조건 없는 bulk update로 취소하는 설계
 - 가입 토큰을 JWT로 가정한 설명
 - 다음 migration을 `V29`로 가정한 설명
-- 존재하지 않는 `UserWithdrawnEvent`와 공개 탈퇴 API가 이미 구현되었다는 설명
+- PR 6 시점에 존재하지 않던 `UserWithdrawnEvent`와 공개 탈퇴 API가 이미 구현됐다고 적은 과거 설명. 공개 탈퇴 API 자체는 현재 PR 7에서 구현됐다.
 - 카카오 연결 해제 전에 Gather 탈퇴와 개인정보 파기를 먼저 완료하는 설명
 
 ## 3. 카카오 공식 계약
@@ -1439,24 +1448,40 @@ PR 4를 client 단독으로 먼저 분리하면 HTTP 계약과 오류 분류를 
 
 ## 16. 후속 작업
 
-- 사용자 설문형 상세 탈퇴 사유가 필요할 때 내부 `WithdrawalReason`과 분리된 `WithdrawalSurveyReason` 모델·저장·공개 DTO 설계
-- task `DEAD`, 처리 지연, lease 회수 횟수, 오류 code별 metric과 alert
-- 만료된 `SocialSignupSession` retention cleanup
-- 완료된 unlink task retention cleanup
-- 운영자용 task 조회·재시도·보류 절차와 감사 로그
-- cooldown 만료 후 providerUserKey HMAC·provider key version retention cleanup
+PR 4~7의 사용자 요청 접수, 일반 회원 동기 탈퇴, 카카오 비동기 unlink와 finalizer, 공개 HTTP API와 멱등성 구현은 완료됐다. 남은 작업은 기능 미완성이 아니라 다음 운영 준비와 별도 후속 범위다.
+
+### 16.1 운영 전 준비
+
+- 운영 환경변수와 Admin key 보관·최소 권한·비상 폐기 절차 최종 확인
+- 운영 DB의 V39/V41 적용 상태와 `KakaoUnlinkWorkerControl` singleton 확인
+- 기존 `PENDING`·`PROCESSING`·`DEAD` task와 `WITHDRAWAL_PENDING` 사용자 backlog 확인
+- Admin client를 먼저 활성화해 설정을 검증한 뒤 worker를 단계적으로 활성화
+
+### 16.2 운영 안정성 후속
+
+- task `DEAD`, 처리 지연, lease 회수 횟수, 오류 code, backlog와 pending 체류시간 metric·alert
+- configuration 외 원인의 `DEAD` task를 위한 감사 가능한 내부 조회·재시도·보류 절차
+- 만료된 `SocialSignupSession`과 완료된 unlink task retention cleanup
 - 로컬 상태와 카카오 연결 상태의 reconciliation 절차
-- Admin key 회전, 최소 권한, 비밀 저장소, 비상 폐기 절차
+- 대량 backlog에 대한 rate limit, backpressure, graceful shutdown
+- task와 개인정보 파기 이력의 보존 기간 및 파티셔닝
+
+### 16.3 개인정보·보안 후속
+
+- cooldown 만료 후 providerUserKey HMAC·provider key version retention cleanup
 - HMAC/AES key rotation과 과거 keyring 지원
 - legacy 평문 provider ID 제거 migration
 - 프로필 이미지 외의 외부 저장소 개인정보 정리
 - 관련 도메인 데이터의 보존·익명화·삭제 정책
 - 만료된 재가입 제한 block cleanup과 `account_identity_guard` 증가량·안전한 cleanup 전략
+
+### 16.4 선택 기능과 의도적 범위 밖
+
+- 사용자 설문형 상세 탈퇴 사유가 필요할 때 내부 `WithdrawalReason`과 분리된 `WithdrawalSurveyReason` 모델·저장·공개 DTO 설계
+- 외부 카카오 unlink webhook과 장애·재전송·서명 또는 신뢰 경계 운영 검증
 - future social account relink 프로토콜
 - 다중 provider 및 마지막 인증수단 제거 정책
-- webhook 장애·재전송·서명 또는 신뢰 경계 운영 검증
-- 대량 backlog에 대한 rate limit, backpressure, graceful shutdown
-- task와 개인정보 파기 이력의 보존 기간 및 파티셔닝
+- 탈퇴 완료 polling API, 탈퇴 취소와 공개 관리자 retry API는 현재 확정 범위에 포함하지 않는다.
 
 ## 17. 운영·법적 검토
 
