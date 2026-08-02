@@ -85,4 +85,20 @@ final class UserSwaggerExamples {
             """
             { "success": false, "data": null, "error": { "code": "DUPLICATE_NICKNAME", "message": "이미 사용 중인 닉네임입니다." } }
             """;
+    static final String ACCOUNT_TERMINATION_COMPLETED =
+            """
+            { "success": true, "data": { "status": "COMPLETED", "occurredAt": "2026-08-01T14:00:00Z" }, "error": null }
+            """;
+    static final String ACCOUNT_TERMINATION_ACCEPTED =
+            """
+            { "success": true, "data": { "status": "ACCEPTED", "occurredAt": "2026-08-01T14:00:00Z" }, "error": null }
+            """;
+    static final String ACCOUNT_TERMINATION_STATE_CONFLICT =
+            """
+            { "success": false, "data": null, "error": { "code": "ACCOUNT_TERMINATION_STATE_CONFLICT", "message": "계정 탈퇴 상태가 올바르지 않습니다." } }
+            """;
+    static final String INTERNAL_SERVER_ERROR =
+            """
+            { "success": false, "data": null, "error": { "code": "INTERNAL_SERVER_ERROR", "message": "서버 오류가 발생했습니다." } }
+            """;
 }

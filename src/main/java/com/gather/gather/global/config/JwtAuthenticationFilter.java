@@ -15,6 +15,7 @@ import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.util.List;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
 import org.springframework.lang.NonNull;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
@@ -35,6 +36,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     public static final String ERROR_CODE_ATTRIBUTE = "jwt.errorCode";
 
     private static final String BEARER_PREFIX = "Bearer ";
+    private static final String ACCOUNT_TERMINATION_PATH = "/api/v1/users/me";
 
     private final TokenProvider tokenProvider;
     private final UserRepository userRepository;
@@ -77,7 +79,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                     userRepository
                             .findById(payload.userId())
                             .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_TOKEN));
-            protectedAccessPolicy.validateAccessAllowed(user);
+            protectedAccessPolicy.validateAccessAllowed(user, isAccountTerminationRequest(request));
             SecurityContextHolder.getContext().setAuthentication(toAuthentication(user));
         } catch (JwtAuthenticationException exception) {
             request.setAttribute(ERROR_CODE_ATTRIBUTE, exception.getErrorCode());
@@ -90,6 +92,11 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     // Bearer prefix 비교는 대소문자를 무시한다(RFC 6750). substring 길이는 prefix 길이로 고정.
     private boolean isBearer(String header) {
         return header.regionMatches(true, 0, BEARER_PREFIX, 0, BEARER_PREFIX.length());
+    }
+
+    private boolean isAccountTerminationRequest(HttpServletRequest request) {
+        return HttpMethod.DELETE.matches(request.getMethod())
+                && ACCOUNT_TERMINATION_PATH.equals(request.getServletPath());
     }
 
     private UsernamePasswordAuthenticationToken toAuthentication(User user) {
