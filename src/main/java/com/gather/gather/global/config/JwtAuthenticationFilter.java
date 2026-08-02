@@ -27,8 +27,9 @@ import org.springframework.web.filter.OncePerRequestFilter;
  *
  * <p>인증 실패(무효/만료) 시 예외를 밖으로 던지지 않고, ErrorCode를 request attribute에 심은 뒤 인증 없이 체인을 이어간다. 최종 401 응답
  * 형식은 {@link CustomAuthenticationEntryPoint}가 담당한다. JWT 자체는 상태를 보관하지 않지만, 탈퇴 접수 직후 아직 유효한 Access
- * Token도 차단해야 하므로 JWT가 유효한 요청마다 User의 최신 상태를 PK로 조회한 뒤 인증을 등록한다. 이 경로는 즉시 차단의 정합성을 우선하며 성능 최적화는 운영
- * 지표 확인 뒤 별도로 다룬다.
+ * Token도 차단해야 하므로 JWT가 유효한 요청마다 User의 최신 상태를 PK로 조회한 뒤 인증을 등록한다. WITHDRAWAL_PENDING 또는 WITHDRAWN
+ * 사용자는 기본적으로 보호 API 접근을 차단하되, 탈퇴 요청의 HTTP 멱등성을 위해 정확한 {@code DELETE /api/v1/users/me}만 예외적으로 허용한다.
+ * 이 경로는 즉시 차단의 정합성을 우선하며 성능 최적화는 운영 지표 확인 뒤 별도로 다룬다.
  */
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
@@ -95,6 +96,8 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     }
 
     private boolean isAccountTerminationRequest(HttpServletRequest request) {
+        // 탈퇴 후 남아 있는 Access Token으로 멱등 재요청할 수 있도록
+        // pending/withdrawn 사용자에게 정확한 탈퇴 DELETE 요청만 허용한다.
         return HttpMethod.DELETE.matches(request.getMethod())
                 && ACCOUNT_TERMINATION_PATH.equals(request.getServletPath());
     }

@@ -139,7 +139,7 @@
 | 회원 유형별 API 응답 | `[Gather 확정 정책]` `COMPLETED`는 `200`, `ACCEPTED`는 `202`와 `ApiResponse<AccountTerminationResponse>`로 반환한다. | 완료와 비동기 진행을 응답에서 구분한다. | `UserController`, service result, 응답 DTO, OpenAPI | 응답 전 각 유형의 접수/완료 트랜잭션 커밋 | 일반 `200`, 카카오 `202`, 중복 상태별 동일 응답 | PR 7 |
 | pending 사용자 접근 차단 | `[Gather 확정 정책]` 로그인·가입 세션·relink·새 인증 세션을 모두 차단한다. | 탈퇴 접수 직후 서비스 재진입을 막는다. | 중앙 인증 경로, 카카오 로그인·가입 세션 경계 | 개별 Controller 검사 금지, 가입 제출 트랜잭션에서도 재검증 | 일반·카카오 로그인, 세션 발급·제출 차단 | 주 PR 5, API 검증 PR 7 |
 | Refresh Token 전체 폐기 | `[Gather 확정 정책]` 접수 트랜잭션에서 사용자 전체 refresh token을 삭제한다. | 다른 기기의 로그인 세션이 남는 것을 막는다. | `RefreshTokenRepository`, `AccountTerminationService` | 사용자 상태·task enqueue와 같은 트랜잭션, 실패 시 전체 rollback | 전량 삭제, 삭제 실패 rollback, 재발급 실패 | PR 5 |
-| 기존 Access Token 중앙 차단 | `[Gather 확정 정책]` JWT 자체가 유효해도 pending/withdrawn이면 인증을 거부하되, 인증된 `DELETE /api/v1/users/me`만 멱등 재호출을 허용한다. | access token 잔여 유효기간의 일반 보호 API 접근을 막으면서 HTTP 멱등성을 제공한다. | JWT 인증 필터 또는 동등한 중앙 Security 경로 | 서명·만료·폐기와 User 조회를 마친 뒤 method·path가 정확히 일치할 때만 상태 정책 예외 | ACTIVE DELETE 성공, pending/withdrawn DELETE 성공, 그 밖의 보호 API 실패 | 주 PR 5, 검증 PR 7 |
+| 기존 Access Token 중앙 차단 | `[Gather 확정 정책]` JWT 자체가 유효해도 pending/withdrawn이면 인증을 거부하되, 인증된 `DELETE /api/v1/users/me`만 멱등 재호출을 허용한다. | access token 잔여 유효기간의 일반 보호 API 접근을 막으면서 HTTP 멱등성을 제공한다. | JWT 인증 필터 또는 동등한 중앙 Security 경로 | 서명·만료 검증과 User 조회를 마친 뒤 method·path가 정확히 일치할 때만 상태 정책 예외 | ACTIVE DELETE 성공, pending/withdrawn DELETE 성공, 그 밖의 보호 API 실패 | 주 PR 5, 검증 PR 7 |
 | relink 금지 | `[Gather 확정 정책]` PR 4~8에서는 relink API·service 흐름을 구현하지 않는다. | 과거 generation task가 새 연결까지 해제하는 race를 막는다. | 인증·소셜 계정 application service 경계 | `UNLINK_PENDING/UNLINKED` 연결 대상 제외, block 유효 중 금지 | non-LINKED 로그인·가입·relink 거부 | PR 5~8 공통 |
 | generation mismatch → `STALE` | `[Gather 확정 정책]` generation mismatch는 API 미호출 후 `STALE`로 종료하되 같은 generation의 `UNLINKED`와 pending User는 local finalization한다. | 오래된 task의 외부 부작용을 방지하면서 이미 완료된 unlink의 로컬 후처리를 복구한다. | worker preflight와 result finalizer | 호출 전·결과 저장 시 이중 검증, 자동 retry 금지, claim 미소유자는 쓰기 금지 | mismatch API 미호출, `UNLINKED` HTTP 0회, claim 오류 실행 중단 | PR 6 |
 | 지수 backoff + full jitter | `[Gather 확정 정책]` 기본 1분, 지수 증가, 6시간 상한이며 자동 retry cycle당 attempt reservation은 최대 12회다. | 일시 장애의 동시 재시도 폭주와 crash window의 호출 상한 초과를 막는다. | reservation service, retry policy와 `nextAttemptAt` 계산기 | HTTP 직전 reservation에서 `attempt_count` 증가, 조건부 `Retry-After` 반영 | jitter 범위, 상한, reservation crash, 12회 소진 | PR 6 |
@@ -204,13 +204,13 @@
 ```text
 JWT 서명·만료 검증
 → 현재 User 조회
-→ 토큰 폐기와 JWT subject·User 일치 검증
+→ JWT subject·User 일치 검증
 → User 상태와 HTTP method·path 확인
 → WITHDRAWAL_PENDING 또는 WITHDRAWN이면 정확한 DELETE /api/v1/users/me만 상태 정책 예외
 → 허용된 요청만 SecurityContext 등록
 ```
 
-refresh token 삭제만으로는 이미 발급된 access token을 즉시 무효화할 수 없다. 따라서 `JwtAuthenticationFilter`는 JWT가 유효한 인증 요청마다 User를 PK로 단건 조회하고 `WITHDRAWAL_PENDING` 또는 `WITHDRAWN`이면 정확한 탈퇴 DELETE 예외 외에는 인증을 등록하지 않는다. 현재는 매 요청 DB 조회 비용보다 즉시 접근 차단의 정확성을 우선한다. 성능은 운영 지표를 확인한 뒤 별도로 최적화하며 Redis 또는 cache 도입은 이번 설계 범위가 아니다.
+Access Token은 stateless JWT이므로 발급 이후 별도의 폐기 상태를 서버에서 조회하지 않는다. refresh token 삭제만으로는 이미 발급된 access token을 즉시 무효화할 수 없다. 따라서 `JwtAuthenticationFilter`는 JWT가 유효한 인증 요청마다 User를 PK로 단건 조회하고 `WITHDRAWAL_PENDING` 또는 `WITHDRAWN`이면 정확한 탈퇴 DELETE 예외 외에는 인증을 등록하지 않는다. 현재는 매 요청 DB 조회 비용보다 즉시 접근 차단의 정확성을 우선한다. 성능은 운영 지표를 확인한 뒤 별도로 최적화하며 Redis 또는 cache 도입은 이번 설계 범위가 아니다.
 
 `[권장 구현]` 인증 거부는 기존 인증 `ErrorCode` 체계에 맞추고, DELETE 재호출 예외의 실제 Security 경로는 PR 5·7에서 현재 필터 구조에 맞춰 구현한다.
 
@@ -1170,7 +1170,7 @@ Authorization: Bearer <access-token>
 | `WITHDRAWAL_PENDING` | 허용 | `403 WITHDRAWAL_PENDING_USER` |
 | `WITHDRAWN` | 허용 | `403 WITHDRAWN_USER` |
 
-이 예외는 인증 생략이나 `permitAll`이 아니다. Authorization header, JWT 서명·만료·폐기, User DB 조회와 JWT subject·User 일치 검증을 그대로 수행한 다음 HTTP method와 정확한 path가 일치할 때만 상태 접근 정책을 예외 처리하고 인증 principal을 만든다. 로그인, refresh token 재발급, GET/PATCH와 다른 보호 API는 예외에 포함하지 않는다. 기존 access token 자체가 만료되거나 잘못됐다면 DELETE도 `401`이다.
+이 예외는 인증 생략이나 `permitAll`이 아니다. Authorization header, JWT 서명·만료 검증, User DB 조회와 JWT subject·User 일치 검증을 그대로 수행한 다음 HTTP method와 정확한 path가 일치할 때만 상태 접근 정책을 예외 처리하고 인증 principal을 만든다. Access Token은 stateless JWT이므로 발급 이후 별도의 폐기 상태를 서버에서 조회하지 않는다. 로그인, refresh token 재발급, GET/PATCH와 다른 보호 API는 예외에 포함하지 않는다. 기존 access token 자체가 만료되거나 잘못됐다면 DELETE도 `401`이다.
 
 ### 13.5 Refresh Token과 Cookie 계약
 
@@ -1196,7 +1196,6 @@ DB Refresh Token 전량 삭제는 `AccountTerminationService` 책임이다. PR 7
 | 인증 정보 없음 | `401` | `UNAUTHORIZED` |
 | 토큰 만료 | `401` | `EXPIRED_TOKEN` |
 | 잘못된 토큰 | `401` | `INVALID_TOKEN` |
-| 폐기된 토큰 | `401` | `REVOKED_TOKEN` |
 | JWT 사용자가 DB에 없음 | `401` | `INVALID_TOKEN` |
 | User/SocialAccount/task 상태 불일치 | `409` | `ACCOUNT_TERMINATION_STATE_CONFLICT` |
 | 예상하지 못한 서버 오류 | `500` | `INTERNAL_SERVER_ERROR` |
@@ -1433,7 +1432,7 @@ MySQL 8에서 `EXPLAIN ANALYZE`, lock wait와 deadlock도 검증한다.
 - Security:
   - `ACTIVE/SUSPENDED/WITHDRAWAL_PENDING/WITHDRAWN`의 인증된 DELETE 허용
   - pending/withdrawn의 GET/PATCH와 다른 보호 API는 기존 `403` 유지
-  - 유효하지 않거나 만료·폐기된 JWT는 DELETE 예외 없이 `401`
+  - 만료되었거나 서명이 유효하지 않은 JWT는 DELETE 예외 없이 `401`
 - Integration:
   - DB Refresh Token 전량 삭제, 카카오 task 정확히 한 건, 반복 DELETE에서 task·durable deletion 중복과 block 연장 없음
   - worker disabled 또는 `CONFIGURATION_BLOCKED` 중에도 `202`와 `PENDING` backlog 보존

@@ -206,10 +206,7 @@ public class UserController {
                                             value = UserSwaggerExamples.INVALID_TOKEN),
                                     @ExampleObject(
                                             name = "EXPIRED_TOKEN",
-                                            value = UserSwaggerExamples.EXPIRED_TOKEN),
-                                    @ExampleObject(
-                                            name = "REVOKED_TOKEN",
-                                            value = UserSwaggerExamples.REVOKED_TOKEN)
+                                            value = UserSwaggerExamples.EXPIRED_TOKEN)
                                 })),
         @io.swagger.v3.oas.annotations.responses.ApiResponse(
                 responseCode = "409",

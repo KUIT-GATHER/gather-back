@@ -254,7 +254,7 @@ class AccountTerminationApiIntegrationTest {
     }
 
     @Test
-    void stateConflict_returns409WithoutMutationOrSuccessCookie() throws Exception {
+    void inconsistentPendingState_returns409WithoutMutationOrSuccessCookie() throws Exception {
         Fixture fixture = createKakaoFixture();
         new TransactionTemplate(transactionManager)
                 .executeWithoutResult(
