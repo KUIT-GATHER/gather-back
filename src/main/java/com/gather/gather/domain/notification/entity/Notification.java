@@ -4,6 +4,7 @@ import com.gather.gather.domain.auth.entity.User;
 import com.gather.gather.domain.notification.enums.NotificationCategory;
 import com.gather.gather.domain.notification.enums.NotificationTargetType;
 import com.gather.gather.domain.notification.enums.NotificationType;
+import com.gather.gather.domain.notification.model.PostNotificationTarget;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -102,6 +103,17 @@ public class Notification {
         return new Notification(user, type, message, targetType, targetId, targetMeetingId);
     }
 
+    public static Notification createPost(
+            User user, NotificationType type, String message, PostNotificationTarget target) {
+        return new Notification(
+                user,
+                type,
+                message,
+                NotificationTargetType.POST,
+                target.postId(),
+                target.meetingId());
+    }
+
     private static void validateTarget(
             NotificationTargetType targetType, Long targetId, Long targetMeetingId) {
         if (targetType != NotificationTargetType.MY_PAGE && targetId == null) {
@@ -109,6 +121,9 @@ public class Notification {
         }
         if (targetType == NotificationTargetType.POST && targetMeetingId == null) {
             throw new IllegalArgumentException("게시글 이동에 모임 ID가 필요합니다.");
+        }
+        if (targetType != NotificationTargetType.POST && targetMeetingId != null) {
+            throw new IllegalArgumentException("게시글 외 이동 대상에는 모임 ID를 지정할 수 없습니다.");
         }
     }
 

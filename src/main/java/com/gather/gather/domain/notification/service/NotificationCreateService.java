@@ -3,7 +3,6 @@ package com.gather.gather.domain.notification.service;
 import com.gather.gather.domain.notification.entity.Notification;
 import com.gather.gather.domain.notification.enums.NotificationTargetType;
 import com.gather.gather.domain.notification.enums.NotificationType;
-import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -21,16 +20,6 @@ public class NotificationCreateService {
             NotificationTargetType targetType,
             Long targetId) {
         return notificationWriter.create(recipientUserId, type, message, targetType, targetId);
-    }
-
-    public void createAll(
-            List<Long> recipientUserIds,
-            NotificationType type,
-            String message,
-            Long postId,
-            Long meetingId) {
-        notificationWriter.createAll(
-                recipientUserIds, type, message, NotificationTargetType.POST, postId, meetingId);
     }
 
     public void createMeetingJoinResultNotification(

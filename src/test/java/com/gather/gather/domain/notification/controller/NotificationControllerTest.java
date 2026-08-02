@@ -1,5 +1,6 @@
 package com.gather.gather.domain.notification.controller;
 
+import static org.hamcrest.Matchers.nullValue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -59,7 +60,34 @@ class NotificationControllerTest {
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.content[0].id").value(1))
                 .andExpect(jsonPath("$.data.content[0].category").value("MEETING"))
+                .andExpect(jsonPath("$.data.content[0].targetMeetingId").value(nullValue()))
                 .andExpect(jsonPath("$.data.content[0].read").value(false));
+    }
+
+    @Test
+    @DisplayName("게시글 알림 응답에는 딥링크에 필요한 모임 ID가 포함된다")
+    void getNotificationsReturnsTargetMeetingIdForPostNotification() throws Exception {
+        NotificationResponse notification =
+                new NotificationResponse(
+                        2L,
+                        NotificationCategory.MEETING,
+                        NotificationType.MEETING_POST_CREATED,
+                        "[모임명]에 작성자님이 새 게시글을 등록했어요.",
+                        NotificationTargetType.POST,
+                        10L,
+                        3L,
+                        false,
+                        LocalDateTime.of(2026, 7, 27, 12, 0));
+
+        when(notificationQueryService.getNotifications(
+                        any(NotificationCategory.class), any(Pageable.class)))
+                .thenReturn(new PageResponse<>(List.of(notification), 1, 1, 0, 20));
+
+        mockMvc.perform(get("/api/v1/notifications").param("category", "MEETING"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.content[0].targetType").value("POST"))
+                .andExpect(jsonPath("$.data.content[0].targetId").value(10))
+                .andExpect(jsonPath("$.data.content[0].targetMeetingId").value(3));
     }
 
     @Test

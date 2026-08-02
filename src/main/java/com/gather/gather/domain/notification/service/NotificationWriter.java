@@ -5,10 +5,10 @@ import com.gather.gather.domain.auth.repository.UserRepository;
 import com.gather.gather.domain.notification.entity.Notification;
 import com.gather.gather.domain.notification.enums.NotificationTargetType;
 import com.gather.gather.domain.notification.enums.NotificationType;
+import com.gather.gather.domain.notification.model.PostNotificationTarget;
 import com.gather.gather.domain.notification.repository.NotificationRepository;
 import com.gather.gather.global.exception.BusinessException;
 import com.gather.gather.global.exception.ErrorCode;
-import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Propagation;
@@ -39,36 +39,17 @@ public class NotificationWriter {
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public void createAll(
-            List<Long> recipientUserIds,
+    public Notification createPost(
+            Long recipientUserId,
             NotificationType type,
             String message,
-            NotificationTargetType targetType,
-            Long targetId,
-            Long targetMeetingId) {
-        List<Long> distinctRecipientUserIds = recipientUserIds.stream().distinct().toList();
-        if (distinctRecipientUserIds.isEmpty()) {
-            return;
-        }
+            PostNotificationTarget target) {
+        User recipient =
+                userRepository
+                        .findById(recipientUserId)
+                        .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
 
-        List<User> recipients = userRepository.findAllById(distinctRecipientUserIds);
-        if (recipients.size() != distinctRecipientUserIds.size()) {
-            throw new BusinessException(ErrorCode.USER_NOT_FOUND);
-        }
-
-        List<Notification> notifications =
-                recipients.stream()
-                        .map(
-                                recipient ->
-                                        Notification.create(
-                                                recipient,
-                                                type,
-                                                message,
-                                                targetType,
-                                                targetId,
-                                                targetMeetingId))
-                        .toList();
-
-        notificationRepository.saveAll(notifications);
+        return notificationRepository.save(
+                Notification.createPost(recipient, type, message, target));
     }
 }

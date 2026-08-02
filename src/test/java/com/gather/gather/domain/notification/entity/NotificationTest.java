@@ -132,6 +132,22 @@ class NotificationTest {
                 .hasMessage("게시글 이동에 모임 ID가 필요합니다.");
     }
 
+    @Test
+    @DisplayName("게시글 외 이동 대상에는 모임 ID를 함께 저장할 수 없다")
+    void createNonPostNotificationRejectsMeetingId() {
+        assertThatThrownBy(
+                        () ->
+                                Notification.create(
+                                        org.mockito.Mockito.mock(User.class),
+                                        NotificationType.MEETING_JOIN_APPROVED,
+                                        "가입이 승인되었어요.",
+                                        NotificationTargetType.MEETING,
+                                        10L,
+                                        20L))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("게시글 외 이동 대상에는 모임 ID를 지정할 수 없습니다.");
+    }
+
     private Notification createMyPageNotification() {
         return Notification.create(
                 org.mockito.Mockito.mock(User.class),

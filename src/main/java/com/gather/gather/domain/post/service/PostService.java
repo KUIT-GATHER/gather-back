@@ -115,21 +115,6 @@ public class PostService {
     }
 
     private void publishPostNotificationEvent(Meeting meeting, User author, Post post) {
-        List<Long> recipientUserIds =
-                meetingMemberRepository
-                        .findAllByMeetingIdAndStatusFetchUser(
-                                meeting.getId(), MeetingMemberStatus.APPROVED)
-                        .stream()
-                        .map(MeetingMember::getUser)
-                        .map(User::getId)
-                        .filter(userId -> !userId.equals(author.getId()))
-                        .distinct()
-                        .toList();
-
-        if (recipientUserIds.isEmpty()) {
-            return;
-        }
-
         NotificationType type =
                 post.getType().isNotice()
                         ? NotificationType.MEETING_NOTICE_CREATED
@@ -141,7 +126,7 @@ public class PostService {
 
         eventPublisher.publishEvent(
                 new MeetingPostNotificationRequestedEvent(
-                        recipientUserIds, type, message, post.getId(), meeting.getId()));
+                        meeting.getId(), post.getId(), author.getId(), type, message));
     }
 
     @Transactional

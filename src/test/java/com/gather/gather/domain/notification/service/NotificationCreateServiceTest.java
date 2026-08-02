@@ -8,7 +8,6 @@ import static org.mockito.Mockito.when;
 import com.gather.gather.domain.notification.entity.Notification;
 import com.gather.gather.domain.notification.enums.NotificationTargetType;
 import com.gather.gather.domain.notification.enums.NotificationType;
-import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -49,26 +48,6 @@ class NotificationCreateServiceTest {
                         20L);
 
         assertThat(result).isSameAs(notification);
-    }
-
-    @Test
-    @DisplayName("모임 게시글 알림 생성을 별도 트랜잭션 Writer에 위임한다")
-    void createAllDelegatesToWriter() {
-        notificationCreateService.createAll(
-                List.of(1L, 2L),
-                NotificationType.MEETING_POST_CREATED,
-                "[모임명]에 작성자님이 새 게시글을 등록했어요.",
-                30L,
-                40L);
-
-        verify(notificationWriter)
-                .createAll(
-                        List.of(1L, 2L),
-                        NotificationType.MEETING_POST_CREATED,
-                        "[모임명]에 작성자님이 새 게시글을 등록했어요.",
-                        NotificationTargetType.POST,
-                        30L,
-                        40L);
     }
 
     @Test
