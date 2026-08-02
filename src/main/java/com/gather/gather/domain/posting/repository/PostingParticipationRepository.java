@@ -1,11 +1,15 @@
 package com.gather.gather.domain.posting.repository;
 
+import com.gather.gather.domain.notification.model.VolunteerScheduleTarget;
 import com.gather.gather.domain.posting.entity.PostingParticipation;
 import com.gather.gather.domain.posting.entity.PostingParticipationStatus;
+import java.time.LocalDate;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 public interface PostingParticipationRepository extends JpaRepository<PostingParticipation, Long> {
 
@@ -30,4 +34,25 @@ public interface PostingParticipationRepository extends JpaRepository<PostingPar
      * 메서드를 사용할 것 — 이 메서드를 그런 용도로 재사용하지 않는다.
      */
     List<PostingParticipation> findByUserId(Long userId);
+
+    @Query(
+            """
+            SELECT new com.gather.gather.domain.notification.model.VolunteerScheduleTarget(
+                participation.userId,
+                posting.id,
+                posting.title
+            )
+            FROM PostingParticipation participation
+            JOIN Posting posting ON posting.id = participation.postingId
+            JOIN User user ON user.id = participation.userId
+            WHERE participation.status IN (
+                com.gather.gather.domain.posting.entity.PostingParticipationStatus.APPLIED,
+                com.gather.gather.domain.posting.entity.PostingParticipationStatus.CONFIRMED
+            )
+              AND COALESCE(posting.actStartDate, posting.activityDate) = :activityDate
+              AND posting.isActive = true
+              AND user.status = com.gather.gather.domain.auth.entity.UserStatus.ACTIVE
+            """)
+    List<VolunteerScheduleTarget> findVolunteerScheduleTargets(
+            @Param("activityDate") LocalDate activityDate);
 }

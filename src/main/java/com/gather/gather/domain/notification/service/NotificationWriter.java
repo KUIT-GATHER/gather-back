@@ -52,4 +52,25 @@ public class NotificationWriter {
         return notificationRepository.save(
                 Notification.createPost(recipient, type, message, target));
     }
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public Notification createScheduled(
+            Long recipientUserId,
+            NotificationType type,
+            String message,
+            NotificationTargetType targetType,
+            Long targetId,
+            String deduplicationKey) {
+
+        User recipient =
+                userRepository
+                        .findById(recipientUserId)
+                        .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
+
+        Notification notification =
+                Notification.createScheduled(
+                        recipient, type, message, targetType, targetId, deduplicationKey);
+
+        return notificationRepository.saveAndFlush(notification);
+    }
 }
