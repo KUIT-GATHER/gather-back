@@ -109,6 +109,21 @@ public enum ErrorCode {
     MEETING_IMAGE_CONFLICT(HttpStatus.CONFLICT, "다른 요청이 모임 이미지를 변경했습니다. 다시 시도해주세요."),
     MEETING_IMAGE_OBJECT_NOT_FOUND(HttpStatus.NOT_FOUND, "업로드된 모임 이미지 객체를 찾을 수 없습니다."),
     MEETING_IMAGE_UPLOAD_CONFLICT(HttpStatus.CONFLICT, "이미 업로드된 모임 이미지 객체입니다."),
+
+    // ── 게시글 댓글 ──
+    COMMENT_NOT_FOUND(HttpStatus.NOT_FOUND, "댓글을 찾을 수 없습니다."),
+    COMMENT_FORBIDDEN(HttpStatus.FORBIDDEN, "댓글에 대한 권한이 없습니다."),
+
+    // ── 게시글 이미지 ──
+    UNSUPPORTED_POST_IMAGE_TYPE(HttpStatus.BAD_REQUEST, "지원하지 않는 이미지 형식입니다."),
+    POST_IMAGE_SIZE_EXCEEDED(HttpStatus.BAD_REQUEST, "이미지 크기가 허용 범위를 초과했습니다."),
+    POST_IMAGE_COUNT_EXCEEDED(HttpStatus.BAD_REQUEST, "이미지는 최대 3장까지 첨부할 수 있습니다."),
+    INVALID_POST_IMAGE_KEY(HttpStatus.BAD_REQUEST, "유효하지 않은 이미지 키입니다."),
+    POST_IMAGE_UPLOAD_EXPIRED(HttpStatus.BAD_REQUEST, "이미지 업로드 세션이 만료되었습니다."),
+    POST_IMAGE_UPLOAD_LIMIT_EXCEEDED(HttpStatus.CONFLICT, "미반영 이미지 업로드가 너무 많습니다."),
+
+    // ── 모임 나가기 ──
+    MEETING_HOST_CANNOT_LEAVE(HttpStatus.CONFLICT, "모임장은 모임을 나갈 수 없습니다."),
     ;
 
     private final HttpStatus status;
