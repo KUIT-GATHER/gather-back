@@ -15,6 +15,11 @@ public record NotificationResponse(
         @Schema(description = "알림 내용", example = "[한강공원 플로깅팀] 가입이 승인되었어요.") String message,
         @Schema(description = "이동 대상 유형", example = "MEETING") NotificationTargetType targetType,
         @Schema(description = "이동 대상 ID", example = "10", nullable = true) Long targetId,
+        @Schema(
+                        description = "게시글 이동에 필요한 모임 ID. targetType이 POST가 아니면 null입니다.",
+                        example = "3",
+                        nullable = true)
+                Long targetMeetingId,
         @Schema(description = "읽음 여부", example = "false") boolean read,
         @Schema(description = "알림 생성 일시") LocalDateTime createdAt) {
 
@@ -26,6 +31,7 @@ public record NotificationResponse(
                 notification.getMessage(),
                 notification.getTargetType(),
                 notification.getTargetId(),
+                notification.getTargetMeetingId(),
                 notification.isRead(),
                 notification.getCreatedAt());
     }

@@ -5,6 +5,7 @@ import com.gather.gather.domain.auth.repository.UserRepository;
 import com.gather.gather.domain.notification.entity.Notification;
 import com.gather.gather.domain.notification.enums.NotificationTargetType;
 import com.gather.gather.domain.notification.enums.NotificationType;
+import com.gather.gather.domain.notification.model.PostNotificationTarget;
 import com.gather.gather.domain.notification.repository.NotificationRepository;
 import com.gather.gather.global.exception.BusinessException;
 import com.gather.gather.global.exception.ErrorCode;
@@ -35,5 +36,20 @@ public class NotificationWriter {
         Notification notification =
                 Notification.create(recipient, type, message, targetType, targetId);
         return notificationRepository.save(notification);
+    }
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public Notification createPost(
+            Long recipientUserId,
+            NotificationType type,
+            String message,
+            PostNotificationTarget target) {
+        User recipient =
+                userRepository
+                        .findById(recipientUserId)
+                        .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
+
+        return notificationRepository.save(
+                Notification.createPost(recipient, type, message, target));
     }
 }
