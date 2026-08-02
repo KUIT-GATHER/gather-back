@@ -1,3 +1,3 @@
-package com.gather.gather.domain.notification.model;
+package com.gather.gather.domain.posting.dto;
 
 public record BookmarkedPostingDeadlineTarget(Long userId, Long postingId, String postingTitle) {}

@@ -1,6 +1,6 @@
 package com.gather.gather.domain.posting.repository;
 
-import com.gather.gather.domain.notification.model.BookmarkedPostingDeadlineTarget;
+import com.gather.gather.domain.posting.dto.BookmarkedPostingDeadlineTarget;
 import com.gather.gather.domain.posting.entity.Bookmark;
 import com.gather.gather.domain.posting.entity.Posting;
 import com.gather.gather.domain.posting.entity.PostingCategory;
@@ -43,7 +43,7 @@ public interface BookmarkRepository extends JpaRepository<Bookmark, Long> {
 
     @Query(
             """
-            select new com.gather.gather.domain.notification.model.BookmarkedPostingDeadlineTarget(
+            select new com.gather.gather.domain.posting.dto.BookmarkedPostingDeadlineTarget(
                 bookmark.userId,
                 posting.id,
                 posting.title

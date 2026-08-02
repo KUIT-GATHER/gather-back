@@ -2,8 +2,8 @@ package com.gather.gather.domain.notification.service;
 
 import com.gather.gather.domain.notification.enums.NotificationTargetType;
 import com.gather.gather.domain.notification.enums.NotificationType;
-import com.gather.gather.domain.notification.model.BookmarkedPostingDeadlineTarget;
 import com.gather.gather.domain.notification.repository.NotificationSettingRepository;
+import com.gather.gather.domain.posting.dto.BookmarkedPostingDeadlineTarget;
 import com.gather.gather.domain.posting.repository.BookmarkRepository;
 import java.time.LocalDate;
 import java.util.HashSet;
@@ -42,19 +42,37 @@ public class BookmarkedPostingDeadlineNotificationService {
 
         Set<Long> enabledUserIds = findEnabledUserIds(targets);
 
-        int createdCount = 0;
+        int successCount = 0;
+        int failureCount = 0;
 
         for (BookmarkedPostingDeadlineTarget target : targets) {
             if (!enabledUserIds.contains(target.userId())) {
                 continue;
             }
 
-            if (createNotification(target, deadlineDate)) {
-                createdCount++;
+            NotificationCreationResult result = createNotification(target, deadlineDate);
+
+            if (result == NotificationCreationResult.CREATED) {
+                successCount++;
+            } else if (result == NotificationCreationResult.FAILED) {
+                failureCount++;
             }
         }
 
-        return createdCount;
+        log.info(
+                "북마크 공고 마감 알림 생성 완료. deadlineDate={}, requestedCount={}, "
+                        + "successCount={}, failureCount={}",
+                deadlineDate,
+                targets.size(),
+                successCount,
+                failureCount);
+
+        if (failureCount > 0) {
+            throw new IllegalStateException(
+                    "북마크 공고 마감 알림 생성 중 %d건이 실패했습니다.".formatted(failureCount));
+        }
+
+        return successCount;
     }
 
     private Set<Long> findEnabledUserIds(List<BookmarkedPostingDeadlineTarget> targets) {
@@ -69,10 +87,10 @@ public class BookmarkedPostingDeadlineNotificationService {
                         targetUserIds));
     }
 
-    private boolean createNotification(
+    private NotificationCreationResult createNotification(
             BookmarkedPostingDeadlineTarget target, LocalDate deadlineDate) {
-        String postingTitle = truncate(target.postingTitle());
-        String message = MESSAGE_FORMAT.formatted(postingTitle);
+
+        String message = MESSAGE_FORMAT.formatted(abbreviateTitle(target.postingTitle()));
         String deduplicationKey =
                 DEDUPLICATION_KEY_FORMAT.formatted(
                         target.userId(), target.postingId(), deadlineDate);
@@ -86,32 +104,66 @@ public class BookmarkedPostingDeadlineNotificationService {
                     target.postingId(),
                     deduplicationKey);
 
-            return true;
+            return NotificationCreationResult.CREATED;
         } catch (DataIntegrityViolationException exception) {
-            log.debug(
-                    "북마크 공고 마감 알림이 이미 생성되어 건너뜁니다. userId={}, postingId={}, deadlineDate={}",
-                    target.userId(),
-                    target.postingId(),
-                    deadlineDate);
+            if (isDuplicateNotification(exception)) {
+                log.debug(
+                        "이미 생성된 북마크 공고 마감 알림입니다. " + "userId={}, postingId={}, deadlineDate={}",
+                        target.userId(),
+                        target.postingId(),
+                        deadlineDate);
 
-            return false;
-        } catch (RuntimeException exception) {
-            log.warn(
-                    "북마크 공고 마감 알림 생성에 실패했습니다. userId={}, postingId={}, deadlineDate={}",
+                return NotificationCreationResult.DUPLICATE;
+            }
+
+            log.error(
+                    "북마크 공고 마감 알림 저장 무결성 오류. " + "userId={}, postingId={}, deadlineDate={}",
                     target.userId(),
                     target.postingId(),
                     deadlineDate,
                     exception);
 
-            return false;
+            return NotificationCreationResult.FAILED;
+        } catch (RuntimeException exception) {
+            log.error(
+                    "북마크 공고 마감 알림 생성 실패. " + "userId={}, postingId={}, deadlineDate={}",
+                    target.userId(),
+                    target.postingId(),
+                    deadlineDate,
+                    exception);
+
+            return NotificationCreationResult.FAILED;
         }
     }
 
-    private String truncate(String title) {
+    private boolean isDuplicateNotification(DataIntegrityViolationException exception) {
+        Throwable cause = exception;
+
+        while (cause != null) {
+            String message = cause.getMessage();
+
+            if (message != null
+                    && message.toLowerCase().contains("uq_notification_deduplication_key")) {
+                return true;
+            }
+
+            cause = cause.getCause();
+        }
+
+        return false;
+    }
+
+    private String abbreviateTitle(String title) {
         if (title.length() <= MAX_TITLE_LENGTH) {
             return title;
         }
 
-        return title.substring(0, MAX_TITLE_LENGTH);
+        return title.substring(0, MAX_TITLE_LENGTH - 1) + "…";
+    }
+
+    private enum NotificationCreationResult {
+        CREATED,
+        DUPLICATE,
+        FAILED
     }
 }
