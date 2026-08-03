@@ -18,7 +18,9 @@ public record MyPageActivityRecordResponse(
                 LocalDate actEndDate,
         @Schema(description = "활동 장소", nullable = true, example = "서울숲공원") String actPlace,
         @Schema(description = "인정시간(분 단위, 미입력 시 null)", nullable = true, example = "120")
-                Integer recognizedMinutes) {
+                Integer recognizedMinutes,
+        @Schema(description = "시간 인증형 활동 여부(인정시간이 입력되어 있으면 true)", example = "true")
+                boolean timeCertifiable) {
 
     public static MyPageActivityRecordResponse of(
             PostingParticipation participation, Posting posting) {
@@ -30,6 +32,7 @@ public record MyPageActivityRecordResponse(
                 posting.getActStartDate(),
                 posting.getActEndDate(),
                 posting.getActPlace(),
-                participation.getRecognizedMinutes());
+                participation.getRecognizedMinutes(),
+                participation.getRecognizedMinutes() != null);
     }
 }

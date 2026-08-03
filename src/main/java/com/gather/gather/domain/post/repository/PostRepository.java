@@ -108,4 +108,7 @@ public interface PostRepository extends JpaRepository<Post, Long> {
 
     /** 나의 활동 탭 요약 - 내가 이 모임에서 작성한 게시글 수. */
     long countByMeeting_IdAndUser_IdAndDeletedAtIsNull(Long meetingId, Long userId);
+
+    /** 뱃지 진행률 조회용 — 전체 모임을 통틀어 내가 작성한 특정 유형의 게시글 수(FIRST_REVIEW). */
+    long countByUser_IdAndTypeAndDeletedAtIsNull(Long userId, PostType type);
 }

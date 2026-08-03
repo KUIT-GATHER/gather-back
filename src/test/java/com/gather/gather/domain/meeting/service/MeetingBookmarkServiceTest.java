@@ -3,9 +3,12 @@ package com.gather.gather.domain.meeting.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -19,11 +22,15 @@ import com.gather.gather.domain.meeting.enums.MeetingStatus;
 import com.gather.gather.domain.meeting.repository.MeetingBookmarkRepository;
 import com.gather.gather.domain.meeting.repository.MeetingRepository;
 import com.gather.gather.domain.posting.entity.PostingCategory;
+import com.gather.gather.domain.posting.service.RegionNameResolver;
+import com.gather.gather.domain.region.repository.RegionRepository;
 import com.gather.gather.global.common.PageResponse;
 import com.gather.gather.global.exception.BusinessException;
 import com.gather.gather.global.exception.ErrorCode;
 import com.gather.gather.global.util.SecurityUtil;
+import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -46,6 +53,8 @@ class MeetingBookmarkServiceTest {
 
     @Mock private MeetingBookmarkRepository meetingBookmarkRepository;
     @Mock private MeetingRepository meetingRepository;
+    @Mock private RegionRepository regionRepository;
+    @Mock private RegionNameResolver regionNameResolver;
     @Mock private Meeting meeting;
 
     private MeetingBookmarkService meetingBookmarkService;
@@ -53,7 +62,12 @@ class MeetingBookmarkServiceTest {
     @BeforeEach
     void setUp() {
         meetingBookmarkService =
-                new MeetingBookmarkService(meetingBookmarkRepository, meetingRepository);
+                new MeetingBookmarkService(
+                        meetingBookmarkRepository,
+                        meetingRepository,
+                        regionRepository,
+                        regionNameResolver);
+        lenient().when(regionNameResolver.resolve(anyList())).thenReturn(Map.of());
     }
 
     @Test
@@ -179,12 +193,16 @@ class MeetingBookmarkServiceTest {
                             eq(USER_ID),
                             eq(PostingCategory.ENVIRONMENT),
                             eq("정화"),
+                            eq(false),
+                            eq(List.of(-1L)),
+                            isNull(),
+                            isNull(),
                             argThat(p -> p.getSort().isUnsorted())))
                     .thenReturn(new PageImpl<>(List.of(meeting), PageRequest.of(0, 20), 1));
 
             PageResponse<MeetingResponse> response =
                     meetingBookmarkService.getBookmarkedMeetings(
-                            PostingCategory.ENVIRONMENT, "정화", unsortedPageable);
+                            PostingCategory.ENVIRONMENT, "정화", null, null, null, unsortedPageable);
 
             assertThat(response.content()).hasSize(1);
             assertThat(response.content().get(0).meetingId()).isEqualTo(MEETING_ID);
@@ -194,7 +212,53 @@ class MeetingBookmarkServiceTest {
                             eq(USER_ID),
                             eq(PostingCategory.ENVIRONMENT),
                             eq("정화"),
+                            eq(false),
+                            eq(List.of(-1L)),
+                            isNull(),
+                            isNull(),
                             argThat(p -> p.getSort().isUnsorted()));
+        }
+    }
+
+    @Test
+    @DisplayName(
+            "getBookmarkedMeetings resolves regionId to itself and its children before querying"
+                    + " the repository")
+    void getBookmarkedMeetings_resolvesRegionIdIncludingChildren() {
+        Pageable unsortedPageable = PageRequest.of(0, 20);
+
+        try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
+            securityUtil.when(SecurityUtil::getCurrentUserId).thenReturn(USER_ID);
+            when(regionRepository.findIdsIncludingChildren(1L)).thenReturn(List.of(1L, 2L));
+            when(meetingBookmarkRepository.findBookmarkedMeetings(
+                            eq(USER_ID),
+                            isNull(),
+                            isNull(),
+                            eq(true),
+                            eq(List.of(1L, 2L)),
+                            any(),
+                            any(),
+                            any()))
+                    .thenReturn(new PageImpl<>(List.of(), PageRequest.of(0, 20), 0));
+
+            meetingBookmarkService.getBookmarkedMeetings(
+                    null,
+                    null,
+                    1L,
+                    LocalDate.of(2026, 8, 1),
+                    LocalDate.of(2026, 8, 31),
+                    unsortedPageable);
+
+            verify(meetingBookmarkRepository)
+                    .findBookmarkedMeetings(
+                            eq(USER_ID),
+                            isNull(),
+                            isNull(),
+                            eq(true),
+                            eq(List.of(1L, 2L)),
+                            eq(LocalDate.of(2026, 8, 1).atStartOfDay()),
+                            any(),
+                            any());
         }
     }
 
@@ -208,13 +272,29 @@ class MeetingBookmarkServiceTest {
         try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
             securityUtil.when(SecurityUtil::getCurrentUserId).thenReturn(USER_ID);
             when(meetingBookmarkRepository.findBookmarkedMeetings(
-                            eq(USER_ID), isNull(), eq("A\\_B"), any()))
+                            eq(USER_ID),
+                            isNull(),
+                            eq("A\\_B"),
+                            eq(false),
+                            eq(List.of(-1L)),
+                            isNull(),
+                            isNull(),
+                            any()))
                     .thenReturn(new PageImpl<>(List.of(), PageRequest.of(0, 20), 0));
 
-            meetingBookmarkService.getBookmarkedMeetings(null, "A_B", unsortedPageable);
+            meetingBookmarkService.getBookmarkedMeetings(
+                    null, "A_B", null, null, null, unsortedPageable);
 
             verify(meetingBookmarkRepository)
-                    .findBookmarkedMeetings(eq(USER_ID), isNull(), eq("A\\_B"), any());
+                    .findBookmarkedMeetings(
+                            eq(USER_ID),
+                            isNull(),
+                            eq("A\\_B"),
+                            eq(false),
+                            eq(List.of(-1L)),
+                            isNull(),
+                            isNull(),
+                            any());
         }
     }
 
@@ -226,11 +306,12 @@ class MeetingBookmarkServiceTest {
         assertThatThrownBy(
                         () ->
                                 meetingBookmarkService.getBookmarkedMeetings(
-                                        null, null, sortedPageable))
+                                        null, null, null, null, null, sortedPageable))
                 .isInstanceOf(BusinessException.class)
                 .hasFieldOrPropertyWithValue("errorCode", ErrorCode.VALIDATION_ERROR);
 
         verify(meetingBookmarkRepository, never())
-                .findBookmarkedMeetings(any(), any(), any(), any());
+                .findBookmarkedMeetings(
+                        any(), any(), any(), anyBoolean(), any(), any(), any(), any());
     }
 }

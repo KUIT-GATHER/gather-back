@@ -3,6 +3,7 @@ package com.gather.gather.domain.meeting.repository;
 import com.gather.gather.domain.meeting.entity.MeetingMember;
 import com.gather.gather.domain.meeting.enums.MeetingMemberStatus;
 import jakarta.persistence.LockModeType;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -102,4 +103,25 @@ public interface MeetingMemberRepository extends JpaRepository<MeetingMember, Lo
             @Param("userId") Long userId,
             @Param("status") MeetingMemberStatus status,
             @Param("meetingIds") List<Long> meetingIds);
+
+    /**
+     * 마이페이지 활동 캘린더용 — 승인된 멤버로 참여 중인 모임 중 활동기간(activityStartAt~activityEndAt, 종료일이 없으면 시작일과 동일한 것으로
+     * 간주)이 조회 월과 겹치는 모임만 조회한다. 활동기간이 아예 없는 자유 모임은 캘린더에 표시할 날짜가 없어 제외한다.
+     */
+    @Query(
+            """
+            SELECT mm
+            FROM MeetingMember mm
+            JOIN FETCH mm.meeting m
+            WHERE mm.user.id = :userId
+              AND mm.status = com.gather.gather.domain.meeting.enums.MeetingMemberStatus.APPROVED
+              AND m.deletedAt IS NULL
+              AND m.activityStartAt IS NOT NULL
+              AND m.activityStartAt < :monthEndExclusive
+              AND COALESCE(m.activityEndAt, m.activityStartAt) >= :monthStartInclusive
+            """)
+    List<MeetingMember> findApprovedForCalendar(
+            @Param("userId") Long userId,
+            @Param("monthStartInclusive") LocalDateTime monthStartInclusive,
+            @Param("monthEndExclusive") LocalDateTime monthEndExclusive);
 }

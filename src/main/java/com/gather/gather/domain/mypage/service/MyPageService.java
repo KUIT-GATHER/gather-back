@@ -25,6 +25,7 @@ import com.gather.gather.global.exception.BusinessException;
 import com.gather.gather.global.exception.ErrorCode;
 import com.gather.gather.global.util.SecurityUtil;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.YearMonth;
 import java.util.Arrays;
 import java.util.Comparator;
@@ -33,6 +34,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -46,10 +48,6 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
 public class MyPageService {
-
-    /** 캘린더에는 아직 진행 중인 참여만 노출한다(문서 2-2절: COMPLETED/REVIEWED 이전 상태만). */
-    private static final Set<PostingParticipationStatus> CALENDAR_EXCLUDED_STATUSES =
-            Set.of(PostingParticipationStatus.COMPLETED, PostingParticipationStatus.REVIEWED);
 
     /** 이 리포 전체가 COMPLETED/REVIEWED를 함께 "완료"로 취급한다(PostingParticipationAction 등과 동일 정책). */
     private static final Set<PostingParticipationStatus> COMPLETED_STATUSES =
@@ -81,17 +79,24 @@ public class MyPageService {
     public List<MyPageActivityResponse> getActivities(YearMonth yearMonth) {
         Long userId = SecurityUtil.getCurrentUserId();
 
+        List<MyPageActivityResponse> volunteerActivities =
+                getVolunteerActivities(userId, yearMonth.atDay(1), yearMonth.atEndOfMonth());
+        List<MyPageActivityResponse> meetingActivities = getMeetingActivities(userId, yearMonth);
+
+        return Stream.concat(volunteerActivities.stream(), meetingActivities.stream())
+                .sorted(Comparator.comparing(MyPageActivityResponse::actStartDate))
+                .toList();
+    }
+
+    private List<MyPageActivityResponse> getVolunteerActivities(
+            Long userId, LocalDate monthStart, LocalDate monthEnd) {
         List<PostingParticipation> participations =
-                postingParticipationRepository.findByUserIdAndStatusNotIn(
-                        userId, CALENDAR_EXCLUDED_STATUSES);
+                postingParticipationRepository.findByUserId(userId);
         if (participations.isEmpty()) {
             return List.of();
         }
 
         Map<Long, Posting> postingsById = fetchPostingsById(participations);
-
-        LocalDate monthStart = yearMonth.atDay(1);
-        LocalDate monthEnd = yearMonth.atEndOfMonth();
 
         return participations.stream()
                 .map(
@@ -103,8 +108,19 @@ public class MyPageService {
                         entry ->
                                 isVisibleInMonth(
                                         entry.getKey(), entry.getValue(), monthStart, monthEnd))
-                .sorted(Comparator.comparing(entry -> entry.getValue().getActStartDate()))
-                .map(entry -> MyPageActivityResponse.of(entry.getKey(), entry.getValue()))
+                .map(entry -> MyPageActivityResponse.ofVolunteer(entry.getKey(), entry.getValue()))
+                .toList();
+    }
+
+    /** 승인된 멤버로 참여 중인 모임 중 활동기간이 조회 월과 겹치는 일정만 캘린더에 포함한다. */
+    private List<MyPageActivityResponse> getMeetingActivities(Long userId, YearMonth yearMonth) {
+        LocalDateTime monthStartInclusive = yearMonth.atDay(1).atStartOfDay();
+        LocalDateTime monthEndExclusive = yearMonth.plusMonths(1).atDay(1).atStartOfDay();
+
+        return meetingMemberRepository
+                .findApprovedForCalendar(userId, monthStartInclusive, monthEndExclusive)
+                .stream()
+                .map(member -> MyPageActivityResponse.ofMeeting(member.getMeeting()))
                 .toList();
     }
 
@@ -116,8 +132,9 @@ public class MyPageService {
      */
     public MyPageActivitySummaryResponse getActivitySummary() {
         Long userId = SecurityUtil.getCurrentUserId();
-        List<Posting> resolvedPostings = resolveCompletedPostings(userId);
-        long meetingCompletedCount = countCompletedMeetings(userId);
+        List<PostingParticipation> completedParticipations = findCompletedParticipations(userId);
+        List<Posting> resolvedPostings = resolvePostings(completedParticipations);
+        List<MeetingMember> completedMeetingMembers = findCompletedMeetingMembers(userId);
 
         Map<PostingCategory, Long> countsByCategory =
                 resolvedPostings.stream()
@@ -133,8 +150,23 @@ public class MyPageService {
                                                 countsByCategory.getOrDefault(category, 0L)))
                         .toList();
 
-        long totalCompletedCount = resolvedPostings.size() + meetingCompletedCount;
-        return MyPageActivitySummaryResponse.of(totalCompletedCount, categoryBlocks);
+        long totalCompletedCount = resolvedPostings.size() + completedMeetingMembers.size();
+        long totalRecognizedMinutes =
+                sumRecognizedMinutes(
+                                completedParticipations, PostingParticipation::getRecognizedMinutes)
+                        + sumRecognizedMinutes(
+                                completedMeetingMembers, MeetingMember::getRecognizedMinutes);
+        long timeCertifiableCompletedCount =
+                countWithRecognizedMinutes(
+                                completedParticipations, PostingParticipation::getRecognizedMinutes)
+                        + countWithRecognizedMinutes(
+                                completedMeetingMembers, MeetingMember::getRecognizedMinutes);
+
+        return MyPageActivitySummaryResponse.of(
+                totalCompletedCount,
+                categoryBlocks,
+                totalRecognizedMinutes,
+                timeCertifiableCompletedCount);
     }
 
     /** 활동기록 상세의 봉사 카드 목록(봉사공고 참여 기준). category가 null이면 전체 분야를 반환하고, 최신 활동 시작일순으로 정렬한다. */
@@ -185,22 +217,30 @@ public class MyPageService {
     /**
      * 완료된 참여 중 posting 조회에 성공한 것만 필터링한 목록 — totalCompletedCount와 categoryBlocks 합계가 항상 일치하도록 보장한다.
      */
-    private List<Posting> resolveCompletedPostings(Long userId) {
-        List<PostingParticipation> completed = findCompletedParticipations(userId);
-        Map<Long, Posting> postingsById = fetchPostingsById(completed);
-        return completed.stream()
+    private List<Posting> resolvePostings(List<PostingParticipation> completedParticipations) {
+        Map<Long, Posting> postingsById = fetchPostingsById(completedParticipations);
+        return completedParticipations.stream()
                 .map(participation -> resolvePostingOrLog(participation, postingsById))
                 .filter(posting -> posting != null)
                 .toList();
     }
 
-    private long countCompletedMeetings(Long userId) {
-        return meetingMemberRepository
-                .findAllByUserIdAndStatusAndMeetingStatus(
-                        userId, MeetingMemberStatus.APPROVED, MeetingStatus.COMPLETED)
-                .stream()
-                .map(MeetingMember::getId)
-                .count();
+    private List<MeetingMember> findCompletedMeetingMembers(Long userId) {
+        return meetingMemberRepository.findAllByUserIdAndStatusAndMeetingStatus(
+                userId, MeetingMemberStatus.APPROVED, MeetingStatus.COMPLETED);
+    }
+
+    private <T> long sumRecognizedMinutes(List<T> items, Function<T, Integer> minutesExtractor) {
+        return items.stream().mapToLong(item -> orZero(minutesExtractor.apply(item))).sum();
+    }
+
+    private <T> long countWithRecognizedMinutes(
+            List<T> items, Function<T, Integer> minutesExtractor) {
+        return items.stream().filter(item -> minutesExtractor.apply(item) != null).count();
+    }
+
+    private long orZero(Integer value) {
+        return value == null ? 0L : value;
     }
 
     private List<PostingParticipation> findCompletedParticipations(Long userId) {

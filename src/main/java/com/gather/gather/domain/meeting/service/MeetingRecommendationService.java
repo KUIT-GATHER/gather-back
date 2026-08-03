@@ -7,6 +7,7 @@ import com.gather.gather.domain.meeting.enums.MeetingStatus;
 import com.gather.gather.domain.meeting.repository.MeetingMemberRepository;
 import com.gather.gather.domain.meeting.repository.MeetingRepository;
 import com.gather.gather.domain.posting.entity.PostingCategory;
+import com.gather.gather.domain.posting.service.RegionNameResolver;
 import com.gather.gather.global.util.CategoryDeadlineScoreCalculator;
 import com.gather.gather.global.util.PreferredCategoryResolver;
 import com.gather.gather.global.util.SecurityUtil;
@@ -15,6 +16,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -50,6 +52,7 @@ public class MeetingRecommendationService {
     private final MeetingMemberRepository meetingMemberRepository;
     private final PreferredCategoryResolver preferredCategoryResolver;
     private final CategoryDeadlineScoreCalculator scoreCalculator;
+    private final RegionNameResolver regionNameResolver;
 
     public List<MeetingResponse> getRecommendedMeetings() {
         Long userId = SecurityUtil.getCurrentUserIdOrNull();
@@ -71,8 +74,16 @@ public class MeetingRecommendationService {
                         .map(ScoredMeeting::meeting)
                         .toList();
 
+        Map<Long, String> regionNames =
+                regionNameResolver.resolve(ranked.stream().map(Meeting::getRegionId).toList());
+
         return ranked.stream()
-                .map(meeting -> MeetingResponse.from(meeting, MeetingStatus.RECRUITING))
+                .map(
+                        meeting ->
+                                MeetingResponse.from(
+                                        meeting,
+                                        MeetingStatus.RECRUITING,
+                                        regionNames.get(meeting.getRegionId())))
                 .toList();
     }
 
