@@ -18,7 +18,9 @@ import com.gather.gather.domain.post.dto.PostSummaryResponse;
 import com.gather.gather.domain.post.dto.PostUpdateRequest;
 import com.gather.gather.domain.post.entity.Post;
 import com.gather.gather.domain.post.enums.PostType;
+import com.gather.gather.domain.post.repository.PostLikeRepository;
 import com.gather.gather.domain.post.repository.PostRepository;
+import com.gather.gather.global.common.PageResponse;
 import com.gather.gather.global.exception.BusinessException;
 import com.gather.gather.global.exception.ErrorCode;
 import com.gather.gather.global.util.SecurityUtil;
@@ -27,6 +29,8 @@ import java.util.List;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -51,24 +55,28 @@ public class PostService {
     private static final String POST_CREATED_MESSAGE = "[%s]에 %s님이 새 게시글을 등록했어요.";
 
     private final PostRepository postRepository;
+    private final PostLikeRepository postLikeRepository;
+    private final PostImageService postImageService;
+    private final PostSummaryAssembler summaryAssembler;
     private final MeetingRepository meetingRepository;
     private final MeetingMemberRepository meetingMemberRepository;
     private final UserRepository userRepository;
     private final ApplicationEventPublisher eventPublisher;
 
-    public List<PostSummaryResponse> getPosts(Long meetingId, PostType typeFilter) {
+    public PageResponse<PostSummaryResponse> getPosts(
+            Long meetingId, PostType typeFilter, Pageable pageable) {
         Long userId = SecurityUtil.getCurrentUserId();
         getMeeting(meetingId);
 
         boolean member = isApprovedMember(meetingId, userId);
         List<PostType> visibleTypes = resolveVisibleTypes(member, typeFilter);
         if (visibleTypes.isEmpty()) {
-            return List.of();
+            return new PageResponse<>(
+                    List.of(), 0, 0, pageable.getPageNumber(), pageable.getPageSize());
         }
 
-        return postRepository.findVisiblePosts(meetingId, visibleTypes).stream()
-                .map(PostSummaryResponse::from)
-                .toList();
+        Page<Post> page = postRepository.findVisiblePosts(meetingId, visibleTypes, pageable);
+        return summaryAssembler.assemble(page, userId);
     }
 
     public PostResponse getPost(Long meetingId, Long postId) {
@@ -82,7 +90,14 @@ public class PostService {
             throw new BusinessException(ErrorCode.POST_ACCESS_DENIED);
         }
 
-        return PostResponse.from(post);
+        boolean host = member && isHost(meetingId, userId);
+        boolean liked = postLikeRepository.existsByPostIdAndUserId(postId, userId);
+        return PostResponse.from(
+                post,
+                postImageService.resolveUrls(postId),
+                liked,
+                post.isAuthor(userId),
+                post.isAuthor(userId) || host);
     }
 
     @Transactional
@@ -106,12 +121,46 @@ public class PostService {
                         request.recruitCapacity());
 
         Post savedPost = postRepository.save(post);
+        postImageService.setImages(userId, savedPost.getId(), request.imageObjectKeys());
+
         if (request.type() == PostType.REVIEW) {
             eventPublisher.publishEvent(
                     new BadgeAwardRequestedEvent(userId, BadgeType.FIRST_REVIEW));
         }
         publishPostNotificationEvent(meeting, author, savedPost);
-        return PostResponse.from(savedPost);
+
+        return PostResponse.from(
+                savedPost, postImageService.resolveUrls(savedPost.getId()), false, true, true);
+    }
+
+    @Transactional
+    public PostResponse updatePost(Long meetingId, Long postId, PostUpdateRequest request) {
+        Long userId = SecurityUtil.getCurrentUserId();
+        getMeeting(meetingId);
+
+        Post post = getPostInMeeting(meetingId, postId);
+        if (!post.isAuthor(userId)) {
+            throw new BusinessException(ErrorCode.POST_FORBIDDEN);
+        }
+
+        post.update(request.title(), request.content());
+        postImageService.setImages(userId, postId, request.imageObjectKeys());
+
+        boolean liked = postLikeRepository.existsByPostIdAndUserId(postId, userId);
+        return PostResponse.from(post, postImageService.resolveUrls(postId), liked, true, true);
+    }
+
+    @Transactional
+    public void deletePost(Long meetingId, Long postId) {
+        Long userId = SecurityUtil.getCurrentUserId();
+        getMeeting(meetingId);
+
+        Post post = getPostInMeeting(meetingId, postId);
+        if (!post.isAuthor(userId) && !isHost(meetingId, userId)) {
+            throw new BusinessException(ErrorCode.POST_FORBIDDEN);
+        }
+
+        post.delete();
     }
 
     private void publishPostNotificationEvent(Meeting meeting, User author, Post post) {
@@ -127,33 +176,6 @@ public class PostService {
         eventPublisher.publishEvent(
                 new MeetingPostNotificationRequestedEvent(
                         meeting.getId(), post.getId(), author.getId(), type, message));
-    }
-
-    @Transactional
-    public PostResponse updatePost(Long meetingId, Long postId, PostUpdateRequest request) {
-        Long userId = SecurityUtil.getCurrentUserId();
-        getMeeting(meetingId);
-
-        Post post = getPostInMeeting(meetingId, postId);
-        if (!post.isAuthor(userId)) {
-            throw new BusinessException(ErrorCode.POST_FORBIDDEN);
-        }
-
-        post.update(request.title(), request.content());
-        return PostResponse.from(post);
-    }
-
-    @Transactional
-    public void deletePost(Long meetingId, Long postId) {
-        Long userId = SecurityUtil.getCurrentUserId();
-        getMeeting(meetingId);
-
-        Post post = getPostInMeeting(meetingId, postId);
-        if (!post.isAuthor(userId) && !isHost(meetingId, userId)) {
-            throw new BusinessException(ErrorCode.POST_FORBIDDEN);
-        }
-
-        post.delete();
     }
 
     private List<PostType> resolveVisibleTypes(boolean member, PostType typeFilter) {

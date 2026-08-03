@@ -24,8 +24,9 @@ import org.hibernate.annotations.UpdateTimestamp;
 /**
  * 모임 게시글(우리모임 게시판).
  *
- * <p>{@code deletedAt}으로 소프트 삭제한다. 좋아요/댓글 기능은 별도 도메인이라 {@code likeCount}·{@code commentCount}는 0으로
- * 시작하는 집계 컬럼만 둔다.
+ * <p>{@code deletedAt}으로 소프트 삭제한다. 좋아요/댓글은 별도 엔티티({@code PostLike}/{@code PostComment})가 원본을 보관하고,
+ * 여기 {@code likeCount}·{@code commentCount}는 목록/상세에서 바로 노출하기 위한 집계 컬럼이다. 좋아요·댓글의 등록/삭제 시 서비스에서 함께
+ * 증감한다.
  */
 @Entity
 @Getter
@@ -120,5 +121,25 @@ public class Post {
 
     public boolean isAuthor(Long userId) {
         return this.user.getId().equals(userId);
+    }
+
+    public void increaseLikeCount() {
+        this.likeCount++;
+    }
+
+    public void decreaseLikeCount() {
+        if (this.likeCount > 0) {
+            this.likeCount--;
+        }
+    }
+
+    public void increaseCommentCount() {
+        this.commentCount++;
+    }
+
+    public void decreaseCommentCount() {
+        if (this.commentCount > 0) {
+            this.commentCount--;
+        }
     }
 }
