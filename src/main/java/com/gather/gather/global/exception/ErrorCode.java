@@ -132,6 +132,8 @@ public enum ErrorCode {
     RECRUIT_RECOGNIZED_MINUTES_REQUIRED(HttpStatus.BAD_REQUEST, "봉사시간 인정 시 인정 시간을 입력해야 합니다."),
     RECRUIT_APPLICATION_CLOSED(HttpStatus.CONFLICT, "신청 기간이 종료되어 변경할 수 없습니다."),
     RECRUIT_CAPACITY_EXCEEDED(HttpStatus.CONFLICT, "모집 정원이 가득 찼습니다."),
+    RECRUIT_MAX_BELOW_APPLIED(HttpStatus.CONFLICT, "현재 신청 인원보다 정원을 적게 줄일 수 없습니다."),
+    POST_CONTENT_TOO_LONG(HttpStatus.BAD_REQUEST, "내용 길이가 허용 범위를 초과했습니다."),
     ;
 
     private final HttpStatus status;

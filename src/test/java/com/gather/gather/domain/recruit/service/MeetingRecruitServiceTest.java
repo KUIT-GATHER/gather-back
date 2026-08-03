@@ -22,6 +22,7 @@ import com.gather.gather.domain.posting.entity.PostingCategory;
 import com.gather.gather.domain.recruit.dto.RecruitCreateRequest;
 import com.gather.gather.domain.recruit.dto.RecruitDetailResponse;
 import com.gather.gather.domain.recruit.dto.RecruitParticipationResponse;
+import com.gather.gather.domain.recruit.dto.RecruitUpdateRequest;
 import com.gather.gather.domain.recruit.entity.MeetingRecruit;
 import com.gather.gather.domain.recruit.entity.MeetingRecruitParticipation;
 import com.gather.gather.domain.recruit.repository.MeetingRecruitParticipationRepository;
@@ -218,6 +219,68 @@ class MeetingRecruitServiceTest {
                 .hasFieldOrPropertyWithValue("errorCode", ErrorCode.POST_ACCESS_DENIED);
     }
 
+    @Test
+    @DisplayName("작성자(팀장)는 모집공고를 수정할 수 있다")
+    void updateRecruit_updatesWhenAuthor() {
+        Meeting meeting = meeting();
+        Post post = recruitPost();
+        when(post.isAuthor(USER_ID)).thenReturn(true);
+        MeetingRecruit recruit = openRecruit(30);
+        when(meetingRepository.findByIdAndDeletedAtIsNull(MEETING_ID))
+                .thenReturn(Optional.of(meeting));
+        when(postRepository.findByIdFetchUser(POST_ID)).thenReturn(Optional.of(post));
+        when(meetingRecruitRepository.findByPostId(POST_ID)).thenReturn(Optional.of(recruit));
+        when(participationRepository.countByPostId(POST_ID)).thenReturn(2L);
+        when(participationRepository.existsByPostIdAndUserId(POST_ID, USER_ID)).thenReturn(false);
+
+        RecruitDetailResponse response =
+                meetingRecruitService.updateRecruit(MEETING_ID, POST_ID, updateRequest(40));
+
+        assertThat(response.maxParticipants()).isEqualTo(40);
+        assertThat(response.appliedCount()).isEqualTo(2);
+        verify(post).update("6월 정기 활동 팀원 모집(수정)", "소개 수정");
+    }
+
+    @Test
+    @DisplayName("작성자가 아니면 모집공고를 수정할 수 없다")
+    void updateRecruit_rejectsNonAuthor() {
+        Meeting meeting = meeting();
+        Post post = recruitPost();
+        when(post.isAuthor(USER_ID)).thenReturn(false);
+        when(meetingRepository.findByIdAndDeletedAtIsNull(MEETING_ID))
+                .thenReturn(Optional.of(meeting));
+        when(postRepository.findByIdFetchUser(POST_ID)).thenReturn(Optional.of(post));
+
+        assertThatThrownBy(
+                        () ->
+                                meetingRecruitService.updateRecruit(
+                                        MEETING_ID, POST_ID, updateRequest(40)))
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("errorCode", ErrorCode.POST_FORBIDDEN);
+    }
+
+    @Test
+    @DisplayName("현재 신청 인원보다 정원을 적게 줄이면 거부한다")
+    void updateRecruit_rejectsMaxBelowApplied() {
+        Meeting meeting = meeting();
+        Post post = recruitPost();
+        when(post.isAuthor(USER_ID)).thenReturn(true);
+        MeetingRecruit recruit = openRecruit(30);
+        when(meetingRepository.findByIdAndDeletedAtIsNull(MEETING_ID))
+                .thenReturn(Optional.of(meeting));
+        when(postRepository.findByIdFetchUser(POST_ID)).thenReturn(Optional.of(post));
+        when(meetingRecruitRepository.findByPostId(POST_ID)).thenReturn(Optional.of(recruit));
+        when(participationRepository.countByPostId(POST_ID)).thenReturn(5L);
+
+        assertThatThrownBy(
+                        () ->
+                                meetingRecruitService.updateRecruit(
+                                        MEETING_ID, POST_ID, updateRequest(3)))
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("errorCode", ErrorCode.RECRUIT_MAX_BELOW_APPLIED);
+        verify(post, never()).update(Mockito.anyString(), Mockito.anyString());
+    }
+
     // ---------- fixtures ----------
     // 주의: 스텁을 만드는 헬퍼(meeting()/recruitPost()/member()/author())는 반드시 지역변수로 먼저 받은 뒤
     // when(...) 안에서 쓴다. when(...).thenReturn(헬퍼())처럼 중첩하면 UnfinishedStubbingException이 난다.
@@ -282,6 +345,22 @@ class MeetingRecruitServiceTest {
                 Set.of(PostingCategory.ENVIRONMENT),
                 timeRecognized,
                 recognizedMinutes,
+                LocalDate.now().plusDays(10),
+                false);
+    }
+
+    private RecruitUpdateRequest updateRequest(int maxParticipants) {
+        return new RecruitUpdateRequest(
+                "6월 정기 활동 팀원 모집(수정)",
+                "소개 수정",
+                "서울 영등포구 여의도동",
+                LocalDate.now().plusDays(5),
+                LocalTime.of(9, 0),
+                LocalTime.of(12, 0),
+                maxParticipants,
+                Set.of(PostingCategory.ENVIRONMENT),
+                false,
+                null,
                 LocalDate.now().plusDays(10),
                 false);
     }

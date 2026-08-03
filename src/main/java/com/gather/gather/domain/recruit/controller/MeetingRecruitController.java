@@ -3,6 +3,7 @@ package com.gather.gather.domain.recruit.controller;
 import com.gather.gather.domain.recruit.dto.RecruitCreateRequest;
 import com.gather.gather.domain.recruit.dto.RecruitDetailResponse;
 import com.gather.gather.domain.recruit.dto.RecruitParticipationResponse;
+import com.gather.gather.domain.recruit.dto.RecruitUpdateRequest;
 import com.gather.gather.domain.recruit.service.MeetingRecruitService;
 import com.gather.gather.global.common.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
@@ -11,6 +12,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -43,6 +45,17 @@ public class MeetingRecruitController {
     public ApiResponse<RecruitDetailResponse> getRecruit(
             @PathVariable Long meetingId, @PathVariable Long postId) {
         return ApiResponse.success(meetingRecruitService.getRecruit(meetingId, postId));
+    }
+
+    @Operation(
+            summary = "모집공고 수정",
+            description = "작성한 팀장 본인만 수정할 수 있습니다. 정원은 현재 신청 인원보다 적게 줄일 수 없습니다.")
+    @PatchMapping("/{postId}/recruit")
+    public ApiResponse<RecruitDetailResponse> updateRecruit(
+            @PathVariable Long meetingId,
+            @PathVariable Long postId,
+            @Valid @RequestBody RecruitUpdateRequest request) {
+        return ApiResponse.success(meetingRecruitService.updateRecruit(meetingId, postId, request));
     }
 
     @Operation(

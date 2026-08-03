@@ -142,4 +142,28 @@ public class MeetingRecruit {
     public boolean isApplicationOpen(LocalDate today) {
         return !today.isAfter(applyDeadline);
     }
+
+    /** 모집공고 확장 필드 수정. 제목·내용은 연결된 Post에서 별도로 갱신한다. */
+    public void update(
+            String place,
+            LocalDate actDate,
+            LocalTime actStartTime,
+            LocalTime actEndTime,
+            int maxParticipants,
+            boolean timeRecognized,
+            Integer recognizedMinutes,
+            LocalDate applyDeadline,
+            boolean isExternal,
+            Set<PostingCategory> categories) {
+        this.place = place;
+        this.actDate = actDate;
+        this.actStartTime = actStartTime;
+        this.actEndTime = actEndTime;
+        this.maxParticipants = maxParticipants;
+        this.timeRecognized = timeRecognized;
+        this.recognizedMinutes = recognizedMinutes;
+        this.applyDeadline = applyDeadline;
+        this.isExternal = isExternal;
+        this.categories = new LinkedHashSet<>(categories);
+    }
 }
