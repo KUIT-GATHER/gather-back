@@ -113,6 +113,7 @@ public class PostService {
         if (request.type().isNotice() && membership.getRole() != MeetingMemberRole.HOST) {
             throw new BusinessException(ErrorCode.NOTICE_HOST_ONLY);
         }
+        validateContentLength(request.type(), request.content());
 
         User author = getUser(userId);
         Post post =
@@ -143,9 +144,14 @@ public class PostService {
         getMeeting(meetingId);
 
         Post post = getPostInMeeting(meetingId, postId);
+        // 모집공고 수정은 전용 API(PATCH /posts/{postId}/recruit)로 처리한다.
+        if (post.getType() == PostType.RECRUIT) {
+            throw new BusinessException(ErrorCode.POST_RECRUIT_NOT_ALLOWED);
+        }
         if (!post.isAuthor(userId)) {
             throw new BusinessException(ErrorCode.POST_FORBIDDEN);
         }
+        validateContentLength(post.getType(), request.content());
 
         post.update(request.title(), request.content());
         postImageService.setImages(userId, postId, request.imageObjectKeys());
@@ -180,6 +186,14 @@ public class PostService {
         eventPublisher.publishEvent(
                 new MeetingPostNotificationRequestedEvent(
                         meeting.getId(), post.getId(), author.getId(), type, message));
+    }
+
+    /** 내용 글자수 제한(피그마): 자유·활동후기 500자, 공지 1000자. 절대 상한(1000)은 요청 DTO의 @Size가 이미 막는다. */
+    private void validateContentLength(PostType type, String content) {
+        int max = type == PostType.NOTICE ? 1000 : 500;
+        if (content.length() > max) {
+            throw new BusinessException(ErrorCode.POST_CONTENT_TOO_LONG);
+        }
     }
 
     private List<PostType> resolveVisibleTypes(boolean member, PostType typeFilter) {
