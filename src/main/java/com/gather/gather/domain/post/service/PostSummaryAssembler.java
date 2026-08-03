@@ -31,8 +31,7 @@ public class PostSummaryAssembler {
         Set<Long> likedPostIds =
                 postIds.isEmpty()
                         ? Set.of()
-                        : new HashSet<>(
-                                postLikeRepository.findLikedPostIds(viewerUserId, postIds));
+                        : new HashSet<>(postLikeRepository.findLikedPostIds(viewerUserId, postIds));
 
         List<PostSummaryResponse> content =
                 posts.stream()

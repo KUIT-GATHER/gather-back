@@ -34,7 +34,8 @@ public class PostCommentController {
 
     @Operation(
             summary = "댓글 목록 조회",
-            description = "게시글의 댓글을 오래된 순으로 페이지 단위 조회합니다. 게시글 열람 권한과 동일하게 미가입자는 공지·후기 게시글의 댓글만 볼 수 있습니다.")
+            description =
+                    "게시글의 댓글을 오래된 순으로 페이지 단위 조회합니다. 게시글 열람 권한과 동일하게 미가입자는 공지·후기 게시글의 댓글만 볼 수 있습니다.")
     @GetMapping
     public ApiResponse<PageResponse<PostCommentResponse>> getComments(
             @PathVariable Long meetingId,
@@ -68,9 +69,7 @@ public class PostCommentController {
     @Operation(summary = "댓글 삭제", description = "작성자 본인 또는 모임장이 삭제할 수 있습니다.")
     @DeleteMapping("/{commentId}")
     public ApiResponse<Void> deleteComment(
-            @PathVariable Long meetingId,
-            @PathVariable Long postId,
-            @PathVariable Long commentId) {
+            @PathVariable Long meetingId, @PathVariable Long postId, @PathVariable Long commentId) {
         postCommentService.deleteComment(meetingId, postId, commentId);
         return ApiResponse.success(null);
     }

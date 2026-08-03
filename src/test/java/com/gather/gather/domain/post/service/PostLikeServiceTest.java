@@ -25,8 +25,8 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
-import org.mockito.MockedStatic;
 import org.mockito.Mock;
+import org.mockito.MockedStatic;
 import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -63,7 +63,8 @@ class PostLikeServiceTest {
         Post post = postInMeeting();
         when(post.getLikeCount()).thenReturn(11);
         stubMemberAndPost(true, post);
-        when(postLikeRepository.findByPostIdAndUserId(POST_ID, USER_ID)).thenReturn(Optional.empty());
+        when(postLikeRepository.findByPostIdAndUserId(POST_ID, USER_ID))
+                .thenReturn(Optional.empty());
 
         PostLikeResponse response = postLikeService.toggleLike(MEETING_ID, POST_ID);
 
@@ -79,7 +80,8 @@ class PostLikeServiceTest {
         when(post.getLikeCount()).thenReturn(9);
         stubMemberAndPost(true, post);
         PostLike like = Mockito.mock(PostLike.class);
-        when(postLikeRepository.findByPostIdAndUserId(POST_ID, USER_ID)).thenReturn(Optional.of(like));
+        when(postLikeRepository.findByPostIdAndUserId(POST_ID, USER_ID))
+                .thenReturn(Optional.of(like));
 
         PostLikeResponse response = postLikeService.toggleLike(MEETING_ID, POST_ID);
 

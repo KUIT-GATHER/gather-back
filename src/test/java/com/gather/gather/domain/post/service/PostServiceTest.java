@@ -26,12 +26,11 @@ import com.gather.gather.domain.notification.event.MeetingPostNotificationReques
 import com.gather.gather.domain.post.dto.PostCreateRequest;
 import com.gather.gather.domain.post.entity.Post;
 import com.gather.gather.domain.post.enums.PostType;
-import com.gather.gather.domain.post.repository.PostRepository;
 import com.gather.gather.domain.post.repository.PostLikeRepository;
+import com.gather.gather.domain.post.repository.PostRepository;
 import com.gather.gather.global.exception.BusinessException;
 import com.gather.gather.global.exception.ErrorCode;
 import com.gather.gather.global.util.SecurityUtil;
-
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -270,7 +269,8 @@ class PostServiceTest {
                             () ->
                                     postService.createPost(
                                             MEETING_ID,
-                                            new PostCreateRequest("제목", "내용", PostType.FREE, null, null)))
+                                            new PostCreateRequest(
+                                                    "제목", "내용", PostType.FREE, null, null)))
                     .isInstanceOf(BusinessException.class)
                     .hasFieldOrPropertyWithValue("errorCode", ErrorCode.MEETING_MEMBER_REQUIRED);
         }
@@ -288,7 +288,8 @@ class PostServiceTest {
                             () ->
                                     postService.createPost(
                                             MEETING_ID,
-                                            new PostCreateRequest("제목", "내용", PostType.FREE, null, null)))
+                                            new PostCreateRequest(
+                                                    "제목", "내용", PostType.FREE, null, null)))
                     .isInstanceOf(BusinessException.class)
                     .hasFieldOrPropertyWithValue("errorCode", ErrorCode.MEETING_NOT_FOUND);
         }

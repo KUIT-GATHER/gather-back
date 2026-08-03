@@ -72,9 +72,7 @@ public interface PostRepository extends JpaRepository<Post, Long> {
                       AND p.deletedAt IS NULL
                     """)
     Page<Post> findMyPosts(
-            @Param("meetingId") Long meetingId,
-            @Param("userId") Long userId,
-            Pageable pageable);
+            @Param("meetingId") Long meetingId, @Param("userId") Long userId, Pageable pageable);
 
     /** 나의 활동 - 내가 이 모임에서 (미삭제) 댓글을 단 게시글. */
     @Query(
@@ -106,9 +104,7 @@ public interface PostRepository extends JpaRepository<Post, Long> {
                       )
                     """)
     Page<Post> findMyCommentedPosts(
-            @Param("meetingId") Long meetingId,
-            @Param("userId") Long userId,
-            Pageable pageable);
+            @Param("meetingId") Long meetingId, @Param("userId") Long userId, Pageable pageable);
 
     /** 나의 활동 탭 요약 - 내가 이 모임에서 작성한 게시글 수. */
     long countByMeeting_IdAndUser_IdAndDeletedAtIsNull(Long meetingId, Long userId);
