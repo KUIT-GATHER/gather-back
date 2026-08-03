@@ -29,7 +29,10 @@ public enum ErrorCode {
     CATEGORY_NOT_FOUND(HttpStatus.NOT_FOUND, "관심 카테고리를 찾을 수 없습니다."),
     INVALID_LOGIN(HttpStatus.UNAUTHORIZED, "이메일 또는 비밀번호가 올바르지 않습니다."),
     SUSPENDED_USER(HttpStatus.FORBIDDEN, "이용 정지된 계정입니다."),
+    WITHDRAWAL_PENDING_USER(HttpStatus.FORBIDDEN, "탈퇴 처리 중인 계정입니다."),
     WITHDRAWN_USER(HttpStatus.FORBIDDEN, "탈퇴한 계정입니다."),
+    ACCOUNT_REJOIN_BLOCKED(HttpStatus.CONFLICT, "탈퇴 후 7일 동안 재가입할 수 없습니다."),
+    ACCOUNT_TERMINATION_STATE_CONFLICT(HttpStatus.CONFLICT, "계정 탈퇴 상태가 올바르지 않습니다."),
     INVALID_TOKEN(HttpStatus.UNAUTHORIZED, "유효하지 않은 토큰입니다."),
     EXPIRED_TOKEN(HttpStatus.UNAUTHORIZED, "만료된 토큰입니다."),
     REVOKED_TOKEN(HttpStatus.UNAUTHORIZED, "폐기된 토큰입니다."),
@@ -37,6 +40,7 @@ public enum ErrorCode {
     SIGNUP_TOKEN_EXPIRED(HttpStatus.UNAUTHORIZED, "가입 인증이 만료되었습니다. 카카오 로그인부터 다시 진행해주세요."),
     SIGNUP_TOKEN_INVALID(HttpStatus.UNAUTHORIZED, "유효하지 않은 가입 인증입니다. 카카오 로그인부터 다시 진행해주세요."),
     ALREADY_REGISTERED(HttpStatus.CONFLICT, "이미 가입된 계정입니다."),
+    SOCIAL_ACCOUNT_NOT_LINKED(HttpStatus.CONFLICT, "연결 해제된 소셜 계정입니다."),
     KAKAO_API_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "카카오 로그인 서비스를 일시적으로 사용할 수 없습니다."),
     UNAUTHORIZED(HttpStatus.UNAUTHORIZED, "인증이 필요합니다."),
     FORBIDDEN(HttpStatus.FORBIDDEN, "접근 권한이 없습니다."),
@@ -44,6 +48,7 @@ public enum ErrorCode {
     INTERNAL_SERVER_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "서버 오류가 발생했습니다."),
 
     USER_NOT_FOUND(HttpStatus.NOT_FOUND, "사용자를 찾을 수 없습니다."),
+    NOTIFICATION_NOT_FOUND(HttpStatus.NOT_FOUND, "알림을 찾을 수 없습니다."),
     MEETING_NOT_FOUND(HttpStatus.NOT_FOUND, "모임을 찾을 수 없습니다."),
     MEETING_ALREADY_JOINED(HttpStatus.CONFLICT, "이미 참여한 모임입니다."),
     MEETING_JOIN_REQUEST_DUPLICATE(HttpStatus.CONFLICT, "이미 가입을 신청한 모임입니다."),
@@ -54,6 +59,10 @@ public enum ErrorCode {
     INVALID_MEETING_TIME(HttpStatus.BAD_REQUEST, "모임 시간이 올바르지 않습니다."),
     MEETING_BOOKMARK_DUPLICATE(HttpStatus.CONFLICT, "이미 북마크한 모임입니다."),
     MEETING_BOOKMARK_NOT_FOUND(HttpStatus.NOT_FOUND, "북마크를 찾을 수 없습니다."),
+    MEETING_ALREADY_COMPLETED(HttpStatus.CONFLICT, "이미 완료 처리된 모임입니다."),
+    MEETING_COMPLETE_NOT_ALLOWED(HttpStatus.CONFLICT, "활동종료일이 지나야 완료 처리를 할 수 있습니다."),
+    MEETING_HOURS_NOT_ALLOWED(HttpStatus.CONFLICT, "완료 처리된 모임에서만 인정시간을 입력할 수 있습니다."),
+    MEETING_HOURS_ALREADY_SUBMITTED(HttpStatus.CONFLICT, "이미 인정시간을 입력했습니다."),
 
     POSTING_NOT_FOUND(HttpStatus.NOT_FOUND, "봉사공고를 찾을 수 없습니다."),
     POSTING_CLOSED(HttpStatus.CONFLICT, "마감된 봉사공고입니다."),
@@ -64,6 +73,10 @@ public enum ErrorCode {
     PARTICIPATION_CANCEL_NOT_ALLOWED(
             HttpStatus.CONFLICT, "이력 보존을 위해 완료되었거나 후기가 작성된 신청은 취소할 수 없습니다."),
     POSTING_APPLICATION_UNAVAILABLE(HttpStatus.CONFLICT, "1365 신청 정보가 연동되지 않아 신청할 수 없는 공고입니다."),
+    PARTICIPATION_ALREADY_COMPLETED(HttpStatus.CONFLICT, "이미 완료 처리된 참여입니다."),
+    PARTICIPATION_COMPLETE_NOT_ALLOWED(HttpStatus.CONFLICT, "활동종료일이 지나야 완료 처리를 할 수 있습니다."),
+    PARTICIPATION_HOURS_NOT_ALLOWED(HttpStatus.CONFLICT, "완료 처리된 참여만 인정시간을 입력할 수 있습니다."),
+    PARTICIPATION_HOURS_ALREADY_SUBMITTED(HttpStatus.CONFLICT, "이미 인정시간을 입력했습니다."),
 
     UNSUPPORTED_PROFILE_IMAGE_TYPE(HttpStatus.BAD_REQUEST, "지원하지 않는 프로필 이미지 형식입니다."),
     PROFILE_IMAGE_SIZE_EXCEEDED(HttpStatus.BAD_REQUEST, "프로필 이미지의 허용 크기를 초과했습니다."),
@@ -96,6 +109,31 @@ public enum ErrorCode {
     MEETING_IMAGE_CONFLICT(HttpStatus.CONFLICT, "다른 요청이 모임 이미지를 변경했습니다. 다시 시도해주세요."),
     MEETING_IMAGE_OBJECT_NOT_FOUND(HttpStatus.NOT_FOUND, "업로드된 모임 이미지 객체를 찾을 수 없습니다."),
     MEETING_IMAGE_UPLOAD_CONFLICT(HttpStatus.CONFLICT, "이미 업로드된 모임 이미지 객체입니다."),
+
+    // ── 게시글 댓글 ──
+    COMMENT_NOT_FOUND(HttpStatus.NOT_FOUND, "댓글을 찾을 수 없습니다."),
+    COMMENT_FORBIDDEN(HttpStatus.FORBIDDEN, "댓글에 대한 권한이 없습니다."),
+
+    // ── 게시글 이미지 ──
+    UNSUPPORTED_POST_IMAGE_TYPE(HttpStatus.BAD_REQUEST, "지원하지 않는 이미지 형식입니다."),
+    POST_IMAGE_SIZE_EXCEEDED(HttpStatus.BAD_REQUEST, "이미지 크기가 허용 범위를 초과했습니다."),
+    POST_IMAGE_COUNT_EXCEEDED(HttpStatus.BAD_REQUEST, "이미지는 최대 3장까지 첨부할 수 있습니다."),
+    INVALID_POST_IMAGE_KEY(HttpStatus.BAD_REQUEST, "유효하지 않은 이미지 키입니다."),
+    POST_IMAGE_UPLOAD_EXPIRED(HttpStatus.BAD_REQUEST, "이미지 업로드 세션이 만료되었습니다."),
+    POST_IMAGE_UPLOAD_LIMIT_EXCEEDED(HttpStatus.CONFLICT, "미반영 이미지 업로드가 너무 많습니다."),
+
+    // ── 모임 나가기 ──
+    MEETING_HOST_CANNOT_LEAVE(HttpStatus.CONFLICT, "모임장은 모임을 나갈 수 없습니다."),
+
+    // ── 모집공고(RECRUIT) ──
+    POST_RECRUIT_NOT_ALLOWED(HttpStatus.BAD_REQUEST, "모집공고는 전용 API로 작성해주세요."),
+    RECRUIT_HOST_ONLY(HttpStatus.FORBIDDEN, "모집공고는 모임장만 작성할 수 있습니다."),
+    RECRUIT_NOT_FOUND(HttpStatus.NOT_FOUND, "모집공고를 찾을 수 없습니다."),
+    RECRUIT_RECOGNIZED_MINUTES_REQUIRED(HttpStatus.BAD_REQUEST, "봉사시간 인정 시 인정 시간을 입력해야 합니다."),
+    RECRUIT_APPLICATION_CLOSED(HttpStatus.CONFLICT, "신청 기간이 종료되어 변경할 수 없습니다."),
+    RECRUIT_CAPACITY_EXCEEDED(HttpStatus.CONFLICT, "모집 정원이 가득 찼습니다."),
+    RECRUIT_MAX_BELOW_APPLIED(HttpStatus.CONFLICT, "현재 신청 인원보다 정원을 적게 줄일 수 없습니다."),
+    POST_CONTENT_TOO_LONG(HttpStatus.BAD_REQUEST, "내용 길이가 허용 범위를 초과했습니다."),
     ;
 
     private final HttpStatus status;

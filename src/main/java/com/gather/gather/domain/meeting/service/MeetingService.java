@@ -2,6 +2,9 @@ package com.gather.gather.domain.meeting.service;
 
 import com.gather.gather.domain.auth.entity.User;
 import com.gather.gather.domain.auth.repository.UserRepository;
+import com.gather.gather.domain.badge.entity.BadgeType;
+import com.gather.gather.domain.badge.event.BadgeAwardRequestedEvent;
+import com.gather.gather.domain.badge.event.MeetingCompletedEvent;
 import com.gather.gather.domain.meeting.dto.MeetingCreateRequest;
 import com.gather.gather.domain.meeting.dto.MeetingDetailResponse;
 import com.gather.gather.domain.meeting.dto.MeetingJoinRequestResponse;
@@ -16,6 +19,7 @@ import com.gather.gather.domain.meeting.enums.MeetingStatus;
 import com.gather.gather.domain.meeting.repository.MeetingBookmarkRepository;
 import com.gather.gather.domain.meeting.repository.MeetingMemberRepository;
 import com.gather.gather.domain.meeting.repository.MeetingRepository;
+import com.gather.gather.domain.notification.event.MeetingJoinResultNotificationRequestedEvent;
 import com.gather.gather.domain.posting.entity.Posting;
 import com.gather.gather.domain.posting.entity.PostingCategory;
 import com.gather.gather.domain.posting.repository.PostingRepository;
@@ -23,6 +27,7 @@ import com.gather.gather.domain.region.repository.RegionRepository;
 import com.gather.gather.global.common.PageResponse;
 import com.gather.gather.global.exception.BusinessException;
 import com.gather.gather.global.exception.ErrorCode;
+import com.gather.gather.global.util.RecognizedMinutesValidator;
 import com.gather.gather.global.util.SecurityUtil;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -33,6 +38,7 @@ import java.util.Set;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -53,7 +59,6 @@ public class MeetingService {
                     "currentMemberCount",
                     "maxMember",
                     "regionId",
-                    "category",
                     "status",
                     "deadline",
                     "activityStartAt",
@@ -68,13 +73,17 @@ public class MeetingService {
     private final RegionRepository regionRepository;
     private final PostingRepository postingRepository;
     private final MeetingSearchLogService meetingSearchLogService;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Transactional
     public MeetingResponse createMeeting(MeetingCreateRequest request) {
-        validateMeetingTime(request.deadline(), request.activityStartAt(), request.activityEndAt());
+        validateMeetingTime(
+                request.deadline(),
+                request.activityStartAt(),
+                request.activityEndAt(),
+                request.volunteerPostingId());
         validateRegionExists(request.regionId());
-        PostingCategory category = resolveCategory(request);
-
+        Set<PostingCategory> categories = resolveCategories(request);
         Long userId = SecurityUtil.getCurrentUserId();
         User host = getUser(userId);
 
@@ -85,7 +94,7 @@ public class MeetingService {
                         request.maxMember(),
                         request.deadline(),
                         request.memo(),
-                        category,
+                        categories,
                         request.regionId(),
                         host,
                         request.participationCondition(),
@@ -97,6 +106,7 @@ public class MeetingService {
 
         MeetingMember hostMember = MeetingMember.createHost(host, savedMeeting);
         meetingMemberRepository.save(hostMember);
+        eventPublisher.publishEvent(new BadgeAwardRequestedEvent(userId, BadgeType.TEAM_CREATED));
 
         return MeetingResponse.from(savedMeeting, resolveDisplayStatus(savedMeeting));
     }
@@ -251,6 +261,14 @@ public class MeetingService {
         MeetingMember member = getPendingJoinRequestForUpdate(meetingId, joinRequestId);
         member.approve();
         meeting.increaseMemberCount();
+        if (member.getRole() == MeetingMemberRole.MEMBER) {
+            eventPublisher.publishEvent(
+                    new BadgeAwardRequestedEvent(
+                            member.getUser().getId(), BadgeType.FIRST_TEAM_JOIN));
+        }
+        eventPublisher.publishEvent(
+                new MeetingJoinResultNotificationRequestedEvent(
+                        member.getUser().getId(), meeting.getId(), meeting.getName(), true));
         return MeetingJoinRequestResponse.from(member);
     }
 
@@ -261,7 +279,54 @@ public class MeetingService {
 
         MeetingMember member = getPendingJoinRequestForUpdate(meetingId, joinRequestId);
         member.reject();
+
+        eventPublisher.publishEvent(
+                new MeetingJoinResultNotificationRequestedEvent(
+                        member.getUser().getId(), meeting.getId(), meeting.getName(), false));
         return MeetingJoinRequestResponse.from(member);
+    }
+
+    /** 모임(그룹) 봉사 완료 판정: 모임장이 직접 완료 처리한다(개인 봉사는 본인이 활동종료일 이후 완료 처리한다). */
+    @Transactional
+    public void completeMeeting(Long meetingId) {
+        Long userId = SecurityUtil.getCurrentUserId();
+        Meeting meeting = getMeetingEntityForUpdate(meetingId);
+        validateHost(meeting, userId);
+
+        if (meeting.getStatus() == MeetingStatus.COMPLETED) {
+            throw new BusinessException(ErrorCode.MEETING_ALREADY_COMPLETED);
+        }
+        if (meeting.hasActivityPeriod() && !meeting.isActivityEnded(LocalDateTime.now())) {
+            throw new BusinessException(ErrorCode.MEETING_COMPLETE_NOT_ALLOWED);
+        }
+
+        meeting.complete();
+        eventPublisher.publishEvent(new MeetingCompletedEvent(meetingId));
+    }
+
+    /** 모임 완료 처리 이후, 승인된 멤버 본인이 직접 인정시간을 입력한다(분 단위, 1회만 입력 가능). */
+    @Transactional
+    public void submitMemberHours(Long meetingId, Integer recognizedMinutes) {
+        RecognizedMinutesValidator.validate(recognizedMinutes);
+
+        Long userId = SecurityUtil.getCurrentUserId();
+        Meeting meeting = getMeetingEntity(meetingId);
+        if (meeting.getStatus() != MeetingStatus.COMPLETED) {
+            throw new BusinessException(ErrorCode.MEETING_HOURS_NOT_ALLOWED);
+        }
+
+        MeetingMember member =
+                meetingMemberRepository
+                        .findByMeeting_IdAndUser_IdAndStatus(
+                                meetingId, userId, MeetingMemberStatus.APPROVED)
+                        .orElseThrow(
+                                () -> new BusinessException(ErrorCode.MEETING_MEMBER_REQUIRED));
+
+        if (member.getRecognizedMinutes() != null) {
+            throw new BusinessException(ErrorCode.MEETING_HOURS_ALREADY_SUBMITTED);
+        }
+
+        member.submitRecognizedMinutes(recognizedMinutes);
     }
 
     public List<MeetingResponse> getMyMeetings() {
@@ -275,7 +340,8 @@ public class MeetingService {
                                 MeetingResponse.from(
                                         member.getMeeting(),
                                         resolveDisplayStatus(member.getMeeting()),
-                                        member.getRole())) // ← HOST/MEMBER
+                                        member.getRole(), // ← HOST/MEMBER
+                                        member.getRecognizedMinutes()))
                 .toList();
     }
 
@@ -361,21 +427,25 @@ public class MeetingService {
         }
     }
 
-    private PostingCategory resolveCategory(MeetingCreateRequest request) {
+    private Set<PostingCategory> resolveCategories(MeetingCreateRequest request) {
         if (request.volunteerPostingId() != null) {
             Posting posting =
                     postingRepository
                             .findById(request.volunteerPostingId())
                             .orElseThrow(() -> new BusinessException(ErrorCode.POSTING_NOT_FOUND));
 
-            return posting.getCategory();
+            return Set.of(posting.getCategory());
         }
 
-        if (request.category() == null) {
+        if (request.categories() == null || request.categories().isEmpty()) {
             throw new BusinessException(ErrorCode.VALIDATION_ERROR);
         }
 
-        return request.category();
+        if (request.categories().size() > 3) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR);
+        }
+
+        return Set.copyOf(request.categories());
     }
 
     private void validateRegionExists(Long regionId) {
@@ -385,7 +455,24 @@ public class MeetingService {
     }
 
     private void validateMeetingTime(
-            LocalDateTime deadline, LocalDateTime activityStartAt, LocalDateTime activityEndAt) {
+            LocalDateTime deadline,
+            LocalDateTime activityStartAt,
+            LocalDateTime activityEndAt,
+            Long volunteerPostingId) {
+        boolean postingBasedMeeting = volunteerPostingId != null;
+        boolean activityPeriodMissing = activityStartAt == null && activityEndAt == null;
+
+        if (activityPeriodMissing) {
+            if (postingBasedMeeting) {
+                throw new BusinessException(ErrorCode.INVALID_MEETING_TIME);
+            }
+            return;
+        }
+
+        if (activityStartAt == null || activityEndAt == null) {
+            throw new BusinessException(ErrorCode.INVALID_MEETING_TIME);
+        }
+
         if (!activityStartAt.isBefore(activityEndAt)) {
             throw new BusinessException(ErrorCode.INVALID_MEETING_TIME);
         }

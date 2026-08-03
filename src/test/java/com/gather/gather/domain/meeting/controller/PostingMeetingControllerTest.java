@@ -16,6 +16,7 @@ import com.gather.gather.global.common.PageResponse;
 import com.gather.gather.global.exception.BusinessException;
 import com.gather.gather.global.exception.ErrorCode;
 import java.util.List;
+import java.util.Set;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -41,7 +42,7 @@ class PostingMeetingControllerTest {
                 new PostingMeetingResponse(
                         12L,
                         "한강공원 플로깅팀",
-                        PostingCategory.ENVIRONMENT,
+                        Set.of(PostingCategory.ENVIRONMENT),
                         12,
                         20,
                         MeetingStatus.RECRUITING,
@@ -58,7 +59,8 @@ class PostingMeetingControllerTest {
                 .andExpect(jsonPath("$.data.content.length()").value(1))
                 .andExpect(jsonPath("$.data.content[0].meetingId").value(12))
                 .andExpect(jsonPath("$.data.content[0].name").value("한강공원 플로깅팀"))
-                .andExpect(jsonPath("$.data.content[0].category").value("ENVIRONMENT"))
+                .andExpect(jsonPath("$.data.content[0].categories").isArray())
+                .andExpect(jsonPath("$.data.content[0].categories[0]").value("ENVIRONMENT"))
                 .andExpect(jsonPath("$.data.content[0].currentMemberCount").value(12))
                 .andExpect(jsonPath("$.data.content[0].maxMember").value(20))
                 .andExpect(jsonPath("$.data.content[0].status").value("RECRUITING"))

@@ -8,6 +8,7 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -16,7 +17,9 @@ import static org.mockito.Mockito.when;
 import com.gather.gather.domain.auth.dto.EmailVerificationConfirmRequest;
 import com.gather.gather.domain.auth.dto.EmailVerificationSendRequest;
 import com.gather.gather.domain.auth.dto.LoginRequest;
+import com.gather.gather.domain.auth.dto.PhoneNumberAvailabilityRequest;
 import com.gather.gather.domain.auth.dto.SignupRequest;
+import com.gather.gather.domain.auth.entity.AccountRejoinBlockIdentifierType;
 import com.gather.gather.domain.auth.entity.EmailVerification;
 import com.gather.gather.domain.auth.entity.Gender;
 import com.gather.gather.domain.auth.entity.RefreshToken;
@@ -31,8 +34,11 @@ import com.gather.gather.domain.region.repository.RegionRepository;
 import com.gather.gather.global.exception.BusinessException;
 import com.gather.gather.global.exception.ErrorCode;
 import java.sql.SQLException;
+import java.time.Clock;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
@@ -55,6 +61,9 @@ import org.springframework.test.util.ReflectionTestUtils;
 @ExtendWith(MockitoExtension.class)
 class AuthServiceTest {
 
+    private static final RejoinBlockIdentifier PHONE_IDENTIFIER =
+            new RejoinBlockIdentifier(AccountRejoinBlockIdentifierType.PHONE, "a".repeat(64), 1);
+
     @Mock private UserRepository userRepository;
     @Mock private EmailVerificationRepository emailVerificationRepository;
     @Mock private RefreshTokenRepository refreshTokenRepository;
@@ -62,6 +71,9 @@ class AuthServiceTest {
     @Mock private PasswordEncoder passwordEncoder;
     @Mock private EmailSender emailSender;
     @Mock private TokenProvider tokenProvider;
+    @Mock private LockedTokenIssuanceService lockedTokenIssuanceService;
+    @Mock private AccountRejoinBlockService accountRejoinBlockService;
+    @Mock private AccountIdentityGuardService accountIdentityGuardService;
 
     private AuthService authService;
 
@@ -78,8 +90,16 @@ class AuthServiceTest {
                         emailSender,
                         tokenProvider,
                         new TokenIssuer(tokenProvider, refreshTokenRepository),
-                        new SignupValidator(userRepository, regionRepository),
-                        new LoginPolicy());
+                        lockedTokenIssuanceService,
+                        new SignupValidator(
+                                userRepository, regionRepository, new PhoneNumberNormalizer()),
+                        new LoginPolicy(),
+                        accountRejoinBlockService,
+                        accountIdentityGuardService,
+                        Clock.fixed(Instant.parse("2026-07-31T05:25:56.123456Z"), ZoneOffset.UTC));
+        lenient()
+                .when(accountIdentityGuardService.lockPhone(anyString(), any(LocalDateTime.class)))
+                .thenReturn(PHONE_IDENTIFIER);
     }
 
     @Test
@@ -546,18 +566,47 @@ class AuthServiceTest {
     }
 
     @Test
+    @DisplayName("재가입 제한 중인 전화번호는 가용하지 않다고 응답한다")
+    void checkPhoneNumberAvailability_whenRejoinBlocked_returnsUnavailable() {
+        when(accountRejoinBlockService.isPhoneBlocked(eq("01012345678"), any(LocalDateTime.class)))
+                .thenReturn(true);
+
+        var response =
+                authService.checkPhoneNumberAvailability(
+                        new PhoneNumberAvailabilityRequest("010-1234-5678"));
+
+        assertThat(response.available()).isFalse();
+        verify(userRepository, never()).existsByPhoneNumber(anyString());
+    }
+
+    @Test
+    @DisplayName("재가입 제한 중인 전화번호는 회원가입을 거부한다")
+    void signup_whenPhoneRejoinBlocked_throwsAccountRejoinBlocked() {
+        when(accountRejoinBlockService.isBlockedForUpdate(
+                        eq(PHONE_IDENTIFIER), any(LocalDateTime.class)))
+                .thenReturn(true);
+
+        assertErrorCode(
+                () -> authService.signup(signupRequest(123L)), ErrorCode.ACCOUNT_REJOIN_BLOCKED);
+
+        verify(userRepository, never()).saveAndFlush(any(User.class));
+        verify(accountIdentityGuardService).lockPhone(eq("01012345678"), any(LocalDateTime.class));
+    }
+
+    @Test
     @DisplayName("login은 이메일과 비밀번호가 일치하는 활성 회원에게 새 토큰을 발급한다")
     void login_withValidCredentials_issuesTokens() {
         User user = activeUser();
         when(userRepository.findByEmail("test@example.com")).thenReturn(Optional.of(user));
         when(passwordEncoder.matches("password123!", "encoded-password")).thenReturn(true);
-        prepareTokenIssue(user);
+        when(lockedTokenIssuanceService.issue(user.getId()))
+                .thenReturn(new TokenIssueResult("new-access-token", "new-refresh-token"));
 
         TokenIssueResult result = authService.login(loginRequest());
 
         assertThat(result.accessToken()).isEqualTo("new-access-token");
         assertThat(result.refreshToken()).isEqualTo("new-refresh-token");
-        verify(refreshTokenRepository).save(any(RefreshToken.class));
+        verify(lockedTokenIssuanceService).issue(user.getId());
     }
 
     @Test
@@ -585,14 +634,15 @@ class AuthServiceTest {
     @ParameterizedTest
     @EnumSource(
             value = UserStatus.class,
-            names = {"SUSPENDED", "WITHDRAWN"})
-    @DisplayName("login은 정지·탈퇴 회원의 토큰 발급을 차단한다")
+            names = {"SUSPENDED", "WITHDRAWAL_PENDING", "WITHDRAWN"})
+    @DisplayName("login은 정지·탈퇴 처리 중·탈퇴 회원의 토큰 발급을 차단한다")
     void login_withBlockedUserStatus_throwsStatusError(UserStatus status) {
         User user = mock(User.class);
         when(user.getPassword()).thenReturn("encoded-password");
-        when(user.getStatus()).thenReturn(status);
         when(userRepository.findByEmail("test@example.com")).thenReturn(Optional.of(user));
         when(passwordEncoder.matches("password123!", "encoded-password")).thenReturn(true);
+        when(lockedTokenIssuanceService.issue(user.getId()))
+                .thenThrow(new BusinessException(errorCodeFor(status)));
 
         assertErrorCode(() -> authService.login(loginRequest()), errorCodeFor(status));
 
@@ -606,7 +656,10 @@ class AuthServiceTest {
         RefreshToken oldRefreshToken =
                 RefreshToken.create("old-refresh-hash", user, LocalDateTime.now().plusDays(1));
         when(tokenProvider.hashToken("old-refresh-token")).thenReturn("old-refresh-hash");
-        when(refreshTokenRepository.findByTokenHash("old-refresh-hash"))
+        when(refreshTokenRepository.findUserIdByTokenHash("old-refresh-hash"))
+                .thenReturn(Optional.of(1L));
+        when(userRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(user));
+        when(refreshTokenRepository.findByTokenHashForUpdate("old-refresh-hash"))
                 .thenReturn(Optional.of(oldRefreshToken));
         when(tokenProvider.createAccessToken(user)).thenReturn("new-access-token");
         when(tokenProvider.generateToken()).thenReturn("new-refresh-token");
@@ -634,7 +687,11 @@ class AuthServiceTest {
                         "old-refresh-hash", activeUser(), LocalDateTime.now().plusDays(1));
         revokedRefreshToken.revoke(LocalDateTime.now());
         when(tokenProvider.hashToken("old-refresh-token")).thenReturn("old-refresh-hash");
-        when(refreshTokenRepository.findByTokenHash("old-refresh-hash"))
+        when(refreshTokenRepository.findUserIdByTokenHash("old-refresh-hash"))
+                .thenReturn(Optional.of(1L));
+        when(userRepository.findByIdForUpdate(1L))
+                .thenReturn(Optional.of(revokedRefreshToken.getUser()));
+        when(refreshTokenRepository.findByTokenHashForUpdate("old-refresh-hash"))
                 .thenReturn(Optional.of(revokedRefreshToken));
 
         assertThatThrownBy(() -> authService.reissue("old-refresh-token"))
@@ -650,15 +707,18 @@ class AuthServiceTest {
     @ParameterizedTest
     @EnumSource(
             value = UserStatus.class,
-            names = {"SUSPENDED", "WITHDRAWN"})
-    @DisplayName("reissue는 정지·탈퇴 회원의 토큰 재발급을 차단하고 기존 토큰을 revoke하지 않는다")
+            names = {"SUSPENDED", "WITHDRAWAL_PENDING", "WITHDRAWN"})
+    @DisplayName("reissue는 정지·탈퇴 처리 중·탈퇴 회원의 토큰 재발급을 차단한다")
     void reissue_withBlockedUserStatus_throwsStatusError(UserStatus status) {
         User user = mock(User.class);
         when(user.getStatus()).thenReturn(status);
         RefreshToken refreshToken =
                 RefreshToken.create("old-refresh-hash", user, LocalDateTime.now().plusDays(1));
         when(tokenProvider.hashToken("old-refresh-token")).thenReturn("old-refresh-hash");
-        when(refreshTokenRepository.findByTokenHash("old-refresh-hash"))
+        when(refreshTokenRepository.findUserIdByTokenHash("old-refresh-hash"))
+                .thenReturn(Optional.of(1L));
+        when(userRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(user));
+        when(refreshTokenRepository.findByTokenHashForUpdate("old-refresh-hash"))
                 .thenReturn(Optional.of(refreshToken));
 
         assertErrorCode(() -> authService.reissue("old-refresh-token"), errorCodeFor(status));
@@ -674,7 +734,7 @@ class AuthServiceTest {
         RefreshToken refreshToken =
                 RefreshToken.create("refresh-hash", activeUser(), LocalDateTime.now().plusDays(1));
         when(tokenProvider.hashToken("refresh-token")).thenReturn("refresh-hash");
-        when(refreshTokenRepository.findByTokenHash("refresh-hash"))
+        when(refreshTokenRepository.findByTokenHashForUpdate("refresh-hash"))
                 .thenReturn(Optional.of(refreshToken));
 
         authService.logout("refresh-token");
@@ -686,7 +746,7 @@ class AuthServiceTest {
     @DisplayName("존재하지 않는 Refresh Token으로 logout하면 INVALID_TOKEN이다")
     void logout_withUnknownRefreshToken_throwsInvalidToken() {
         when(tokenProvider.hashToken("unknown-refresh-token")).thenReturn("unknown-refresh-hash");
-        when(refreshTokenRepository.findByTokenHash("unknown-refresh-hash"))
+        when(refreshTokenRepository.findByTokenHashForUpdate("unknown-refresh-hash"))
                 .thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> authService.logout("unknown-refresh-token"))
@@ -730,7 +790,12 @@ class AuthServiceTest {
     }
 
     private static ErrorCode errorCodeFor(UserStatus status) {
-        return status == UserStatus.SUSPENDED ? ErrorCode.SUSPENDED_USER : ErrorCode.WITHDRAWN_USER;
+        return switch (status) {
+            case SUSPENDED -> ErrorCode.SUSPENDED_USER;
+            case WITHDRAWAL_PENDING -> ErrorCode.WITHDRAWAL_PENDING_USER;
+            case WITHDRAWN -> ErrorCode.WITHDRAWN_USER;
+            case ACTIVE -> throw new IllegalArgumentException("활성 사용자는 차단 상태가 아닙니다.");
+        };
     }
 
     private void prepareVerifiedEmail() {

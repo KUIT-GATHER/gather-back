@@ -1,6 +1,16 @@
 server:
   forward-headers-strategy: framework
 
+notification:
+  volunteer-schedule:
+    scheduler-enabled: ${NOTIFICATION_VOLUNTEER_SCHEDULE_SCHEDULER_ENABLED:true}
+    cron: ${NOTIFICATION_VOLUNTEER_SCHEDULE_CRON:0 0 9 * * *}
+
+  bookmarked-posting-deadline:
+    scheduler-enabled: ${NOTIFICATION_BOOKMARKED_POSTING_DEADLINE_SCHEDULER_ENABLED:true}
+    cron: ${NOTIFICATION_BOOKMARKED_POSTING_DEADLINE_CRON:0 10 9 * * *}
+
+
 spring:
   application:
     name: gather
@@ -15,6 +25,8 @@ spring:
     properties:
       hibernate:
         format_sql: true
+        jdbc:
+          time_zone: UTC
   mail:
     host: smtp.gmail.com
     port: 587
@@ -32,6 +44,14 @@ spring:
 # 이메일 발송 방식. log = 서버 로그로만 인증코드 출력(기본), smtp = 실제 발송.
 # smtp 모드는 spring.mail.username/password 필요 (로컬: application-secret.yml, 운영: 환경변수).
 gather:
+  scheduling:
+    enabled: ${GATHER_SCHEDULING_ENABLED:true}
+  kakao:
+    unlink-resume:
+      enabled: ${KAKAO_UNLINK_RESUME_ENABLED:false}
+      task-ids: ${KAKAO_UNLINK_RESUME_TASK_IDS:}
+      actor: ${KAKAO_UNLINK_RESUME_ACTOR:}
+      reason: ${KAKAO_UNLINK_RESUME_REASON:}
   aws:
     s3:
       region: ${GATHER_AWS_REGION:ap-northeast-2}
@@ -61,13 +81,32 @@ gather:
       - https://dev.gathernow.kr
   email:
     mode: log
+  recommendation:
+    category-weight: ${GATHER_RECOMMENDATION_CATEGORY_WEIGHT:0.7}
+    deadline-weight: ${GATHER_RECOMMENDATION_DEADLINE_WEIGHT:0.3}
+    deadline-window-days: ${GATHER_RECOMMENDATION_DEADLINE_WINDOW_DAYS:30}
 
 volunteer-api:
   base-url: https://apis.data.go.kr/1741000/volunteerPartcptnService
 
-# 비밀값(rest-api-key/client-secret/signup-token-secret)은 여기 두지 않는다.
+# 비밀값(rest-api-key/client-secret)은 여기 두지 않는다.
 # 로컬은 application-secret.yml, 운영은 /etc/gather/gather.env 환경변수로 주입한다.
 # redirect-uris는 카카오 콘솔 등록값과 문자열까지 정확히 같아야 한다(불일치 시 KOE006).
 kakao:
   redirect-uris: ${KAKAO_REDIRECT_URIS:http://localhost:5173/login/kakao/callback,https://dev.gathernow.kr/login/kakao/callback,https://gathernow.kr/login/kakao/callback}
   signup-token-expiration-seconds: ${KAKAO_SIGNUP_TOKEN_EXPIRATION_SECONDS:900}
+  admin:
+    enabled: ${KAKAO_ADMIN_ENABLED:false}
+    key: ${KAKAO_ADMIN_KEY:}
+    api-base-url: ${KAKAO_ADMIN_API_BASE_URL:https://kapi.kakao.com}
+    connect-timeout: ${KAKAO_ADMIN_CONNECT_TIMEOUT:2s}
+    read-timeout: ${KAKAO_ADMIN_READ_TIMEOUT:5s}
+    unlink-worker:
+      enabled: ${KAKAO_UNLINK_WORKER_ENABLED:false}
+      poll-interval: ${KAKAO_UNLINK_WORKER_POLL_INTERVAL:30s}
+      batch-size: ${KAKAO_UNLINK_WORKER_BATCH_SIZE:10}
+      lease-duration: ${KAKAO_UNLINK_WORKER_LEASE_DURATION:120s}
+      maximum-attempts: ${KAKAO_UNLINK_WORKER_MAXIMUM_ATTEMPTS:12}
+      base-backoff: ${KAKAO_UNLINK_WORKER_BASE_BACKOFF:1m}
+      maximum-backoff: ${KAKAO_UNLINK_WORKER_MAXIMUM_BACKOFF:6h}
+      worker-identifier: ${KAKAO_UNLINK_WORKER_IDENTIFIER:${HOSTNAME:local}}

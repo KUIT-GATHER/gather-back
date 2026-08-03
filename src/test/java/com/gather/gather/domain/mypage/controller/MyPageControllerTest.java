@@ -1,16 +1,22 @@
 package com.gather.gather.domain.mypage.controller;
 
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.gather.gather.domain.mypage.dto.MyPageActivityRecordResponse;
 import com.gather.gather.domain.mypage.dto.MyPageActivityResponse;
+import com.gather.gather.domain.mypage.dto.MyPageActivitySummaryResponse;
+import com.gather.gather.domain.mypage.dto.MyPageActivitySummaryResponse.CategoryBlock;
 import com.gather.gather.domain.mypage.dto.MyPageHomeResponse;
 import com.gather.gather.domain.mypage.service.MyPageService;
+import com.gather.gather.domain.posting.entity.PostingCategory;
 import com.gather.gather.domain.posting.entity.PostingParticipationStatus;
 import com.gather.gather.domain.region.dto.RegionResponse;
+import com.gather.gather.global.common.PageResponse;
 import com.gather.gather.global.exception.BusinessException;
 import com.gather.gather.global.exception.ErrorCode;
 import java.time.LocalDate;
@@ -21,6 +27,8 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -100,5 +108,57 @@ class MyPageControllerTest {
         mockMvc.perform(get("/api/v1/mypage/activities").param("yearMonth", "2026-07-01"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error.code").value("VALIDATION_ERROR"));
+    }
+
+    @Test
+    @DisplayName("GET /api/v1/mypage/activities/summary returns total count and category blocks")
+    void getActivitySummary_returns200WithSummary() throws Exception {
+        when(myPageService.getActivitySummary())
+                .thenReturn(
+                        MyPageActivitySummaryResponse.of(
+                                2, List.of(new CategoryBlock(PostingCategory.ENVIRONMENT, 2))));
+
+        mockMvc.perform(get("/api/v1/mypage/activities/summary"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.totalCompletedCount").value(2))
+                .andExpect(jsonPath("$.data.categoryBlocks[0].category").value("ENVIRONMENT"))
+                .andExpect(jsonPath("$.data.categoryBlocks[0].count").value(2));
+    }
+
+    @Test
+    @DisplayName("GET /api/v1/mypage/activities/records returns completed cards")
+    void getActivityRecords_returns200WithCards() throws Exception {
+        MyPageActivityRecordResponse record =
+                new MyPageActivityRecordResponse(
+                        1L,
+                        10L,
+                        "테스트 공고",
+                        PostingCategory.ENVIRONMENT,
+                        LocalDate.of(2026, 7, 15),
+                        LocalDate.of(2026, 7, 15),
+                        "서울숲공원",
+                        90);
+        when(myPageService.getActivityRecords(eq(null), any()))
+                .thenReturn(
+                        PageResponse.from(
+                                new PageImpl<>(List.of(record), PageRequest.of(0, 20), 1)));
+
+        mockMvc.perform(get("/api/v1/mypage/activities/records"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.content[0].postingId").value(10))
+                .andExpect(jsonPath("$.data.content[0].recognizedMinutes").value(90));
+    }
+
+    @Test
+    @DisplayName("GET /api/v1/mypage/activities/records filters by category when provided")
+    void getActivityRecords_filtersByCategory() throws Exception {
+        when(myPageService.getActivityRecords(eq(PostingCategory.EDUCATION), any()))
+                .thenReturn(PageResponse.from(new PageImpl<>(List.of(), PageRequest.of(0, 20), 0)));
+
+        mockMvc.perform(get("/api/v1/mypage/activities/records").param("category", "EDUCATION"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.content").isEmpty());
     }
 }

@@ -5,9 +5,12 @@ import com.gather.gather.domain.posting.dto.PostingResponse;
 import com.gather.gather.domain.posting.dto.PostingSummaryResponse;
 import com.gather.gather.domain.posting.entity.Posting;
 import com.gather.gather.domain.posting.entity.PostingCategory;
+import com.gather.gather.domain.posting.entity.PostingParticipation;
+import com.gather.gather.domain.posting.entity.PostingParticipationStatus;
 import com.gather.gather.domain.posting.entity.PostingStatus;
 import com.gather.gather.domain.posting.repository.BookmarkRepository;
 import com.gather.gather.domain.posting.repository.PostingLocationRepository;
+import com.gather.gather.domain.posting.repository.PostingParticipationRepository;
 import com.gather.gather.domain.posting.repository.PostingRepository;
 import com.gather.gather.domain.region.entity.Region;
 import com.gather.gather.domain.region.repository.RegionRepository;
@@ -34,9 +37,9 @@ import org.springframework.transaction.annotation.Transactional;
 public class PostingService {
 
     /**
-     * {@link PostingRepository#search}가 JPQL로 정렬을 적용하기 때문에, 존재하지 않는 프로퍼티로 정렬을 시도하면 500
-     * INTERNAL_SERVER_ERROR로 이어진다(Hibernate가 속성을 못 찾아 던지는 예외를 GlobalExceptionHandler의 catch-all이
-     * 받음). 클라이언트 입력값 문제이므로 쿼리 실행 전에 검증해 400으로 응답한다.
+     * {@link PostingRepository#search}가 Criteria API({@code root.get(property)})로 정렬을 적용하기 때문에,
+     * 존재하지 않는 프로퍼티로 정렬을 시도하면 500 INTERNAL_SERVER_ERROR로 이어진다(Hibernate가 속성을 못 찾아 던지는 예외를
+     * GlobalExceptionHandler의 catch-all이 받음). 클라이언트 입력값 문제이므로 쿼리 실행 전에 검증해 400으로 응답한다.
      */
     private static final Set<String> SORTABLE_PROPERTIES =
             Set.of(
@@ -58,6 +61,7 @@ public class PostingService {
     private final PostingSearchLogService postingSearchLogService;
     private final RegionNameResolver regionNameResolver;
     private final BookmarkRepository bookmarkRepository;
+    private final PostingParticipationRepository postingParticipationRepository;
 
     @Transactional(readOnly = true)
     public PageResponse<PostingSummaryResponse> getPostings(
@@ -70,12 +74,11 @@ public class PostingService {
             String keyword,
             PostingCategory category) {
         validateSort(pageable.getSort());
-        PostingStatus effectiveStatus = status != null ? status : PostingStatus.RECRUITING;
         List<Long> regionIds = resolveRegionIds(regionId, regionGroupId);
 
         Page<Posting> postings =
                 postingRepository.search(
-                        effectiveStatus,
+                        status,
                         regionIds,
                         noticeStartDate,
                         noticeEndDate,
@@ -111,13 +114,29 @@ public class PostingService {
                                 .orElse(null)
                         : null;
         return PostingResponse.from(
-                posting, regionName, buildLocations(posting), isBookmarkedByCurrentUser(id));
+                posting,
+                regionName,
+                buildLocations(posting),
+                isBookmarkedByCurrentUser(id),
+                resolveParticipationStatus(id));
     }
 
     /** 인증이 선택적인 엔드포인트이므로, 로그인하지 않은 사용자는 항상 false를 받는다. */
     private boolean isBookmarkedByCurrentUser(Long postingId) {
         Long userId = SecurityUtil.getCurrentUserIdOrNull();
         return userId != null && bookmarkRepository.existsByUserIdAndPostingId(userId, postingId);
+    }
+
+    /** 인증이 선택적인 엔드포인트이므로, 로그인하지 않은 사용자는 항상 참여 이력 없음(null)으로 취급한다. */
+    private PostingParticipationStatus resolveParticipationStatus(Long postingId) {
+        Long userId = SecurityUtil.getCurrentUserIdOrNull();
+        if (userId == null) {
+            return null;
+        }
+        return postingParticipationRepository
+                .findByUserIdAndPostingId(userId, postingId)
+                .map(PostingParticipation::getStatus)
+                .orElse(null);
     }
 
     /**

@@ -4,6 +4,7 @@ import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -18,6 +19,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -148,5 +150,61 @@ class PostingParticipationControllerTest {
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.error.code").value("PARTICIPATION_CANCEL_NOT_ALLOWED"));
+    }
+
+    @Test
+    @DisplayName("PATCH /api/v1/postings/{id}/participations/complete returns 200 on completion")
+    void complete_returns200() throws Exception {
+        mockMvc.perform(patch("/api/v1/postings/1/participations/complete"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true));
+
+        verify(postingParticipationService).complete(1L);
+    }
+
+    @Test
+    @DisplayName(
+            "PATCH /api/v1/postings/{id}/participations/complete returns 409 when the activity"
+                    + " has not ended yet")
+    void complete_returns409_whenNotEnded() throws Exception {
+        doThrow(new BusinessException(ErrorCode.PARTICIPATION_COMPLETE_NOT_ALLOWED))
+                .when(postingParticipationService)
+                .complete(1L);
+
+        mockMvc.perform(patch("/api/v1/postings/1/participations/complete"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.error.code").value("PARTICIPATION_COMPLETE_NOT_ALLOWED"));
+    }
+
+    @Test
+    @DisplayName("PATCH /api/v1/postings/{id}/participations/hours returns 200 on submission")
+    void submitRecognizedMinutes_returns200() throws Exception {
+        mockMvc.perform(
+                        patch("/api/v1/postings/1/participations/hours")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("{\"recognizedMinutes\": 210}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true));
+
+        verify(postingParticipationService).submitRecognizedMinutes(1L, 210);
+    }
+
+    @Test
+    @DisplayName(
+            "PATCH /api/v1/postings/{id}/participations/hours returns 409 when the participation"
+                    + " is not completed yet")
+    void submitRecognizedMinutes_returns409_whenNotCompleted() throws Exception {
+        doThrow(new BusinessException(ErrorCode.PARTICIPATION_HOURS_NOT_ALLOWED))
+                .when(postingParticipationService)
+                .submitRecognizedMinutes(1L, 210);
+
+        mockMvc.perform(
+                        patch("/api/v1/postings/1/participations/hours")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("{\"recognizedMinutes\": 210}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.error.code").value("PARTICIPATION_HOURS_NOT_ALLOWED"));
     }
 }

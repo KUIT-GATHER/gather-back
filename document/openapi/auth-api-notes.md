@@ -188,15 +188,17 @@
 ### 3-10. 카카오 로그인 — `POST /api/v1/auth/kakao/login`
 
 - 요청 body: `{ authorizationCode, redirectUri }`. `redirectUri`는 인가 요청에 쓴 값 그대로이며, 서버 허용 목록과 **문자열까지 정확히 일치**해야 합니다(trailing slash 하나만 달라도 400).
+- **OAuth `state` 검증은 프론트 책임입니다.** 카카오 인가 요청 시 난수를 만들어 `state`에 실어 보내고 `sessionStorage`에 저장한 뒤, 콜백에서 쿼리의 `state`와 **문자열 일치를 확인한 경우에만** 이 엔드포인트를 호출하세요. 불일치하면 호출하지 말고 로그인을 처음부터 다시 시작시키고, 확인 후에는 `sessionStorage` 값을 삭제하세요(`localStorage`는 탭 간 공유돼 1회용 성질이 깨지므로 쓰지 마세요). 이 검증이 없으면 공격자가 자신의 인가코드로 사용자를 공격자 계정에 로그인시킬 수 있습니다(로그인 CSRF).
+- `state`는 **서버로 보내지 않습니다.** 요청 body는 위의 `{ authorizationCode, redirectUri }` 그대로이며, 이 항목 때문에 API 계약이 바뀌지는 않습니다. 서버 측 이중 검증안은 설계만 해두고 보류했습니다 — 배경과 재검토 조건은 [kakao-oauth-state-design.md](../kakao-oauth-state-design.md) 참고.
 - 성공은 항상 `200`이고 `data.signupStatus`로 분기합니다. **둘 다 정상 응답이며 `ADDITIONAL_INFO_REQUIRED`는 에러가 아닙니다.**
   - `LOGIN_COMPLETED`(기존 회원): `data = { signupStatus, accessToken, tokenType: "Bearer" }` + Refresh Token 쿠키. 일반 로그인과 동일하게 처리하면 됩니다.
-  - `ADDITIONAL_INFO_REQUIRED`(신규 회원): `data = { signupStatus, signupToken, profile: { nickname } }`. 쿠키는 내려가지 않습니다. `signupToken`을 메모리에 보관하고 추가정보 화면으로 이동하세요. `profile.nickname`은 초깃값 용도이며 `null`일 수 있습니다.
+  - `ADDITIONAL_INFO_REQUIRED`(신규 회원): `data = { signupStatus, signupToken, profile: { nickname } }`. 쿠키는 내려가지 않습니다. `signupToken`은 일회성 opaque 값이며 메모리에 보관하고 추가정보 화면으로 이동하세요. `profile.nickname`은 초깃값 용도이며 `null`일 수 있습니다.
 - `400`(인가 코드 무효·재사용, redirectUri 불일치), `500`(카카오 장애), `503 KAKAO_API_UNAVAILABLE`(카카오 요청 제한)은 **`error.code`를 보지 말고 전부 "카카오 로그인 다시 시작"**으로 처리하세요. 콜백 새로고침·뒤로가기로 인가 코드가 재사용되면 `400`이 나는 것이 정상입니다.
 - **단, `403`은 재시작 대상이 아닙니다.** 기존 카카오 회원이 정지·탈퇴 상태면 일반 로그인과 동일하게 `403 SUSPENDED_USER` / `403 WITHDRAWN_USER`로 차단되며, 재로그인을 반복시키지 말고 계정 상태를 안내해야 합니다(§3-5와 동일).
 
 ### 3-11. 카카오 추가정보 가입 — `POST /api/v1/auth/kakao/signup`
 
-- 로그인에서 받은 `signupToken`을 **`X-Signup-Token` 헤더**로 보냅니다(`Authorization` 아님). 헤더가 없거나 위조·만료면 `401`입니다.
+- 로그인에서 받은 `signupToken`을 **`X-Signup-Token` 헤더**로 보냅니다(`Authorization` 아님). 헤더가 없거나 형식이 잘못됐거나 존재하지 않거나 만료·소비·취소된 세션이면 `401`입니다.
 - 요청 body는 회원가입(`/signup`)에서 **`email`·`password`·`passwordConfirm`만 뺀** 형태입니다. 카카오 가입은 이메일·비밀번호를 받지 않습니다. 나머지 필드 규칙은 §3-4와 동일합니다.
 - 성공은 `201`이며 `{ accessToken, tokenType: "Bearer" }` + Refresh Token 쿠키를 곧바로 내려줍니다(가입 후 자동 로그인). 별도 로그인 호출이 필요 없습니다.
 - 에러코드 → 화면 매핑:
@@ -204,14 +206,14 @@
 | 상태 | code | 처리 |
 |---|---|---|
 | 401 | `SIGNUP_TOKEN_EXPIRED` | signupToken 제거 후 카카오 로그인부터 재시작(15분 초과) |
-| 401 | `SIGNUP_TOKEN_INVALID` | signupToken 제거 후 카카오 로그인부터 재시작(위조·헤더 누락) |
+| 401 | `SIGNUP_TOKEN_INVALID` | signupToken 제거 후 카카오 로그인부터 재시작(형식 오류·존재하지 않음·소비 또는 취소됨·헤더 누락) |
 | 400 | `REQUIRED_TERMS_NOT_AGREED` / `INVALID_ACTIVITY_REGION` / `INVALID_INTEREST_CATEGORY_COUNT` / `VALIDATION_ERROR` | 해당 입력 수정(signupToken은 유지) |
 | 404 | `REGION_NOT_FOUND` | 지역 재선택(signupToken은 유지) |
 | 409 | `DUPLICATE_PHONE_NUMBER` | **이미 가입된 전화번호 = 기존 계정과 동일인**. 입력 오류가 아니라 "기존 계정(이메일 로그인)으로 로그인" 안내 화면으로 유도 |
 | 409 | `DUPLICATE_NICKNAME` | 닉네임 수정(signupToken은 유지) |
-| 409 | `ALREADY_REGISTERED` | 이미 가입된 카카오 계정(토큰 재사용). signupToken 제거 후 로그인 다시 시도 |
+| 409 | `ALREADY_REGISTERED` | 세션 발급 후 이미 가입 완료된 카카오 계정. signupToken 제거 후 로그인 다시 시도 |
 
-- signupToken 유지/제거 기준: **401·`ALREADY_REGISTERED`는 제거**하고 카카오 로그인부터, 그 외 검증 오류는 **유지**한 채 입력만 고쳐 재요청하세요(토큰은 15분 단일 발급이라 재발급되지 않습니다).
+- signupToken 유지/제거 기준: **401·`ALREADY_REGISTERED`는 제거**하고 카카오 로그인부터, 그 외 검증 오류는 **유지**한 채 입력만 고쳐 재요청하세요. 카카오 로그인을 다시 수행하면 같은 identity에도 새 세션이 발급될 수 있지만 각 token은 일회성이며, 가입 완료 후 다른 세션으로 다시 가입할 수 없습니다.
 
 ## 4. 논의 중 / 미확정 사항
 

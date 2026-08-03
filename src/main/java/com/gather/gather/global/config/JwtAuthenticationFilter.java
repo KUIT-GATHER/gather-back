@@ -1,8 +1,12 @@
 package com.gather.gather.global.config;
 
+import com.gather.gather.domain.auth.entity.User;
+import com.gather.gather.domain.auth.repository.UserRepository;
 import com.gather.gather.domain.auth.service.AccessTokenPayload;
 import com.gather.gather.domain.auth.service.JwtAuthenticationException;
+import com.gather.gather.domain.auth.service.ProtectedAccessPolicy;
 import com.gather.gather.domain.auth.service.TokenProvider;
+import com.gather.gather.global.exception.BusinessException;
 import com.gather.gather.global.exception.ErrorCode;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -11,6 +15,7 @@ import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.util.List;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
 import org.springframework.lang.NonNull;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
@@ -21,8 +26,10 @@ import org.springframework.web.filter.OncePerRequestFilter;
  * Authorization 헤더의 Bearer Access Token을 검증해 SecurityContext에 인증 정보를 채우는 필터.
  *
  * <p>인증 실패(무효/만료) 시 예외를 밖으로 던지지 않고, ErrorCode를 request attribute에 심은 뒤 인증 없이 체인을 이어간다. 최종 401 응답
- * 형식은 {@link CustomAuthenticationEntryPoint}가 담당한다. 상태 저장을 피하기 위해 이 필터는 DB를 조회하지 않는다(정지/탈퇴 차단은
- * login/reissue 시점에서 처리).
+ * 형식은 {@link CustomAuthenticationEntryPoint}가 담당한다. JWT 자체는 상태를 보관하지 않지만, 탈퇴 접수 직후 아직 유효한 Access
+ * Token도 차단해야 하므로 JWT가 유효한 요청마다 User의 최신 상태를 PK로 조회한 뒤 인증을 등록한다. WITHDRAWAL_PENDING 또는 WITHDRAWN
+ * 사용자는 기본적으로 보호 API 접근을 차단하되, 탈퇴 요청의 HTTP 멱등성을 위해 정확한 {@code DELETE /api/v1/users/me}만 예외적으로 허용한다.
+ * 이 경로는 즉시 차단의 정합성을 우선하며 성능 최적화는 운영 지표 확인 뒤 별도로 다룬다.
  */
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
@@ -30,11 +37,19 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     public static final String ERROR_CODE_ATTRIBUTE = "jwt.errorCode";
 
     private static final String BEARER_PREFIX = "Bearer ";
+    private static final String ACCOUNT_TERMINATION_PATH = "/api/v1/users/me";
 
     private final TokenProvider tokenProvider;
+    private final UserRepository userRepository;
+    private final ProtectedAccessPolicy protectedAccessPolicy;
 
-    public JwtAuthenticationFilter(TokenProvider tokenProvider) {
+    public JwtAuthenticationFilter(
+            TokenProvider tokenProvider,
+            UserRepository userRepository,
+            ProtectedAccessPolicy protectedAccessPolicy) {
         this.tokenProvider = tokenProvider;
+        this.userRepository = userRepository;
+        this.protectedAccessPolicy = protectedAccessPolicy;
     }
 
     @Override
@@ -61,8 +76,15 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
         try {
             AccessTokenPayload payload = tokenProvider.parseAccessToken(token);
-            SecurityContextHolder.getContext().setAuthentication(toAuthentication(payload));
+            User user =
+                    userRepository
+                            .findById(payload.userId())
+                            .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_TOKEN));
+            protectedAccessPolicy.validateAccessAllowed(user, isAccountTerminationRequest(request));
+            SecurityContextHolder.getContext().setAuthentication(toAuthentication(user));
         } catch (JwtAuthenticationException exception) {
+            request.setAttribute(ERROR_CODE_ATTRIBUTE, exception.getErrorCode());
+        } catch (BusinessException exception) {
             request.setAttribute(ERROR_CODE_ATTRIBUTE, exception.getErrorCode());
         }
         filterChain.doFilter(request, response);
@@ -73,9 +95,16 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         return header.regionMatches(true, 0, BEARER_PREFIX, 0, BEARER_PREFIX.length());
     }
 
-    private UsernamePasswordAuthenticationToken toAuthentication(AccessTokenPayload payload) {
+    private boolean isAccountTerminationRequest(HttpServletRequest request) {
+        // 탈퇴 후 남아 있는 Access Token으로 멱등 재요청할 수 있도록
+        // pending/withdrawn 사용자에게 정확한 탈퇴 DELETE 요청만 허용한다.
+        return HttpMethod.DELETE.matches(request.getMethod())
+                && ACCOUNT_TERMINATION_PATH.equals(request.getServletPath());
+    }
+
+    private UsernamePasswordAuthenticationToken toAuthentication(User user) {
         List<SimpleGrantedAuthority> authorities =
-                List.of(new SimpleGrantedAuthority("ROLE_" + payload.role().name()));
-        return new UsernamePasswordAuthenticationToken(payload.userId(), null, authorities);
+                List.of(new SimpleGrantedAuthority("ROLE_" + user.getRole().name()));
+        return new UsernamePasswordAuthenticationToken(user.getId(), null, authorities);
     }
 }

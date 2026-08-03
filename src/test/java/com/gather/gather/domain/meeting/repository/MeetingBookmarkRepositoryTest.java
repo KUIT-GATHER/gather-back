@@ -15,6 +15,7 @@ import com.gather.gather.global.util.LikeKeywordEscaper;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -404,7 +405,7 @@ class MeetingBookmarkRepositoryTest {
                 10,
                 now.plusDays(3),
                 null,
-                category,
+                Set.of(category),
                 region.getId(),
                 host,
                 null,

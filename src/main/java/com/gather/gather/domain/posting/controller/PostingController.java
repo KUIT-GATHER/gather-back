@@ -5,6 +5,7 @@ import com.gather.gather.domain.posting.dto.PostingSummaryResponse;
 import com.gather.gather.domain.posting.entity.PostingCategory;
 import com.gather.gather.domain.posting.entity.PostingStatus;
 import com.gather.gather.domain.posting.service.PostingKeywordRecommendationService;
+import com.gather.gather.domain.posting.service.PostingRecommendationService;
 import com.gather.gather.domain.posting.service.PostingService;
 import com.gather.gather.global.common.ApiResponse;
 import com.gather.gather.global.common.PageResponse;
@@ -36,12 +37,16 @@ public class PostingController {
 
     private final PostingService postingService;
     private final PostingKeywordRecommendationService postingKeywordRecommendationService;
+    private final PostingRecommendationService postingRecommendationService;
 
     @Operation(
             summary = "봉사공고 목록 조회",
             description =
                     "봉사공고를 페이지 단위로 조회합니다. 인증이 필요 없습니다. "
-                            + "status를 지정하지 않으면 모집중(RECRUITING)만 반환합니다. "
+                            + "status를 지정하지 않으면 모집중(RECRUITING)과 모집마감(CLOSED) 공고를 함께 반환하며, "
+                            + "모집중 공고가 항상 먼저 오고 그 다음 모집마감 공고가 오는 순서로 정렬한 뒤 각 그룹 안에서 "
+                            + "sort 파라미터를 적용합니다(활동 완료 COMPLETED는 기본 목록에서 제외되며 필요 시 status로 "
+                            + "직접 조회). status를 지정하면 해당 상태만 반환합니다. "
                             + "regionId는 상위 지역(시/도) 선택 시 하위 지역(구/군) 공고까지 포함합니다. "
                             + "regionGroupId는 활동 지역 9버튼(서울/부산/.../경상/전라/충청) 선택 시 그 권역에 속한 "
                             + "모든 시도와 시군구 공고를 포함합니다. regionId와 regionGroupId는 동시에 지정할 수 없습니다. "
@@ -148,7 +153,8 @@ public class PostingController {
             @Parameter(description = "활동 지역 권역 ID (9버튼, regionId와 동시 지정 불가)")
                     @RequestParam(required = false)
                     Long regionGroupId,
-            @Parameter(description = "모집상태 (미지정 시 RECRUITING)") @RequestParam(required = false)
+            @Parameter(description = "모집상태 (미지정 시 RECRUITING+CLOSED, 모집중 우선 정렬)")
+                    @RequestParam(required = false)
                     PostingStatus status,
             @Parameter(description = "모집시작일 하한 (yyyy-MM-dd)") @RequestParam(required = false)
                     LocalDate noticeStartDate,
@@ -179,7 +185,12 @@ public class PostingController {
             description =
                     "봉사공고 상세 정보를 조회합니다. 인증이 필요 없습니다. "
                             + "Authorization 헤더로 유효한 토큰을 보내면 bookmarked 필드에 해당 사용자의 북마크 여부가 반영되고, "
-                            + "헤더가 없거나 비로그인 상태, 혹은 유효하지 않거나 만료된 토큰인 경우에도 bookmarked는 항상 false입니다.")
+                            + "헤더가 없거나 비로그인 상태, 혹은 유효하지 않거나 만료된 토큰인 경우에도 bookmarked는 항상 false입니다. "
+                            + "participationStatus는 해당 사용자의 참여 상태(APPLIED/CONFIRMED/COMPLETED/REVIEWED)이며, "
+                            + "참여 이력이 없거나 비로그인 상태면 null입니다. "
+                            + "participationAction은 하단 버튼 동작으로, 참여 상태와 활동종료 여부로 파생됩니다. "
+                            + "null은 APPLY, APPLIED/CONFIRMED는 활동종료 전이면 CANCEL·이후면 COMPLETE, "
+                            + "COMPLETED/REVIEWED는 NONE입니다.")
     @ApiResponses({
         @io.swagger.v3.oas.annotations.responses.ApiResponse(
                 responseCode = "200",
@@ -208,6 +219,17 @@ public class PostingController {
     @GetMapping("/{id}")
     public ApiResponse<PostingResponse> getPosting(@PathVariable Long id) {
         return ApiResponse.success(postingService.getPosting(id));
+    }
+
+    @Operation(
+            summary = "봉사공고 추천 목록 조회",
+            description =
+                    "선호 카테고리 매칭과 마감일 근접도로 점수를 매겨 상위 5개 봉사공고를 추천합니다. 인증이 필요 없으며, "
+                            + "비로그인이거나 선호 카테고리를 설정하지 않았으면 마감임박순 상위 5개를 반환합니다. "
+                            + "이미 지원한 공고는 추천에서 제외됩니다.")
+    @GetMapping("/recommended")
+    public ApiResponse<List<PostingSummaryResponse>> getRecommendedPostings() {
+        return ApiResponse.success(postingRecommendationService.getRecommendedPostings());
     }
 
     @Operation(

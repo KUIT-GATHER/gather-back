@@ -19,6 +19,7 @@ import com.gather.gather.global.exception.BusinessException;
 import com.gather.gather.global.exception.ErrorCode;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Set;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -51,10 +52,11 @@ class MeetingBookmarkQueryControllerTest {
                         3,
                         10,
                         2L,
-                        PostingCategory.ENVIRONMENT,
+                        Set.of(PostingCategory.ENVIRONMENT),
                         MeetingStatus.RECRUITING,
                         LocalDateTime.of(2026, 8, 1, 0, 0),
                         LocalDateTime.of(2026, 8, 5, 10, 0),
+                        null,
                         null);
         Page<MeetingResponse> page = new PageImpl<>(List.of(meeting), PageRequest.of(0, 20), 1);
         when(meetingBookmarkService.getBookmarkedMeetings(isNull(), isNull(), any()))
@@ -64,6 +66,8 @@ class MeetingBookmarkQueryControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.content[0].meetingId").value(1))
+                .andExpect(jsonPath("$.data.content[0].categories[0]").value("ENVIRONMENT"))
+                .andExpect(jsonPath("$.data.content[0].category").doesNotExist())
                 .andExpect(jsonPath("$.data.content[0].status").value("RECRUITING"))
                 .andExpect(jsonPath("$.data.totalElements").value(1));
     }

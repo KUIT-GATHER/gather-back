@@ -1,6 +1,9 @@
 package com.gather.gather.global.config;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -11,14 +14,23 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.gather.gather.domain.auth.entity.User;
 import com.gather.gather.domain.auth.entity.UserRole;
+import com.gather.gather.domain.auth.entity.UserStatus;
+import com.gather.gather.domain.auth.entity.WithdrawalReason;
+import com.gather.gather.domain.auth.repository.UserRepository;
+import com.gather.gather.domain.auth.service.AccountTerminationOutcome;
+import com.gather.gather.domain.auth.service.AccountTerminationResult;
+import com.gather.gather.domain.auth.service.AccountTerminationService;
 import com.gather.gather.domain.auth.service.TokenProvider;
 import com.gather.gather.domain.posting.service.PostingSyncResult;
 import com.gather.gather.domain.posting.service.PostingSyncService;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
+import java.time.LocalDateTime;
 import java.util.Base64;
 import java.util.Date;
+import java.util.Optional;
 import javax.crypto.SecretKey;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -52,12 +64,179 @@ class JwtSecurityIntegrationTest {
     private static final String PROFILE_IMAGE_PATH = "/api/v1/users/me/profile-image";
     private static final String MYPAGE_HOME_PATH = "/api/v1/mypage/home";
     private static final String MYPAGE_ACTIVITIES_PATH = "/api/v1/mypage/activities";
+    private static final String MEETING_RECOMMENDED_PATH = "/api/v1/meetings/recommended";
     private static final String PARTICIPATION_PATH = "/api/v1/postings/1/participations";
+    private static final String ACCOUNT_TERMINATION_PATH = "/api/v1/users/me";
 
     @Autowired private MockMvc mockMvc;
     @Autowired private TokenProvider tokenProvider;
     @Autowired private JwtProperties jwtProperties;
     @MockitoBean private PostingSyncService postingSyncService;
+    @MockitoBean private UserRepository userRepository;
+    @MockitoBean private AccountTerminationService accountTerminationService;
+
+    @BeforeEach
+    void setUpCurrentUsers() {
+        when(userRepository.findById(anyLong()))
+                .thenAnswer(
+                        invocation -> {
+                            Long userId = invocation.getArgument(0);
+                            UserRole role = userId.equals(200L) ? UserRole.ADMIN : UserRole.USER;
+                            return Optional.of(newUser(userId, role, UserStatus.ACTIVE));
+                        });
+        when(accountTerminationService.terminate(anyLong(), eq(WithdrawalReason.SELF)))
+                .thenReturn(
+                        new AccountTerminationResult(
+                                AccountTerminationOutcome.COMPLETED,
+                                LocalDateTime.of(2026, 8, 1, 14, 0)));
+    }
+
+    @Test
+    @DisplayName("ACTIVE 사용자는 인증된 회원 탈퇴 DELETE에 도달한다")
+    void accountTermination_activeUser_reachesController() throws Exception {
+        User user = newUser(310L, UserRole.USER, UserStatus.ACTIVE);
+        when(userRepository.findById(310L)).thenReturn(Optional.of(user));
+        String token = tokenProvider.createAccessToken(user);
+
+        mockMvc.perform(
+                        delete(ACCOUNT_TERMINATION_PATH)
+                                .servletPath(ACCOUNT_TERMINATION_PATH)
+                                .header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("COMPLETED"));
+
+        verify(accountTerminationService).terminate(310L, WithdrawalReason.SELF);
+    }
+
+    @Test
+    @DisplayName("SUSPENDED 사용자는 인증된 회원 탈퇴 DELETE에 도달한다")
+    void accountTermination_suspendedUser_reachesController() throws Exception {
+        User user = newUser(311L, UserRole.USER, UserStatus.SUSPENDED);
+        when(userRepository.findById(311L)).thenReturn(Optional.of(user));
+        String token = tokenProvider.createAccessToken(user);
+
+        mockMvc.perform(
+                        delete(ACCOUNT_TERMINATION_PATH)
+                                .servletPath(ACCOUNT_TERMINATION_PATH)
+                                .header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
+                .andExpect(status().isOk());
+
+        verify(accountTerminationService).terminate(311L, WithdrawalReason.SELF);
+    }
+
+    @Test
+    @DisplayName("WITHDRAWAL_PENDING 사용자는 탈퇴 DELETE만 재호출할 수 있다")
+    void accountTermination_pendingUser_allowsOnlyExactDelete() throws Exception {
+        User user = newUser(312L, UserRole.USER, UserStatus.WITHDRAWAL_PENDING);
+        when(userRepository.findById(312L)).thenReturn(Optional.of(user));
+        String token = tokenProvider.createAccessToken(user);
+
+        mockMvc.perform(
+                        delete(ACCOUNT_TERMINATION_PATH)
+                                .servletPath(ACCOUNT_TERMINATION_PATH)
+                                .header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
+                .andExpect(status().isOk());
+        mockMvc.perform(
+                        get(ACCOUNT_TERMINATION_PATH)
+                                .header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error.code").value("WITHDRAWAL_PENDING_USER"));
+        mockMvc.perform(
+                        patch(ACCOUNT_TERMINATION_PATH)
+                                .header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error.code").value("WITHDRAWAL_PENDING_USER"));
+        mockMvc.perform(
+                        delete(ACCOUNT_TERMINATION_PATH + "/anything")
+                                .servletPath(ACCOUNT_TERMINATION_PATH + "/anything")
+                                .header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error.code").value("WITHDRAWAL_PENDING_USER"));
+        mockMvc.perform(get(SECURED_PATH).header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error.code").value("WITHDRAWAL_PENDING_USER"));
+    }
+
+    @Test
+    @DisplayName("WITHDRAWN 사용자는 탈퇴 DELETE만 재호출할 수 있다")
+    void accountTermination_withdrawnUser_allowsOnlyExactDelete() throws Exception {
+        User user = newUser(313L, UserRole.USER, UserStatus.WITHDRAWN);
+        when(userRepository.findById(313L)).thenReturn(Optional.of(user));
+        String token = tokenProvider.createAccessToken(user);
+
+        mockMvc.perform(
+                        delete(ACCOUNT_TERMINATION_PATH)
+                                .servletPath(ACCOUNT_TERMINATION_PATH)
+                                .header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
+                .andExpect(status().isOk());
+        mockMvc.perform(
+                        get(ACCOUNT_TERMINATION_PATH)
+                                .header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error.code").value("WITHDRAWN_USER"));
+        mockMvc.perform(
+                        patch(ACCOUNT_TERMINATION_PATH)
+                                .header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error.code").value("WITHDRAWN_USER"));
+        mockMvc.perform(
+                        delete(ACCOUNT_TERMINATION_PATH + "/anything")
+                                .servletPath(ACCOUNT_TERMINATION_PATH + "/anything")
+                                .header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error.code").value("WITHDRAWN_USER"));
+    }
+
+    @Test
+    @DisplayName("회원 탈퇴 DELETE는 인증이 없거나 JWT 사용자가 없으면 401이다")
+    void accountTermination_requiresValidExistingUserAuthentication() throws Exception {
+        mockMvc.perform(delete(ACCOUNT_TERMINATION_PATH).servletPath(ACCOUNT_TERMINATION_PATH))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.error.code").value("UNAUTHORIZED"));
+
+        User missingUser = newUser(314L, UserRole.USER, UserStatus.ACTIVE);
+        when(userRepository.findById(314L)).thenReturn(Optional.empty());
+        String token = tokenProvider.createAccessToken(missingUser);
+        mockMvc.perform(
+                        delete(ACCOUNT_TERMINATION_PATH)
+                                .servletPath(ACCOUNT_TERMINATION_PATH)
+                                .header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.error.code").value("INVALID_TOKEN"));
+    }
+
+    @Test
+    @DisplayName("회원 탈퇴 DELETE도 만료·변조 Access Token을 401로 거부한다")
+    void accountTermination_rejectsExpiredAndTamperedAccessTokens() throws Exception {
+        Date past = new Date(System.currentTimeMillis() - 60_000L);
+        String expired =
+                Jwts.builder()
+                        .subject("315")
+                        .claim("role", "USER")
+                        .issuedAt(new Date(past.getTime() - 60_000L))
+                        .expiration(past)
+                        .signWith(signingKey(), Jwts.SIG.HS256)
+                        .compact();
+        mockMvc.perform(
+                        delete(ACCOUNT_TERMINATION_PATH)
+                                .servletPath(ACCOUNT_TERMINATION_PATH)
+                                .header(HttpHeaders.AUTHORIZATION, "Bearer " + expired))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.error.code").value("EXPIRED_TOKEN"));
+
+        User user = newUser(316L, UserRole.USER, UserStatus.ACTIVE);
+        String valid = tokenProvider.createAccessToken(user);
+        String[] parts = valid.split("\\.");
+        char first = parts[2].charAt(0);
+        parts[2] = (first == 'A' ? 'B' : 'A') + parts[2].substring(1);
+        String tampered = String.join(".", parts);
+        mockMvc.perform(
+                        delete(ACCOUNT_TERMINATION_PATH)
+                                .servletPath(ACCOUNT_TERMINATION_PATH)
+                                .header(HttpHeaders.AUTHORIZATION, "Bearer " + tampered))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.error.code").value("INVALID_TOKEN"));
+    }
 
     @Test
     @DisplayName("보호 API에 토큰 없이 요청하면 401 UNAUTHORIZED이다")
@@ -201,6 +380,14 @@ class JwtSecurityIntegrationTest {
     }
 
     @Test
+    @DisplayName("모임 추천 목록 조회(/api/v1/meetings/recommended)는 토큰 없이 통과한다(401이 아니다)")
+    void permitAllPath_meetingRecommended_passesWithoutToken() throws Exception {
+        mockMvc.perform(get(MEETING_RECOMMENDED_PATH))
+                .andExpect(
+                        result -> assertThat(result.getResponse().getStatus()).isNotEqualTo(401));
+    }
+
+    @Test
     @DisplayName(
             "봉사공고 북마크 목록 조회(/api/v1/postings/bookmarks)는 /api/v1/postings/** permitAll"
                     + " 와일드카드에 묻히지 않고 토큰 없이 요청하면 401 UNAUTHORIZED이다")
@@ -253,6 +440,53 @@ class JwtSecurityIntegrationTest {
                 .andExpect(jsonPath("$.data.principal").value(100))
                 .andExpect(jsonPath("$.data.principalType").value("Long"))
                 .andExpect(jsonPath("$.data.authorities[0]").value("ROLE_USER"));
+    }
+
+    @Test
+    @DisplayName("탈퇴 처리 중인 사용자의 기존 Access Token은 보호 API에서 차단한다")
+    void withdrawalPendingUserToken_returns403PendingUser() throws Exception {
+        User user = newUser(300L, UserRole.USER, UserStatus.WITHDRAWAL_PENDING);
+        when(userRepository.findById(300L)).thenReturn(Optional.of(user));
+        String token = tokenProvider.createAccessToken(user);
+
+        mockMvc.perform(get(SECURED_PATH).header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error.code").value("WITHDRAWAL_PENDING_USER"));
+    }
+
+    @Test
+    @DisplayName("탈퇴한 사용자의 기존 Access Token은 보호 API에서 차단한다")
+    void withdrawnUserToken_returns403WithdrawnUser() throws Exception {
+        User user = newUser(301L, UserRole.USER, UserStatus.WITHDRAWN);
+        when(userRepository.findById(301L)).thenReturn(Optional.of(user));
+        String token = tokenProvider.createAccessToken(user);
+
+        mockMvc.perform(get(SECURED_PATH).header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error.code").value("WITHDRAWN_USER"));
+    }
+
+    @Test
+    @DisplayName("정지된 사용자의 기존 Access Token 접근 정책은 유지한다")
+    void suspendedUserToken_preservesExistingAccessPolicy() throws Exception {
+        User user = newUser(302L, UserRole.USER, UserStatus.SUSPENDED);
+        when(userRepository.findById(302L)).thenReturn(Optional.of(user));
+        String token = tokenProvider.createAccessToken(user);
+
+        mockMvc.perform(get(SECURED_PATH).header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    @DisplayName("JWT 사용자가 DB에 없으면 INVALID_TOKEN으로 차단한다")
+    void tokenForMissingUser_returns401InvalidToken() throws Exception {
+        User tokenUser = newUser(999L, UserRole.USER, UserStatus.ACTIVE);
+        when(userRepository.findById(999L)).thenReturn(Optional.empty());
+        String token = tokenProvider.createAccessToken(tokenUser);
+
+        mockMvc.perform(get(SECURED_PATH).header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.error.code").value("INVALID_TOKEN"));
     }
 
     @Test
@@ -320,7 +554,7 @@ class JwtSecurityIntegrationTest {
     @Test
     @DisplayName("관리자 전용 API에 USER 토큰으로 요청하면 403 FORBIDDEN이다")
     void adminOnlyPath_withUserToken_returns403Forbidden() throws Exception {
-        String token = tokenProvider.createAccessToken(newUser(200L, UserRole.USER));
+        String token = tokenProvider.createAccessToken(newUser(201L, UserRole.USER));
 
         mockMvc.perform(
                         post("/api/v1/admin/postings/keywords/aggregate")
@@ -343,12 +577,17 @@ class JwtSecurityIntegrationTest {
     }
 
     private static User newUser(Long id, UserRole role) {
+        return newUser(id, role, UserStatus.ACTIVE);
+    }
+
+    private static User newUser(Long id, UserRole role, UserStatus status) {
         try {
             var constructor = User.class.getDeclaredConstructor();
             constructor.setAccessible(true);
             User user = constructor.newInstance();
             ReflectionTestUtils.setField(user, "id", id);
             ReflectionTestUtils.setField(user, "role", role);
+            ReflectionTestUtils.setField(user, "status", status);
             return user;
         } catch (ReflectiveOperationException exception) {
             throw new IllegalStateException(exception);

@@ -25,7 +25,6 @@ INSERT INTO meeting (
     current_member_count,
     deadline,
     memo,
-    category,
     region_id,
     host_id,
     volunteer_posting_id,
@@ -44,7 +43,6 @@ SELECT
     1,
     DATE_ADD(NOW(), INTERVAL seed.deadline_days DAY),
     seed.memo,
-    seed.category,
     @seed_region_id,
     @seed_host_id,
     NULL,
@@ -62,7 +60,6 @@ FROM (
         12 AS max_member,
         10 AS deadline_days,
         '편한 복장과 장갑을 준비해 주세요.' AS memo,
-        'ENVIRONMENT' AS category,
         14 AS start_days,
         '누구나 참여할 수 있습니다.' AS participation_condition
     UNION ALL
@@ -72,7 +69,6 @@ FROM (
         8,
         7,
         '운동화를 착용해 주세요.',
-        'WELFARE',
         11,
         '동물을 사랑하는 성인'
     UNION ALL
@@ -82,7 +78,6 @@ FROM (
         10,
         15,
         '선정 도서는 모임 공지에서 안내합니다.',
-        'EDUCATION',
         20,
         '월 1회 이상 참여 가능한 분'
     UNION ALL
@@ -92,7 +87,6 @@ FROM (
         15,
         18,
         '작업복과 여벌 옷을 준비해 주세요.',
-        'CULTURE',
         24,
         '미술 경험이 없어도 참여할 수 있습니다.'
     UNION ALL
@@ -102,7 +96,6 @@ FROM (
         6,
         5,
         '개인 스마트폰을 지참해 주세요.',
-        'COMMUNITY',
         9,
         '스마트폰 기본 기능을 설명할 수 있는 분'
 ) seed
@@ -113,6 +106,36 @@ WHERE @seed_host_id IS NOT NULL
       FROM meeting existing
       WHERE existing.name = seed.name
         AND existing.deleted_at IS NULL
+  );
+
+INSERT INTO meeting_category (meeting_id, category)
+SELECT
+    meeting.id,
+    seed_category.category
+FROM meeting
+JOIN (
+    SELECT '[로컬] 한강공원 플로깅팀' AS meeting_name, 'ENVIRONMENT' AS category
+    UNION ALL
+    SELECT '[로컬] 한강공원 플로깅팀', 'COMMUNITY'
+    UNION ALL
+    SELECT '[로컬] 주말 유기견 산책 봉사', 'WELFARE'
+    UNION ALL
+    SELECT '[로컬] 어린이 독서 멘토링', 'EDUCATION'
+    UNION ALL
+    SELECT '[로컬] 어린이 독서 멘토링', 'COMMUNITY'
+    UNION ALL
+    SELECT '[로컬] 벽화 정비 봉사단', 'CULTURE'
+    UNION ALL
+    SELECT '[로컬] 어르신 디지털 도우미', 'COMMUNITY'
+    UNION ALL
+    SELECT '[로컬] 어르신 디지털 도우미', 'EDUCATION'
+) seed_category ON seed_category.meeting_name = meeting.name
+WHERE meeting.deleted_at IS NULL
+  AND NOT EXISTS (
+      SELECT 1
+      FROM meeting_category existing_category
+      WHERE existing_category.meeting_id = meeting.id
+        AND existing_category.category = seed_category.category
   );
 
 INSERT INTO meeting_member (

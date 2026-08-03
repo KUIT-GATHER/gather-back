@@ -4,15 +4,18 @@ import com.gather.gather.domain.meeting.dto.MeetingCreateRequest;
 import com.gather.gather.domain.meeting.dto.MeetingDetailResponse;
 import com.gather.gather.domain.meeting.dto.MeetingJoinRequestResponse;
 import com.gather.gather.domain.meeting.dto.MeetingJoinResponse;
+import com.gather.gather.domain.meeting.dto.MeetingRecognizedMinutesRequest;
 import com.gather.gather.domain.meeting.dto.MeetingResponse;
 import com.gather.gather.domain.meeting.enums.MeetingStatus;
 import com.gather.gather.domain.meeting.service.MeetingKeywordRecommendationService;
+import com.gather.gather.domain.meeting.service.MeetingRecommendationService;
 import com.gather.gather.domain.meeting.service.MeetingService;
 import com.gather.gather.domain.posting.entity.PostingCategory;
 import com.gather.gather.global.common.ApiResponse;
 import com.gather.gather.global.common.PageResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import java.time.LocalDate;
@@ -40,8 +43,17 @@ public class MeetingController {
 
     private final MeetingService meetingService;
     private final MeetingKeywordRecommendationService meetingKeywordRecommendationService;
+    private final MeetingRecommendationService meetingRecommendationService;
 
-    @Operation(summary = "모임 생성", description = "로그인한 사용자가 새로운 모임을 생성합니다.")
+    @Operation(
+            summary = "모임 생성",
+            description =
+                    "로그인한 사용자가 새로운 모임을 생성합니다. "
+                            + "자유 모임은 categories에 카테고리를 1개 이상 3개 이하로 전달합니다. "
+                            + "자유 모임은 volunteerPostingId, activityStartAt, activityEndAt을 생략하거나 null로 요청할 수 있습니다. "
+                            + "공고 기반 모임은 volunteerPostingId와 활동 시작·종료 시간이 모두 필요합니다. "
+                            + "활동 기간을 전달하는 경우 활동 시작 시간은 종료 시간보다 빨라야 하며, "
+                            + "신청 마감 시간은 활동 시작 시간보다 늦을 수 없습니다.")
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public ApiResponse<MeetingResponse> createMeeting(
@@ -55,9 +67,12 @@ public class MeetingController {
                     "모임을 페이지 단위로 조회합니다. 인증이 필요 없습니다. "
                             + "regionId는 상위 지역(시/도) 선택 시 하위 시군구 모임까지 포함합니다. "
                             + "activityStartDate/activityEndDate는 선택 기간과 모임 활동기간(activityStartAt~activityEndAt)이 "
-                            + "겹치는 모임을 조회합니다. status=RECRUITING이면 마감 전·정원 미달·활동 종료 전의 "
-                            + "실제 가입 가능한 모임만 반환합니다. postingBasedFirst=true면 공고 기반 모임을 먼저 배치하고 "
-                            + "자유 모임을 뒤에 두며, 그룹 내부 정렬은 sort를 따릅니다(기본 createdAt,desc).",
+                            + "겹치는 모임을 조회하며, 활동 기간이 정해지지 않은 자유 모임은 날짜 필터 사용 시 제외됩니다. "
+                            + "status=RECRUITING이면 마감 전·정원 미달이며 활동이 종료되지 않은 실제 가입 가능한 모임만 반환합니다. "
+                            + "활동 종료 시간이 없는 자유 모임도 신청 마감 전이고 정원이 남아 있으면 포함됩니다. "
+                            + "postingBasedFirst=true면 공고 기반 모임을 먼저 배치하고 "
+                            + "자유 모임을 뒤에 두며, 그룹 내부 정렬은 sort를 따릅니다(기본 createdAt,desc). "
+                            + "다중 카테고리에는 단일 정렬 기준이 없어 category 정렬은 지원하지 않으며, 요청 시 400을 반환합니다.",
             parameters = {
                 @Parameter(
                         name = "sort",
@@ -65,7 +80,7 @@ public class MeetingController {
                                 "정렬 기준 (property,direction). 예: createdAt,desc(최신순), "
                                         + "currentMemberCount,desc(인기순), deadline,asc(마감임박). "
                                         + "허용 필드: id, name, currentMemberCount, maxMember, regionId, "
-                                        + "category, status, deadline, activityStartAt, activityEndAt, "
+                                        + "status, deadline, activityStartAt, activityEndAt, "
                                         + "createdAt, updatedAt.",
                         example = "createdAt,desc")
             })
@@ -75,7 +90,8 @@ public class MeetingController {
             @Parameter(description = "지역 ID (상위 시/도 선택 시 하위 시군구 모임 포함)")
                     @RequestParam(required = false)
                     Long regionId,
-            @Parameter(description = "카테고리", example = "WELFARE") @RequestParam(required = false)
+            @Parameter(description = "해당 카테고리를 하나라도 포함한 모임 조회", example = "WELFARE")
+                    @RequestParam(required = false)
                     PostingCategory category,
             @Parameter(description = "모집 상태. RECRUITING이면 실제 가입 가능한 모임만 반환")
                     @RequestParam(required = false)
@@ -99,6 +115,17 @@ public class MeetingController {
                         activityEndDate,
                         postingBasedFirst,
                         pageable));
+    }
+
+    @Operation(
+            summary = "모임 추천 목록 조회",
+            description =
+                    "선호 카테고리 매칭과 마감일 근접도로 점수를 매겨 상위 5개 모임을 추천합니다. 인증이 필요 없으며, "
+                            + "비로그인이거나 선호 카테고리를 설정하지 않았으면 마감임박순 상위 5개를 반환합니다. "
+                            + "이미 가입했거나 가입 신청 중인 모임은 추천에서 제외됩니다.")
+    @GetMapping("/recommended")
+    public ApiResponse<List<MeetingResponse>> getRecommendedMeetings() {
+        return ApiResponse.success(meetingRecommendationService.getRecommendedMeetings());
     }
 
     @Operation(
@@ -148,5 +175,51 @@ public class MeetingController {
     @GetMapping("/{meetingId}")
     public ApiResponse<MeetingDetailResponse> getMeeting(@PathVariable Long meetingId) {
         return ApiResponse.success(meetingService.getMeeting(meetingId));
+    }
+
+    @Operation(
+            summary = "모임(그룹) 봉사 완료 처리",
+            description = "모임장이 모임을 완료 처리한다. 개인 봉사는 본인이 활동종료일 이후 별도 API로 완료 처리한다.")
+    @ApiResponses({
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                responseCode = "200",
+                description = "완료 처리 성공"),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                responseCode = "403",
+                description = "모임장이 아님(MEETING_HOST_ONLY)"),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                responseCode = "409",
+                description =
+                        "이미 완료됨(MEETING_ALREADY_COMPLETED) / 활동종료일 미경과(MEETING_COMPLETE_NOT_ALLOWED)")
+    })
+    @PatchMapping("/{meetingId}/complete")
+    public ApiResponse<Void> completeMeeting(@PathVariable Long meetingId) {
+        meetingService.completeMeeting(meetingId);
+        return ApiResponse.success(null);
+    }
+
+    @Operation(
+            summary = "봉사 인정시간 입력",
+            description = "완료 처리된 모임에 한해, 승인된 멤버 본인이 직접 인정시간(분 단위, 10분 단위)을 입력한다.")
+    @ApiResponses({
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                responseCode = "200",
+                description = "인정시간 입력 성공"),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                responseCode = "400",
+                description = "인정시간 형식 오류(10분 단위·양수·상한 이내가 아님, VALIDATION_ERROR)"),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                responseCode = "403",
+                description = "승인된 멤버가 아님(MEETING_MEMBER_REQUIRED)"),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                responseCode = "409",
+                description =
+                        "완료 처리되지 않음(MEETING_HOURS_NOT_ALLOWED) / 이미 입력됨(MEETING_HOURS_ALREADY_SUBMITTED)")
+    })
+    @PatchMapping("/{meetingId}/members/me/hours")
+    public ApiResponse<Void> submitMemberHours(
+            @PathVariable Long meetingId, @RequestBody MeetingRecognizedMinutesRequest request) {
+        meetingService.submitMemberHours(meetingId, request.recognizedMinutes());
+        return ApiResponse.success(null);
     }
 }

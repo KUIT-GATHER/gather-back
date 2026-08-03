@@ -1,6 +1,7 @@
 package com.gather.gather.domain.posting.controller;
 
 import com.gather.gather.domain.posting.dto.PostingParticipationResponse;
+import com.gather.gather.domain.posting.dto.PostingRecognizedMinutesRequest;
 import com.gather.gather.domain.posting.service.PostingParticipationService;
 import com.gather.gather.global.common.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
@@ -10,8 +11,10 @@ import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -216,6 +219,146 @@ public class PostingParticipationController {
     @DeleteMapping
     public ApiResponse<Void> cancel(@PathVariable Long postingId) {
         postingParticipationService.cancel(postingId);
+        return ApiResponse.success(null);
+    }
+
+    @Operation(
+            summary = "개인 봉사 완료 처리",
+            description = "활동종료일이 지난 뒤 본인이 직접 완료 처리한다. 모임(그룹) 봉사는 모임장이 별도 API로 완료 처리한다.")
+    @ApiResponses({
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                responseCode = "200",
+                description = "완료 처리 성공"),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                responseCode = "401",
+                description = "인증되지 않은 요청",
+                content =
+                        @Content(
+                                mediaType = JSON,
+                                examples =
+                                        @ExampleObject(
+                                                name = "UNAUTHORIZED",
+                                                value = UNAUTHORIZED_EXAMPLE))),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                responseCode = "404",
+                description = "신청 내역을 찾을 수 없음",
+                content =
+                        @Content(
+                                mediaType = JSON,
+                                examples =
+                                        @ExampleObject(
+                                                name = "PARTICIPATION_NOT_FOUND",
+                                                value =
+                                                        """
+                                                        {
+                                                          "success": false,
+                                                          "data": null,
+                                                          "error": {
+                                                            "code": "PARTICIPATION_NOT_FOUND",
+                                                            "message": "신청 내역을 찾을 수 없습니다."
+                                                          }
+                                                        }
+                                                        """))),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                responseCode = "409",
+                description = "이미 완료됨 / 활동종료일 미경과",
+                content =
+                        @Content(
+                                mediaType = JSON,
+                                examples = {
+                                    @ExampleObject(
+                                            name = "PARTICIPATION_ALREADY_COMPLETED",
+                                            value =
+                                                    """
+                                                    {
+                                                      "success": false,
+                                                      "data": null,
+                                                      "error": {
+                                                        "code": "PARTICIPATION_ALREADY_COMPLETED",
+                                                        "message": "이미 완료 처리된 참여입니다."
+                                                      }
+                                                    }
+                                                    """),
+                                    @ExampleObject(
+                                            name = "PARTICIPATION_COMPLETE_NOT_ALLOWED",
+                                            value =
+                                                    """
+                                                    {
+                                                      "success": false,
+                                                      "data": null,
+                                                      "error": {
+                                                        "code": "PARTICIPATION_COMPLETE_NOT_ALLOWED",
+                                                        "message": "활동종료일이 지나야 완료 처리를 할 수 있습니다."
+                                                      }
+                                                    }
+                                                    """)
+                                }))
+    })
+    @PatchMapping("/complete")
+    public ApiResponse<Void> complete(@PathVariable Long postingId) {
+        postingParticipationService.complete(postingId);
+        return ApiResponse.success(null);
+    }
+
+    @Operation(
+            summary = "봉사 인정시간 입력",
+            description = "완료 처리된 참여에 한해, 본인이 직접 인정시간(분 단위, 10분 단위)을 입력한다.")
+    @ApiResponses({
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                responseCode = "200",
+                description = "인정시간 입력 성공"),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                responseCode = "400",
+                description = "인정시간 형식 오류(10분 단위·양수·상한 이내가 아님, VALIDATION_ERROR)"),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                responseCode = "401",
+                description = "인증되지 않은 요청",
+                content =
+                        @Content(
+                                mediaType = JSON,
+                                examples =
+                                        @ExampleObject(
+                                                name = "UNAUTHORIZED",
+                                                value = UNAUTHORIZED_EXAMPLE))),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                responseCode = "409",
+                description = "완료 처리되지 않음 / 이미 입력됨",
+                content =
+                        @Content(
+                                mediaType = JSON,
+                                examples = {
+                                    @ExampleObject(
+                                            name = "PARTICIPATION_HOURS_NOT_ALLOWED",
+                                            value =
+                                                    """
+                                                    {
+                                                      "success": false,
+                                                      "data": null,
+                                                      "error": {
+                                                        "code": "PARTICIPATION_HOURS_NOT_ALLOWED",
+                                                        "message": "완료 처리된 참여만 인정시간을 입력할 수 있습니다."
+                                                      }
+                                                    }
+                                                    """),
+                                    @ExampleObject(
+                                            name = "PARTICIPATION_HOURS_ALREADY_SUBMITTED",
+                                            value =
+                                                    """
+                                                    {
+                                                      "success": false,
+                                                      "data": null,
+                                                      "error": {
+                                                        "code": "PARTICIPATION_HOURS_ALREADY_SUBMITTED",
+                                                        "message": "이미 인정시간을 입력했습니다."
+                                                      }
+                                                    }
+                                                    """)
+                                }))
+    })
+    @PatchMapping("/hours")
+    public ApiResponse<Void> submitRecognizedMinutes(
+            @PathVariable Long postingId, @RequestBody PostingRecognizedMinutesRequest request) {
+        postingParticipationService.submitRecognizedMinutes(postingId, request.recognizedMinutes());
         return ApiResponse.success(null);
     }
 }

@@ -1,6 +1,7 @@
 #!/bin/bash
 
 set -e
+set -o pipefail
 
 APP_NAME="gather"
 DEPLOY_DIR="/opt/gather"
@@ -9,6 +10,7 @@ NEW_JAR="$DEPLOY_DIR/gather.jar.new"
 BACKUP_JAR="$DEPLOY_DIR/gather-$(date +%Y%m%d-%H%M%S).jar.bak"
 HEALTH_URL="http://localhost:8080/health"
 ENV_FILE="/etc/gather/gather.env"
+VALIDATOR_SCRIPT="$DEPLOY_DIR/validate-deploy-env.sh"
 IMDS_BASE_URL="http://169.254.169.254/latest"
 EXPECTED_INSTANCE_PROFILE_ROLE="GatherBackendProfileImageRole"
 
@@ -39,7 +41,21 @@ for variable_name in "${REQUIRED_S3_ENV_VARS[@]}"; do
   fi
 done
 
-echo "3. Check EC2 Instance Profile"
+echo "3. Validate withdrawal deployment environment"
+if [ ! -r "$VALIDATOR_SCRIPT" ]; then
+  echo "Deploy environment validator is not readable: $VALIDATOR_SCRIPT"
+  exit 1
+fi
+
+if ! sudo -n cat "$ENV_FILE" | bash "$VALIDATOR_SCRIPT" -; then
+  echo "Deploy environment validation failed."
+  echo "Deployment stopped before JAR replacement."
+  echo "The uploaded gather.jar.new was not activated."
+  echo "Fix the environment configuration and rerun the full deployment workflow."
+  exit 1
+fi
+
+echo "4. Check EC2 Instance Profile"
 if ! IMDS_TOKEN=$(curl --fail --silent --show-error --max-time 3 \
   --request PUT "$IMDS_BASE_URL/api/token" \
   --header "X-aws-ec2-metadata-token-ttl-seconds: 60"); then
@@ -65,13 +81,13 @@ if [ "$INSTANCE_PROFILE_ROLE" != "$EXPECTED_INSTANCE_PROFILE_ROLE" ]; then
   exit 1
 fi
 
-echo "4. Check new jar"
+echo "5. Check new jar"
 if [ ! -f "$NEW_JAR" ]; then
   echo "New jar file does not exist: $NEW_JAR"
   exit 1
 fi
 
-echo "5. Backup current jar"
+echo "6. Backup current jar"
 if [ -f "$CURRENT_JAR" ]; then
   cp "$CURRENT_JAR" "$BACKUP_JAR"
   echo "Backup created: $BACKUP_JAR"
@@ -79,16 +95,16 @@ else
   echo "Current jar does not exist. Skip backup."
 fi
 
-echo "6. Replace jar"
+echo "7. Replace jar"
 mv "$NEW_JAR" "$CURRENT_JAR"
 
-echo "7. Restart systemd service"
+echo "8. Restart systemd service"
 sudo systemctl restart "$APP_NAME"
 
-echo "8. Wait for application startup"
+echo "9. Wait for application startup"
 sleep 90
 
-echo "9. Health check"
+echo "10. Health check"
 if curl --fail --max-time 10 "$HEALTH_URL"; then
   echo ""
   echo "Health check success"
