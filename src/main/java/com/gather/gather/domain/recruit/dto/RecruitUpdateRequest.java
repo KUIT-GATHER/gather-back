@@ -23,7 +23,8 @@ public record RecruitUpdateRequest(
                 @NotBlank(message = "활동 소개는 필수입니다.")
                 @Size(max = 1000, message = "활동 소개는 1000자 이내여야 합니다.")
                 String content,
-        @Schema(description = "활동 장소") @NotBlank(message = "장소는 필수입니다.") @Size(max = 255) String place,
+        @Schema(description = "활동 장소") @NotBlank(message = "장소는 필수입니다.") @Size(max = 255)
+                String place,
         @Schema(description = "활동 날짜") @NotNull(message = "활동 날짜는 필수입니다.") LocalDate actDate,
         @Schema(description = "활동 시작 시간(선택)") LocalTime actStartTime,
         @Schema(description = "활동 종료 시간(선택)") LocalTime actEndTime,
@@ -37,6 +38,8 @@ public record RecruitUpdateRequest(
                 @Size(max = 3, message = "카테고리는 최대 3개까지 선택할 수 있습니다.")
                 Set<PostingCategory> categories,
         @Schema(description = "봉사시간 인정 여부") boolean timeRecognized,
-        @Schema(description = "인정 시간(분). timeRecognized=true일 때 필수") @Positive Integer recognizedMinutes,
-        @Schema(description = "신청 마감일") @NotNull(message = "신청 마감일은 필수입니다.") LocalDate applyDeadline,
+        @Schema(description = "인정 시간(분). timeRecognized=true일 때 필수") @Positive
+                Integer recognizedMinutes,
+        @Schema(description = "신청 마감일") @NotNull(message = "신청 마감일은 필수입니다.")
+                LocalDate applyDeadline,
         @Schema(description = "외부 공고 공개 여부") boolean isExternal) {}

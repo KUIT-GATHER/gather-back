@@ -14,6 +14,7 @@ import com.gather.gather.domain.post.repository.PostRepository;
 import com.gather.gather.domain.recruit.dto.RecruitCreateRequest;
 import com.gather.gather.domain.recruit.dto.RecruitDetailResponse;
 import com.gather.gather.domain.recruit.dto.RecruitParticipationResponse;
+import com.gather.gather.domain.recruit.dto.RecruitUpdateRequest;
 import com.gather.gather.domain.recruit.entity.MeetingRecruit;
 import com.gather.gather.domain.recruit.entity.MeetingRecruitParticipation;
 import com.gather.gather.domain.recruit.repository.MeetingRecruitParticipationRepository;
@@ -89,6 +90,44 @@ public class MeetingRecruitService {
                                 request.categories()));
 
         return toDetail(post, recruit, author, 0, false, true, true);
+    }
+
+    @Transactional
+    public RecruitDetailResponse updateRecruit(
+            Long meetingId, Long postId, RecruitUpdateRequest request) {
+        Long userId = SecurityUtil.getCurrentUserId();
+        getMeeting(meetingId);
+        Post post = getRecruitPost(meetingId, postId);
+        if (!post.isAuthor(userId)) {
+            throw new BusinessException(ErrorCode.POST_FORBIDDEN);
+        }
+        if (request.timeRecognized() && request.recognizedMinutes() == null) {
+            throw new BusinessException(ErrorCode.RECRUIT_RECOGNIZED_MINUTES_REQUIRED);
+        }
+
+        MeetingRecruit recruit = getRecruitDetail(postId);
+        int appliedCount = (int) participationRepository.countByPostId(postId);
+        // 이미 신청한 인원보다 정원을 적게 줄일 수는 없다.
+        if (request.maxParticipants() < appliedCount) {
+            throw new BusinessException(ErrorCode.RECRUIT_MAX_BELOW_APPLIED);
+        }
+
+        post.update(request.title(), request.content());
+        recruit.update(
+                request.place(),
+                request.actDate(),
+                request.actStartTime(),
+                request.actEndTime(),
+                request.maxParticipants(),
+                request.timeRecognized(),
+                request.recognizedMinutes(),
+                request.applyDeadline(),
+                request.isExternal(),
+                request.categories());
+
+        boolean applied = participationRepository.existsByPostIdAndUserId(postId, userId);
+        // 수정은 작성자 본인만 도달하므로 canEdit/canDelete 모두 true.
+        return toDetail(post, recruit, post.getUser(), appliedCount, applied, true, true);
     }
 
     public RecruitDetailResponse getRecruit(Long meetingId, Long postId) {
