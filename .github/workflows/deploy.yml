@@ -75,6 +75,7 @@ jobs:
         run: |
           scp -i ~/.ssh/gather-backend-key.pem deploy/gather.jar.new "$EC2_USER@$EC2_HOST:/opt/gather/gather.jar.new"
           scp -i ~/.ssh/gather-backend-key.pem scripts/deploy.sh "$EC2_USER@$EC2_HOST:/opt/gather/deploy.sh"
+          scp -i ~/.ssh/gather-backend-key.pem scripts/validate-deploy-env.sh "$EC2_USER@$EC2_HOST:/opt/gather/validate-deploy-env.sh"
 
       - name: Run deploy script on EC2
         env:

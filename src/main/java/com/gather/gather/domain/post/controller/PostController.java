@@ -7,11 +7,15 @@ import com.gather.gather.domain.post.dto.PostUpdateRequest;
 import com.gather.gather.domain.post.enums.PostType;
 import com.gather.gather.domain.post.service.PostService;
 import com.gather.gather.global.common.ApiResponse;
+import com.gather.gather.global.common.PageResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -34,11 +38,23 @@ public class PostController {
 
     @Operation(
             summary = "게시판 목록 조회",
-            description = "모임 게시판 글 목록을 조회합니다. 미가입자는 공지·후기만 조회되며, type 미지정 시 열람 가능한 전체 유형을 반환합니다.")
+            description =
+                    """
+                    모임 게시판 글 목록을 페이지 단위로 조회합니다. 유형 다중 선택을 지원하며(예: types=NOTICE,REVIEW,RECRUIT),
+                    여러 개를 넘기면 OR 조건으로 조회합니다. types 미지정 시 열람 가능한 전체 유형을 반환합니다. 미가입자는 공지·후기만
+                    조회되며(요청 types 중 열람 불가 유형은 제외), 기본 정렬은 최신순(createdAt DESC, postId DESC),
+                    응답은 공통 PageResponse입니다.
+                    """)
     @GetMapping
-    public ApiResponse<List<PostSummaryResponse>> getPosts(
-            @PathVariable Long meetingId, @RequestParam(required = false) PostType type) {
-        return ApiResponse.success(postService.getPosts(meetingId, type));
+    public ApiResponse<PageResponse<PostSummaryResponse>> getPosts(
+            @PathVariable Long meetingId,
+            @RequestParam(required = false) List<PostType> types,
+            @PageableDefault(
+                            size = 20,
+                            sort = {"createdAt", "id"},
+                            direction = Sort.Direction.DESC)
+                    Pageable pageable) {
+        return ApiResponse.success(postService.getPosts(meetingId, types, pageable));
     }
 
     @Operation(summary = "게시글 상세 조회", description = "게시글 상세를 조회합니다. 미가입자는 공지·후기만 열람할 수 있습니다.")

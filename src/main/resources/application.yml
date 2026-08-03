@@ -9,6 +9,9 @@ notification:
   bookmarked-meeting-deadline:
     scheduler-enabled: ${NOTIFICATION_BOOKMARKED_MEETING_DEADLINE_SCHEDULER_ENABLED:true}
     cron: ${NOTIFICATION_BOOKMARKED_MEETING_DEADLINE_CRON:0 20 9 * * *}
+  bookmarked-posting-deadline:
+    scheduler-enabled: ${NOTIFICATION_BOOKMARKED_POSTING_DEADLINE_SCHEDULER_ENABLED:true}
+    cron: ${NOTIFICATION_BOOKMARKED_POSTING_DEADLINE_CRON:0 10 9 * * *}
 
 spring:
   application:

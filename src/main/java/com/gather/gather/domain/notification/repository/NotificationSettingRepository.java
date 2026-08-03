@@ -29,5 +29,11 @@ public interface NotificationSettingRepository extends JpaRepository<Notificatio
           AND setting.bookmarkedMeetingDeadlineEnabled = true
         """)
     List<Long> findBookmarkedMeetingDeadlineEnabledUserIds(
+            SELECT setting.user.id
+            FROM NotificationSetting setting
+            WHERE setting.user.id IN :userIds
+              AND setting.bookmarkedPostingDeadlineEnabled = true
+            """)
+    List<Long> findBookmarkedPostingDeadlineEnabledUserIds(
             @Param("userIds") Collection<Long> userIds);
 }
