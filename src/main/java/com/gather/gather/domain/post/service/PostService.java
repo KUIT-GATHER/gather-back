@@ -64,12 +64,12 @@ public class PostService {
     private final ApplicationEventPublisher eventPublisher;
 
     public PageResponse<PostSummaryResponse> getPosts(
-            Long meetingId, PostType typeFilter, Pageable pageable) {
+            Long meetingId, List<PostType> requestedTypes, Pageable pageable) {
         Long userId = SecurityUtil.getCurrentUserId();
         getMeeting(meetingId);
 
         boolean member = isApprovedMember(meetingId, userId);
-        List<PostType> visibleTypes = resolveVisibleTypes(member, typeFilter);
+        List<PostType> visibleTypes = resolveVisibleTypes(member, requestedTypes);
         if (visibleTypes.isEmpty()) {
             return new PageResponse<>(
                     List.of(), 0, 0, pageable.getPageNumber(), pageable.getPageSize());
@@ -196,15 +196,19 @@ public class PostService {
         }
     }
 
-    private List<PostType> resolveVisibleTypes(boolean member, PostType typeFilter) {
+    /**
+     * 열람 가능한 유형을 확정한다. 미가입자는 공지·후기만 허용된다. 요청 유형이 없으면 열람 가능한 전체를, 있으면 요청 유형 중 열람 가능한 것만 (교집합) 반환한다.
+     * 요청 유형이 전부 열람 불가면 빈 목록 → 빈 페이지가 된다.
+     */
+    private List<PostType> resolveVisibleTypes(boolean member, List<PostType> requestedTypes) {
         EnumSet<PostType> allowed =
                 member
                         ? EnumSet.allOf(PostType.class)
                         : EnumSet.copyOf(PostType.visibleToNonMember());
-        if (typeFilter == null) {
+        if (requestedTypes == null || requestedTypes.isEmpty()) {
             return List.copyOf(allowed);
         }
-        return allowed.contains(typeFilter) ? List.of(typeFilter) : List.of();
+        return requestedTypes.stream().distinct().filter(allowed::contains).toList();
     }
 
     private Meeting getMeeting(Long meetingId) {
