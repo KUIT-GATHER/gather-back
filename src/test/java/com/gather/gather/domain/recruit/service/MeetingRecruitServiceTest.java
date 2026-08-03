@@ -39,8 +39,8 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
-import org.mockito.MockedStatic;
 import org.mockito.Mock;
+import org.mockito.MockedStatic;
 import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -77,13 +77,16 @@ class MeetingRecruitServiceTest {
     @DisplayName("팀장은 모집공고를 작성하고 Post와 확장 정보가 함께 저장된다")
     void createRecruit_savesPostAndRecruit() {
         Meeting meeting = meeting();
+        MeetingMember host = member(MeetingMemberRole.HOST);
         User author = author();
-        when(meetingRepository.findByIdAndDeletedAtIsNull(MEETING_ID)).thenReturn(Optional.of(meeting));
+        Post savedPost = recruitPost();
+
+        when(meetingRepository.findByIdAndDeletedAtIsNull(MEETING_ID))
+                .thenReturn(Optional.of(meeting));
         when(meetingMemberRepository.findByMeeting_IdAndUser_IdAndStatus(
                         MEETING_ID, USER_ID, MeetingMemberStatus.APPROVED))
-                .thenReturn(Optional.of(member(MeetingMemberRole.HOST)));
+                .thenReturn(Optional.of(host));
         when(userRepository.findById(USER_ID)).thenReturn(Optional.of(author));
-        Post savedPost = recruitPost();
         when(postRepository.save(any(Post.class))).thenReturn(savedPost);
         when(meetingRecruitRepository.save(any(MeetingRecruit.class)))
                 .thenAnswer(inv -> inv.getArgument(0));
@@ -103,10 +106,12 @@ class MeetingRecruitServiceTest {
     @DisplayName("팀원이 모집공고를 작성하면 RECRUIT_HOST_ONLY로 거부한다")
     void createRecruit_rejectsNonHost() {
         Meeting meeting = meeting();
-        when(meetingRepository.findByIdAndDeletedAtIsNull(MEETING_ID)).thenReturn(Optional.of(meeting));
+        MeetingMember member = member(MeetingMemberRole.MEMBER);
+        when(meetingRepository.findByIdAndDeletedAtIsNull(MEETING_ID))
+                .thenReturn(Optional.of(meeting));
         when(meetingMemberRepository.findByMeeting_IdAndUser_IdAndStatus(
                         MEETING_ID, USER_ID, MeetingMemberStatus.APPROVED))
-                .thenReturn(Optional.of(member(MeetingMemberRole.MEMBER)));
+                .thenReturn(Optional.of(member));
 
         assertThatThrownBy(
                         () ->
@@ -121,10 +126,12 @@ class MeetingRecruitServiceTest {
     @DisplayName("봉사시간 인정인데 시간이 없으면 거부한다")
     void createRecruit_rejectsRecognizedWithoutMinutes() {
         Meeting meeting = meeting();
-        when(meetingRepository.findByIdAndDeletedAtIsNull(MEETING_ID)).thenReturn(Optional.of(meeting));
+        MeetingMember host = member(MeetingMemberRole.HOST);
+        when(meetingRepository.findByIdAndDeletedAtIsNull(MEETING_ID))
+                .thenReturn(Optional.of(meeting));
         when(meetingMemberRepository.findByMeeting_IdAndUser_IdAndStatus(
                         MEETING_ID, USER_ID, MeetingMemberStatus.APPROVED))
-                .thenReturn(Optional.of(member(MeetingMemberRole.HOST)));
+                .thenReturn(Optional.of(host));
 
         assertThatThrownBy(
                         () ->
@@ -199,8 +206,9 @@ class MeetingRecruitServiceTest {
     @Test
     @DisplayName("미가입자는 모집공고 상세를 볼 수 없다")
     void getRecruit_rejectsNonMember() {
+        Meeting meeting = meeting();
         when(meetingRepository.findByIdAndDeletedAtIsNull(MEETING_ID))
-                .thenReturn(Optional.of(meeting()));
+                .thenReturn(Optional.of(meeting));
         when(meetingMemberRepository.existsByMeeting_IdAndUser_IdAndStatus(
                         MEETING_ID, USER_ID, MeetingMemberStatus.APPROVED))
                 .thenReturn(false);
@@ -211,14 +219,18 @@ class MeetingRecruitServiceTest {
     }
 
     // ---------- fixtures ----------
+    // 주의: 스텁을 만드는 헬퍼(meeting()/recruitPost()/member()/author())는 반드시 지역변수로 먼저 받은 뒤
+    // when(...) 안에서 쓴다. when(...).thenReturn(헬퍼())처럼 중첩하면 UnfinishedStubbingException이 난다.
 
     private void stubMemberAndRecruitPost(boolean member, MeetingRecruit recruit) {
+        Meeting meeting = meeting();
+        Post post = recruitPost();
         when(meetingRepository.findByIdAndDeletedAtIsNull(MEETING_ID))
-                .thenReturn(Optional.of(meeting()));
+                .thenReturn(Optional.of(meeting));
         when(meetingMemberRepository.existsByMeeting_IdAndUser_IdAndStatus(
                         MEETING_ID, USER_ID, MeetingMemberStatus.APPROVED))
                 .thenReturn(member);
-        when(postRepository.findByIdFetchUser(POST_ID)).thenReturn(Optional.of(recruitPost()));
+        when(postRepository.findByIdFetchUser(POST_ID)).thenReturn(Optional.of(post));
         when(meetingRecruitRepository.findByPostId(POST_ID)).thenReturn(Optional.of(recruit));
     }
 
@@ -230,12 +242,17 @@ class MeetingRecruitServiceTest {
 
     private Post recruitPost() {
         Post post = Mockito.mock(Post.class);
+        Meeting postMeeting = Mockito.mock(Meeting.class);
+        Mockito.lenient().when(postMeeting.getId()).thenReturn(MEETING_ID);
+        User postAuthor = Mockito.mock(User.class);
+        Mockito.lenient().when(postAuthor.getId()).thenReturn(USER_ID);
+        Mockito.lenient().when(postAuthor.getNickname()).thenReturn("이수진");
         Mockito.lenient().when(post.getId()).thenReturn(POST_ID);
-        Mockito.lenient().when(post.getMeeting()).thenReturn(meeting());
+        Mockito.lenient().when(post.getMeeting()).thenReturn(postMeeting);
         Mockito.lenient().when(post.getType()).thenReturn(PostType.RECRUIT);
         Mockito.lenient().when(post.getTitle()).thenReturn("6월 정기 활동 팀원 모집");
         Mockito.lenient().when(post.getContent()).thenReturn("소개");
-        Mockito.lenient().when(post.getUser()).thenReturn(author());
+        Mockito.lenient().when(post.getUser()).thenReturn(postAuthor);
         return post;
     }
 
