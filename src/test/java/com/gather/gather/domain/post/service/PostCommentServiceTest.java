@@ -32,8 +32,8 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
-import org.mockito.MockedStatic;
 import org.mockito.Mock;
+import org.mockito.MockedStatic;
 import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -76,9 +76,10 @@ class PostCommentServiceTest {
         User authorUser = author(USER_ID);
         PostComment saved = comment(authorUser);
 
-        when(meetingRepository.findByIdAndDeletedAtIsNull(MEETING_ID)).thenReturn(Optional.of(meeting));
+        when(meetingRepository.findByIdAndDeletedAtIsNull(MEETING_ID))
+                .thenReturn(Optional.of(meeting));
         when(meetingMemberRepository.findByMeeting_IdAndUser_IdAndStatus(
-                MEETING_ID, USER_ID, MeetingMemberStatus.APPROVED))
+                        MEETING_ID, USER_ID, MeetingMemberStatus.APPROVED))
                 .thenReturn(Optional.of(member));
         when(postRepository.findByIdFetchUser(POST_ID)).thenReturn(Optional.of(post));
         when(userRepository.findById(USER_ID)).thenReturn(Optional.of(authorUser));
@@ -97,15 +98,16 @@ class PostCommentServiceTest {
     @DisplayName("미가입자가 댓글을 작성하면 MEETING_MEMBER_REQUIRED로 거부한다")
     void createComment_rejectsNonMember() {
         Meeting meeting = meetingWithId();
-        when(meetingRepository.findByIdAndDeletedAtIsNull(MEETING_ID)).thenReturn(Optional.of(meeting));
+        when(meetingRepository.findByIdAndDeletedAtIsNull(MEETING_ID))
+                .thenReturn(Optional.of(meeting));
         when(meetingMemberRepository.findByMeeting_IdAndUser_IdAndStatus(
-                MEETING_ID, USER_ID, MeetingMemberStatus.APPROVED))
+                        MEETING_ID, USER_ID, MeetingMemberStatus.APPROVED))
                 .thenReturn(Optional.empty());
 
         assertThatThrownBy(
-                () ->
-                        postCommentService.createComment(
-                                MEETING_ID, POST_ID, new PostCommentCreateRequest("내용")))
+                        () ->
+                                postCommentService.createComment(
+                                        MEETING_ID, POST_ID, new PostCommentCreateRequest("내용")))
                 .isInstanceOf(BusinessException.class)
                 .hasFieldOrPropertyWithValue("errorCode", ErrorCode.MEETING_MEMBER_REQUIRED);
         verify(postCommentRepository, never()).save(Mockito.any());
@@ -118,17 +120,18 @@ class PostCommentServiceTest {
         Post post = postInMeeting(meeting);
         PostComment comment = comment(author(OTHER_ID));
 
-        when(meetingRepository.findByIdAndDeletedAtIsNull(MEETING_ID)).thenReturn(Optional.of(meeting));
+        when(meetingRepository.findByIdAndDeletedAtIsNull(MEETING_ID))
+                .thenReturn(Optional.of(meeting));
         when(postRepository.findByIdFetchUser(POST_ID)).thenReturn(Optional.of(post));
         when(postCommentRepository.findByIdFetchUser(COMMENT_ID)).thenReturn(Optional.of(comment));
 
         assertThatThrownBy(
-                () ->
-                        postCommentService.updateComment(
-                                MEETING_ID,
-                                POST_ID,
-                                COMMENT_ID,
-                                new PostCommentUpdateRequest("수정")))
+                        () ->
+                                postCommentService.updateComment(
+                                        MEETING_ID,
+                                        POST_ID,
+                                        COMMENT_ID,
+                                        new PostCommentUpdateRequest("수정")))
                 .isInstanceOf(BusinessException.class)
                 .hasFieldOrPropertyWithValue("errorCode", ErrorCode.COMMENT_FORBIDDEN);
     }
@@ -141,11 +144,12 @@ class PostCommentServiceTest {
         PostComment comment = comment(author(OTHER_ID));
         MeetingMember host = approvedMember(MeetingMemberRole.HOST);
 
-        when(meetingRepository.findByIdAndDeletedAtIsNull(MEETING_ID)).thenReturn(Optional.of(meeting));
+        when(meetingRepository.findByIdAndDeletedAtIsNull(MEETING_ID))
+                .thenReturn(Optional.of(meeting));
         when(postRepository.findByIdFetchUser(POST_ID)).thenReturn(Optional.of(post));
         when(postCommentRepository.findByIdFetchUser(COMMENT_ID)).thenReturn(Optional.of(comment));
         when(meetingMemberRepository.findByMeeting_IdAndUser_IdAndStatus(
-                MEETING_ID, USER_ID, MeetingMemberStatus.APPROVED))
+                        MEETING_ID, USER_ID, MeetingMemberStatus.APPROVED))
                 .thenReturn(Optional.of(host));
 
         postCommentService.deleteComment(MEETING_ID, POST_ID, COMMENT_ID);

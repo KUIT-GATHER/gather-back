@@ -124,7 +124,8 @@ public class PostService {
         postImageService.setImages(userId, savedPost.getId(), request.imageObjectKeys());
 
         if (request.type() == PostType.REVIEW) {
-            eventPublisher.publishEvent(new BadgeAwardRequestedEvent(userId, BadgeType.FIRST_REVIEW));
+            eventPublisher.publishEvent(
+                    new BadgeAwardRequestedEvent(userId, BadgeType.FIRST_REVIEW));
         }
         publishPostNotificationEvent(meeting, author, savedPost);
 
@@ -146,8 +147,7 @@ public class PostService {
         postImageService.setImages(userId, postId, request.imageObjectKeys());
 
         boolean liked = postLikeRepository.existsByPostIdAndUserId(postId, userId);
-        return PostResponse.from(
-                post, postImageService.resolveUrls(postId), liked, true, true);
+        return PostResponse.from(post, postImageService.resolveUrls(postId), liked, true, true);
     }
 
     @Transactional

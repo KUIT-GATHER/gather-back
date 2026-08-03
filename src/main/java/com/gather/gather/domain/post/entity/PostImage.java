@@ -13,8 +13,8 @@ import lombok.NoArgsConstructor;
 import org.hibernate.annotations.CreationTimestamp;
 
 /**
- * 게시글에 반영된 이미지(최대 3장). {@code sortOrder}가 노출 순서이며, 목록 카드에서는 첫 번째(sortOrder=0) 이미지만 사용한다.
- * 도메인 결합을 피해 post를 연관관계 대신 ID로 보관한다.
+ * 게시글에 반영된 이미지(최대 3장). {@code sortOrder}가 노출 순서이며, 목록 카드에서는 첫 번째(sortOrder=0) 이미지만 사용한다. 도메인 결합을 피해
+ * post를 연관관계 대신 ID로 보관한다.
  */
 @Entity
 @Getter

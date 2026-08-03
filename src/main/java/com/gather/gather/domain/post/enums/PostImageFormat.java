@@ -22,8 +22,7 @@ public enum PostImageFormat {
         return Arrays.stream(values())
                 .filter(format -> format.contentType.equalsIgnoreCase(contentType))
                 .findFirst()
-                .orElseThrow(
-                        () -> new BusinessException(ErrorCode.UNSUPPORTED_POST_IMAGE_TYPE));
+                .orElseThrow(() -> new BusinessException(ErrorCode.UNSUPPORTED_POST_IMAGE_TYPE));
     }
 
     public String contentType() {

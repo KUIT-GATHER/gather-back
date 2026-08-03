@@ -24,9 +24,9 @@ import org.hibernate.annotations.UpdateTimestamp;
 /**
  * 모임 게시글(우리모임 게시판).
  *
- * <p>{@code deletedAt}으로 소프트 삭제한다. 좋아요/댓글은 별도 엔티티({@code PostLike}/{@code PostComment})가 원본을
- * 보관하고, 여기 {@code likeCount}·{@code commentCount}는 목록/상세에서 바로 노출하기 위한 집계 컬럼이다. 좋아요·댓글의
- * 등록/삭제 시 서비스에서 함께 증감한다.
+ * <p>{@code deletedAt}으로 소프트 삭제한다. 좋아요/댓글은 별도 엔티티({@code PostLike}/{@code PostComment})가 원본을 보관하고,
+ * 여기 {@code likeCount}·{@code commentCount}는 목록/상세에서 바로 노출하기 위한 집계 컬럼이다. 좋아요·댓글의 등록/삭제 시 서비스에서 함께
+ * 증감한다.
  */
 @Entity
 @Getter

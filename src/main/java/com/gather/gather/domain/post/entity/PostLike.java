@@ -16,9 +16,9 @@ import org.hibernate.annotations.CreationTimestamp;
 /**
  * 게시글 좋아요.
  *
- * <p>취소는 물리 삭제로 처리하고 {@code (post_id, user_id)} UNIQUE로 중복 좋아요를 막는다. 좋아요 총계는 {@code
- * post.likeCount} 집계 컬럼으로 노출하므로, 이 엔티티는 "누가 눌렀는지"만 보관한다. 도메인 결합을 피하려고 post/user를 연관관계 대신 ID로만
- * 보관한다({@code PostingParticipation}과 동일 컨벤션).
+ * <p>취소는 물리 삭제로 처리하고 {@code (post_id, user_id)} UNIQUE로 중복 좋아요를 막는다. 좋아요 총계는 {@code post.likeCount}
+ * 집계 컬럼으로 노출하므로, 이 엔티티는 "누가 눌렀는지"만 보관한다. 도메인 결합을 피하려고 post/user를 연관관계 대신 ID로만 보관한다({@code
+ * PostingParticipation}과 동일 컨벤션).
  */
 @Entity
 @Getter

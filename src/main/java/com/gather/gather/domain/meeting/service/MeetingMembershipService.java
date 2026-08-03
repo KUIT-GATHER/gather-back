@@ -16,8 +16,8 @@ import org.springframework.transaction.annotation.Transactional;
 /**
  * 모임 가입/탈퇴 등 멤버십 상태 전이.
  *
- * <p>모임 나가기: 팀원(MEMBER)만 가능하며 팀장(HOST)은 나갈 수 없다(모임 위임/삭제로 처리). 나가면 멤버십 상태를 LEFT로 바꾸고 모임 현재
- * 인원을 1 감소시킨다. 재가입 시 기존 행을 재사용한다(uk_meeting_member_user_meeting).
+ * <p>모임 나가기: 팀원(MEMBER)만 가능하며 팀장(HOST)은 나갈 수 없다(모임 위임/삭제로 처리). 나가면 멤버십 상태를 LEFT로 바꾸고 모임 현재 인원을 1
+ * 감소시킨다. 재가입 시 기존 행을 재사용한다(uk_meeting_member_user_meeting).
  */
 @Service
 @RequiredArgsConstructor

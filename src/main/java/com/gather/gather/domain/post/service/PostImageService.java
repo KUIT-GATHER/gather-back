@@ -30,8 +30,8 @@ import org.springframework.transaction.annotation.Transactional;
 /**
  * 게시글 이미지 presigned 업로드 및 반영.
  *
- * <p>프로필/모임 이미지와 동일하게 presigned PUT URL로 프론트가 S3에 직접 업로드하고, 게시글 작성/수정 시 objectKey 목록을 넘겨
- * 반영한다. 반영 시 업로드 세션(PENDING)을 검증해 APPLIED로 전환하며 {@code post_image}에 순서대로 저장한다.
+ * <p>프로필/모임 이미지와 동일하게 presigned PUT URL로 프론트가 S3에 직접 업로드하고, 게시글 작성/수정 시 objectKey 목록을 넘겨 반영한다. 반영 시
+ * 업로드 세션(PENDING)을 검증해 APPLIED로 전환하며 {@code post_image}에 순서대로 저장한다.
  *
  * <p>주의: 모임 이미지와 달리 반영 단계에서 S3 객체 바이트 재검증(다운로드/포맷 확인)은 하지 않는다(스코프 축소). 필요 시 {@code
  * MeetingImageService}처럼 강화할 수 있다.
@@ -86,8 +86,8 @@ public class PostImageService {
     }
 
     /**
-     * 게시글 이미지 세트를 반영한다(작성·수정 공용). {@code objectKeys}가 null이면 변경 없음, 빈 리스트면 전체 제거. 순서가 노출 순서가 되며,
-     * 이미 반영된 키는 유지하고 신규 키는 발급 세션(PENDING)을 검증해 반영한다.
+     * 게시글 이미지 세트를 반영한다(작성·수정 공용). {@code objectKeys}가 null이면 변경 없음, 빈 리스트면 전체 제거. 순서가 노출 순서가 되며, 이미
+     * 반영된 키는 유지하고 신규 키는 발급 세션(PENDING)을 검증해 반영한다.
      */
     @Transactional
     public void setImages(Long userId, Long postId, List<String> objectKeys) {
@@ -147,7 +147,8 @@ public class PostImageService {
         if (postIds.isEmpty()) {
             return result;
         }
-        postImageRepository.findByPostIdInOrderByPostIdAscSortOrderAsc(postIds)
+        postImageRepository
+                .findByPostIdInOrderByPostIdAscSortOrderAsc(postIds)
                 .forEach(
                         image ->
                                 result.computeIfAbsent(image.getPostId(), key -> new ArrayList<>())

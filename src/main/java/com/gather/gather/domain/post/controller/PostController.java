@@ -46,8 +46,11 @@ public class PostController {
     public ApiResponse<PageResponse<PostSummaryResponse>> getPosts(
             @PathVariable Long meetingId,
             @RequestParam(required = false) PostType type,
-            @PageableDefault(size = 20, sort = {"createdAt", "id"}, direction = Sort.Direction.DESC)
-            Pageable pageable) {
+            @PageableDefault(
+                            size = 20,
+                            sort = {"createdAt", "id"},
+                            direction = Sort.Direction.DESC)
+                    Pageable pageable) {
         return ApiResponse.success(postService.getPosts(meetingId, type, pageable));
     }
 

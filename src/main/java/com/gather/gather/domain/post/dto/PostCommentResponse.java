@@ -15,7 +15,8 @@ public record PostCommentResponse(
         @Schema(description = "조회자가 이 댓글을 수정할 수 있는지") boolean canEdit,
         @Schema(description = "조회자가 이 댓글을 삭제할 수 있는지") boolean canDelete) {
 
-    public static PostCommentResponse from(PostComment comment, boolean canEdit, boolean canDelete) {
+    public static PostCommentResponse from(
+            PostComment comment, boolean canEdit, boolean canDelete) {
         return new PostCommentResponse(
                 comment.getId(),
                 comment.getUser().getId(),
