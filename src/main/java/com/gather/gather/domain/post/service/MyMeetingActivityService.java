@@ -8,6 +8,8 @@ import com.gather.gather.domain.post.dto.PostSummaryResponse;
 import com.gather.gather.domain.post.entity.Post;
 import com.gather.gather.domain.post.repository.PostCommentRepository;
 import com.gather.gather.domain.post.repository.PostRepository;
+import com.gather.gather.domain.recruit.dto.MyAppliedRecruitResponse;
+import com.gather.gather.domain.recruit.repository.MeetingRecruitParticipationRepository;
 import com.gather.gather.global.common.PageResponse;
 import com.gather.gather.global.exception.BusinessException;
 import com.gather.gather.global.exception.ErrorCode;
@@ -33,6 +35,7 @@ public class MyMeetingActivityService {
     private final PostSummaryAssembler summaryAssembler;
     private final MeetingRepository meetingRepository;
     private final MeetingMemberRepository meetingMemberRepository;
+    private final MeetingRecruitParticipationRepository recruitParticipationRepository;
 
     public PageResponse<PostSummaryResponse> getMyPosts(Long meetingId, Pageable pageable) {
         Long userId = requireApprovedMember(meetingId);
@@ -52,7 +55,17 @@ public class MyMeetingActivityService {
         long writtenPostCount =
                 postRepository.countByMeeting_IdAndUser_IdAndDeletedAtIsNull(meetingId, userId);
         long commentedPostCount = postCommentRepository.countCommentedPosts(meetingId, userId);
-        return new MyMeetingActivitySummaryResponse(writtenPostCount, commentedPostCount);
+        long appliedRecruitCount =
+                recruitParticipationRepository.countMyAppliedRecruits(userId, meetingId);
+        return new MyMeetingActivitySummaryResponse(
+                writtenPostCount, commentedPostCount, appliedRecruitCount);
+    }
+
+    public PageResponse<MyAppliedRecruitResponse> getMyAppliedRecruits(
+            Long meetingId, Pageable pageable) {
+        Long userId = requireApprovedMember(meetingId);
+        return PageResponse.from(
+                recruitParticipationRepository.findMyAppliedRecruits(userId, meetingId, pageable));
     }
 
     private Long requireApprovedMember(Long meetingId) {

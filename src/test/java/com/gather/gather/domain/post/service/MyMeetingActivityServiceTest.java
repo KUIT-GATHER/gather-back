@@ -15,6 +15,7 @@ import com.gather.gather.domain.post.dto.PostSummaryResponse;
 import com.gather.gather.domain.post.entity.Post;
 import com.gather.gather.domain.post.repository.PostCommentRepository;
 import com.gather.gather.domain.post.repository.PostRepository;
+import com.gather.gather.domain.recruit.repository.MeetingRecruitParticipationRepository;
 import com.gather.gather.global.common.PageResponse;
 import com.gather.gather.global.exception.BusinessException;
 import com.gather.gather.global.exception.ErrorCode;
@@ -46,6 +47,7 @@ class MyMeetingActivityServiceTest {
     @Mock private PostSummaryAssembler summaryAssembler;
     @Mock private MeetingRepository meetingRepository;
     @Mock private MeetingMemberRepository meetingMemberRepository;
+    @Mock private MeetingRecruitParticipationRepository recruitParticipationRepository;
 
     @InjectMocks private MyMeetingActivityService myMeetingActivityService;
 
@@ -69,12 +71,15 @@ class MyMeetingActivityServiceTest {
         when(postRepository.countByMeeting_IdAndUser_IdAndDeletedAtIsNull(MEETING_ID, USER_ID))
                 .thenReturn(3L);
         when(postCommentRepository.countCommentedPosts(MEETING_ID, USER_ID)).thenReturn(2L);
+        when(recruitParticipationRepository.countMyAppliedRecruits(USER_ID, MEETING_ID))
+                .thenReturn(1L);
 
         MyMeetingActivitySummaryResponse response =
                 myMeetingActivityService.getActivitySummary(MEETING_ID);
 
         assertThat(response.writtenPostCount()).isEqualTo(3L);
         assertThat(response.commentedPostCount()).isEqualTo(2L);
+        assertThat(response.appliedRecruitCount()).isEqualTo(1L);
     }
 
     @Test

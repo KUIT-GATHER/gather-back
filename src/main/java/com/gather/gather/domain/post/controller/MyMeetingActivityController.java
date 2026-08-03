@@ -3,6 +3,7 @@ package com.gather.gather.domain.post.controller;
 import com.gather.gather.domain.post.dto.MyMeetingActivitySummaryResponse;
 import com.gather.gather.domain.post.dto.PostSummaryResponse;
 import com.gather.gather.domain.post.service.MyMeetingActivityService;
+import com.gather.gather.domain.recruit.dto.MyAppliedRecruitResponse;
 import com.gather.gather.global.common.ApiResponse;
 import com.gather.gather.global.common.PageResponse;
 import io.swagger.v3.oas.annotations.Operation;
@@ -60,5 +61,15 @@ public class MyMeetingActivityController {
                     Pageable pageable) {
         return ApiResponse.success(
                 myMeetingActivityService.getMyCommentedPosts(meetingId, pageable));
+    }
+
+    @Operation(
+            summary = "내가 신청한 봉사 목록",
+            description = "이 모임에서 내가 참여신청한 모집공고를 활동일 최신순으로 페이지 조회합니다. 가입자 전용입니다.")
+    @GetMapping("/applied-recruits")
+    public ApiResponse<PageResponse<MyAppliedRecruitResponse>> getMyAppliedRecruits(
+            @PathVariable Long meetingId, @PageableDefault(size = 20) Pageable pageable) {
+        return ApiResponse.success(
+                myMeetingActivityService.getMyAppliedRecruits(meetingId, pageable));
     }
 }
