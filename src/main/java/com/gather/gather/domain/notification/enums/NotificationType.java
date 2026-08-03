@@ -9,6 +9,7 @@ public enum NotificationType {
     VOLUNTEER_SCHEDULE(NotificationCategory.ACTIVITY),
     BOOKMARKED_POSTING_DEADLINE(NotificationCategory.ACTIVITY),
     BADGE_EARNED(NotificationCategory.ACTIVITY),
+    MEETING_BOOKMARKED_DEADLINE(NotificationCategory.MEETING),
     MEETING_JOIN_APPROVED(NotificationCategory.MEETING),
     MEETING_JOIN_REJECTED(NotificationCategory.MEETING),
     MEETING_POST_COMMENT(NotificationCategory.MEETING),

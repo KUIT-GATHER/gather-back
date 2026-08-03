@@ -23,6 +23,12 @@ public interface NotificationSettingRepository extends JpaRepository<Notificatio
 
     @Query(
             """
+        SELECT setting.user.id
+        FROM NotificationSetting setting
+        WHERE setting.user.id IN :userIds
+          AND setting.bookmarkedMeetingDeadlineEnabled = true
+        """)
+    List<Long> findBookmarkedMeetingDeadlineEnabledUserIds(
             SELECT setting.user.id
             FROM NotificationSetting setting
             WHERE setting.user.id IN :userIds
