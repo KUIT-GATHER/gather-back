@@ -3,6 +3,7 @@ package com.gather.gather.domain.post.controller;
 import com.gather.gather.domain.post.dto.MyMeetingActivitySummaryResponse;
 import com.gather.gather.domain.post.dto.PostSummaryResponse;
 import com.gather.gather.domain.post.service.MyMeetingActivityService;
+import com.gather.gather.domain.recruit.dto.MyAppliedRecruitResponse;
 import com.gather.gather.global.common.ApiResponse;
 import com.gather.gather.global.common.PageResponse;
 import io.swagger.v3.oas.annotations.Operation;
@@ -24,18 +25,25 @@ public class MyMeetingActivityController {
 
     private final MyMeetingActivityService myMeetingActivityService;
 
-    @Operation(summary = "나의 활동 요약", description = "나의 활동 탭 상단의 개수(작성한 게시글/댓글 단 게시글)를 반환합니다. 가입자 전용입니다.")
+    @Operation(
+            summary = "나의 활동 요약",
+            description = "나의 활동 탭 상단의 개수(작성한 게시글/댓글 단 게시글)를 반환합니다. 가입자 전용입니다.")
     @GetMapping("/activity-summary")
     public ApiResponse<MyMeetingActivitySummaryResponse> getActivitySummary(
             @PathVariable Long meetingId) {
         return ApiResponse.success(myMeetingActivityService.getActivitySummary(meetingId));
     }
 
-    @Operation(summary = "내가 작성한 게시글 목록", description = "이 모임에서 내가 작성한 게시글을 최신순으로 페이지 조회합니다. 가입자 전용입니다.")
+    @Operation(
+            summary = "내가 작성한 게시글 목록",
+            description = "이 모임에서 내가 작성한 게시글을 최신순으로 페이지 조회합니다. 가입자 전용입니다.")
     @GetMapping("/posts")
     public ApiResponse<PageResponse<PostSummaryResponse>> getMyPosts(
             @PathVariable Long meetingId,
-            @PageableDefault(size = 20, sort = {"createdAt", "id"}, direction = Sort.Direction.DESC)
+            @PageableDefault(
+                            size = 20,
+                            sort = {"createdAt", "id"},
+                            direction = Sort.Direction.DESC)
                     Pageable pageable) {
         return ApiResponse.success(myMeetingActivityService.getMyPosts(meetingId, pageable));
     }
@@ -46,9 +54,22 @@ public class MyMeetingActivityController {
     @GetMapping("/commented-posts")
     public ApiResponse<PageResponse<PostSummaryResponse>> getMyCommentedPosts(
             @PathVariable Long meetingId,
-            @PageableDefault(size = 20, sort = {"createdAt", "id"}, direction = Sort.Direction.DESC)
+            @PageableDefault(
+                            size = 20,
+                            sort = {"createdAt", "id"},
+                            direction = Sort.Direction.DESC)
                     Pageable pageable) {
         return ApiResponse.success(
                 myMeetingActivityService.getMyCommentedPosts(meetingId, pageable));
+    }
+
+    @Operation(
+            summary = "내가 신청한 봉사 목록",
+            description = "이 모임에서 내가 참여신청한 모집공고를 활동일 최신순으로 페이지 조회합니다. 가입자 전용입니다.")
+    @GetMapping("/applied-recruits")
+    public ApiResponse<PageResponse<MyAppliedRecruitResponse>> getMyAppliedRecruits(
+            @PathVariable Long meetingId, @PageableDefault(size = 20) Pageable pageable) {
+        return ApiResponse.success(
+                myMeetingActivityService.getMyAppliedRecruits(meetingId, pageable));
     }
 }

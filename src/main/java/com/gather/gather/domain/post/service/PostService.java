@@ -106,6 +106,10 @@ public class PostService {
         Meeting meeting = getMeeting(meetingId);
         MeetingMember membership = getApprovedMembership(meetingId, userId);
 
+        // 모집공고는 확장 필드(장소·일정·정원 등)가 필요해 전용 API(POST /posts/recruits)로만 작성한다.
+        if (request.type() == PostType.RECRUIT) {
+            throw new BusinessException(ErrorCode.POST_RECRUIT_NOT_ALLOWED);
+        }
         if (request.type().isNotice() && membership.getRole() != MeetingMemberRole.HOST) {
             throw new BusinessException(ErrorCode.NOTICE_HOST_ONLY);
         }
@@ -124,7 +128,8 @@ public class PostService {
         postImageService.setImages(userId, savedPost.getId(), request.imageObjectKeys());
 
         if (request.type() == PostType.REVIEW) {
-            eventPublisher.publishEvent(new BadgeAwardRequestedEvent(userId, BadgeType.FIRST_REVIEW));
+            eventPublisher.publishEvent(
+                    new BadgeAwardRequestedEvent(userId, BadgeType.FIRST_REVIEW));
         }
         publishPostNotificationEvent(meeting, author, savedPost);
 
@@ -146,8 +151,7 @@ public class PostService {
         postImageService.setImages(userId, postId, request.imageObjectKeys());
 
         boolean liked = postLikeRepository.existsByPostIdAndUserId(postId, userId);
-        return PostResponse.from(
-                post, postImageService.resolveUrls(postId), liked, true, true);
+        return PostResponse.from(post, postImageService.resolveUrls(postId), liked, true, true);
     }
 
     @Transactional
