@@ -1,8 +1,11 @@
 package com.gather.gather.domain.posting.repository;
 
+import com.gather.gather.domain.posting.dto.BookmarkedPostingDeadlineTarget;
 import com.gather.gather.domain.posting.entity.Bookmark;
 import com.gather.gather.domain.posting.entity.Posting;
 import com.gather.gather.domain.posting.entity.PostingCategory;
+import java.time.LocalDate;
+import java.util.List;
 import java.util.Optional;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -37,4 +40,22 @@ public interface BookmarkRepository extends JpaRepository<Bookmark, Long> {
             @Param("category") PostingCategory category,
             @Param("keyword") String keyword,
             Pageable pageable);
+
+    @Query(
+            """
+            select new com.gather.gather.domain.posting.dto.BookmarkedPostingDeadlineTarget(
+                bookmark.userId,
+                posting.id,
+                posting.title
+            )
+            from Bookmark bookmark
+            join Posting posting on posting.id = bookmark.postingId
+            join User user on user.id = bookmark.userId
+            where posting.noticeEndDate = :deadlineDate
+              and posting.isActive = true
+              and posting.status = com.gather.gather.domain.posting.entity.PostingStatus.RECRUITING
+              and user.status = com.gather.gather.domain.auth.entity.UserStatus.ACTIVE
+            """)
+    List<BookmarkedPostingDeadlineTarget> findPostingDeadlineNotificationTargets(
+            @Param("deadlineDate") LocalDate deadlineDate);
 }

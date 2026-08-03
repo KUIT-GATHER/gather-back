@@ -20,4 +20,14 @@ public interface NotificationSettingRepository extends JpaRepository<Notificatio
               AND setting.volunteerScheduleEnabled = false
             """)
     List<Long> findVolunteerScheduleDisabledUserIds(@Param("userIds") Collection<Long> userIds);
+
+    @Query(
+            """
+            SELECT setting.user.id
+            FROM NotificationSetting setting
+            WHERE setting.user.id IN :userIds
+              AND setting.bookmarkedPostingDeadlineEnabled = true
+            """)
+    List<Long> findBookmarkedPostingDeadlineEnabledUserIds(
+            @Param("userIds") Collection<Long> userIds);
 }
