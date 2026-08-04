@@ -1,8 +1,11 @@
 package com.gather.gather.domain.meeting.repository;
 
+import com.gather.gather.domain.meeting.dto.BookmarkedMeetingDeadlineTarget;
 import com.gather.gather.domain.meeting.entity.Meeting;
 import com.gather.gather.domain.meeting.entity.MeetingBookmark;
 import com.gather.gather.domain.posting.entity.PostingCategory;
+import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Optional;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -44,4 +47,27 @@ public interface MeetingBookmarkRepository extends JpaRepository<MeetingBookmark
             @Param("category") PostingCategory category,
             @Param("keyword") String keyword,
             Pageable pageable);
+
+    @Query(
+            """
+            SELECT new com.gather.gather.domain.meeting.dto.BookmarkedMeetingDeadlineTarget(
+                bookmark.userId,
+                meeting.id,
+                meeting.name
+            )
+            FROM MeetingBookmark bookmark
+            JOIN Meeting meeting ON meeting.id = bookmark.meetingId
+            JOIN User user ON user.id = bookmark.userId
+            WHERE meeting.deadline >= :deadlineStartInclusive
+              AND meeting.deadline < :deadlineEndExclusive
+              AND meeting.status =
+                  com.gather.gather.domain.meeting.enums.MeetingStatus.RECRUITING
+              AND meeting.deletedAt IS NULL
+              AND meeting.currentMemberCount < meeting.maxMember
+              AND user.status =
+                  com.gather.gather.domain.auth.entity.UserStatus.ACTIVE
+            """)
+    List<BookmarkedMeetingDeadlineTarget> findMeetingDeadlineNotificationTargets(
+            @Param("deadlineStartInclusive") LocalDateTime deadlineStartInclusive,
+            @Param("deadlineEndExclusive") LocalDateTime deadlineEndExclusive);
 }
