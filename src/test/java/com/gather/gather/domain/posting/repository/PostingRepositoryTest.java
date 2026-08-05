@@ -7,6 +7,7 @@ import com.gather.gather.domain.posting.entity.PostingCategory;
 import com.gather.gather.domain.posting.entity.PostingStatus;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -28,6 +29,12 @@ class PostingRepositoryTest {
     @Autowired private PostingRepository postingRepository;
 
     private static final Pageable PAGEABLE = PageRequest.of(0, 20);
+
+    /**
+     * PostingRepositoryImpl이 마감 여부 판정에 Asia/Seoul 기준 오늘 날짜를 쓰므로, 테스트의 "오늘" 기준도 동일한 시간대로 맞춰야 CI
+     * 서버(UTC)와 자정 경계에서 날짜가 어긋나 간헐적으로 실패하는 일을 막을 수 있다.
+     */
+    private static final LocalDate TODAY = LocalDate.now(ZoneId.of("Asia/Seoul"));
 
     @Test
     void search_filtersByStatus_whenRegionAndDateFiltersAreNull() {
@@ -213,6 +220,82 @@ class PostingRepositoryTest {
                         recruitingLow.getId(),
                         closedHigh.getId(),
                         closedLow.getId());
+    }
+
+    @Test
+    void search_ordersOpenNoticeRecruitingBeforeStaleNoticeRecruiting_whenStatusIsNull() {
+        // 외부 공공데이터 API 동기화 지연으로 마감일이 지났는데도 status가 아직 RECRUITING인 시나리오.
+        Posting staleRecruiting = save(PostingStatus.RECRUITING, null, TODAY.minusDays(1));
+        Posting openRecruiting = save(PostingStatus.RECRUITING, null, TODAY.plusDays(5));
+        Posting closed = save(PostingStatus.CLOSED, null, TODAY.minusDays(2));
+        Pageable noticeEndAscending =
+                PageRequest.of(0, 20, Sort.by(Sort.Direction.ASC, "noticeEndDate"));
+
+        var result =
+                postingRepository.search(null, null, null, null, null, null, noticeEndAscending);
+
+        assertThat(result.getContent())
+                .extracting(Posting::getId)
+                .containsExactly(openRecruiting.getId(), closed.getId(), staleRecruiting.getId());
+    }
+
+    @Test
+    void search_ordersOpenNoticeBeforeStaleNotice_whenStatusIsRecruiting() {
+        Posting staleRecruiting = save(PostingStatus.RECRUITING, null, TODAY.minusDays(3));
+        Posting openRecruitingFar = save(PostingStatus.RECRUITING, null, TODAY.plusDays(10));
+        Posting openRecruitingNear = save(PostingStatus.RECRUITING, null, TODAY.plusDays(2));
+        Pageable noticeEndAscending =
+                PageRequest.of(0, 20, Sort.by(Sort.Direction.ASC, "noticeEndDate"));
+
+        var result =
+                postingRepository.search(
+                        PostingStatus.RECRUITING, null, null, null, null, null, noticeEndAscending);
+
+        assertThat(result.getContent())
+                .extracting(Posting::getId)
+                .containsExactly(
+                        openRecruitingNear.getId(),
+                        openRecruitingFar.getId(),
+                        staleRecruiting.getId());
+    }
+
+    @Test
+    void search_ordersNullNoticeEndDateAfterOpenNoticesButBeforeStaleNotices_whenStatusIsNull() {
+        // 마감일이 없는 상시모집 공고는 DB의 NULL 정렬 정책상 오름차순 정렬에서 최상단에 노출될 수 있으므로,
+        // 마감일이 있고 아직 지나지 않은 공고 다음, 이미 마감된 공고보다는 앞에 오도록 강제한다.
+        Posting dueToday = save(PostingStatus.RECRUITING, null, TODAY);
+        Posting dueLater = save(PostingStatus.RECRUITING, null, TODAY.plusDays(3));
+        Posting noDeadline = save(PostingStatus.RECRUITING, null, null);
+        Posting staleRecruiting = save(PostingStatus.RECRUITING, null, TODAY.minusDays(1));
+        Pageable noticeEndAscending =
+                PageRequest.of(0, 20, Sort.by(Sort.Direction.ASC, "noticeEndDate"));
+
+        var result =
+                postingRepository.search(null, null, null, null, null, null, noticeEndAscending);
+
+        assertThat(result.getContent())
+                .extracting(Posting::getId)
+                .containsExactly(
+                        dueToday.getId(),
+                        dueLater.getId(),
+                        noDeadline.getId(),
+                        staleRecruiting.getId());
+    }
+
+    @Test
+    void search_treatsNoticeEndDateOfTodayAsStillOpen() {
+        Posting dueToday = save(PostingStatus.RECRUITING, null, TODAY);
+        Posting staleYesterday = save(PostingStatus.RECRUITING, null, TODAY.minusDays(1));
+        Pageable noticeEndAscending =
+                PageRequest.of(0, 20, Sort.by(Sort.Direction.ASC, "noticeEndDate"));
+
+        var result =
+                postingRepository.search(
+                        PostingStatus.RECRUITING, null, null, null, null, null, noticeEndAscending);
+
+        assertThat(result.getContent())
+                .extracting(Posting::getId)
+                .containsExactly(dueToday.getId(), staleYesterday.getId());
     }
 
     @Test
