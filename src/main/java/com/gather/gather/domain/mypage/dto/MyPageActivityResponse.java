@@ -33,7 +33,10 @@ public record MyPageActivityResponse(
                 LocalDate actEndDate,
         @Schema(description = "활동 시작 시각", nullable = true, example = "09:00") String actStartTime,
         @Schema(description = "활동 종료 시각", nullable = true, example = "12:00") String actEndTime,
-        @Schema(description = "활동 장소", nullable = true, example = "서울숲공원") String actPlace,
+        @Schema(description = "활동 장소(봉사공고 참여인 경우만 존재)", nullable = true, example = "서울숲공원")
+                String actPlace,
+        @Schema(description = "모임 지역명(모임 참여인 경우만 존재)", nullable = true, example = "강남구")
+                String regionName,
         @Schema(
                         description =
                                 "봉사 참여 상태(APPLIED/CONFIRMED/COMPLETED/REVIEWED), 봉사공고 참여인 경우만 존재",
@@ -70,6 +73,7 @@ public record MyPageActivityResponse(
                 posting.getActStartTime(),
                 posting.getActEndTime(),
                 posting.getActPlace(),
+                null,
                 participation.getStatus().name(),
                 null,
                 null);
@@ -78,9 +82,13 @@ public record MyPageActivityResponse(
     /**
      * @param linkedParticipationStatus 공고 기반 모임({@code meeting.getVolunteerPostingId() != null})일 때
      *     해당 사용자의 연결 봉사공고 참여 상태. 자유 모임이거나 참여 이력이 없으면 null.
+     * @param regionName 모임의 지역명. {@link
+     *     com.gather.gather.domain.posting.service.RegionNameResolver}로 배치 조회한 값을 전달한다.
      */
     public static MyPageActivityResponse ofMeeting(
-            Meeting meeting, PostingParticipationStatus linkedParticipationStatus) {
+            Meeting meeting,
+            PostingParticipationStatus linkedParticipationStatus,
+            String regionName) {
         LocalDateTime start = meeting.getActivityStartAt();
         LocalDateTime end = meeting.getActivityEndAt();
         return new MyPageActivityResponse(
@@ -95,6 +103,7 @@ public record MyPageActivityResponse(
                 TIME_FORMAT.format(start),
                 end != null ? TIME_FORMAT.format(end) : null,
                 null,
+                regionName,
                 null,
                 meeting.getStatus().name(),
                 linkedParticipationStatus != null ? linkedParticipationStatus.name() : null);
