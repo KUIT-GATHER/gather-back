@@ -19,6 +19,7 @@ import com.gather.gather.domain.mypage.service.MyPageService;
 import com.gather.gather.domain.posting.entity.Posting;
 import com.gather.gather.domain.posting.entity.PostingCategory;
 import com.gather.gather.domain.posting.entity.PostingParticipation;
+import com.gather.gather.domain.posting.entity.PostingParticipationStatus;
 import com.gather.gather.domain.posting.entity.PostingStatus;
 import com.gather.gather.domain.region.dto.RegionResponse;
 import com.gather.gather.global.common.PageResponse;
@@ -111,19 +112,25 @@ class MyPageControllerTest {
                         1L,
                         mockHost(),
                         null,
-                        null,
+                        10L,
                         LocalDate.of(2026, 7, 5).atStartOfDay(),
                         LocalDate.of(2026, 7, 6).atStartOfDay());
         ReflectionTestUtils.setField(meeting, "id", 3L);
 
         when(myPageService.getActivities(eq(YearMonth.of(2026, 7))))
-                .thenReturn(List.of(MyPageActivityResponse.ofMeeting(meeting)));
+                .thenReturn(
+                        List.of(
+                                MyPageActivityResponse.ofMeeting(
+                                        meeting, PostingParticipationStatus.APPLIED)));
 
         mockMvc.perform(get("/api/v1/mypage/activities").param("yearMonth", "2026-07"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data[0].activityType").value("MEETING"))
                 .andExpect(jsonPath("$.data[0].meetingId").value(3))
-                .andExpect(jsonPath("$.data[0].postingId").doesNotExist());
+                .andExpect(jsonPath("$.data[0].postingId").doesNotExist())
+                .andExpect(jsonPath("$.data[0].volunteerPostingId").value(10))
+                .andExpect(jsonPath("$.data[0].meetingStatus").value("RECRUITING"))
+                .andExpect(jsonPath("$.data[0].postingParticipationStatus").value("APPLIED"));
     }
 
     private PostingParticipation volunteerParticipation() {

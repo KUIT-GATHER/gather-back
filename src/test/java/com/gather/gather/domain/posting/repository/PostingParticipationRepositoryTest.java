@@ -193,6 +193,43 @@ class PostingParticipationRepositoryTest {
         assertThat(result).isEmpty();
     }
 
+    @Test
+    void findAllByUserIdAndPostingIdIn_returnsOnlyMatchingUsersParticipationsForGivenPostings() {
+        Long userId = applicant().getId();
+        Long otherUserId = applicant().getId();
+        Posting targetPosting = postingRepository.save(posting());
+        Posting otherPosting = postingRepository.save(posting());
+        Posting untargetedPosting = postingRepository.save(posting());
+
+        PostingParticipation targetParticipation =
+                postingParticipationRepository.save(
+                        PostingParticipation.create(userId, targetPosting.getId()));
+        postingParticipationRepository.save(
+                PostingParticipation.create(userId, untargetedPosting.getId()));
+        postingParticipationRepository.save(
+                PostingParticipation.create(otherUserId, otherPosting.getId()));
+
+        List<PostingParticipation> result =
+                postingParticipationRepository.findAllByUserIdAndPostingIdIn(
+                        userId, List.of(targetPosting.getId(), otherPosting.getId()));
+
+        assertThat(result)
+                .extracting(PostingParticipation::getId)
+                .containsExactly(targetParticipation.getId());
+    }
+
+    @Test
+    void findAllByUserIdAndPostingIdIn_returnsEmpty_whenNoParticipationMatchesGivenPostings() {
+        Long userId = applicant().getId();
+        Posting posting = postingRepository.save(posting());
+
+        List<PostingParticipation> result =
+                postingParticipationRepository.findAllByUserIdAndPostingIdIn(
+                        userId, List.of(posting.getId()));
+
+        assertThat(result).isEmpty();
+    }
+
     private Posting posting() {
         return Posting.builder()
                 .title("테스트 공고")

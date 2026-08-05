@@ -2,6 +2,7 @@ package com.gather.gather.domain.mypage.service;
 
 import com.gather.gather.domain.auth.entity.User;
 import com.gather.gather.domain.auth.repository.UserRepository;
+import com.gather.gather.domain.meeting.entity.Meeting;
 import com.gather.gather.domain.meeting.entity.MeetingMember;
 import com.gather.gather.domain.meeting.enums.MeetingMemberStatus;
 import com.gather.gather.domain.meeting.enums.MeetingStatus;
@@ -117,11 +118,60 @@ public class MyPageService {
         LocalDateTime monthStartInclusive = yearMonth.atDay(1).atStartOfDay();
         LocalDateTime monthEndExclusive = yearMonth.plusMonths(1).atDay(1).atStartOfDay();
 
-        return meetingMemberRepository
-                .findApprovedForCalendar(userId, monthStartInclusive, monthEndExclusive)
-                .stream()
-                .map(member -> MyPageActivityResponse.ofMeeting(member.getMeeting()))
+        List<MeetingMember> approvedMembers =
+                meetingMemberRepository.findApprovedForCalendar(
+                        userId, monthStartInclusive, monthEndExclusive);
+
+        Map<Long, PostingParticipationStatus> participationStatusByPostingId =
+                fetchLinkedParticipationStatuses(userId, approvedMembers);
+
+        return approvedMembers.stream()
+                .map(
+                        member ->
+                                MyPageActivityResponse.ofMeeting(
+                                        member.getMeeting(),
+                                        resolveLinkedParticipationStatus(
+                                                member.getMeeting(),
+                                                participationStatusByPostingId)))
                 .toList();
+    }
+
+    /**
+     * {@code Map.of()}로 생성된 배치 조회 결과는 null 키 조회 시 NPE를 던지므로 자유 모임(volunteerPostingId=null)을 먼저
+     * 걸러낸다.
+     */
+    private PostingParticipationStatus resolveLinkedParticipationStatus(
+            Meeting meeting, Map<Long, PostingParticipationStatus> participationStatusByPostingId) {
+        Long volunteerPostingId = meeting.getVolunteerPostingId();
+        if (volunteerPostingId == null) {
+            return null;
+        }
+        return participationStatusByPostingId.get(volunteerPostingId);
+    }
+
+    /**
+     * 공고 기반 모임(volunteerPostingId != null)들의 연결 봉사공고에 대한 사용자의 참여 상태를 배치 조회한다. 모임과 참여 상태를 postingId
+     * 하나로 매핑하는 이유: posting_participation에는 (user_id, posting_id) 유니크 제약이 있어 postingId당 참여가 최대 1건이다.
+     */
+    private Map<Long, PostingParticipationStatus> fetchLinkedParticipationStatuses(
+            Long userId, List<MeetingMember> approvedMembers) {
+        List<Long> volunteerPostingIds =
+                approvedMembers.stream()
+                        .map(member -> member.getMeeting().getVolunteerPostingId())
+                        .filter(volunteerPostingId -> volunteerPostingId != null)
+                        .distinct()
+                        .toList();
+        if (volunteerPostingIds.isEmpty()) {
+            return Map.of();
+        }
+
+        return postingParticipationRepository
+                .findAllByUserIdAndPostingIdIn(userId, volunteerPostingIds)
+                .stream()
+                .collect(
+                        Collectors.toMap(
+                                PostingParticipation::getPostingId,
+                                PostingParticipation::getStatus));
     }
 
     /**

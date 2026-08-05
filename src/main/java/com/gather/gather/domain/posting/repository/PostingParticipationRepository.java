@@ -17,6 +17,10 @@ public interface PostingParticipationRepository extends JpaRepository<PostingPar
 
     Optional<PostingParticipation> findByUserIdAndPostingId(Long userId, Long postingId);
 
+    /** 마이페이지 활동 캘린더 - 공고 기반 모임들의 연결 봉사공고 참여 상태를 배치 조회한다(N+1 방지). */
+    List<PostingParticipation> findAllByUserIdAndPostingIdIn(
+            Long userId, Collection<Long> postingIds);
+
     List<PostingParticipation> findByUserIdAndStatusNotIn(
             Long userId, Collection<PostingParticipationStatus> excludedStatuses);
 

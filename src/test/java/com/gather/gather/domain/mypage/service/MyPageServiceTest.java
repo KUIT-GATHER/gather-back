@@ -256,8 +256,75 @@ class MyPageServiceTest {
                             MyPageActivityResponse.ActivityType.VOLUNTEER);
             assertThat(activities.get(0).meetingId()).isEqualTo(3L);
             assertThat(activities.get(0).postingId()).isNull();
+            assertThat(activities.get(0).volunteerPostingId()).isNull();
+            assertThat(activities.get(0).meetingStatus()).isEqualTo("RECRUITING");
+            assertThat(activities.get(0).postingParticipationStatus()).isNull();
             assertThat(activities.get(1).meetingId()).isNull();
             assertThat(activities.get(1).postingId()).isEqualTo(801L);
+            verify(postingParticipationRepository, never())
+                    .findAllByUserIdAndPostingIdIn(any(), any());
+        }
+    }
+
+    @Test
+    @DisplayName(
+            "getActivities returns the linked posting's PostingParticipation status as"
+                    + " postingParticipationStatus for a posting-based MEETING card")
+    void getActivities_returnsPostingParticipationStatus_forPostingBasedMeetingWithParticipation() {
+        MeetingMember meetingMember =
+                approvedCalendarMeetingMember(
+                        3L,
+                        10L,
+                        LocalDate.of(2026, 7, 5).atStartOfDay(),
+                        LocalDate.of(2026, 7, 6).atStartOfDay());
+        PostingParticipation linkedParticipation = PostingParticipation.create(USER_ID, 10L);
+        ReflectionTestUtils.setField(
+                linkedParticipation, "status", PostingParticipationStatus.APPLIED);
+
+        try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
+            securityUtil.when(SecurityUtil::getCurrentUserId).thenReturn(USER_ID);
+            when(postingParticipationRepository.findByUserId(USER_ID)).thenReturn(List.of());
+            when(meetingMemberRepository.findApprovedForCalendar(eq(USER_ID), any(), any()))
+                    .thenReturn(List.of(meetingMember));
+            when(postingParticipationRepository.findAllByUserIdAndPostingIdIn(
+                            USER_ID, List.of(10L)))
+                    .thenReturn(List.of(linkedParticipation));
+
+            List<MyPageActivityResponse> activities =
+                    myPageService.getActivities(YearMonth.of(2026, 7));
+
+            assertThat(activities.get(0).volunteerPostingId()).isEqualTo(10L);
+            assertThat(activities.get(0).meetingStatus()).isEqualTo("RECRUITING");
+            assertThat(activities.get(0).postingParticipationStatus()).isEqualTo("APPLIED");
+        }
+    }
+
+    @Test
+    @DisplayName(
+            "getActivities returns null postingParticipationStatus when the posting-based MEETING's"
+                    + " linked posting has no participation record for the user")
+    void getActivities_returnsNullPostingParticipationStatus_whenLinkedPostingHasNoParticipation() {
+        MeetingMember meetingMember =
+                approvedCalendarMeetingMember(
+                        3L,
+                        10L,
+                        LocalDate.of(2026, 7, 5).atStartOfDay(),
+                        LocalDate.of(2026, 7, 6).atStartOfDay());
+
+        try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
+            securityUtil.when(SecurityUtil::getCurrentUserId).thenReturn(USER_ID);
+            when(postingParticipationRepository.findByUserId(USER_ID)).thenReturn(List.of());
+            when(meetingMemberRepository.findApprovedForCalendar(eq(USER_ID), any(), any()))
+                    .thenReturn(List.of(meetingMember));
+            when(postingParticipationRepository.findAllByUserIdAndPostingIdIn(
+                            USER_ID, List.of(10L)))
+                    .thenReturn(List.of());
+
+            List<MyPageActivityResponse> activities =
+                    myPageService.getActivities(YearMonth.of(2026, 7));
+
+            assertThat(activities.get(0).volunteerPostingId()).isEqualTo(10L);
+            assertThat(activities.get(0).postingParticipationStatus()).isNull();
         }
     }
 
@@ -685,6 +752,14 @@ class MyPageServiceTest {
 
     private MeetingMember approvedCalendarMeetingMember(
             Long meetingId, LocalDateTime activityStartAt, LocalDateTime activityEndAt) {
+        return approvedCalendarMeetingMember(meetingId, null, activityStartAt, activityEndAt);
+    }
+
+    private MeetingMember approvedCalendarMeetingMember(
+            Long meetingId,
+            Long volunteerPostingId,
+            LocalDateTime activityStartAt,
+            LocalDateTime activityEndAt) {
         Meeting meeting =
                 Meeting.create(
                         "테스트 모임",
@@ -696,7 +771,7 @@ class MyPageServiceTest {
                         1L,
                         user(),
                         null,
-                        null,
+                        volunteerPostingId,
                         activityStartAt,
                         activityEndAt);
         ReflectionTestUtils.setField(meeting, "id", meetingId);
