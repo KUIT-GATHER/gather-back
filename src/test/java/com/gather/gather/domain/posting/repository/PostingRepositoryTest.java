@@ -257,6 +257,30 @@ class PostingRepositoryTest {
     }
 
     @Test
+    void search_ordersNullNoticeEndDateAfterOpenNoticesButBeforeStaleNotices_whenStatusIsNull() {
+        // 마감일이 없는 상시모집 공고는 DB의 NULL 정렬 정책상 오름차순 정렬에서 최상단에 노출될 수 있으므로,
+        // 마감일이 있고 아직 지나지 않은 공고 다음, 이미 마감된 공고보다는 앞에 오도록 강제한다.
+        Posting dueToday = save(PostingStatus.RECRUITING, null, LocalDate.now());
+        Posting dueLater = save(PostingStatus.RECRUITING, null, LocalDate.now().plusDays(3));
+        Posting noDeadline = save(PostingStatus.RECRUITING, null, null);
+        Posting staleRecruiting =
+                save(PostingStatus.RECRUITING, null, LocalDate.now().minusDays(1));
+        Pageable noticeEndAscending =
+                PageRequest.of(0, 20, Sort.by(Sort.Direction.ASC, "noticeEndDate"));
+
+        var result =
+                postingRepository.search(null, null, null, null, null, null, noticeEndAscending);
+
+        assertThat(result.getContent())
+                .extracting(Posting::getId)
+                .containsExactly(
+                        dueToday.getId(),
+                        dueLater.getId(),
+                        noDeadline.getId(),
+                        staleRecruiting.getId());
+    }
+
+    @Test
     void search_treatsNoticeEndDateOfTodayAsStillOpen() {
         Posting dueToday = save(PostingStatus.RECRUITING, null, LocalDate.now());
         Posting staleYesterday = save(PostingStatus.RECRUITING, null, LocalDate.now().minusDays(1));
