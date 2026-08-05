@@ -62,7 +62,7 @@ class BadgeQueryServiceTest {
                 .when(badgeEvaluationService.collectCompletionDates(USER_ID))
                 .thenReturn(List.of());
         lenient()
-                .when(badgeEvaluationService.currentConsecutiveMonthStreak(List.of()))
+                .when(badgeEvaluationService.longestConsecutiveMonthStreak(List.of()))
                 .thenReturn(0);
         lenient()
                 .when(
@@ -138,7 +138,7 @@ class BadgeQueryServiceTest {
             securityUtil.when(SecurityUtil::getCurrentUserId).thenReturn(USER_ID);
             when(badgeEvaluationService.collectCompletionDates(USER_ID))
                     .thenReturn(completionDates);
-            when(badgeEvaluationService.currentConsecutiveMonthStreak(completionDates))
+            when(badgeEvaluationService.longestConsecutiveMonthStreak(completionDates))
                     .thenReturn(1);
 
             List<BadgeStatusResponse> badges = badgeQueryService.getMyBadges();
@@ -167,7 +167,7 @@ class BadgeQueryServiceTest {
             securityUtil.when(SecurityUtil::getCurrentUserId).thenReturn(USER_ID);
             when(badgeEvaluationService.collectCompletionDates(USER_ID))
                     .thenReturn(completionDates);
-            when(badgeEvaluationService.currentConsecutiveMonthStreak(completionDates))
+            when(badgeEvaluationService.longestConsecutiveMonthStreak(completionDates))
                     .thenReturn(1);
 
             List<BadgeStatusResponse> badges = badgeQueryService.getMyBadges();

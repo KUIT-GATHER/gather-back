@@ -57,7 +57,7 @@ public class BadgeEvaluationService {
         if (completionDates.size() >= BadgeType.COMPLETION_5.getTargetValue()) {
             badgeAwardService.award(userId, BadgeType.COMPLETION_5);
         }
-        if (currentConsecutiveMonthStreak(completionDates)
+        if (longestConsecutiveMonthStreak(completionDates)
                 >= BadgeType.CONSECUTIVE_3_MONTHS.getTargetValue()) {
             badgeAwardService.award(userId, BadgeType.CONSECUTIVE_3_MONTHS);
         }
@@ -128,7 +128,7 @@ public class BadgeEvaluationService {
     }
 
     /** 연속된 활동 월의 최장 스트릭 — 뱃지 진행률 조회(BadgeQueryService)에서도 재사용한다. */
-    int currentConsecutiveMonthStreak(List<LocalDate> dates) {
+    int longestConsecutiveMonthStreak(List<LocalDate> dates) {
         TreeSet<YearMonth> months = new TreeSet<>();
         for (LocalDate date : dates) {
             months.add(YearMonth.from(date));

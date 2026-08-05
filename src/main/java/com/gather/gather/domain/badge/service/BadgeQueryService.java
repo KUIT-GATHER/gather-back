@@ -62,7 +62,7 @@ public class BadgeQueryService {
         List<LocalDate> completionDates = badgeEvaluationService.collectCompletionDates(userId);
         int completedCount = completionDates.size();
         int consecutiveMonthStreak =
-                badgeEvaluationService.currentConsecutiveMonthStreak(completionDates);
+                badgeEvaluationService.longestConsecutiveMonthStreak(completionDates);
 
         List<MeetingMember> approvedMemberships =
                 meetingMemberRepository.findAllByUserIdAndStatusFetchMeeting(

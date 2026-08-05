@@ -82,6 +82,7 @@ public class MeetingBookmarkService {
             LocalDate activityEndDate,
             Pageable pageable) {
         rejectSort(pageable.getSort());
+        rejectInvertedRange(activityStartDate, activityEndDate);
         Long userId = SecurityUtil.getCurrentUserId();
         Pageable unsortedPageable =
                 PageRequest.of(pageable.getPageNumber(), pageable.getPageSize());
@@ -119,6 +120,13 @@ public class MeetingBookmarkService {
                                         regionNames.get(meeting.getRegionId())));
 
         return PageResponse.from(responses);
+    }
+
+    /** 시작일·종료일이 모두 주어졌는데 시작일이 종료일보다 늦으면(역전 범위) 빈 목록 대신 명시적으로 400을 반환한다. */
+    private void rejectInvertedRange(LocalDate startDate, LocalDate endDate) {
+        if (startDate != null && endDate != null && startDate.isAfter(endDate)) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR);
+        }
     }
 
     private void rejectSort(Sort sort) {

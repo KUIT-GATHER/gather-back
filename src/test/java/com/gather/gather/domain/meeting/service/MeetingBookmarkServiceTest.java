@@ -314,4 +314,25 @@ class MeetingBookmarkServiceTest {
                 .findBookmarkedMeetings(
                         any(), any(), any(), anyBoolean(), any(), any(), any(), any());
     }
+
+    @Test
+    @DisplayName(
+            "getBookmarkedMeetings throws VALIDATION_ERROR when activityStartDate is after"
+                    + " activityEndDate")
+    void getBookmarkedMeetings_throwsValidationError_whenDateRangeInverted() {
+        LocalDate startDate = LocalDate.of(2026, 8, 31);
+        LocalDate endDate = LocalDate.of(2026, 8, 1);
+        Pageable unsortedPageable = PageRequest.of(0, 20);
+
+        assertThatThrownBy(
+                        () ->
+                                meetingBookmarkService.getBookmarkedMeetings(
+                                        null, null, null, startDate, endDate, unsortedPageable))
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("errorCode", ErrorCode.VALIDATION_ERROR);
+
+        verify(meetingBookmarkRepository, never())
+                .findBookmarkedMeetings(
+                        any(), any(), any(), anyBoolean(), any(), any(), any(), any());
+    }
 }

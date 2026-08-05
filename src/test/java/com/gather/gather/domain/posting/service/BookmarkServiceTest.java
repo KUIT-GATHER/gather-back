@@ -363,6 +363,27 @@ class BookmarkServiceTest {
                         any(), any(), any(), anyBoolean(), any(), any(), any(), any());
     }
 
+    @Test
+    @DisplayName(
+            "getBookmarkedPostings throws VALIDATION_ERROR when noticeStartDate is after"
+                    + " noticeEndDate")
+    void getBookmarkedPostings_throwsValidationError_whenDateRangeInverted() {
+        LocalDate startDate = LocalDate.of(2026, 8, 31);
+        LocalDate endDate = LocalDate.of(2026, 8, 1);
+        Pageable unsortedPageable = PageRequest.of(0, 20);
+
+        assertThatThrownBy(
+                        () ->
+                                bookmarkService.getBookmarkedPostings(
+                                        null, null, null, startDate, endDate, unsortedPageable))
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("errorCode", ErrorCode.VALIDATION_ERROR);
+
+        verify(bookmarkRepository, never())
+                .findBookmarkedPostings(
+                        any(), any(), any(), anyBoolean(), any(), any(), any(), any());
+    }
+
     private Posting posting() {
         Posting posting =
                 Posting.builder()

@@ -87,6 +87,7 @@ public class BookmarkService {
             LocalDate noticeEndDate,
             Pageable pageable) {
         rejectSort(pageable.getSort());
+        rejectInvertedRange(noticeStartDate, noticeEndDate);
         Long userId = SecurityUtil.getCurrentUserId();
         Pageable unsortedPageable =
                 PageRequest.of(pageable.getPageNumber(), pageable.getPageSize());
@@ -121,6 +122,13 @@ public class BookmarkService {
 
     private void rejectSort(Sort sort) {
         if (sort.isSorted()) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR);
+        }
+    }
+
+    /** 시작일·종료일이 모두 주어졌는데 시작일이 종료일보다 늦으면(역전 범위) 빈 목록 대신 명시적으로 400을 반환한다. */
+    private void rejectInvertedRange(LocalDate startDate, LocalDate endDate) {
+        if (startDate != null && endDate != null && startDate.isAfter(endDate)) {
             throw new BusinessException(ErrorCode.VALIDATION_ERROR);
         }
     }
