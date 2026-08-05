@@ -2,8 +2,10 @@ package com.gather.gather.domain.meeting.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.when;
 
@@ -17,6 +19,7 @@ import com.gather.gather.domain.meeting.enums.MeetingMemberStatus;
 import com.gather.gather.domain.meeting.repository.MeetingMemberRepository;
 import com.gather.gather.domain.meeting.repository.MeetingRepository;
 import com.gather.gather.domain.posting.entity.PostingCategory;
+import com.gather.gather.domain.posting.service.RegionNameResolver;
 import com.gather.gather.global.config.RecommendationProperties;
 import com.gather.gather.global.util.CategoryDeadlineScoreCalculator;
 import com.gather.gather.global.util.PreferredCategoryResolver;
@@ -24,6 +27,7 @@ import com.gather.gather.global.util.SecurityUtil;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import org.junit.jupiter.api.BeforeEach;
@@ -47,6 +51,7 @@ class MeetingRecommendationServiceTest {
     @Mock private MeetingRepository meetingRepository;
     @Mock private MeetingMemberRepository meetingMemberRepository;
     @Mock private UserRepository userRepository;
+    @Mock private RegionNameResolver regionNameResolver;
 
     private MeetingRecommendationService meetingRecommendationService;
 
@@ -60,7 +65,9 @@ class MeetingRecommendationServiceTest {
                         meetingMemberRepository,
                         new PreferredCategoryResolver(userRepository),
                         new CategoryDeadlineScoreCalculator(
-                                new RecommendationProperties(0.7, 0.3, 30)));
+                                new RecommendationProperties(0.7, 0.3, 30)),
+                        regionNameResolver);
+        lenient().when(regionNameResolver.resolve(anyList())).thenReturn(Map.of());
     }
 
     @Test

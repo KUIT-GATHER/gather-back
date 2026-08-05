@@ -5,7 +5,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.gather.gather.domain.badge.dto.UserBadgeResponse;
+import com.gather.gather.domain.badge.dto.BadgeStatusResponse;
 import com.gather.gather.domain.badge.entity.BadgeType;
 import com.gather.gather.domain.badge.service.BadgeQueryService;
 import java.time.LocalDateTime;
@@ -27,69 +27,82 @@ class BadgeControllerTest {
     @MockitoBean private BadgeQueryService badgeQueryService;
 
     @Test
-    @DisplayName("GET /api/v1/mypage/badges returns 200 with the caller's earned badges")
-    void getMyBadges_returns200WithBadgeList() throws Exception {
+    @DisplayName(
+            "GET /api/v1/mypage/badges returns 200 with an earned badge card showing earnedAt"
+                    + " and currentValue=targetValue")
+    void getMyBadges_returns200WithEarnedBadge() throws Exception {
         LocalDateTime earnedAt = LocalDateTime.of(2026, 7, 1, 12, 0);
         when(badgeQueryService.getMyBadges())
                 .thenReturn(
                         List.of(
-                                new UserBadgeResponse(
+                                new BadgeStatusResponse(
                                         BadgeType.FIRST_COMPLETION,
                                         BadgeType.FIRST_COMPLETION.getTitle(),
                                         BadgeType.FIRST_COMPLETION.getDescription(),
-                                        earnedAt)));
+                                        true,
+                                        earnedAt,
+                                        1,
+                                        1)));
 
         mockMvc.perform(get("/api/v1/mypage/badges"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data[0].badgeType").value("FIRST_COMPLETION"))
+                .andExpect(jsonPath("$.data[0].earned").value(true))
+                .andExpect(jsonPath("$.data[0].earnedAt").value("2026-07-01T12:00:00"))
+                .andExpect(jsonPath("$.data[0].currentValue").value(1))
+                .andExpect(jsonPath("$.data[0].targetValue").value(1))
                 .andExpect(jsonPath("$.data.length()").value(1));
     }
 
     @Test
     @DisplayName(
-            "GET /api/v1/mypage/badges returns 200 with an empty list when the user has no badges (L-10)")
-    void getMyBadges_returns200WithEmptyList_whenNoBadges() throws Exception {
-        when(badgeQueryService.getMyBadges()).thenReturn(List.of());
+            "GET /api/v1/mypage/badges returns 200 with a locked badge card showing null"
+                    + " earnedAt and progress toward targetValue")
+    void getMyBadges_returns200WithLockedBadge() throws Exception {
+        when(badgeQueryService.getMyBadges())
+                .thenReturn(
+                        List.of(
+                                new BadgeStatusResponse(
+                                        BadgeType.COMPLETION_5,
+                                        BadgeType.COMPLETION_5.getTitle(),
+                                        BadgeType.COMPLETION_5.getDescription(),
+                                        false,
+                                        null,
+                                        3,
+                                        5)));
 
         mockMvc.perform(get("/api/v1/mypage/badges"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
-                .andExpect(jsonPath("$.data").isArray())
-                .andExpect(jsonPath("$.data.length()").value(0));
+                .andExpect(jsonPath("$.data[0].badgeType").value("COMPLETION_5"))
+                .andExpect(jsonPath("$.data[0].earned").value(false))
+                .andExpect(jsonPath("$.data[0].earnedAt").doesNotExist())
+                .andExpect(jsonPath("$.data[0].currentValue").value(3))
+                .andExpect(jsonPath("$.data[0].targetValue").value(5));
     }
 
     @Test
-    @DisplayName(
-            "GET /api/v1/mypage/badges maps every field and preserves the service's recent-first"
-                    + " ordering (L-10)")
-    void getMyBadges_mapsAllFieldsAndPreservesRecentFirstOrder() throws Exception {
-        LocalDateTime recentlyEarned = LocalDateTime.of(2026, 7, 20, 9, 0);
-        LocalDateTime earlierEarned = LocalDateTime.of(2026, 6, 1, 9, 0);
-        when(badgeQueryService.getMyBadges())
-                .thenReturn(
-                        List.of(
-                                new UserBadgeResponse(
-                                        BadgeType.BOOKMARK_5,
-                                        BadgeType.BOOKMARK_5.getTitle(),
-                                        BadgeType.BOOKMARK_5.getDescription(),
-                                        recentlyEarned),
-                                new UserBadgeResponse(
-                                        BadgeType.FIRST_COMPLETION,
-                                        BadgeType.FIRST_COMPLETION.getTitle(),
-                                        BadgeType.FIRST_COMPLETION.getDescription(),
-                                        earlierEarned)));
+    @DisplayName("GET /api/v1/mypage/badges returns all 8 badge types even when none are earned")
+    void getMyBadges_returns200WithAllEightBadgeTypes_whenNoneEarned() throws Exception {
+        List<BadgeStatusResponse> allLocked =
+                java.util.Arrays.stream(BadgeType.values())
+                        .map(
+                                badgeType ->
+                                        new BadgeStatusResponse(
+                                                badgeType,
+                                                badgeType.getTitle(),
+                                                badgeType.getDescription(),
+                                                false,
+                                                null,
+                                                0,
+                                                badgeType.getTargetValue()))
+                        .toList();
+        when(badgeQueryService.getMyBadges()).thenReturn(allLocked);
 
         mockMvc.perform(get("/api/v1/mypage/badges"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.length()").value(2))
-                .andExpect(jsonPath("$.data[0].badgeType").value("BOOKMARK_5"))
-                .andExpect(jsonPath("$.data[0].title").value(BadgeType.BOOKMARK_5.getTitle()))
-                .andExpect(
-                        jsonPath("$.data[0].description")
-                                .value(BadgeType.BOOKMARK_5.getDescription()))
-                .andExpect(jsonPath("$.data[0].earnedAt").value("2026-07-20T09:00:00"))
-                .andExpect(jsonPath("$.data[1].badgeType").value("FIRST_COMPLETION"))
-                .andExpect(jsonPath("$.data[1].earnedAt").value("2026-06-01T09:00:00"));
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.length()").value(BadgeType.values().length));
     }
 }

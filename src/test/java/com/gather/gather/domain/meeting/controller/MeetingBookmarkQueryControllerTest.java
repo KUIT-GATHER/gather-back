@@ -52,6 +52,7 @@ class MeetingBookmarkQueryControllerTest {
                         3,
                         10,
                         2L,
+                        "동구",
                         Set.of(PostingCategory.ENVIRONMENT),
                         MeetingStatus.RECRUITING,
                         LocalDateTime.of(2026, 8, 1, 0, 0),
@@ -59,13 +60,15 @@ class MeetingBookmarkQueryControllerTest {
                         null,
                         null);
         Page<MeetingResponse> page = new PageImpl<>(List.of(meeting), PageRequest.of(0, 20), 1);
-        when(meetingBookmarkService.getBookmarkedMeetings(isNull(), isNull(), any()))
+        when(meetingBookmarkService.getBookmarkedMeetings(
+                        isNull(), isNull(), isNull(), isNull(), isNull(), any()))
                 .thenReturn(PageResponse.from(page));
 
         mockMvc.perform(get("/api/v1/meetings/bookmarks"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.content[0].meetingId").value(1))
+                .andExpect(jsonPath("$.data.content[0].regionName").value("동구"))
                 .andExpect(jsonPath("$.data.content[0].categories[0]").value("ENVIRONMENT"))
                 .andExpect(jsonPath("$.data.content[0].category").doesNotExist())
                 .andExpect(jsonPath("$.data.content[0].status").value("RECRUITING"))
@@ -77,7 +80,12 @@ class MeetingBookmarkQueryControllerTest {
     void getBookmarkedMeetings_passesCategoryAndKeyword() throws Exception {
         Page<MeetingResponse> emptyPage = new PageImpl<>(List.of(), PageRequest.of(0, 20), 0);
         when(meetingBookmarkService.getBookmarkedMeetings(
-                        eq(PostingCategory.ENVIRONMENT), eq("정화"), any()))
+                        eq(PostingCategory.ENVIRONMENT),
+                        eq("정화"),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        any()))
                 .thenReturn(PageResponse.from(emptyPage));
 
         mockMvc.perform(
@@ -92,7 +100,8 @@ class MeetingBookmarkQueryControllerTest {
     @Test
     @DisplayName("GET /api/v1/meetings/bookmarks returns 401 when not authenticated")
     void getBookmarkedMeetings_returns401_whenUnauthenticated() throws Exception {
-        when(meetingBookmarkService.getBookmarkedMeetings(isNull(), isNull(), any()))
+        when(meetingBookmarkService.getBookmarkedMeetings(
+                        isNull(), isNull(), isNull(), isNull(), isNull(), any()))
                 .thenThrow(new BusinessException(ErrorCode.UNAUTHORIZED));
 
         mockMvc.perform(get("/api/v1/meetings/bookmarks"))
@@ -105,14 +114,17 @@ class MeetingBookmarkQueryControllerTest {
     @DisplayName("GET /api/v1/meetings/bookmarks?page=1&size=5 binds page/size query params")
     void getBookmarkedMeetings_bindsPageableFromQueryParams() throws Exception {
         Page<MeetingResponse> emptyPage = new PageImpl<>(List.of(), PageRequest.of(1, 5), 0);
-        when(meetingBookmarkService.getBookmarkedMeetings(isNull(), isNull(), any()))
+        when(meetingBookmarkService.getBookmarkedMeetings(
+                        isNull(), isNull(), isNull(), isNull(), isNull(), any()))
                 .thenReturn(PageResponse.from(emptyPage));
 
         mockMvc.perform(get("/api/v1/meetings/bookmarks").param("page", "1").param("size", "5"))
                 .andExpect(status().isOk());
 
         ArgumentCaptor<Pageable> captor = ArgumentCaptor.forClass(Pageable.class);
-        verify(meetingBookmarkService).getBookmarkedMeetings(isNull(), isNull(), captor.capture());
+        verify(meetingBookmarkService)
+                .getBookmarkedMeetings(
+                        isNull(), isNull(), isNull(), isNull(), isNull(), captor.capture());
         assertThat(captor.getValue().getPageNumber()).isEqualTo(1);
         assertThat(captor.getValue().getPageSize()).isEqualTo(5);
     }
@@ -121,7 +133,8 @@ class MeetingBookmarkQueryControllerTest {
     @DisplayName(
             "GET /api/v1/meetings/bookmarks?sort=... returns 400 when the service rejects sort")
     void getBookmarkedMeetings_returns400_whenServiceRejectsSort() throws Exception {
-        when(meetingBookmarkService.getBookmarkedMeetings(isNull(), isNull(), any()))
+        when(meetingBookmarkService.getBookmarkedMeetings(
+                        isNull(), isNull(), isNull(), isNull(), isNull(), any()))
                 .thenThrow(new BusinessException(ErrorCode.VALIDATION_ERROR));
 
         mockMvc.perform(get("/api/v1/meetings/bookmarks").param("sort", "name,desc"))

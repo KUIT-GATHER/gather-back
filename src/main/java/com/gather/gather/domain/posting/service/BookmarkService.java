@@ -9,11 +9,14 @@ import com.gather.gather.domain.posting.entity.Posting;
 import com.gather.gather.domain.posting.entity.PostingCategory;
 import com.gather.gather.domain.posting.repository.BookmarkRepository;
 import com.gather.gather.domain.posting.repository.PostingRepository;
+import com.gather.gather.domain.region.repository.RegionRepository;
 import com.gather.gather.global.common.PageResponse;
 import com.gather.gather.global.exception.BusinessException;
 import com.gather.gather.global.exception.ErrorCode;
 import com.gather.gather.global.util.LikeKeywordEscaper;
 import com.gather.gather.global.util.SecurityUtil;
+import java.time.LocalDate;
+import java.util.List;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
@@ -29,11 +32,10 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 public class BookmarkService {
 
-    private static final int BOOKMARK_5_THRESHOLD = 5;
-
     private final BookmarkRepository bookmarkRepository;
     private final PostingRepository postingRepository;
     private final RegionNameResolver regionNameResolver;
+    private final RegionRepository regionRepository;
     private final ApplicationEventPublisher eventPublisher;
 
     @Transactional
@@ -52,7 +54,7 @@ public class BookmarkService {
         } catch (DataIntegrityViolationException exception) {
             throw new BusinessException(ErrorCode.BOOKMARK_DUPLICATE);
         }
-        if (bookmarkRepository.countByUserId(userId) == BOOKMARK_5_THRESHOLD) {
+        if (bookmarkRepository.countByUserId(userId) == BadgeType.BOOKMARK_5.getTargetValue()) {
             eventPublisher.publishEvent(new BadgeAwardRequestedEvent(userId, BadgeType.BOOKMARK_5));
         }
         return BookmarkResponse.of(postingId, true);
@@ -78,15 +80,34 @@ public class BookmarkService {
      */
     @Transactional(readOnly = true)
     public PageResponse<PostingSummaryResponse> getBookmarkedPostings(
-            PostingCategory category, String keyword, Pageable pageable) {
+            PostingCategory category,
+            String keyword,
+            Long regionId,
+            LocalDate noticeStartDate,
+            LocalDate noticeEndDate,
+            Pageable pageable) {
         rejectSort(pageable.getSort());
+        rejectInvertedRange(noticeStartDate, noticeEndDate);
         Long userId = SecurityUtil.getCurrentUserId();
         Pageable unsortedPageable =
                 PageRequest.of(pageable.getPageNumber(), pageable.getPageSize());
 
+        // 지역: 상위(시·도) 선택 시 하위 시군구·읍면동까지 포함(봉사공고 목록 조회와 동일 정책).
+        boolean hasRegionFilter = regionId != null;
+        List<Long> regionIds =
+                hasRegionFilter ? regionRepository.findIdsIncludingChildren(regionId) : List.of();
+        List<Long> regionIdParam = regionIds.isEmpty() ? List.of(-1L) : regionIds;
+
         Page<Posting> postings =
                 bookmarkRepository.findBookmarkedPostings(
-                        userId, category, LikeKeywordEscaper.escape(keyword), unsortedPageable);
+                        userId,
+                        category,
+                        LikeKeywordEscaper.escape(keyword),
+                        hasRegionFilter,
+                        regionIdParam,
+                        noticeStartDate,
+                        noticeEndDate,
+                        unsortedPageable);
 
         Map<Long, String> regionNames = regionNameResolver.resolve(postings);
 
@@ -101,6 +122,13 @@ public class BookmarkService {
 
     private void rejectSort(Sort sort) {
         if (sort.isSorted()) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR);
+        }
+    }
+
+    /** 시작일·종료일이 모두 주어졌는데 시작일이 종료일보다 늦으면(역전 범위) 빈 목록 대신 명시적으로 400을 반환한다. */
+    private void rejectInvertedRange(LocalDate startDate, LocalDate endDate) {
+        if (startDate != null && endDate != null && startDate.isAfter(endDate)) {
             throw new BusinessException(ErrorCode.VALIDATION_ERROR);
         }
     }

@@ -54,7 +54,8 @@ class PostingRecommendationServiceTest {
     void setUp() {
         // 실제 RegionNameResolver.resolve()는 Collectors.toMap으로 HashMap을 반환하며 regionId가
         // null인 posting에 대해서도 안전하게 null을 조회할 수 있다(Map.of()는 null 키 조회 시 NPE를 던지므로 사용하지 않는다).
-        when(regionNameResolver.resolve(any())).thenReturn(new HashMap<>());
+        when(regionNameResolver.resolve(any(org.springframework.data.domain.Page.class)))
+                .thenReturn(new HashMap<>());
         postingRecommendationService =
                 new PostingRecommendationService(
                         postingRepository,
