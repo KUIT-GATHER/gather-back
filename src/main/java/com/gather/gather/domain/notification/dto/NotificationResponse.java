@@ -20,10 +20,15 @@ public record NotificationResponse(
                         example = "3",
                         nullable = true)
                 Long targetMeetingId,
+        @Schema(
+                        description = "알림 항목에 표시할 대표 이미지 URL. 이미지가 없으면 null",
+                        example = "https://example.com/meeting-image.jpg",
+                        nullable = true)
+                String thumbnailUrl,
         @Schema(description = "읽음 여부", example = "false") boolean read,
         @Schema(description = "알림 생성 일시") LocalDateTime createdAt) {
 
-    public static NotificationResponse from(Notification notification) {
+    public static NotificationResponse from(Notification notification, String thumbnailUrl) {
         return new NotificationResponse(
                 notification.getId(),
                 notification.getCategory(),
@@ -32,7 +37,12 @@ public record NotificationResponse(
                 notification.getTargetType(),
                 notification.getTargetId(),
                 notification.getTargetMeetingId(),
+                thumbnailUrl,
                 notification.isRead(),
                 notification.getCreatedAt());
+    }
+
+    public static NotificationResponse from(Notification notification) {
+        return from(notification, null);
     }
 }
