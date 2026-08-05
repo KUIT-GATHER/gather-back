@@ -8,6 +8,8 @@ import com.gather.gather.domain.meeting.enums.MeetingMemberRole;
 import com.gather.gather.domain.meeting.enums.MeetingMemberStatus;
 import com.gather.gather.domain.meeting.repository.MeetingMemberRepository;
 import com.gather.gather.domain.meeting.repository.MeetingRepository;
+import com.gather.gather.domain.notification.enums.NotificationType;
+import com.gather.gather.domain.notification.event.MeetingPostNotificationRequestedEvent;
 import com.gather.gather.domain.post.entity.Post;
 import com.gather.gather.domain.post.enums.PostType;
 import com.gather.gather.domain.post.repository.PostRepository;
@@ -25,6 +27,7 @@ import com.gather.gather.global.util.SecurityUtil;
 import java.time.LocalDate;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -44,12 +47,14 @@ import org.springframework.transaction.annotation.Transactional;
 @Transactional(readOnly = true)
 public class MeetingRecruitService {
 
+    private static final String POSTING_CREATED_MESSAGE = "[%s]에 새 봉사공고가 등록되었어요.";
     private final PostRepository postRepository;
     private final MeetingRepository meetingRepository;
     private final MeetingMemberRepository meetingMemberRepository;
     private final UserRepository userRepository;
     private final MeetingRecruitRepository meetingRecruitRepository;
     private final MeetingRecruitParticipationRepository participationRepository;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Transactional
     public RecruitDetailResponse createRecruit(Long meetingId, RecruitCreateRequest request) {
@@ -88,6 +93,16 @@ public class MeetingRecruitService {
                                 request.applyDeadline(),
                                 request.isExternal(),
                                 request.categories()));
+
+        String message = POSTING_CREATED_MESSAGE.formatted(meeting.getName());
+
+        eventPublisher.publishEvent(
+                new MeetingPostNotificationRequestedEvent(
+                        meeting.getId(),
+                        post.getId(),
+                        author.getId(),
+                        NotificationType.MEETING_POSTING_CREATED,
+                        message));
 
         return toDetail(post, recruit, author, 0, false, true, true);
     }

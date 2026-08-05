@@ -3,6 +3,7 @@ package com.gather.gather.domain.recruit.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -15,6 +16,8 @@ import com.gather.gather.domain.meeting.enums.MeetingMemberRole;
 import com.gather.gather.domain.meeting.enums.MeetingMemberStatus;
 import com.gather.gather.domain.meeting.repository.MeetingMemberRepository;
 import com.gather.gather.domain.meeting.repository.MeetingRepository;
+import com.gather.gather.domain.notification.enums.NotificationType;
+import com.gather.gather.domain.notification.event.MeetingPostNotificationRequestedEvent;
 import com.gather.gather.domain.post.entity.Post;
 import com.gather.gather.domain.post.enums.PostType;
 import com.gather.gather.domain.post.repository.PostRepository;
@@ -44,6 +47,7 @@ import org.mockito.Mock;
 import org.mockito.MockedStatic;
 import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 
 @ExtendWith(MockitoExtension.class)
 class MeetingRecruitServiceTest {
@@ -58,6 +62,7 @@ class MeetingRecruitServiceTest {
     @Mock private UserRepository userRepository;
     @Mock private MeetingRecruitRepository meetingRecruitRepository;
     @Mock private MeetingRecruitParticipationRepository participationRepository;
+    @Mock private ApplicationEventPublisher eventPublisher;
 
     @InjectMocks private MeetingRecruitService meetingRecruitService;
 
@@ -100,7 +105,24 @@ class MeetingRecruitServiceTest {
         assertThat(response.appliedCount()).isZero();
         assertThat(response.applied()).isFalse();
         assertThat(response.canEdit()).isTrue();
+
         verify(meetingRecruitRepository).save(any(MeetingRecruit.class));
+
+        verify(eventPublisher)
+                .publishEvent(
+                        argThat(
+                                (Object event) ->
+                                        event
+                                                        instanceof
+                                                        MeetingPostNotificationRequestedEvent
+                                                                        request
+                                                && request.meetingId().equals(MEETING_ID)
+                                                && request.postId().equals(POST_ID)
+                                                && request.authorId().equals(USER_ID)
+                                                && request.type()
+                                                        == NotificationType.MEETING_POSTING_CREATED
+                                                && request.message()
+                                                        .equals("[한강공원 플로깅]에 새 봉사공고가 등록되었어요.")));
     }
 
     @Test
@@ -120,7 +142,9 @@ class MeetingRecruitServiceTest {
                                         MEETING_ID, createRequest(30, false, null)))
                 .isInstanceOf(BusinessException.class)
                 .hasFieldOrPropertyWithValue("errorCode", ErrorCode.RECRUIT_HOST_ONLY);
+
         verify(postRepository, never()).save(any());
+        verify(eventPublisher, never()).publishEvent(Mockito.any(Object.class));
     }
 
     @Test
@@ -239,6 +263,7 @@ class MeetingRecruitServiceTest {
         assertThat(response.maxParticipants()).isEqualTo(40);
         assertThat(response.appliedCount()).isEqualTo(2);
         verify(post).update("6월 정기 활동 팀원 모집(수정)", "소개 수정");
+        verify(eventPublisher, never()).publishEvent(Mockito.any(Object.class));
     }
 
     @Test
@@ -300,6 +325,7 @@ class MeetingRecruitServiceTest {
     private Meeting meeting() {
         Meeting meeting = Mockito.mock(Meeting.class);
         Mockito.lenient().when(meeting.getId()).thenReturn(MEETING_ID);
+        Mockito.lenient().when(meeting.getName()).thenReturn("한강공원 플로깅");
         return meeting;
     }
 
