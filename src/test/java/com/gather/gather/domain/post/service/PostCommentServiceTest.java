@@ -2,6 +2,7 @@ package com.gather.gather.domain.post.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -14,6 +15,7 @@ import com.gather.gather.domain.meeting.enums.MeetingMemberRole;
 import com.gather.gather.domain.meeting.enums.MeetingMemberStatus;
 import com.gather.gather.domain.meeting.repository.MeetingMemberRepository;
 import com.gather.gather.domain.meeting.repository.MeetingRepository;
+import com.gather.gather.domain.notification.event.PostCommentNotificationRequestedEvent;
 import com.gather.gather.domain.post.dto.PostCommentCreateRequest;
 import com.gather.gather.domain.post.dto.PostCommentResponse;
 import com.gather.gather.domain.post.dto.PostCommentUpdateRequest;
@@ -36,6 +38,7 @@ import org.mockito.Mock;
 import org.mockito.MockedStatic;
 import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 
 @ExtendWith(MockitoExtension.class)
 class PostCommentServiceTest {
@@ -51,6 +54,7 @@ class PostCommentServiceTest {
     @Mock private MeetingRepository meetingRepository;
     @Mock private MeetingMemberRepository meetingMemberRepository;
     @Mock private UserRepository userRepository;
+    @Mock private ApplicationEventPublisher eventPublisher;
 
     @InjectMocks private PostCommentService postCommentService;
 
@@ -72,10 +76,13 @@ class PostCommentServiceTest {
     void createComment_increasesCommentCount() {
         Meeting meeting = meetingWithId();
         Post post = postInMeeting(meeting);
+        User postAuthor = author(OTHER_ID);
         MeetingMember member = approvedMember(MeetingMemberRole.MEMBER);
         User authorUser = author(USER_ID);
         PostComment saved = comment(authorUser);
 
+        when(post.getUser()).thenReturn(postAuthor);
+        when(meeting.getName()).thenReturn("한강공원 플로깅");
         when(meetingRepository.findByIdAndDeletedAtIsNull(MEETING_ID))
                 .thenReturn(Optional.of(meeting));
         when(meetingMemberRepository.findByMeeting_IdAndUser_IdAndStatus(
@@ -92,6 +99,44 @@ class PostCommentServiceTest {
         assertThat(response.canEdit()).isTrue();
         assertThat(response.canDelete()).isTrue();
         verify(post).increaseCommentCount();
+
+        verify(eventPublisher)
+                .publishEvent(
+                        argThat(
+                                (Object event) ->
+                                        event
+                                                        instanceof
+                                                        PostCommentNotificationRequestedEvent
+                                                                        request
+                                                && request.recipientUserId().equals(OTHER_ID)
+                                                && request.meetingId().equals(MEETING_ID)
+                                                && request.postId().equals(POST_ID)
+                                                && request.meetingName().equals("한강공원 플로깅")));
+    }
+
+    @Test
+    @DisplayName("게시글 작성자가 자신의 글에 댓글을 작성하면 알림 이벤트를 발행하지 않는다")
+    void createCommentDoesNotPublishNotificationForOwnPost() {
+        Meeting meeting = meetingWithId();
+        Post post = postInMeeting(meeting);
+        User user = author(USER_ID);
+        MeetingMember member = approvedMember(MeetingMemberRole.MEMBER);
+        PostComment saved = comment(user);
+
+        when(post.getUser()).thenReturn(user);
+        when(meetingRepository.findByIdAndDeletedAtIsNull(MEETING_ID))
+                .thenReturn(Optional.of(meeting));
+        when(meetingMemberRepository.findByMeeting_IdAndUser_IdAndStatus(
+                        MEETING_ID, USER_ID, MeetingMemberStatus.APPROVED))
+                .thenReturn(Optional.of(member));
+        when(postRepository.findByIdFetchUser(POST_ID)).thenReturn(Optional.of(post));
+        when(userRepository.findById(USER_ID)).thenReturn(Optional.of(user));
+        when(postCommentRepository.save(Mockito.any(PostComment.class))).thenReturn(saved);
+
+        postCommentService.createComment(
+                MEETING_ID, POST_ID, new PostCommentCreateRequest("내 글에 남긴 댓글"));
+
+        verify(eventPublisher, never()).publishEvent(Mockito.any());
     }
 
     @Test

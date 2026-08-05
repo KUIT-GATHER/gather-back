@@ -2,10 +2,12 @@ package com.gather.gather.domain.post.service;
 
 import com.gather.gather.domain.auth.entity.User;
 import com.gather.gather.domain.auth.repository.UserRepository;
+import com.gather.gather.domain.meeting.entity.Meeting;
 import com.gather.gather.domain.meeting.enums.MeetingMemberRole;
 import com.gather.gather.domain.meeting.enums.MeetingMemberStatus;
 import com.gather.gather.domain.meeting.repository.MeetingMemberRepository;
 import com.gather.gather.domain.meeting.repository.MeetingRepository;
+import com.gather.gather.domain.notification.event.PostCommentNotificationRequestedEvent;
 import com.gather.gather.domain.post.dto.PostCommentCreateRequest;
 import com.gather.gather.domain.post.dto.PostCommentResponse;
 import com.gather.gather.domain.post.dto.PostCommentUpdateRequest;
@@ -18,6 +20,7 @@ import com.gather.gather.global.exception.BusinessException;
 import com.gather.gather.global.exception.ErrorCode;
 import com.gather.gather.global.util.SecurityUtil;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -45,6 +48,7 @@ public class PostCommentService {
     private final MeetingRepository meetingRepository;
     private final MeetingMemberRepository meetingMemberRepository;
     private final UserRepository userRepository;
+    private final ApplicationEventPublisher eventPublisher;
 
     public PageResponse<PostCommentResponse> getComments(
             Long meetingId, Long postId, Pageable pageable) {
@@ -74,15 +78,23 @@ public class PostCommentService {
     public PostCommentResponse createComment(
             Long meetingId, Long postId, PostCommentCreateRequest request) {
         Long userId = SecurityUtil.getCurrentUserId();
-        getMeeting(meetingId);
+        Meeting meeting = getMeeting(meetingId);
         getApprovedMembership(meetingId, userId);
 
         Post post = getPostInMeeting(meetingId, postId);
-        User author = getUser(userId);
+        User commentAuthor = getUser(userId);
 
         PostComment comment =
-                postCommentRepository.save(PostComment.create(post, author, request.content()));
+                postCommentRepository.save(
+                        PostComment.create(post, commentAuthor, request.content()));
         post.increaseCommentCount();
+
+        Long postAuthorId = post.getUser().getId();
+        if (!postAuthorId.equals(userId)) {
+            eventPublisher.publishEvent(
+                    new PostCommentNotificationRequestedEvent(
+                            postAuthorId, meetingId, postId, meeting.getName()));
+        }
 
         // 작성 직후에는 본인 댓글이므로 수정·삭제 모두 가능하다.
         return PostCommentResponse.from(comment, true, true);
@@ -120,7 +132,7 @@ public class PostCommentService {
         post.decreaseCommentCount();
     }
 
-    private com.gather.gather.domain.meeting.entity.Meeting getMeeting(Long meetingId) {
+    private Meeting getMeeting(Long meetingId) {
         return meetingRepository
                 .findByIdAndDeletedAtIsNull(meetingId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.MEETING_NOT_FOUND));
