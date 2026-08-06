@@ -97,10 +97,7 @@ public class PostCommentService {
         if (!postAuthorId.equals(userId)) {
             eventPublisher.publishEvent(
                     new PostCommentNotificationRequestedEvent(
-                            postAuthorId,
-                            meetingId,
-                            postId,
-                            meeting.getName()));
+                            postAuthorId, meetingId, postId, meeting.getName()));
         }
 
         // 작성 직후에는 본인 댓글이므로 수정·삭제 모두 가능하다.
