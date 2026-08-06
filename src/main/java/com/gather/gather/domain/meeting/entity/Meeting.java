@@ -206,6 +206,10 @@ public class Meeting {
         this.completedAt = LocalDateTime.now();
     }
 
+    public boolean isCompleted() {
+        return this.status == MeetingStatus.COMPLETED;
+    }
+
     public void delete() {
         this.deletedAt = LocalDateTime.now();
     }

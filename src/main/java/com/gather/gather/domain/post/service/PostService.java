@@ -41,7 +41,7 @@ import org.springframework.transaction.annotation.Transactional;
  *
  * <ul>
  *   <li>목록/상세 열람: 가입자는 전체 유형, 미가입자는 공지·후기만
- *   <li>작성: 모임 가입자만. 공지({@code NOTICE})는 모임장(HOST)만
+ *   <li>작성: 모임 가입자만. 공지({@code NOTICE})는 모임장(HOST)만, 활동 후기({@code REVIEW})는 완료된 모임에서만
  *   <li>수정: 작성자 본인만
  *   <li>삭제: 작성자 본인 또는 모임장
  * </ul>
@@ -112,6 +112,10 @@ public class PostService {
         }
         if (request.type().isNotice() && membership.getRole() != MeetingMemberRole.HOST) {
             throw new BusinessException(ErrorCode.NOTICE_HOST_ONLY);
+        }
+        // 활동 후기는 모임 활동이 끝난 뒤 남기는 글이므로, 모임장이 완료 처리한 모임에서만 작성할 수 있다.
+        if (request.type().isReview() && !meeting.isCompleted()) {
+            throw new BusinessException(ErrorCode.REVIEW_MEETING_NOT_COMPLETED);
         }
         validateContentLength(request.type(), request.content());
 

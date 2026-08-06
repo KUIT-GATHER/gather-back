@@ -35,4 +35,8 @@ public enum PostType {
     public boolean isNotice() {
         return this == NOTICE;
     }
+
+    public boolean isReview() {
+        return this == REVIEW;
+    }
 }

@@ -64,7 +64,10 @@ public class PostController {
         return ApiResponse.success(postService.getPost(meetingId, postId));
     }
 
-    @Operation(summary = "게시글 작성", description = "모임 가입자만 작성할 수 있으며, 공지(NOTICE)는 모임장만 작성할 수 있습니다.")
+    @Operation(
+            summary = "게시글 작성",
+            description =
+                    "모임 가입자만 작성할 수 있으며, 공지(NOTICE)는 모임장만, 활동 후기(REVIEW)는 완료된 모임에서만 작성할 수 있습니다.")
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public ApiResponse<PostResponse> createPost(

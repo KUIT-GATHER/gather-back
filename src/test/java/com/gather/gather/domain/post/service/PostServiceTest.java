@@ -85,6 +85,7 @@ class PostServiceTest {
             securityUtil.when(SecurityUtil::getCurrentUserId).thenReturn(USER_ID);
             when(meeting.getId()).thenReturn(MEETING_ID);
             when(meeting.getName()).thenReturn("한강공원 플로깅팀");
+            when(meeting.isCompleted()).thenReturn(true);
             when(meetingRepository.findByIdAndDeletedAtIsNull(MEETING_ID))
                     .thenReturn(Optional.of(meeting));
             MeetingMember membership = approvedMember(MeetingMemberRole.MEMBER);
@@ -248,6 +249,33 @@ class PostServiceTest {
                                                     "공지", "내용", PostType.NOTICE, null, null)))
                     .isInstanceOf(BusinessException.class)
                     .hasFieldOrPropertyWithValue("errorCode", ErrorCode.NOTICE_HOST_ONLY);
+            verify(eventPublisher, never()).publishEvent(any());
+            verify(postRepository, never()).save(any());
+        }
+    }
+
+    @Test
+    @DisplayName("createPost throws REVIEW_MEETING_NOT_COMPLETED when the meeting is not completed")
+    void createPost_throwsReviewMeetingNotCompleted_whenMeetingNotCompleted() {
+        try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
+            securityUtil.when(SecurityUtil::getCurrentUserId).thenReturn(USER_ID);
+            when(meeting.isCompleted()).thenReturn(false);
+            when(meetingRepository.findByIdAndDeletedAtIsNull(MEETING_ID))
+                    .thenReturn(Optional.of(meeting));
+            MeetingMember membership = approvedMember(MeetingMemberRole.MEMBER);
+            when(meetingMemberRepository.findByMeeting_IdAndUser_IdAndStatus(
+                            MEETING_ID, USER_ID, MeetingMemberStatus.APPROVED))
+                    .thenReturn(Optional.of(membership));
+
+            assertThatThrownBy(
+                            () ->
+                                    postService.createPost(
+                                            MEETING_ID,
+                                            new PostCreateRequest(
+                                                    "후기 제목", "내용", PostType.REVIEW, null, null)))
+                    .isInstanceOf(BusinessException.class)
+                    .hasFieldOrPropertyWithValue(
+                            "errorCode", ErrorCode.REVIEW_MEETING_NOT_COMPLETED);
             verify(eventPublisher, never()).publishEvent(any());
             verify(postRepository, never()).save(any());
         }
