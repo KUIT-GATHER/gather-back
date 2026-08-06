@@ -72,7 +72,8 @@ class MeetingControllerTest {
     }
 
     @Test
-    @DisplayName("DELETE /api/v1/meetings/{meetingId}/join cancels the caller's pending join request")
+    @DisplayName(
+            "DELETE /api/v1/meetings/{meetingId}/join cancels the caller's pending join request")
     void cancelMyJoinRequest_returns200_andCallsService() throws Exception {
         mockMvc.perform(delete("/api/v1/meetings/1/join"))
                 .andExpect(status().isOk())

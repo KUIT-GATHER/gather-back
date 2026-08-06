@@ -153,7 +153,8 @@ public class MeetingController {
 
     @Operation(
             summary = "가입 신청 취소",
-            description = "신청자 본인이 대기 중인(PENDING) 가입 신청을 취소합니다. 모임장의 거절(REJECTED)과는 별도로 CANCELLED 상태가 됩니다.")
+            description =
+                    "신청자 본인이 대기 중인(PENDING) 가입 신청을 취소합니다. 모임장의 거절(REJECTED)과는 별도로 CANCELLED 상태가 됩니다.")
     @DeleteMapping("/{meetingId}/join")
     public ApiResponse<Void> cancelMyJoinRequest(@PathVariable Long meetingId) {
         meetingService.cancelMyJoinRequest(meetingId);
