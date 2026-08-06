@@ -25,6 +25,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -175,6 +176,28 @@ public class MeetingController {
     @GetMapping("/{meetingId}")
     public ApiResponse<MeetingDetailResponse> getMeeting(@PathVariable Long meetingId) {
         return ApiResponse.success(meetingService.getMeeting(meetingId));
+    }
+
+    @Operation(
+            summary = "모임 해산",
+            description =
+                    "모임장이 모임을 해산합니다. 해산된 모임은 목록·상세 조회, 게시글, 멤버 정보 등 사용자 화면의 모든 조회에서 제외됩니다."
+                            + " 되돌릴 수 없습니다.")
+    @ApiResponses({
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                responseCode = "200",
+                description = "해산 성공"),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                responseCode = "403",
+                description = "모임장이 아님(MEETING_HOST_ONLY)"),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                responseCode = "404",
+                description = "모임을 찾을 수 없음(MEETING_NOT_FOUND)")
+    })
+    @DeleteMapping("/{meetingId}")
+    public ApiResponse<Void> disbandMeeting(@PathVariable Long meetingId) {
+        meetingService.disbandMeeting(meetingId);
+        return ApiResponse.success(null);
     }
 
     @Operation(

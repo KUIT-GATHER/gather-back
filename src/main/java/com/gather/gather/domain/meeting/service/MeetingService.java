@@ -303,6 +303,22 @@ public class MeetingService {
         return MeetingJoinRequestResponse.from(member);
     }
 
+    /**
+     * 모임을 해산한다(모임장 전용, 소프트 삭제).
+     *
+     * <p>{@code Meeting.deletedAt}만 채우면 된다 — 이 레포의 모임 관련 조회는 전부 {@code
+     * findByIdAndDeletedAtIsNull}류를 통해 상위 모임 존재를 먼저 확인하므로, 게시글·멤버·북마크·나의 모임 목록 등 하위 조회도 이 시점부터 함께
+     * 막힌다. 되돌릴 수 없다.
+     */
+    @Transactional
+    public void disbandMeeting(Long meetingId) {
+        Long userId = SecurityUtil.getCurrentUserId();
+        Meeting meeting = getMeetingEntityForUpdate(meetingId);
+        validateHost(meeting, userId);
+
+        meeting.delete();
+    }
+
     /** 모임(그룹) 봉사 완료 판정: 모임장이 직접 완료 처리한다(개인 봉사는 본인이 활동종료일 이후 완료 처리한다). */
     @Transactional
     public void completeMeeting(Long meetingId) {
