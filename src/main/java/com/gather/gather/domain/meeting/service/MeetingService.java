@@ -55,8 +55,8 @@ import org.springframework.transaction.annotation.Transactional;
 @Transactional(readOnly = true)
 public class MeetingService {
 
-    private static final int FREE_MEETING_MAX_MEMBER_LIMIT = 100;
-    private static final int POSTING_MEETING_MAX_MEMBER_LIMIT = 30;
+    // 자유 모임·공고 기반 모임 모두 최대 30명까지 허용한다(정책 통일).
+    private static final int MEETING_MAX_MEMBER_LIMIT = 30;
 
     private static final Set<String> SORTABLE_PROPERTIES =
             Set.of(
@@ -90,6 +90,7 @@ public class MeetingService {
                 request.activityEndAt(),
                 request.volunteerPostingId());
         validateRegionExists(request.regionId());
+        validateMaxMember(request.maxMember());
         Set<PostingCategory> categories = resolveCategories(request);
         Long userId = SecurityUtil.getCurrentUserId();
         User host = getUser(userId);
@@ -108,6 +109,8 @@ public class MeetingService {
                         request.volunteerPostingId(),
                         request.activityStartAt(),
                         request.activityEndAt());
+        // 봉사시간 인정은 공고 기반 모임 전용 개념이라 자유 모임은 요청 값과 무관하게 항상 false로 둔다.
+        meeting.applyTimeRecognized(meeting.isPostingBased() && request.timeRecognized());
 
         Meeting savedMeeting = meetingRepository.save(meeting);
 
@@ -262,6 +265,8 @@ public class MeetingService {
                 categories,
                 request.participationCondition(),
                 regionId);
+        // 봉사시간 인정은 공고 기반 모임에서만 수정 가능하고, 자유 모임은 항상 false로 고정한다.
+        meeting.applyTimeRecognized(meeting.isPostingBased() && request.timeRecognized());
 
         return MeetingDetailResponse.from(
                 meeting, resolveDisplayStatus(meeting), isBookmarkedByCurrentUser(meetingId));
@@ -511,14 +516,14 @@ public class MeetingService {
         }
     }
 
-    private void validateMaxMemberForUpdate(Meeting meeting, Integer maxMember) {
-        int limit =
-                meeting.isPostingBased()
-                        ? POSTING_MEETING_MAX_MEMBER_LIMIT
-                        : FREE_MEETING_MAX_MEMBER_LIMIT;
-        if (maxMember > limit) {
+    private void validateMaxMember(Integer maxMember) {
+        if (maxMember > MEETING_MAX_MEMBER_LIMIT) {
             throw new BusinessException(ErrorCode.MEETING_MAX_MEMBER_EXCEEDED);
         }
+    }
+
+    private void validateMaxMemberForUpdate(Meeting meeting, Integer maxMember) {
+        validateMaxMember(maxMember);
         // 이미 참여 중인 인원보다 정원을 적게 줄일 수는 없다.
         if (maxMember < meeting.getCurrentMemberCount()) {
             throw new BusinessException(ErrorCode.MEETING_MAX_BELOW_CURRENT_MEMBER);

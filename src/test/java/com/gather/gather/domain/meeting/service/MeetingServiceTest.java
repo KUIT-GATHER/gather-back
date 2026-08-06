@@ -500,12 +500,12 @@ class MeetingServiceTest {
 
         MeetingUpdateRequest request =
                 updateRequest(
-                        60, Set.of(PostingCategory.WELFARE), 99L, LocalDateTime.now().plusDays(3));
+                        25, Set.of(PostingCategory.WELFARE), 99L, LocalDateTime.now().plusDays(3));
 
         MeetingDetailResponse response = meetingService.updateMeeting(12L, request);
 
         assertThat(response.name()).isEqualTo("한강공원 플로깅팀(수정)");
-        assertThat(response.maxMember()).isEqualTo(60);
+        assertThat(response.maxMember()).isEqualTo(25);
         assertThat(response.regionId()).isEqualTo(99L);
         assertThat(response.categories()).containsExactly(PostingCategory.WELFARE);
         assertThat(response.participationCondition()).isEqualTo("우천 시 취소");
@@ -550,7 +550,7 @@ class MeetingServiceTest {
     }
 
     @Test
-    @DisplayName("자유 모임은 최대 인원을 100명보다 크게 설정할 수 없다")
+    @DisplayName("자유 모임은 최대 인원을 30명보다 크게 설정할 수 없다")
     void updateMeeting_rejectsFreeMeetingMaxMemberOverLimit() {
         setAuthenticatedUser(1L);
         Meeting freeMeeting = freeMeeting(20);
@@ -559,7 +559,7 @@ class MeetingServiceTest {
 
         MeetingUpdateRequest request =
                 updateRequest(
-                        101, Set.of(PostingCategory.WELFARE), 99L, LocalDateTime.now().plusDays(3));
+                        31, Set.of(PostingCategory.WELFARE), 99L, LocalDateTime.now().plusDays(3));
 
         assertThatThrownBy(() -> meetingService.updateMeeting(12L, request))
                 .isInstanceOf(BusinessException.class)
@@ -611,7 +611,7 @@ class MeetingServiceTest {
 
         MeetingUpdateRequest request =
                 updateRequest(
-                        60, Set.of(PostingCategory.WELFARE), null, LocalDateTime.now().plusDays(3));
+                        25, Set.of(PostingCategory.WELFARE), null, LocalDateTime.now().plusDays(3));
 
         assertThatThrownBy(() -> meetingService.updateMeeting(12L, request))
                 .isInstanceOf(BusinessException.class)
@@ -632,6 +632,44 @@ class MeetingServiceTest {
         assertThatThrownBy(() -> meetingService.updateMeeting(12L, request))
                 .isInstanceOf(BusinessException.class)
                 .hasFieldOrPropertyWithValue("errorCode", ErrorCode.INVALID_MEETING_TIME);
+    }
+
+    @Test
+    @DisplayName("공고 기반 모임은 봉사시간 인정 여부를 수정할 수 있다")
+    void updateMeeting_updatesTimeRecognized_forPostingBasedMeeting() {
+        setAuthenticatedUser(1L);
+        Meeting postingMeeting = postingMeeting(20);
+        when(meetingRepository.findByIdAndDeletedAtIsNullForUpdate(12L))
+                .thenReturn(Optional.of(postingMeeting));
+
+        MeetingUpdateRequest request =
+                updateRequest(25, null, null, postingMeeting.getDeadline(), true);
+
+        MeetingDetailResponse response = meetingService.updateMeeting(12L, request);
+
+        assertThat(response.timeRecognized()).isTrue();
+    }
+
+    @Test
+    @DisplayName("자유 모임은 봉사시간 인정 요청 값과 무관하게 항상 false로 유지된다")
+    void updateMeeting_keepsTimeRecognizedFalse_forFreeMeeting() {
+        setAuthenticatedUser(1L);
+        Meeting freeMeeting = freeMeeting(20);
+        when(meetingRepository.findByIdAndDeletedAtIsNullForUpdate(12L))
+                .thenReturn(Optional.of(freeMeeting));
+        when(regionRepository.existsById(99L)).thenReturn(true);
+
+        MeetingUpdateRequest request =
+                updateRequest(
+                        25,
+                        Set.of(PostingCategory.WELFARE),
+                        99L,
+                        LocalDateTime.now().plusDays(3),
+                        true);
+
+        MeetingDetailResponse response = meetingService.updateMeeting(12L, request);
+
+        assertThat(response.timeRecognized()).isFalse();
     }
 
     private void setAuthenticatedUser(Long userId) {
@@ -687,7 +725,23 @@ class MeetingServiceTest {
 
     private MeetingUpdateRequest updateRequest(
             int maxMember, Set<PostingCategory> categories, Long regionId, LocalDateTime deadline) {
+        return updateRequest(maxMember, categories, regionId, deadline, false);
+    }
+
+    private MeetingUpdateRequest updateRequest(
+            int maxMember,
+            Set<PostingCategory> categories,
+            Long regionId,
+            LocalDateTime deadline,
+            boolean timeRecognized) {
         return new MeetingUpdateRequest(
-                "한강공원 플로깅팀(수정)", "소개 수정", maxMember, deadline, categories, "우천 시 취소", regionId);
+                "한강공원 플로깅팀(수정)",
+                "소개 수정",
+                maxMember,
+                deadline,
+                categories,
+                "우천 시 취소",
+                regionId,
+                timeRecognized);
     }
 }

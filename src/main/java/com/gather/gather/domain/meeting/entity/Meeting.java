@@ -101,6 +101,10 @@ public class Meeting {
     @Column(name = "completed_at")
     private LocalDateTime completedAt;
 
+    /** 봉사시간 인정 여부(공고 기반 모임 전용). 자유 모임은 개념이 없어 항상 false로 유지된다. */
+    @Column(name = "time_recognized", nullable = false)
+    private boolean timeRecognized;
+
     private Meeting(
             String name,
             String description,
@@ -236,5 +240,13 @@ public class Meeting {
         this.categories = new LinkedHashSet<>(categories);
         this.participationCondition = participationCondition;
         this.regionId = regionId;
+    }
+
+    /**
+     * 봉사시간 인정 여부를 설정한다(공고 기반 모임 생성·수정 전용). 호출부(MeetingService)가 자유 모임에는 항상 false를 전달해 이 메서드로도 "자유
+     * 모임은 사용하지 않음" 정책을 강제한다.
+     */
+    public void applyTimeRecognized(boolean timeRecognized) {
+        this.timeRecognized = timeRecognized;
     }
 }

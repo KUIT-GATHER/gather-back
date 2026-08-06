@@ -33,4 +33,6 @@ public record MeetingUpdateRequest(
                         description = "지역 ID. 자유 모임만 수정 가능하며, 공고 기반 모임에서는 무시됩니다.",
                         example = "1",
                         nullable = true)
-                Long regionId) {}
+                Long regionId,
+        @Schema(description = "봉사시간 인정 여부. 공고 기반 모임에서만 반영되며, 자유 모임은 무시됩니다.")
+                boolean timeRecognized) {}

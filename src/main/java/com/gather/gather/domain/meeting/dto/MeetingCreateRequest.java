@@ -37,4 +37,6 @@ public record MeetingCreateRequest(
                         description = "활동 종료 시간. 자유 모임은 null로 요청하며, 공고 기반 모임은 필수입니다.",
                         example = "2026-08-01T18:00:00",
                         nullable = true)
-                LocalDateTime activityEndAt) {}
+                LocalDateTime activityEndAt,
+        @Schema(description = "봉사시간 인정 여부. 공고 기반 모임에서만 사용되며, 자유 모임은 무시됩니다.")
+                boolean timeRecognized) {}
