@@ -10,6 +10,7 @@ import com.gather.gather.domain.meeting.dto.MeetingDetailResponse;
 import com.gather.gather.domain.meeting.dto.MeetingJoinRequestResponse;
 import com.gather.gather.domain.meeting.dto.MeetingJoinResponse;
 import com.gather.gather.domain.meeting.dto.MeetingResponse;
+import com.gather.gather.domain.meeting.dto.MeetingUpdateRequest;
 import com.gather.gather.domain.meeting.dto.PostingMeetingResponse;
 import com.gather.gather.domain.meeting.entity.Meeting;
 import com.gather.gather.domain.meeting.entity.MeetingMember;
@@ -53,6 +54,9 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
 public class MeetingService {
+
+    private static final int FREE_MEETING_MAX_MEMBER_LIMIT = 100;
+    private static final int POSTING_MEETING_MAX_MEMBER_LIMIT = 30;
 
     private static final Set<String> SORTABLE_PROPERTIES =
             Set.of(
@@ -231,6 +235,36 @@ public class MeetingService {
         Long userId = SecurityUtil.getCurrentUserIdOrNull();
         return userId != null
                 && meetingBookmarkRepository.existsByUserIdAndMeetingId(userId, meetingId);
+    }
+
+    /**
+     * 모임 기본 정보를 수정한다(모임장 전용).
+     *
+     * <p>자유 모임과 공고 기반 모임은 생성 정책이 달라 검증 조건을 구분한다. 공고 기반 모임은 연결된 봉사공고 기준으로 지역·카테고리가 고정되므로 요청 값과 무관하게
+     * 기존 값을 유지한다.
+     */
+    @Transactional
+    public MeetingDetailResponse updateMeeting(Long meetingId, MeetingUpdateRequest request) {
+        Long userId = SecurityUtil.getCurrentUserId();
+        Meeting meeting = getMeetingEntityForUpdate(meetingId);
+        validateHost(meeting, userId);
+
+        validateMaxMemberForUpdate(meeting, request.maxMember());
+        validateDeadlineForUpdate(meeting, request.deadline());
+        Set<PostingCategory> categories = resolveCategoriesForUpdate(meeting, request);
+        Long regionId = resolveRegionIdForUpdate(meeting, request.regionId());
+
+        meeting.update(
+                request.name(),
+                request.description(),
+                request.maxMember(),
+                request.deadline(),
+                categories,
+                request.participationCondition(),
+                regionId);
+
+        return MeetingDetailResponse.from(
+                meeting, resolveDisplayStatus(meeting), isBookmarkedByCurrentUser(meetingId));
     }
 
     @Transactional
@@ -475,6 +509,59 @@ public class MeetingService {
         if (!regionRepository.existsById(regionId)) {
             throw new BusinessException(ErrorCode.REGION_NOT_FOUND);
         }
+    }
+
+    private void validateMaxMemberForUpdate(Meeting meeting, Integer maxMember) {
+        int limit =
+                meeting.isPostingBased()
+                        ? POSTING_MEETING_MAX_MEMBER_LIMIT
+                        : FREE_MEETING_MAX_MEMBER_LIMIT;
+        if (maxMember > limit) {
+            throw new BusinessException(ErrorCode.MEETING_MAX_MEMBER_EXCEEDED);
+        }
+        // 이미 참여 중인 인원보다 정원을 적게 줄일 수는 없다.
+        if (maxMember < meeting.getCurrentMemberCount()) {
+            throw new BusinessException(ErrorCode.MEETING_MAX_BELOW_CURRENT_MEMBER);
+        }
+    }
+
+    private void validateDeadlineForUpdate(Meeting meeting, LocalDateTime deadline) {
+        // 활동 기간이 있는(공고 기반) 모임은 신청 마감이 활동 시작보다 늦을 수 없다(생성 시 정책과 동일).
+        if (meeting.hasActivityPeriod() && deadline.isAfter(meeting.getActivityStartAt())) {
+            throw new BusinessException(ErrorCode.INVALID_MEETING_TIME);
+        }
+    }
+
+    private Set<PostingCategory> resolveCategoriesForUpdate(
+            Meeting meeting, MeetingUpdateRequest request) {
+        // 공고 기반 모임의 카테고리는 연결된 봉사공고에서 정해지며 이 API로 바꿀 수 없다.
+        if (meeting.isPostingBased()) {
+            return meeting.getCategories();
+        }
+
+        if (request.categories() == null || request.categories().isEmpty()) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR);
+        }
+
+        if (request.categories().size() > 3) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR);
+        }
+
+        return Set.copyOf(request.categories());
+    }
+
+    private Long resolveRegionIdForUpdate(Meeting meeting, Long requestedRegionId) {
+        // 공고 기반 모임의 지역은 연결된 봉사공고 기준으로 고정되며 이 API로 바꿀 수 없다.
+        if (meeting.isPostingBased()) {
+            return meeting.getRegionId();
+        }
+
+        if (requestedRegionId == null) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR);
+        }
+
+        validateRegionExists(requestedRegionId);
+        return requestedRegionId;
     }
 
     private void validateMeetingTime(

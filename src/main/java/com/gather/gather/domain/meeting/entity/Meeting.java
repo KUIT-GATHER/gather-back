@@ -162,6 +162,11 @@ public class Meeting {
         return currentMemberCount >= maxMember;
     }
 
+    /** volunteerPostingId가 있으면 공고 기반 모임, 없으면 자유 모임. */
+    public boolean isPostingBased() {
+        return volunteerPostingId != null;
+    }
+
     public boolean isDeadlinePassed(LocalDateTime now) {
         return deadline.isBefore(now);
     }
@@ -208,5 +213,28 @@ public class Meeting {
 
     public void delete() {
         this.deletedAt = LocalDateTime.now();
+    }
+
+    /**
+     * 모임 기본 정보를 수정한다(모임장 전용, PATCH /api/v1/meetings/{meetingId}).
+     *
+     * <p>공고 기반 모임은 regionId·categories가 연결된 봉사공고 기준으로 고정되므로, 호출부(MeetingService)에서 기존 값을 그대로 전달해야
+     * 한다. volunteerPostingId, host, status 등 이 메서드로 바뀌지 않는 값은 그대로 유지된다.
+     */
+    public void update(
+            String name,
+            String description,
+            Integer maxMember,
+            LocalDateTime deadline,
+            Set<PostingCategory> categories,
+            String participationCondition,
+            Long regionId) {
+        this.name = name;
+        this.description = description;
+        this.maxMember = maxMember;
+        this.deadline = deadline;
+        this.categories = new LinkedHashSet<>(categories);
+        this.participationCondition = participationCondition;
+        this.regionId = regionId;
     }
 }
