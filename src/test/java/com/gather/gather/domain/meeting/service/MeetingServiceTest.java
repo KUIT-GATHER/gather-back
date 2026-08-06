@@ -479,6 +479,60 @@ class MeetingServiceTest {
         assertThat(responses.get(0).regionName()).isEqualTo("서구");
     }
 
+    @Test
+    @DisplayName("disbandMeeting soft-deletes the meeting when called by the host")
+    void disbandMeeting_disbandsMeeting_whenCalledByHost() {
+        setAuthenticatedUser(1L);
+        Meeting hostMeeting = mock(Meeting.class);
+        com.gather.gather.domain.auth.entity.User host =
+                mock(com.gather.gather.domain.auth.entity.User.class);
+        when(host.getId()).thenReturn(1L);
+        when(hostMeeting.getHost()).thenReturn(host);
+        when(meetingRepository.findByIdAndDeletedAtIsNullForUpdate(12L))
+                .thenReturn(java.util.Optional.of(hostMeeting));
+
+        meetingService.disbandMeeting(12L);
+
+        verify(hostMeeting).delete();
+    }
+
+    @Test
+    @DisplayName("disbandMeeting throws MEETING_HOST_ONLY when called by a non-host")
+    void disbandMeeting_throwsHostOnly_whenNotHost() {
+        setAuthenticatedUser(2L);
+        Meeting hostMeeting = mock(Meeting.class);
+        com.gather.gather.domain.auth.entity.User host =
+                mock(com.gather.gather.domain.auth.entity.User.class);
+        when(host.getId()).thenReturn(1L);
+        when(hostMeeting.getHost()).thenReturn(host);
+        when(meetingRepository.findByIdAndDeletedAtIsNullForUpdate(12L))
+                .thenReturn(java.util.Optional.of(hostMeeting));
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> meetingService.disbandMeeting(12L))
+                .isInstanceOf(com.gather.gather.global.exception.BusinessException.class)
+                .hasFieldOrPropertyWithValue(
+                        "errorCode",
+                        com.gather.gather.global.exception.ErrorCode.MEETING_HOST_ONLY);
+        verify(hostMeeting, never()).delete();
+    }
+
+    @Test
+    @DisplayName(
+            "disbandMeeting throws MEETING_NOT_FOUND when the meeting does not exist or is"
+                    + " already deleted")
+    void disbandMeeting_throwsMeetingNotFound_whenMeetingMissing() {
+        setAuthenticatedUser(1L);
+        when(meetingRepository.findByIdAndDeletedAtIsNullForUpdate(999L))
+                .thenReturn(java.util.Optional.empty());
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(
+                        () -> meetingService.disbandMeeting(999L))
+                .isInstanceOf(com.gather.gather.global.exception.BusinessException.class)
+                .hasFieldOrPropertyWithValue(
+                        "errorCode",
+                        com.gather.gather.global.exception.ErrorCode.MEETING_NOT_FOUND);
+    }
+
     private void setAuthenticatedUser(Long userId) {
         SecurityContextHolder.getContext()
                 .setAuthentication(
