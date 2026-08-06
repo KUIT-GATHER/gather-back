@@ -83,6 +83,16 @@ class KakaoUnlinkResumeCommandConditionTest {
     }
 
     @Test
+    void resumeProfile_registersCommonSystemProcessTerminator() {
+        contextRunner
+                .withInitializer(
+                        context ->
+                                context.getEnvironment().setActiveProfiles("kakao-unlink-resume"))
+                .withUserConfiguration(SystemProcessTerminator.class)
+                .run(context -> assertThat(context).hasSingleBean(SystemProcessTerminator.class));
+    }
+
+    @Test
     void normalProfile_keepsSchedulingEnabledByDefault() {
         contextRunner
                 .withUserConfiguration(SchedulingConfig.class)
