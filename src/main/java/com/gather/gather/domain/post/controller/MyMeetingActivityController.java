@@ -41,10 +41,10 @@ public class MyMeetingActivityController {
     public ApiResponse<PageResponse<PostSummaryResponse>> getMyPosts(
             @PathVariable Long meetingId,
             @PageableDefault(
-                    size = 20,
-                    sort = {"createdAt", "id"},
-                    direction = Sort.Direction.DESC)
-            Pageable pageable) {
+                            size = 20,
+                            sort = {"createdAt", "id"},
+                            direction = Sort.Direction.DESC)
+                    Pageable pageable) {
         return ApiResponse.success(myMeetingActivityService.getMyPosts(meetingId, pageable));
     }
 
@@ -55,10 +55,10 @@ public class MyMeetingActivityController {
     public ApiResponse<PageResponse<PostSummaryResponse>> getMyCommentedPosts(
             @PathVariable Long meetingId,
             @PageableDefault(
-                    size = 20,
-                    sort = {"createdAt", "id"},
-                    direction = Sort.Direction.DESC)
-            Pageable pageable) {
+                            size = 20,
+                            sort = {"createdAt", "id"},
+                            direction = Sort.Direction.DESC)
+                    Pageable pageable) {
         return ApiResponse.success(
                 myMeetingActivityService.getMyCommentedPosts(meetingId, pageable));
     }

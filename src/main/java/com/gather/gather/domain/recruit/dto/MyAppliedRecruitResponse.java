@@ -21,8 +21,8 @@ public record MyAppliedRecruitResponse(
         @Schema(description = "활동 시작 시간") LocalTime actStartTime,
         @Schema(description = "활동 종료 시간") LocalTime actEndTime,
         @Schema(
-                description =
-                        "참여 상태(APPLIED/CONFIRMED/COMPLETED/REVIEWED). 현재는 APPLIED·COMPLETED만"
-                                + " 실제로 내려오며, 화면에는 APPLIED/CONFIRMED를 \"신청중\", COMPLETED/REVIEWED를"
-                                + " \"봉사 완료\"로 묶어 표시하는 것을 권장합니다.")
-        MeetingRecruitParticipationStatus status) {}
+                        description =
+                                "참여 상태(APPLIED/CONFIRMED/COMPLETED/REVIEWED). 현재는 APPLIED·COMPLETED만"
+                                        + " 실제로 내려오며, 화면에는 APPLIED/CONFIRMED를 \"신청중\", COMPLETED/REVIEWED를"
+                                        + " \"봉사 완료\"로 묶어 표시하는 것을 권장합니다.")
+                MeetingRecruitParticipationStatus status) {}
