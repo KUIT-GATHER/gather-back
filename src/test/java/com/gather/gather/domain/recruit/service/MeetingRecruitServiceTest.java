@@ -15,6 +15,7 @@ import com.gather.gather.domain.meeting.enums.MeetingMemberRole;
 import com.gather.gather.domain.meeting.enums.MeetingMemberStatus;
 import com.gather.gather.domain.meeting.repository.MeetingMemberRepository;
 import com.gather.gather.domain.meeting.repository.MeetingRepository;
+import com.gather.gather.domain.notification.event.MeetingPostNotificationRequestedEvent;
 import com.gather.gather.domain.post.entity.Post;
 import com.gather.gather.domain.post.enums.PostType;
 import com.gather.gather.domain.post.repository.PostRepository;
@@ -44,6 +45,7 @@ import org.mockito.Mock;
 import org.mockito.MockedStatic;
 import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 
 @ExtendWith(MockitoExtension.class)
 class MeetingRecruitServiceTest {
@@ -58,6 +60,7 @@ class MeetingRecruitServiceTest {
     @Mock private UserRepository userRepository;
     @Mock private MeetingRecruitRepository meetingRecruitRepository;
     @Mock private MeetingRecruitParticipationRepository participationRepository;
+    @Mock private ApplicationEventPublisher eventPublisher;
 
     @InjectMocks private MeetingRecruitService meetingRecruitService;
 
@@ -101,6 +104,7 @@ class MeetingRecruitServiceTest {
         assertThat(response.applied()).isFalse();
         assertThat(response.canEdit()).isTrue();
         verify(meetingRecruitRepository).save(any(MeetingRecruit.class));
+        verify(eventPublisher).publishEvent(any(MeetingPostNotificationRequestedEvent.class));
     }
 
     @Test
