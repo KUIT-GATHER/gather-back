@@ -24,7 +24,7 @@ import com.gather.gather.domain.recruit.repository.MeetingRecruitRepository;
 import com.gather.gather.global.exception.BusinessException;
 import com.gather.gather.global.exception.ErrorCode;
 import com.gather.gather.global.util.SecurityUtil;
-import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
@@ -182,7 +182,7 @@ public class MeetingRecruitService {
         MeetingRecruit recruit = getRecruitDetail(postId);
 
         // 신청기간이 끝나면 신청·취소 모두 불가(피그마: 종료 후 버튼 상태 변경 불가).
-        if (!recruit.isApplicationOpen(LocalDate.now())) {
+        if (!recruit.isApplicationOpen(LocalDateTime.now())) {
             throw new BusinessException(ErrorCode.RECRUIT_APPLICATION_CLOSED);
         }
 
@@ -234,7 +234,7 @@ public class MeetingRecruitService {
                 post.getCommentCount(),
                 appliedCount,
                 applied,
-                recruit.isApplicationOpen(LocalDate.now()),
+                recruit.isApplicationOpen(LocalDateTime.now()),
                 appliedCount >= recruit.getMaxParticipants(),
                 canEdit,
                 canDelete,

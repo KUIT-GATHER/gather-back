@@ -66,7 +66,7 @@ public class MeetingRecruit {
     private Integer recognizedMinutes;
 
     @Column(name = "apply_deadline", nullable = false)
-    private LocalDate applyDeadline;
+    private LocalDateTime applyDeadline;
 
     @Column(name = "is_external", nullable = false)
     private boolean isExternal;
@@ -99,7 +99,7 @@ public class MeetingRecruit {
             int maxParticipants,
             boolean timeRecognized,
             Integer recognizedMinutes,
-            LocalDate applyDeadline,
+            LocalDateTime applyDeadline,
             boolean isExternal,
             Set<PostingCategory> categories,
             String participationCondition) {
@@ -126,7 +126,7 @@ public class MeetingRecruit {
             int maxParticipants,
             boolean timeRecognized,
             Integer recognizedMinutes,
-            LocalDate applyDeadline,
+            LocalDateTime applyDeadline,
             boolean isExternal,
             Set<PostingCategory> categories,
             String participationCondition) {
@@ -145,9 +145,9 @@ public class MeetingRecruit {
                 participationCondition);
     }
 
-    /** 신청 가능 기간인지: 오늘이 신청 마감일 이하이면 열려 있다(마감일 당일까지 신청 가능). */
-    public boolean isApplicationOpen(LocalDate today) {
-        return !today.isAfter(applyDeadline);
+    /** 신청 가능 기간인지: 현재 시각이 신청 마감 일시 이하이면 열려 있다(마감 일시까지 신청 가능). */
+    public boolean isApplicationOpen(LocalDateTime now) {
+        return !now.isAfter(applyDeadline);
     }
 
     /** 모집공고 확장 필드 수정. 제목·내용은 연결된 Post에서 별도로 갱신한다. */
@@ -159,7 +159,7 @@ public class MeetingRecruit {
             int maxParticipants,
             boolean timeRecognized,
             Integer recognizedMinutes,
-            LocalDate applyDeadline,
+            LocalDateTime applyDeadline,
             boolean isExternal,
             Set<PostingCategory> categories,
             String participationCondition) {

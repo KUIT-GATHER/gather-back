@@ -10,6 +10,7 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.Size;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.Set;
 
@@ -40,8 +41,8 @@ public record RecruitUpdateRequest(
         @Schema(description = "봉사시간 인정 여부") boolean timeRecognized,
         @Schema(description = "인정 시간(분). timeRecognized=true일 때 필수") @Positive
                 Integer recognizedMinutes,
-        @Schema(description = "신청 마감일") @NotNull(message = "신청 마감일은 필수입니다.")
-                LocalDate applyDeadline,
+        @Schema(description = "신청 마감 일시") @NotNull(message = "신청 마감 일시는 필수입니다.")
+                LocalDateTime applyDeadline,
         @Schema(description = "외부 공고 공개 여부") boolean isExternal,
         @Schema(description = "참여 조건(선택)")
                 @Size(max = 255, message = "참여 조건은 255자 이내여야 합니다.")

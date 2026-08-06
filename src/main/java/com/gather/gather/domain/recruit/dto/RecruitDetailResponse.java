@@ -27,7 +27,7 @@ public record RecruitDetailResponse(
         Set<PostingCategory> categories,
         boolean timeRecognized,
         Integer recognizedMinutes,
-        LocalDate applyDeadline,
+        LocalDateTime applyDeadline,
         @Schema(description = "외부 공고 공개 여부") boolean external,
         @Schema(description = "참여 조건(선택)") String participationCondition,
         Integer likeCount,

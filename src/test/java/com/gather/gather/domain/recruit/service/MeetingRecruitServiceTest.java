@@ -32,6 +32,7 @@ import com.gather.gather.global.exception.BusinessException;
 import com.gather.gather.global.exception.ErrorCode;
 import com.gather.gather.global.util.SecurityUtil;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.Optional;
 import java.util.Set;
@@ -351,7 +352,7 @@ class MeetingRecruitServiceTest {
                 Set.of(PostingCategory.ENVIRONMENT),
                 timeRecognized,
                 recognizedMinutes,
-                LocalDate.now().plusDays(10),
+                LocalDateTime.now().plusDays(10),
                 false,
                 "성인 및 청소년 단체 신청 가능");
     }
@@ -368,7 +369,7 @@ class MeetingRecruitServiceTest {
                 Set.of(PostingCategory.ENVIRONMENT),
                 false,
                 null,
-                LocalDate.now().plusDays(10),
+                LocalDateTime.now().plusDays(10),
                 false,
                 "성인 및 청소년 단체 신청 가능(수정)");
     }
@@ -383,7 +384,7 @@ class MeetingRecruitServiceTest {
                 maxParticipants,
                 false,
                 null,
-                LocalDate.now().plusDays(10),
+                LocalDateTime.now().plusDays(10),
                 false,
                 Set.of(PostingCategory.ENVIRONMENT),
                 "성인 및 청소년 단체 신청 가능");
@@ -399,7 +400,7 @@ class MeetingRecruitServiceTest {
                 maxParticipants,
                 false,
                 null,
-                LocalDate.now().minusDays(1),
+                LocalDateTime.now().minusDays(1),
                 false,
                 Set.of(PostingCategory.ENVIRONMENT),
                 "성인 및 청소년 단체 신청 가능");
