@@ -93,7 +93,8 @@ public class MeetingRecruitService {
                                 request.recognizedMinutes(),
                                 request.applyDeadline(),
                                 request.isExternal(),
-                                request.categories()));
+                                request.categories(),
+                                request.participationCondition()));
 
         // 일반 게시글과 동일하게 등록 알림을 발행한다(모임원에게 새 모집공고 알림).
         eventPublisher.publishEvent(
@@ -138,7 +139,8 @@ public class MeetingRecruitService {
                 request.recognizedMinutes(),
                 request.applyDeadline(),
                 request.isExternal(),
-                request.categories());
+                request.categories(),
+                request.participationCondition());
 
         boolean applied = participationRepository.existsByPostIdAndUserId(postId, userId);
         // 수정은 작성자 본인만 도달하므로 canEdit/canDelete 모두 true.
@@ -227,6 +229,7 @@ public class MeetingRecruitService {
                 recruit.getRecognizedMinutes(),
                 recruit.getApplyDeadline(),
                 recruit.isExternal(),
+                recruit.getParticipationCondition(),
                 post.getLikeCount(),
                 post.getCommentCount(),
                 appliedCount,

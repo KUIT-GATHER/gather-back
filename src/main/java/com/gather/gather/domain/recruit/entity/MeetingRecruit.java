@@ -71,6 +71,9 @@ public class MeetingRecruit {
     @Column(name = "is_external", nullable = false)
     private boolean isExternal;
 
+    @Column(name = "participation_condition", columnDefinition = "TEXT")
+    private String participationCondition;
+
     @ElementCollection(fetch = FetchType.LAZY)
     @CollectionTable(
             name = "meeting_recruit_category",
@@ -98,7 +101,8 @@ public class MeetingRecruit {
             Integer recognizedMinutes,
             LocalDate applyDeadline,
             boolean isExternal,
-            Set<PostingCategory> categories) {
+            Set<PostingCategory> categories,
+            String participationCondition) {
         this.postId = postId;
         this.place = place;
         this.actDate = actDate;
@@ -110,6 +114,7 @@ public class MeetingRecruit {
         this.applyDeadline = applyDeadline;
         this.isExternal = isExternal;
         this.categories = new LinkedHashSet<>(categories);
+        this.participationCondition = participationCondition;
     }
 
     public static MeetingRecruit create(
@@ -123,7 +128,8 @@ public class MeetingRecruit {
             Integer recognizedMinutes,
             LocalDate applyDeadline,
             boolean isExternal,
-            Set<PostingCategory> categories) {
+            Set<PostingCategory> categories,
+            String participationCondition) {
         return new MeetingRecruit(
                 postId,
                 place,
@@ -135,7 +141,8 @@ public class MeetingRecruit {
                 recognizedMinutes,
                 applyDeadline,
                 isExternal,
-                categories);
+                categories,
+                participationCondition);
     }
 
     /** 신청 가능 기간인지: 오늘이 신청 마감일 이하이면 열려 있다(마감일 당일까지 신청 가능). */
@@ -154,7 +161,8 @@ public class MeetingRecruit {
             Integer recognizedMinutes,
             LocalDate applyDeadline,
             boolean isExternal,
-            Set<PostingCategory> categories) {
+            Set<PostingCategory> categories,
+            String participationCondition) {
         this.place = place;
         this.actDate = actDate;
         this.actStartTime = actStartTime;
@@ -165,5 +173,6 @@ public class MeetingRecruit {
         this.applyDeadline = applyDeadline;
         this.isExternal = isExternal;
         this.categories = new LinkedHashSet<>(categories);
+        this.participationCondition = participationCondition;
     }
 }

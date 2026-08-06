@@ -103,6 +103,7 @@ class MeetingRecruitServiceTest {
         assertThat(response.appliedCount()).isZero();
         assertThat(response.applied()).isFalse();
         assertThat(response.canEdit()).isTrue();
+        assertThat(response.participationCondition()).isEqualTo("성인 및 청소년 단체 신청 가능");
         verify(meetingRecruitRepository).save(any(MeetingRecruit.class));
         verify(eventPublisher).publishEvent(any(MeetingPostNotificationRequestedEvent.class));
     }
@@ -242,6 +243,7 @@ class MeetingRecruitServiceTest {
 
         assertThat(response.maxParticipants()).isEqualTo(40);
         assertThat(response.appliedCount()).isEqualTo(2);
+        assertThat(response.participationCondition()).isEqualTo("성인 및 청소년 단체 신청 가능(수정)");
         verify(post).update("6월 정기 활동 팀원 모집(수정)", "소개 수정");
     }
 
@@ -350,7 +352,8 @@ class MeetingRecruitServiceTest {
                 timeRecognized,
                 recognizedMinutes,
                 LocalDate.now().plusDays(10),
-                false);
+                false,
+                "성인 및 청소년 단체 신청 가능");
     }
 
     private RecruitUpdateRequest updateRequest(int maxParticipants) {
@@ -366,7 +369,8 @@ class MeetingRecruitServiceTest {
                 false,
                 null,
                 LocalDate.now().plusDays(10),
-                false);
+                false,
+                "성인 및 청소년 단체 신청 가능(수정)");
     }
 
     private MeetingRecruit openRecruit(int maxParticipants) {
@@ -381,7 +385,8 @@ class MeetingRecruitServiceTest {
                 null,
                 LocalDate.now().plusDays(10),
                 false,
-                Set.of(PostingCategory.ENVIRONMENT));
+                Set.of(PostingCategory.ENVIRONMENT),
+                "성인 및 청소년 단체 신청 가능");
     }
 
     private MeetingRecruit closedRecruit(int maxParticipants) {
@@ -396,6 +401,7 @@ class MeetingRecruitServiceTest {
                 null,
                 LocalDate.now().minusDays(1),
                 false,
-                Set.of(PostingCategory.ENVIRONMENT));
+                Set.of(PostingCategory.ENVIRONMENT),
+                "성인 및 청소년 단체 신청 가능");
     }
 }

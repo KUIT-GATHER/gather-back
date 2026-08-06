@@ -42,4 +42,7 @@ public record RecruitUpdateRequest(
                 Integer recognizedMinutes,
         @Schema(description = "신청 마감일") @NotNull(message = "신청 마감일은 필수입니다.")
                 LocalDate applyDeadline,
-        @Schema(description = "외부 공고 공개 여부") boolean isExternal) {}
+        @Schema(description = "외부 공고 공개 여부") boolean isExternal,
+        @Schema(description = "참여 조건(선택)")
+                @Size(max = 255, message = "참여 조건은 255자 이내여야 합니다.")
+                String participationCondition) {}
