@@ -121,7 +121,7 @@ class MeetingServiceTest {
         setAuthenticatedUser(1L);
         MeetingMember membership = createMembership(MeetingMemberRole.MEMBER);
         when(meetingMemberRepository.findAllByUserIdAndStatusAndMeetingIdInFetchMeeting(
-                eq(1L), eq(MeetingMemberStatus.APPROVED), anyList()))
+                        eq(1L), eq(MeetingMemberStatus.APPROVED), anyList()))
                 .thenReturn(List.of(membership));
 
         PostingMeetingResponse response =
@@ -137,7 +137,7 @@ class MeetingServiceTest {
         setAuthenticatedUser(1L);
         MeetingMember membership = createMembership(MeetingMemberRole.HOST);
         when(meetingMemberRepository.findAllByUserIdAndStatusAndMeetingIdInFetchMeeting(
-                eq(1L), eq(MeetingMemberStatus.APPROVED), anyList()))
+                        eq(1L), eq(MeetingMemberStatus.APPROVED), anyList()))
                 .thenReturn(List.of(membership));
 
         PageResponse<PostingMeetingResponse> responses =
@@ -293,7 +293,7 @@ class MeetingServiceTest {
         MeetingMember member = mock(MeetingMember.class);
         when(member.getRecognizedMinutes()).thenReturn(null);
         when(meetingMemberRepository.findByMeeting_IdAndUser_IdAndStatus(
-                12L, 1L, MeetingMemberStatus.APPROVED))
+                        12L, 1L, MeetingMemberStatus.APPROVED))
                 .thenReturn(java.util.Optional.of(member));
 
         meetingService.submitMemberHours(12L, 210);
@@ -344,7 +344,7 @@ class MeetingServiceTest {
         when(meetingRepository.findByIdAndDeletedAtIsNull(12L))
                 .thenReturn(java.util.Optional.of(completedMeeting));
         when(meetingMemberRepository.findByMeeting_IdAndUser_IdAndStatus(
-                12L, 1L, MeetingMemberStatus.APPROVED))
+                        12L, 1L, MeetingMemberStatus.APPROVED))
                 .thenReturn(java.util.Optional.empty());
 
         org.assertj.core.api.Assertions.assertThatThrownBy(
@@ -368,7 +368,7 @@ class MeetingServiceTest {
         MeetingMember member = mock(MeetingMember.class);
         when(member.getRecognizedMinutes()).thenReturn(60);
         when(meetingMemberRepository.findByMeeting_IdAndUser_IdAndStatus(
-                12L, 1L, MeetingMemberStatus.APPROVED))
+                        12L, 1L, MeetingMemberStatus.APPROVED))
                 .thenReturn(java.util.Optional.of(member));
 
         org.assertj.core.api.Assertions.assertThatThrownBy(
@@ -487,7 +487,7 @@ class MeetingServiceTest {
         List<MeetingResponse> responses = meetingService.getMyMeetings();
 
         assertThat(responses.get(0).regionName()).isEqualTo("서구");
-        }
+    }
 
     @Test
     @DisplayName("모임장은 자유 모임의 이름·정원·카테고리·지역을 수정할 수 있다")
@@ -499,7 +499,8 @@ class MeetingServiceTest {
         when(regionRepository.existsById(99L)).thenReturn(true);
 
         MeetingUpdateRequest request =
-                updateRequest(60, Set.of(PostingCategory.WELFARE), 99L, LocalDateTime.now().plusDays(3));
+                updateRequest(
+                        60, Set.of(PostingCategory.WELFARE), 99L, LocalDateTime.now().plusDays(3));
 
         MeetingDetailResponse response = meetingService.updateMeeting(12L, request);
 
@@ -519,7 +520,8 @@ class MeetingServiceTest {
                 .thenReturn(Optional.of(freeMeeting));
 
         MeetingUpdateRequest request =
-                updateRequest(60, Set.of(PostingCategory.WELFARE), 99L, LocalDateTime.now().plusDays(3));
+                updateRequest(
+                        60, Set.of(PostingCategory.WELFARE), 99L, LocalDateTime.now().plusDays(3));
 
         assertThatThrownBy(() -> meetingService.updateMeeting(12L, request))
                 .isInstanceOf(BusinessException.class)
@@ -538,7 +540,8 @@ class MeetingServiceTest {
                 .thenReturn(Optional.of(freeMeeting));
 
         MeetingUpdateRequest request =
-                updateRequest(3, Set.of(PostingCategory.WELFARE), 99L, LocalDateTime.now().plusDays(3));
+                updateRequest(
+                        3, Set.of(PostingCategory.WELFARE), 99L, LocalDateTime.now().plusDays(3));
 
         assertThatThrownBy(() -> meetingService.updateMeeting(12L, request))
                 .isInstanceOf(BusinessException.class)
@@ -571,8 +574,7 @@ class MeetingServiceTest {
         when(meetingRepository.findByIdAndDeletedAtIsNullForUpdate(12L))
                 .thenReturn(Optional.of(postingMeeting));
 
-        MeetingUpdateRequest request =
-                updateRequest(31, null, null, postingMeeting.getDeadline());
+        MeetingUpdateRequest request = updateRequest(31, null, null, postingMeeting.getDeadline());
 
         assertThatThrownBy(() -> meetingService.updateMeeting(12L, request))
                 .isInstanceOf(BusinessException.class)
@@ -625,8 +627,7 @@ class MeetingServiceTest {
                 .thenReturn(Optional.of(postingMeeting));
 
         MeetingUpdateRequest request =
-                updateRequest(
-                        25, null, null, postingMeeting.getActivityStartAt().plusMinutes(1));
+                updateRequest(25, null, null, postingMeeting.getActivityStartAt().plusMinutes(1));
 
         assertThatThrownBy(() -> meetingService.updateMeeting(12L, request))
                 .isInstanceOf(BusinessException.class)
