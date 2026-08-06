@@ -76,6 +76,19 @@ public interface MeetingMemberRepository extends JpaRepository<MeetingMember, Lo
     Optional<MeetingMember> findPendingByIdAndMeetingIdForUpdate(
             @Param("joinRequestId") Long joinRequestId, @Param("meetingId") Long meetingId);
 
+    /** 신청자 본인이 대기 중인 가입 신청을 취소할 때 사용(승인 처리와의 경합 방지를 위해 락을 건다). */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query(
+            """
+            SELECT mm
+            FROM MeetingMember mm
+            WHERE mm.meeting.id = :meetingId
+              AND mm.user.id = :userId
+              AND mm.status = com.gather.gather.domain.meeting.enums.MeetingMemberStatus.PENDING
+            """)
+    Optional<MeetingMember> findPendingByMeetingIdAndUserIdForUpdate(
+            @Param("meetingId") Long meetingId, @Param("userId") Long userId);
+
     @Query(
             """
             SELECT mm
