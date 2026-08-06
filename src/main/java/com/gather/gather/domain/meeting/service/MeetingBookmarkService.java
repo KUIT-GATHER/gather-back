@@ -8,12 +8,18 @@ import com.gather.gather.domain.meeting.enums.MeetingStatus;
 import com.gather.gather.domain.meeting.repository.MeetingBookmarkRepository;
 import com.gather.gather.domain.meeting.repository.MeetingRepository;
 import com.gather.gather.domain.posting.entity.PostingCategory;
+import com.gather.gather.domain.posting.service.RegionNameResolver;
+import com.gather.gather.domain.region.repository.RegionRepository;
 import com.gather.gather.global.common.PageResponse;
 import com.gather.gather.global.exception.BusinessException;
 import com.gather.gather.global.exception.ErrorCode;
 import com.gather.gather.global.util.LikeKeywordEscaper;
 import com.gather.gather.global.util.SecurityUtil;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
+import java.util.List;
+import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
@@ -29,6 +35,8 @@ public class MeetingBookmarkService {
 
     private final MeetingBookmarkRepository meetingBookmarkRepository;
     private final MeetingRepository meetingRepository;
+    private final RegionRepository regionRepository;
+    private final RegionNameResolver regionNameResolver;
 
     @Transactional
     public MeetingBookmarkResponse addBookmark(Long meetingId) {
@@ -67,21 +75,58 @@ public class MeetingBookmarkService {
      */
     @Transactional(readOnly = true)
     public PageResponse<MeetingResponse> getBookmarkedMeetings(
-            PostingCategory category, String keyword, Pageable pageable) {
+            PostingCategory category,
+            String keyword,
+            Long regionId,
+            LocalDate activityStartDate,
+            LocalDate activityEndDate,
+            Pageable pageable) {
         rejectSort(pageable.getSort());
+        rejectInvertedRange(activityStartDate, activityEndDate);
         Long userId = SecurityUtil.getCurrentUserId();
         Pageable unsortedPageable =
                 PageRequest.of(pageable.getPageNumber(), pageable.getPageSize());
 
+        // 지역: 상위(시·도) 선택 시 하위 시군구·읍면동까지 포함(모임 목록 조회와 동일 정책).
+        boolean hasRegionFilter = regionId != null;
+        List<Long> regionIds =
+                hasRegionFilter ? regionRepository.findIdsIncludingChildren(regionId) : List.of();
+        List<Long> regionIdParam = regionIds.isEmpty() ? List.of(-1L) : regionIds;
+        LocalDateTime activityStartAt =
+                activityStartDate == null ? null : activityStartDate.atStartOfDay();
+        LocalDateTime activityEndAt =
+                activityEndDate == null ? null : activityEndDate.atTime(LocalTime.MAX);
+
         Page<Meeting> meetings =
                 meetingBookmarkRepository.findBookmarkedMeetings(
-                        userId, category, LikeKeywordEscaper.escape(keyword), unsortedPageable);
+                        userId,
+                        category,
+                        LikeKeywordEscaper.escape(keyword),
+                        hasRegionFilter,
+                        regionIdParam,
+                        activityStartAt,
+                        activityEndAt,
+                        unsortedPageable);
+        Map<Long, String> regionNames =
+                regionNameResolver.resolve(
+                        meetings.getContent().stream().map(Meeting::getRegionId).toList());
 
         Page<MeetingResponse> responses =
                 meetings.map(
-                        meeting -> MeetingResponse.from(meeting, resolveDisplayStatus(meeting)));
+                        meeting ->
+                                MeetingResponse.from(
+                                        meeting,
+                                        resolveDisplayStatus(meeting),
+                                        regionNames.get(meeting.getRegionId())));
 
         return PageResponse.from(responses);
+    }
+
+    /** 시작일·종료일이 모두 주어졌는데 시작일이 종료일보다 늦으면(역전 범위) 빈 목록 대신 명시적으로 400을 반환한다. */
+    private void rejectInvertedRange(LocalDate startDate, LocalDate endDate) {
+        if (startDate != null && endDate != null && startDate.isAfter(endDate)) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR);
+        }
     }
 
     private void rejectSort(Sort sort) {

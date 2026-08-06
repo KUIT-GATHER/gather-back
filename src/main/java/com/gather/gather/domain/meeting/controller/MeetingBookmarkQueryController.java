@@ -11,6 +11,7 @@ import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.ExampleObject;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import java.time.LocalDate;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableDefault;
@@ -46,7 +47,10 @@ public class MeetingBookmarkQueryController {
             description =
                     "로그인한 사용자가 북마크한 모임 목록을 북마크한 시각 최신순으로 페이지 단위 조회합니다. "
                             + "category를 지정하면 해당 분야 북마크만, keyword를 지정하면 모임명/설명 부분일치로 "
-                            + "필터링합니다. 정렬 기준은 항상 북마크한 시각 최신순으로 고정되며, sort 파라미터를 지정해 요청하면 "
+                            + "필터링합니다. regionId는 상위 지역(시/도) 선택 시 하위 시군구 모임까지 포함합니다. "
+                            + "activityStartDate/activityEndDate는 선택 기간과 모임 활동기간이 겹치는 모임을 "
+                            + "조회하며, 활동 기간이 정해지지 않은 자유 모임은 날짜 필터 사용 시 제외됩니다. "
+                            + "정렬 기준은 항상 북마크한 시각 최신순으로 고정되며, sort 파라미터를 지정해 요청하면 "
                             + "400 VALIDATION_ERROR가 반환됩니다.")
     @ApiResponses({
         @io.swagger.v3.oas.annotations.responses.ApiResponse(
@@ -121,8 +125,16 @@ public class MeetingBookmarkQueryController {
             @Parameter(description = "봉사분야 카테고리 (미지정 시 전체)") @RequestParam(required = false)
                     PostingCategory category,
             @Parameter(description = "검색 키워드 (모임명/설명 부분일치)") @RequestParam(required = false)
-                    String keyword) {
+                    String keyword,
+            @Parameter(description = "모임 지역 ID (상위 시/도 선택 시 하위 시군구 모임 포함)")
+                    @RequestParam(required = false)
+                    Long regionId,
+            @Parameter(description = "활동 기간 시작일 (yyyy-MM-dd)") @RequestParam(required = false)
+                    LocalDate activityStartDate,
+            @Parameter(description = "활동 기간 종료일 (yyyy-MM-dd)") @RequestParam(required = false)
+                    LocalDate activityEndDate) {
         return ApiResponse.success(
-                meetingBookmarkService.getBookmarkedMeetings(category, keyword, pageable));
+                meetingBookmarkService.getBookmarkedMeetings(
+                        category, keyword, regionId, activityStartDate, activityEndDate, pageable));
     }
 }

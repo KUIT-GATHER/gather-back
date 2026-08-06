@@ -2,6 +2,8 @@ package com.gather.gather.domain.post.service;
 
 import com.gather.gather.domain.auth.entity.User;
 import com.gather.gather.domain.auth.repository.UserRepository;
+import com.gather.gather.domain.badge.entity.BadgeType;
+import com.gather.gather.domain.badge.event.BadgeAwardRequestedEvent;
 import com.gather.gather.domain.meeting.entity.Meeting;
 import com.gather.gather.domain.meeting.enums.MeetingMemberRole;
 import com.gather.gather.domain.meeting.enums.MeetingMemberStatus;
@@ -89,11 +91,16 @@ public class PostCommentService {
                         PostComment.create(post, commentAuthor, request.content()));
         post.increaseCommentCount();
 
+        publishCommentBadgeEventIfEarned(userId);
+
         Long postAuthorId = post.getUser().getId();
         if (!postAuthorId.equals(userId)) {
             eventPublisher.publishEvent(
                     new PostCommentNotificationRequestedEvent(
-                            postAuthorId, meetingId, postId, meeting.getName()));
+                            postAuthorId,
+                            meetingId,
+                            postId,
+                            meeting.getName()));
         }
 
         // 작성 직후에는 본인 댓글이므로 수정·삭제 모두 가능하다.
@@ -130,6 +137,14 @@ public class PostCommentService {
 
         comment.delete();
         post.decreaseCommentCount();
+    }
+
+    /** 전체 모임을 통틀어 (미삭제) 댓글이 목표치에 막 도달한 시점에만 COMMENT_10 뱃지 이벤트를 발행한다. */
+    private void publishCommentBadgeEventIfEarned(Long userId) {
+        if (postCommentRepository.countByUser_IdAndDeletedAtIsNull(userId)
+                == BadgeType.COMMENT_10.getTargetValue()) {
+            eventPublisher.publishEvent(new BadgeAwardRequestedEvent(userId, BadgeType.COMMENT_10));
+        }
     }
 
     private Meeting getMeeting(Long meetingId) {

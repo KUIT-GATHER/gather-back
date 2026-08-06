@@ -23,6 +23,8 @@ import com.gather.gather.domain.notification.event.MeetingJoinResultNotification
 import com.gather.gather.domain.posting.entity.Posting;
 import com.gather.gather.domain.posting.entity.PostingCategory;
 import com.gather.gather.domain.posting.repository.PostingRepository;
+import com.gather.gather.domain.posting.service.RegionNameResolver;
+import com.gather.gather.domain.region.entity.Region;
 import com.gather.gather.domain.region.repository.RegionRepository;
 import com.gather.gather.global.common.PageResponse;
 import com.gather.gather.global.exception.BusinessException;
@@ -71,6 +73,7 @@ public class MeetingService {
     private final MeetingMemberRepository meetingMemberRepository;
     private final UserRepository userRepository;
     private final RegionRepository regionRepository;
+    private final RegionNameResolver regionNameResolver;
     private final PostingRepository postingRepository;
     private final MeetingSearchLogService meetingSearchLogService;
     private final ApplicationEventPublisher eventPublisher;
@@ -108,7 +111,12 @@ public class MeetingService {
         meetingMemberRepository.save(hostMember);
         eventPublisher.publishEvent(new BadgeAwardRequestedEvent(userId, BadgeType.TEAM_CREATED));
 
-        return MeetingResponse.from(savedMeeting, resolveDisplayStatus(savedMeeting));
+        String regionName =
+                regionRepository
+                        .findById(savedMeeting.getRegionId())
+                        .map(Region::getName)
+                        .orElse(null);
+        return MeetingResponse.from(savedMeeting, resolveDisplayStatus(savedMeeting), regionName);
     }
 
     public PageResponse<MeetingResponse> getMeetings(
@@ -137,27 +145,36 @@ public class MeetingService {
         LocalDateTime activityEndAt =
                 activityEndDate == null ? null : activityEndDate.atTime(LocalTime.MAX);
 
+        Page<Meeting> meetings =
+                meetingRepository.searchMeetings(
+                        keyword,
+                        hasRegionFilter,
+                        regionIdParam,
+                        category,
+                        status,
+                        recruitingOnly,
+                        now,
+                        activityStartAt,
+                        activityEndAt,
+                        postingBasedFirst,
+                        pageable);
+        Map<Long, String> regionNames =
+                regionNameResolver.resolve(regionIdsOf(meetings.getContent()));
+
         Page<MeetingResponse> responses =
-                meetingRepository
-                        .searchMeetings(
-                                keyword,
-                                hasRegionFilter,
-                                regionIdParam,
-                                category,
-                                status,
-                                recruitingOnly,
-                                now,
-                                activityStartAt,
-                                activityEndAt,
-                                postingBasedFirst,
-                                pageable)
-                        .map(
-                                meeting ->
-                                        MeetingResponse.from(
-                                                meeting, resolveDisplayStatus(meeting)));
+                meetings.map(
+                        meeting ->
+                                MeetingResponse.from(
+                                        meeting,
+                                        resolveDisplayStatus(meeting),
+                                        regionNames.get(meeting.getRegionId())));
 
         logSearchKeywordSafely(keyword);
         return PageResponse.from(responses);
+    }
+
+    private List<Long> regionIdsOf(List<Meeting> meetings) {
+        return meetings.stream().map(Meeting::getRegionId).toList();
     }
 
     public PageResponse<PostingMeetingResponse> getMeetingsByPosting(
@@ -332,14 +349,20 @@ public class MeetingService {
     public List<MeetingResponse> getMyMeetings() {
         Long userId = SecurityUtil.getCurrentUserId();
 
-        return meetingMemberRepository
-                .findAllByUserIdAndStatusFetchMeeting(userId, MeetingMemberStatus.APPROVED)
-                .stream()
+        List<MeetingMember> members =
+                meetingMemberRepository.findAllByUserIdAndStatusFetchMeeting(
+                        userId, MeetingMemberStatus.APPROVED);
+        Map<Long, String> regionNames =
+                regionNameResolver.resolve(
+                        members.stream().map(member -> member.getMeeting().getRegionId()).toList());
+
+        return members.stream()
                 .map(
                         member ->
                                 MeetingResponse.from(
                                         member.getMeeting(),
                                         resolveDisplayStatus(member.getMeeting()),
+                                        regionNames.get(member.getMeeting().getRegionId()),
                                         member.getRole(), // ← HOST/MEMBER
                                         member.getRecognizedMinutes()))
                 .toList();

@@ -29,7 +29,12 @@ public interface MeetingBookmarkRepository extends JpaRepository<MeetingBookmark
     int deleteByUserIdAndMeetingId(
             @Param("userId") Long userId, @Param("meetingId") Long meetingId);
 
-    /** MeetingBookmark는 Meeting과 연관관계 없이 FK id만 보관하므로 명시적 ON 절로 조인한다. */
+    /**
+     * MeetingBookmark는 Meeting과 연관관계 없이 FK id만 보관하므로 명시적 ON 절로 조인한다.
+     *
+     * <p>activityStartAt/activityEndAt은 MeetingRepository.searchMeetings와 동일하게 활동기간 겹침 필터다(모임 목록
+     * 조회와 동일 정책).
+     */
     @Query(
             """
             select m from Meeting m
@@ -40,12 +45,19 @@ public interface MeetingBookmarkRepository extends JpaRepository<MeetingBookmark
               and (:keyword is null
                    or m.name like concat('%', :keyword, '%') escape '\\'
                    or m.description like concat('%', :keyword, '%') escape '\\')
+              and (:hasRegionFilter = false or m.regionId in :regionIds)
+              and (:activityStartAt is null or m.activityEndAt >= :activityStartAt)
+              and (:activityEndAt is null or m.activityStartAt <= :activityEndAt)
             order by b.createdAt desc, b.id desc
             """)
     Page<Meeting> findBookmarkedMeetings(
             @Param("userId") Long userId,
             @Param("category") PostingCategory category,
             @Param("keyword") String keyword,
+            @Param("hasRegionFilter") boolean hasRegionFilter,
+            @Param("regionIds") List<Long> regionIds,
+            @Param("activityStartAt") LocalDateTime activityStartAt,
+            @Param("activityEndAt") LocalDateTime activityEndAt,
             Pageable pageable);
 
     @Query(

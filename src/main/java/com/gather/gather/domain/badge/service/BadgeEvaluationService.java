@@ -38,9 +38,6 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 public class BadgeEvaluationService {
 
-    private static final int COMPLETION_5_THRESHOLD = 5;
-    private static final int CONSECUTIVE_MONTHS_THRESHOLD = 3;
-
     /** 이 리포 전체가 COMPLETED/REVIEWED를 함께 "완료"로 취급한다(PostingParticipationAction 등과 동일 정책). */
     private static final Set<PostingParticipationStatus> COMPLETED_STATUSES =
             Set.of(PostingParticipationStatus.COMPLETED, PostingParticipationStatus.REVIEWED);
@@ -57,15 +54,17 @@ public class BadgeEvaluationService {
         if (!completionDates.isEmpty()) {
             badgeAwardService.award(userId, BadgeType.FIRST_COMPLETION);
         }
-        if (completionDates.size() >= COMPLETION_5_THRESHOLD) {
+        if (completionDates.size() >= BadgeType.COMPLETION_5.getTargetValue()) {
             badgeAwardService.award(userId, BadgeType.COMPLETION_5);
         }
-        if (hasConsecutiveMonths(completionDates, CONSECUTIVE_MONTHS_THRESHOLD)) {
+        if (longestConsecutiveMonthStreak(completionDates)
+                >= BadgeType.CONSECUTIVE_3_MONTHS.getTargetValue()) {
             badgeAwardService.award(userId, BadgeType.CONSECUTIVE_3_MONTHS);
         }
     }
 
-    private List<LocalDate> collectCompletionDates(Long userId) {
+    /** 진행 중인 봉사 완료 활동일 목록 — 뱃지 진행률 조회(BadgeQueryService)에서도 재사용한다. */
+    List<LocalDate> collectCompletionDates(Long userId) {
         List<LocalDate> dates = new ArrayList<>();
         dates.addAll(collectPostingActivityDates(userId));
         dates.addAll(collectMeetingActivityDates(userId));
@@ -128,21 +127,21 @@ public class BadgeEvaluationService {
         return dates;
     }
 
-    private boolean hasConsecutiveMonths(List<LocalDate> dates, int threshold) {
+    /** 연속된 활동 월의 최장 스트릭 — 뱃지 진행률 조회(BadgeQueryService)에서도 재사용한다. */
+    int longestConsecutiveMonthStreak(List<LocalDate> dates) {
         TreeSet<YearMonth> months = new TreeSet<>();
         for (LocalDate date : dates) {
             months.add(YearMonth.from(date));
         }
 
+        int longestStreak = 0;
         int streak = 0;
         YearMonth previous = null;
         for (YearMonth month : months) {
             streak = (previous != null && previous.plusMonths(1).equals(month)) ? streak + 1 : 1;
-            if (streak >= threshold) {
-                return true;
-            }
+            longestStreak = Math.max(longestStreak, streak);
             previous = month;
         }
-        return false;
+        return longestStreak;
     }
 }

@@ -52,4 +52,7 @@ public interface PostCommentRepository extends JpaRepository<PostComment, Long> 
               AND c.post.deletedAt IS NULL
             """)
     long countCommentedPosts(@Param("meetingId") Long meetingId, @Param("userId") Long userId);
+
+    /** 뱃지 진행률 조회용 — 전체 모임을 통틀어 내가 작성한 (미삭제) 댓글 수(COMMENT_10). */
+    long countByUser_IdAndDeletedAtIsNull(Long userId);
 }

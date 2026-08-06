@@ -3,6 +3,7 @@ package com.gather.gather.domain.posting.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
@@ -66,6 +67,7 @@ class BookmarkServiceTest {
                         bookmarkRepository,
                         postingRepository,
                         new RegionNameResolver(regionRepository),
+                        regionRepository,
                         eventPublisher);
     }
 
@@ -240,13 +242,17 @@ class BookmarkServiceTest {
                             eq(USER_ID),
                             eq(PostingCategory.ENVIRONMENT),
                             eq("정화"),
+                            eq(false),
+                            eq(List.of(-1L)),
+                            isNull(),
+                            isNull(),
                             argThat(p -> p.getSort().isUnsorted())))
                     .thenReturn(new PageImpl<>(List.of(posting), PageRequest.of(0, 20), 1));
             when(regionRepository.findAllById(any())).thenReturn(List.of(region));
 
             PageResponse<PostingSummaryResponse> response =
                     bookmarkService.getBookmarkedPostings(
-                            PostingCategory.ENVIRONMENT, "정화", unsortedPageable);
+                            PostingCategory.ENVIRONMENT, "정화", null, null, null, unsortedPageable);
 
             assertThat(response.content()).hasSize(1);
             assertThat(response.content().get(0).regionName()).isEqualTo("동구");
@@ -255,7 +261,53 @@ class BookmarkServiceTest {
                             eq(USER_ID),
                             eq(PostingCategory.ENVIRONMENT),
                             eq("정화"),
+                            eq(false),
+                            eq(List.of(-1L)),
+                            isNull(),
+                            isNull(),
                             argThat(p -> p.getSort().isUnsorted()));
+        }
+    }
+
+    @Test
+    @DisplayName(
+            "getBookmarkedPostings resolves regionId to itself and its children before querying"
+                    + " the repository")
+    void getBookmarkedPostings_resolvesRegionIdIncludingChildren() {
+        Pageable unsortedPageable = PageRequest.of(0, 20);
+
+        try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
+            securityUtil.when(SecurityUtil::getCurrentUserId).thenReturn(USER_ID);
+            when(regionRepository.findIdsIncludingChildren(1L)).thenReturn(List.of(1L, 2L, 3L));
+            when(bookmarkRepository.findBookmarkedPostings(
+                            eq(USER_ID),
+                            isNull(),
+                            isNull(),
+                            eq(true),
+                            eq(List.of(1L, 2L, 3L)),
+                            eq(LocalDate.of(2026, 7, 1)),
+                            eq(LocalDate.of(2026, 7, 31)),
+                            any()))
+                    .thenReturn(new PageImpl<>(List.of(), PageRequest.of(0, 20), 0));
+
+            bookmarkService.getBookmarkedPostings(
+                    null,
+                    null,
+                    1L,
+                    LocalDate.of(2026, 7, 1),
+                    LocalDate.of(2026, 7, 31),
+                    unsortedPageable);
+
+            verify(bookmarkRepository)
+                    .findBookmarkedPostings(
+                            eq(USER_ID),
+                            isNull(),
+                            isNull(),
+                            eq(true),
+                            eq(List.of(1L, 2L, 3L)),
+                            eq(LocalDate.of(2026, 7, 1)),
+                            eq(LocalDate.of(2026, 7, 31)),
+                            any());
         }
     }
 
@@ -269,13 +321,28 @@ class BookmarkServiceTest {
         try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
             securityUtil.when(SecurityUtil::getCurrentUserId).thenReturn(USER_ID);
             when(bookmarkRepository.findBookmarkedPostings(
-                            eq(USER_ID), isNull(), eq("100\\%"), any()))
+                            eq(USER_ID),
+                            isNull(),
+                            eq("100\\%"),
+                            eq(false),
+                            eq(List.of(-1L)),
+                            isNull(),
+                            isNull(),
+                            any()))
                     .thenReturn(new PageImpl<>(List.of(), PageRequest.of(0, 20), 0));
 
-            bookmarkService.getBookmarkedPostings(null, "100%", unsortedPageable);
+            bookmarkService.getBookmarkedPostings(null, "100%", null, null, null, unsortedPageable);
 
             verify(bookmarkRepository)
-                    .findBookmarkedPostings(eq(USER_ID), isNull(), eq("100\\%"), any());
+                    .findBookmarkedPostings(
+                            eq(USER_ID),
+                            isNull(),
+                            eq("100\\%"),
+                            eq(false),
+                            eq(List.of(-1L)),
+                            isNull(),
+                            isNull(),
+                            any());
         }
     }
 
@@ -284,11 +351,37 @@ class BookmarkServiceTest {
     void getBookmarkedPostings_throwsValidationError_whenSortRequested() {
         Pageable sortedPageable = PageRequest.of(0, 20, Sort.by("title"));
 
-        assertThatThrownBy(() -> bookmarkService.getBookmarkedPostings(null, null, sortedPageable))
+        assertThatThrownBy(
+                        () ->
+                                bookmarkService.getBookmarkedPostings(
+                                        null, null, null, null, null, sortedPageable))
                 .isInstanceOf(BusinessException.class)
                 .hasFieldOrPropertyWithValue("errorCode", ErrorCode.VALIDATION_ERROR);
 
-        verify(bookmarkRepository, never()).findBookmarkedPostings(any(), any(), any(), any());
+        verify(bookmarkRepository, never())
+                .findBookmarkedPostings(
+                        any(), any(), any(), anyBoolean(), any(), any(), any(), any());
+    }
+
+    @Test
+    @DisplayName(
+            "getBookmarkedPostings throws VALIDATION_ERROR when noticeStartDate is after"
+                    + " noticeEndDate")
+    void getBookmarkedPostings_throwsValidationError_whenDateRangeInverted() {
+        LocalDate startDate = LocalDate.of(2026, 8, 31);
+        LocalDate endDate = LocalDate.of(2026, 8, 1);
+        Pageable unsortedPageable = PageRequest.of(0, 20);
+
+        assertThatThrownBy(
+                        () ->
+                                bookmarkService.getBookmarkedPostings(
+                                        null, null, null, startDate, endDate, unsortedPageable))
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("errorCode", ErrorCode.VALIDATION_ERROR);
+
+        verify(bookmarkRepository, never())
+                .findBookmarkedPostings(
+                        any(), any(), any(), anyBoolean(), any(), any(), any(), any());
     }
 
     private Posting posting() {

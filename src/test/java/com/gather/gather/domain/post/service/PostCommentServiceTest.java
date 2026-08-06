@@ -9,6 +9,8 @@ import static org.mockito.Mockito.when;
 
 import com.gather.gather.domain.auth.entity.User;
 import com.gather.gather.domain.auth.repository.UserRepository;
+import com.gather.gather.domain.badge.entity.BadgeType;
+import com.gather.gather.domain.badge.event.BadgeAwardRequestedEvent;
 import com.gather.gather.domain.meeting.entity.Meeting;
 import com.gather.gather.domain.meeting.entity.MeetingMember;
 import com.gather.gather.domain.meeting.enums.MeetingMemberRole;
@@ -136,7 +138,61 @@ class PostCommentServiceTest {
         postCommentService.createComment(
                 MEETING_ID, POST_ID, new PostCommentCreateRequest("내 글에 남긴 댓글"));
 
-        verify(eventPublisher, never()).publishEvent(Mockito.any());
+        verify(eventPublisher, never())
+                .publishEvent(Mockito.any(PostCommentNotificationRequestedEvent.class));
+    }
+
+    @Test
+    @DisplayName("10번째 댓글을 작성하면 COMMENT_10 뱃지 이벤트를 발행한다")
+    void createComment_publishesBadgeEventAtTenthComment() {
+        Meeting meeting = meetingWithId();
+        Post post = postInMeeting(meeting);
+        MeetingMember member = approvedMember(MeetingMemberRole.MEMBER);
+        User authorUser = author(USER_ID);
+        PostComment saved = comment(authorUser);
+
+        when(post.getUser()).thenReturn(authorUser);
+        when(meetingRepository.findByIdAndDeletedAtIsNull(MEETING_ID))
+                .thenReturn(Optional.of(meeting));
+        when(meetingMemberRepository.findByMeeting_IdAndUser_IdAndStatus(
+                        MEETING_ID, USER_ID, MeetingMemberStatus.APPROVED))
+                .thenReturn(Optional.of(member));
+        when(postRepository.findByIdFetchUser(POST_ID)).thenReturn(Optional.of(post));
+        when(userRepository.findById(USER_ID)).thenReturn(Optional.of(authorUser));
+        when(postCommentRepository.save(Mockito.any(PostComment.class))).thenReturn(saved);
+        when(postCommentRepository.countByUser_IdAndDeletedAtIsNull(USER_ID)).thenReturn(10L);
+
+        postCommentService.createComment(
+                MEETING_ID, POST_ID, new PostCommentCreateRequest("좋은 글이에요"));
+
+        verify(eventPublisher)
+                .publishEvent(new BadgeAwardRequestedEvent(USER_ID, BadgeType.COMMENT_10));
+    }
+
+    @Test
+    @DisplayName("아직 10개 미만이면 COMMENT_10 뱃지 이벤트를 발행하지 않는다")
+    void createComment_doesNotPublishBadgeEventBeforeTenthComment() {
+        Meeting meeting = meetingWithId();
+        Post post = postInMeeting(meeting);
+        MeetingMember member = approvedMember(MeetingMemberRole.MEMBER);
+        User authorUser = author(USER_ID);
+        PostComment saved = comment(authorUser);
+
+        when(post.getUser()).thenReturn(authorUser);
+        when(meetingRepository.findByIdAndDeletedAtIsNull(MEETING_ID))
+                .thenReturn(Optional.of(meeting));
+        when(meetingMemberRepository.findByMeeting_IdAndUser_IdAndStatus(
+                        MEETING_ID, USER_ID, MeetingMemberStatus.APPROVED))
+                .thenReturn(Optional.of(member));
+        when(postRepository.findByIdFetchUser(POST_ID)).thenReturn(Optional.of(post));
+        when(userRepository.findById(USER_ID)).thenReturn(Optional.of(authorUser));
+        when(postCommentRepository.save(Mockito.any(PostComment.class))).thenReturn(saved);
+        when(postCommentRepository.countByUser_IdAndDeletedAtIsNull(USER_ID)).thenReturn(9L);
+
+        postCommentService.createComment(
+                MEETING_ID, POST_ID, new PostCommentCreateRequest("좋은 글이에요"));
+
+        verify(eventPublisher, never()).publishEvent(Mockito.any(BadgeAwardRequestedEvent.class));
     }
 
     @Test
