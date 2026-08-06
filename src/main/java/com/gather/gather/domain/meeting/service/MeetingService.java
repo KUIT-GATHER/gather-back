@@ -23,6 +23,7 @@ import com.gather.gather.domain.notification.event.MeetingJoinResultNotification
 import com.gather.gather.domain.posting.entity.Posting;
 import com.gather.gather.domain.posting.entity.PostingCategory;
 import com.gather.gather.domain.posting.repository.PostingRepository;
+import com.gather.gather.domain.recruit.repository.MeetingRecruitParticipationRepository;
 import com.gather.gather.domain.posting.service.RegionNameResolver;
 import com.gather.gather.domain.region.entity.Region;
 import com.gather.gather.domain.region.repository.RegionRepository;
@@ -75,6 +76,7 @@ public class MeetingService {
     private final RegionRepository regionRepository;
     private final RegionNameResolver regionNameResolver;
     private final PostingRepository postingRepository;
+    private final MeetingRecruitParticipationRepository meetingRecruitParticipationRepository;
     private final MeetingSearchLogService meetingSearchLogService;
     private final ApplicationEventPublisher eventPublisher;
 
@@ -306,15 +308,21 @@ public class MeetingService {
     /**
      * 모임을 해산한다(모임장 전용, 소프트 삭제).
      *
-     * <p>{@code Meeting.deletedAt}만 채우면 된다 — 이 레포의 모임 관련 조회는 전부 {@code
+     * <p>아직 활동일이 지나지 않은 모집공고에 확정(CONFIRMED)된 참가자가 있으면 해산할 수 없다(진행 예정 활동 보호). 확정된 참가자가 없거나 이미 활동이
+     * 끝난 경우에만 해산 가능하다. {@code Meeting.deletedAt}만 채우면 된다 — 이 레포의 모임 관련 조회는 전부 {@code
      * findByIdAndDeletedAtIsNull}류를 통해 상위 모임 존재를 먼저 확인하므로, 게시글·멤버·북마크·나의 모임 목록 등 하위 조회도 이 시점부터 함께
-     * 막힌다. 되돌릴 수 없다.
+     * 막힌다. 완료된 개인 봉사 기록·인정시간·후기·뱃지는 모임 삭제와 무관하게 그대로 유지된다. 되돌릴 수 없다.
      */
     @Transactional
     public void disbandMeeting(Long meetingId) {
         Long userId = SecurityUtil.getCurrentUserId();
         Meeting meeting = getMeetingEntityForUpdate(meetingId);
         validateHost(meeting, userId);
+
+        if (meetingRecruitParticipationRepository.existsConfirmedParticipantWithUpcomingActivity(
+                meetingId, LocalDate.now())) {
+            throw new BusinessException(ErrorCode.MEETING_DISBAND_HAS_CONFIRMED_PARTICIPANTS);
+        }
 
         meeting.delete();
     }

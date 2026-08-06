@@ -143,6 +143,16 @@ public class MeetingRecruit {
         return !today.isAfter(applyDeadline);
     }
 
+    /**
+     * 활동이 종료됐는지: 종료 시간이 있으면 그 시각, 없으면 활동일 자정(23:59:59.999999999)을 기준으로 판단한다. 참석 처리(PRESENT)는
+     * 활동이 끝난 뒤에만 할 수 있다.
+     */
+    public boolean isActivityEnded(LocalDateTime now) {
+        LocalDateTime activityEnd =
+                actEndTime != null ? LocalDateTime.of(actDate, actEndTime) : actDate.atTime(LocalTime.MAX);
+        return activityEnd.isBefore(now);
+    }
+
     /** 모집공고 확장 필드 수정. 제목·내용은 연결된 Post에서 별도로 갱신한다. */
     public void update(
             String place,

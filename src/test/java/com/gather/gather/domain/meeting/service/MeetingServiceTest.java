@@ -53,6 +53,9 @@ class MeetingServiceTest {
     @Mock private MeetingSearchLogService meetingSearchLogService;
     @Mock private org.springframework.context.ApplicationEventPublisher eventPublisher;
     @Mock private RegionNameResolver regionNameResolver;
+    @Mock
+    private com.gather.gather.domain.recruit.repository.MeetingRecruitParticipationRepository
+            meetingRecruitParticipationRepository;
 
     @InjectMocks private MeetingService meetingService;
 
@@ -531,6 +534,33 @@ class MeetingServiceTest {
                 .hasFieldOrPropertyWithValue(
                         "errorCode",
                         com.gather.gather.global.exception.ErrorCode.MEETING_NOT_FOUND);
+    }
+
+    @Test
+    @DisplayName(
+            "disbandMeeting throws MEETING_DISBAND_HAS_CONFIRMED_PARTICIPANTS when an upcoming"
+                    + " recruit activity has a confirmed participant")
+    void disbandMeeting_throwsHasConfirmedParticipants_whenUpcomingActivityConfirmed() {
+        setAuthenticatedUser(1L);
+        Meeting hostMeeting = mock(Meeting.class);
+        com.gather.gather.domain.auth.entity.User host =
+                mock(com.gather.gather.domain.auth.entity.User.class);
+        when(host.getId()).thenReturn(1L);
+        when(hostMeeting.getHost()).thenReturn(host);
+        when(meetingRepository.findByIdAndDeletedAtIsNullForUpdate(12L))
+                .thenReturn(java.util.Optional.of(hostMeeting));
+        when(meetingRecruitParticipationRepository.existsConfirmedParticipantWithUpcomingActivity(
+                        org.mockito.ArgumentMatchers.eq(12L), org.mockito.ArgumentMatchers.any()))
+                .thenReturn(true);
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(
+                        () -> meetingService.disbandMeeting(12L))
+                .isInstanceOf(com.gather.gather.global.exception.BusinessException.class)
+                .hasFieldOrPropertyWithValue(
+                        "errorCode",
+                        com.gather.gather.global.exception.ErrorCode
+                                .MEETING_DISBAND_HAS_CONFIRMED_PARTICIPANTS);
+        verify(hostMeeting, never()).delete();
     }
 
     private void setAuthenticatedUser(Long userId) {

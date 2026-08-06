@@ -65,4 +65,14 @@ public class MeetingRecruitParticipation {
     public static MeetingRecruitParticipation apply(Long postId, Long userId) {
         return new MeetingRecruitParticipation(postId, userId);
     }
+
+    /** 팀장이 신청(APPLIED)을 확정한다. */
+    public void confirm() {
+        this.status = MeetingRecruitParticipationStatus.CONFIRMED;
+    }
+
+    /** 활동 종료 후 팀장이 확정(CONFIRMED) 참가자의 참석을 처리해 봉사완료로 전환한다. */
+    public void complete() {
+        this.status = MeetingRecruitParticipationStatus.COMPLETED;
+    }
 }

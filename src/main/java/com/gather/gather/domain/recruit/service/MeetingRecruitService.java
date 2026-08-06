@@ -19,12 +19,14 @@ import com.gather.gather.domain.recruit.dto.RecruitParticipationResponse;
 import com.gather.gather.domain.recruit.dto.RecruitUpdateRequest;
 import com.gather.gather.domain.recruit.entity.MeetingRecruit;
 import com.gather.gather.domain.recruit.entity.MeetingRecruitParticipation;
+import com.gather.gather.domain.recruit.entity.MeetingRecruitParticipationStatus;
 import com.gather.gather.domain.recruit.repository.MeetingRecruitParticipationRepository;
 import com.gather.gather.domain.recruit.repository.MeetingRecruitRepository;
 import com.gather.gather.global.exception.BusinessException;
 import com.gather.gather.global.exception.ErrorCode;
 import com.gather.gather.global.util.SecurityUtil;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
@@ -200,6 +202,63 @@ public class MeetingRecruitService {
         participationRepository.save(MeetingRecruitParticipation.apply(postId, userId));
         return new RecruitParticipationResponse(
                 true, (int) (currentCount + 1), recruit.getMaxParticipants());
+    }
+
+    /** 팀장이 신청(APPLIED) 참여를 확정(CONFIRMED)한다. */
+    @Transactional
+    public void confirmParticipation(Long meetingId, Long postId, Long participationId) {
+        Long userId = SecurityUtil.getCurrentUserId();
+        getMeeting(meetingId);
+        MeetingMember membership = getApprovedMembership(meetingId, userId);
+        if (membership.getRole() != MeetingMemberRole.HOST) {
+            throw new BusinessException(ErrorCode.RECRUIT_HOST_ONLY);
+        }
+        getRecruitPost(meetingId, postId);
+
+        MeetingRecruitParticipation participation = getParticipationInPost(postId, participationId);
+        if (participation.getStatus() != MeetingRecruitParticipationStatus.APPLIED) {
+            throw new BusinessException(ErrorCode.RECRUIT_PARTICIPATION_CONFIRM_NOT_ALLOWED);
+        }
+        participation.confirm();
+    }
+
+    /**
+     * 활동 종료 후 팀장이 확정(CONFIRMED) 참가자의 참석 여부를 처리한다. 참석 처리된 참가자만 봉사완료(COMPLETED)로 전환된다(정책:
+     * CONFIRMED → 활동 종료 → 팀장이 PRESENT 처리 → 해당 참가자만 COMPLETED).
+     */
+    @Transactional
+    public void markParticipantPresent(Long meetingId, Long postId, Long participationId) {
+        Long userId = SecurityUtil.getCurrentUserId();
+        getMeeting(meetingId);
+        MeetingMember membership = getApprovedMembership(meetingId, userId);
+        if (membership.getRole() != MeetingMemberRole.HOST) {
+            throw new BusinessException(ErrorCode.RECRUIT_HOST_ONLY);
+        }
+        getRecruitPost(meetingId, postId);
+        MeetingRecruit recruit = getRecruitDetail(postId);
+        if (!recruit.isActivityEnded(LocalDateTime.now())) {
+            throw new BusinessException(ErrorCode.RECRUIT_ACTIVITY_NOT_ENDED);
+        }
+
+        MeetingRecruitParticipation participation = getParticipationInPost(postId, participationId);
+        if (participation.getStatus() != MeetingRecruitParticipationStatus.CONFIRMED) {
+            throw new BusinessException(ErrorCode.RECRUIT_PRESENT_NOT_ALLOWED);
+        }
+        participation.complete();
+    }
+
+    private MeetingRecruitParticipation getParticipationInPost(Long postId, Long participationId) {
+        MeetingRecruitParticipation participation =
+                participationRepository
+                        .findById(participationId)
+                        .orElseThrow(
+                                () ->
+                                        new BusinessException(
+                                                ErrorCode.RECRUIT_PARTICIPATION_NOT_FOUND));
+        if (!participation.getPostId().equals(postId)) {
+            throw new BusinessException(ErrorCode.RECRUIT_PARTICIPATION_NOT_FOUND);
+        }
+        return participation;
     }
 
     private RecruitDetailResponse toDetail(
