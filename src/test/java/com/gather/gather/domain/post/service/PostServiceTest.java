@@ -59,6 +59,7 @@ class PostServiceTest {
     @Mock private PostLikeRepository postLikeRepository;
     @Mock private PostImageService postImageService;
     @Mock private PostSummaryAssembler summaryAssembler;
+    @Mock private PostReviewSourceService postReviewSourceService;
 
     private PostService postService;
     private Meeting meeting;
@@ -74,7 +75,8 @@ class PostServiceTest {
                         meetingRepository,
                         meetingMemberRepository,
                         userRepository,
-                        eventPublisher);
+                        eventPublisher,
+                        postReviewSourceService);
         meeting = mock(Meeting.class);
     }
 
@@ -89,7 +91,7 @@ class PostServiceTest {
                     .thenReturn(Optional.of(meeting));
             MeetingMember membership = approvedMember(MeetingMemberRole.MEMBER);
             when(meetingMemberRepository.findByMeeting_IdAndUser_IdAndStatus(
-                            MEETING_ID, USER_ID, MeetingMemberStatus.APPROVED))
+                    MEETING_ID, USER_ID, MeetingMemberStatus.APPROVED))
                     .thenReturn(Optional.of(membership));
             User author = mock(User.class);
             when(author.getId()).thenReturn(USER_ID);
@@ -104,7 +106,7 @@ class PostServiceTest {
                             });
 
             postService.createPost(
-                    MEETING_ID, new PostCreateRequest("후기 제목", "내용", PostType.REVIEW, null, null));
+                    MEETING_ID, new PostCreateRequest("후기 제목", "내용", PostType.REVIEW, null, null, null, null));
 
             InOrder eventOrder = inOrder(eventPublisher);
             eventOrder
@@ -133,7 +135,7 @@ class PostServiceTest {
                     .thenReturn(Optional.of(meeting));
             MeetingMember membership = approvedMember(MeetingMemberRole.MEMBER);
             when(meetingMemberRepository.findByMeeting_IdAndUser_IdAndStatus(
-                            MEETING_ID, USER_ID, MeetingMemberStatus.APPROVED))
+                    MEETING_ID, USER_ID, MeetingMemberStatus.APPROVED))
                     .thenReturn(Optional.of(membership));
             User author = mock(User.class);
             when(author.getId()).thenReturn(USER_ID);
@@ -141,7 +143,7 @@ class PostServiceTest {
             when(postRepository.save(any(Post.class))).thenAnswer(returnsFirstArg());
 
             postService.createPost(
-                    MEETING_ID, new PostCreateRequest("자유 게시글", "내용", PostType.FREE, null, null));
+                    MEETING_ID, new PostCreateRequest("자유 게시글", "내용", PostType.FREE, null, null, null, null));
 
             verify(eventPublisher, never()).publishEvent(any(BadgeAwardRequestedEvent.class));
         }
@@ -158,7 +160,7 @@ class PostServiceTest {
                     .thenReturn(Optional.of(meeting));
             MeetingMember membership = approvedMember(MeetingMemberRole.MEMBER);
             when(meetingMemberRepository.findByMeeting_IdAndUser_IdAndStatus(
-                            MEETING_ID, USER_ID, MeetingMemberStatus.APPROVED))
+                    MEETING_ID, USER_ID, MeetingMemberStatus.APPROVED))
                     .thenReturn(Optional.of(membership));
 
             User author = mock(User.class);
@@ -175,7 +177,7 @@ class PostServiceTest {
                             });
 
             postService.createPost(
-                    MEETING_ID, new PostCreateRequest("자유 게시글", "내용", PostType.FREE, null, null));
+                    MEETING_ID, new PostCreateRequest("자유 게시글", "내용", PostType.FREE, null, null, null, null));
 
             ArgumentCaptor<Object> eventCaptor = ArgumentCaptor.forClass(Object.class);
             verify(eventPublisher).publishEvent(eventCaptor.capture());
@@ -201,7 +203,7 @@ class PostServiceTest {
                     .thenReturn(Optional.of(meeting));
             MeetingMember membership = approvedMember(MeetingMemberRole.HOST);
             when(meetingMemberRepository.findByMeeting_IdAndUser_IdAndStatus(
-                            MEETING_ID, USER_ID, MeetingMemberStatus.APPROVED))
+                    MEETING_ID, USER_ID, MeetingMemberStatus.APPROVED))
                     .thenReturn(Optional.of(membership));
             User author = mock(User.class);
             when(author.getId()).thenReturn(USER_ID);
@@ -215,7 +217,7 @@ class PostServiceTest {
                             });
 
             postService.createPost(
-                    MEETING_ID, new PostCreateRequest("공지", "내용", PostType.NOTICE, null, null));
+                    MEETING_ID, new PostCreateRequest("공지", "내용", PostType.NOTICE, null, null, null, null));
 
             verify(eventPublisher)
                     .publishEvent(
@@ -237,15 +239,15 @@ class PostServiceTest {
                     .thenReturn(Optional.of(meeting));
             MeetingMember membership = approvedMember(MeetingMemberRole.MEMBER);
             when(meetingMemberRepository.findByMeeting_IdAndUser_IdAndStatus(
-                            MEETING_ID, USER_ID, MeetingMemberStatus.APPROVED))
+                    MEETING_ID, USER_ID, MeetingMemberStatus.APPROVED))
                     .thenReturn(Optional.of(membership));
 
             assertThatThrownBy(
-                            () ->
-                                    postService.createPost(
-                                            MEETING_ID,
-                                            new PostCreateRequest(
-                                                    "공지", "내용", PostType.NOTICE, null, null)))
+                    () ->
+                            postService.createPost(
+                                    MEETING_ID,
+                                    new PostCreateRequest(
+                                            "공지", "내용", PostType.NOTICE, null, null, null, null)))
                     .isInstanceOf(BusinessException.class)
                     .hasFieldOrPropertyWithValue("errorCode", ErrorCode.NOTICE_HOST_ONLY);
             verify(eventPublisher, never()).publishEvent(any());
@@ -262,15 +264,15 @@ class PostServiceTest {
             when(meetingRepository.findByIdAndDeletedAtIsNull(MEETING_ID))
                     .thenReturn(Optional.of(meeting));
             when(meetingMemberRepository.findByMeeting_IdAndUser_IdAndStatus(
-                            MEETING_ID, USER_ID, MeetingMemberStatus.APPROVED))
+                    MEETING_ID, USER_ID, MeetingMemberStatus.APPROVED))
                     .thenReturn(Optional.empty());
 
             assertThatThrownBy(
-                            () ->
-                                    postService.createPost(
-                                            MEETING_ID,
-                                            new PostCreateRequest(
-                                                    "제목", "내용", PostType.FREE, null, null)))
+                    () ->
+                            postService.createPost(
+                                    MEETING_ID,
+                                    new PostCreateRequest(
+                                            "제목", "내용", PostType.FREE, null, null, null, null)))
                     .isInstanceOf(BusinessException.class)
                     .hasFieldOrPropertyWithValue("errorCode", ErrorCode.MEETING_MEMBER_REQUIRED);
         }
@@ -285,11 +287,11 @@ class PostServiceTest {
                     .thenReturn(Optional.empty());
 
             assertThatThrownBy(
-                            () ->
-                                    postService.createPost(
-                                            MEETING_ID,
-                                            new PostCreateRequest(
-                                                    "제목", "내용", PostType.FREE, null, null)))
+                    () ->
+                            postService.createPost(
+                                    MEETING_ID,
+                                    new PostCreateRequest(
+                                            "제목", "내용", PostType.FREE, null, null, null, null)))
                     .isInstanceOf(BusinessException.class)
                     .hasFieldOrPropertyWithValue("errorCode", ErrorCode.MEETING_NOT_FOUND);
         }
