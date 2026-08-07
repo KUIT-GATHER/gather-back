@@ -245,6 +245,7 @@ public class MeetingController {
             @PathVariable Long meetingId, @Valid @RequestBody MeetingUpdateRequest request) {
         return ApiResponse.success(meetingService.updateMeeting(meetingId, request));
     }
+
     @Operation(
             summary = "모임(그룹) 봉사 완료 처리",
             description = "모임장이 모임을 완료 처리한다. 개인 봉사는 본인이 활동종료일 이후 별도 API로 완료 처리한다.")
