@@ -223,8 +223,8 @@ public class MeetingRecruitService {
     }
 
     /**
-     * 활동 종료 후 팀장이 확정(CONFIRMED) 참가자의 참석 여부를 처리한다. 참석 처리된 참가자만 봉사완료(COMPLETED)로 전환된다(정책:
-     * CONFIRMED → 활동 종료 → 팀장이 PRESENT 처리 → 해당 참가자만 COMPLETED).
+     * 활동 종료 후 팀장이 확정(CONFIRMED) 참가자의 참석 여부를 처리한다. 참석 처리된 참가자만 봉사완료(COMPLETED)로 전환된다(정책: CONFIRMED →
+     * 활동 종료 → 팀장이 PRESENT 처리 → 해당 참가자만 COMPLETED).
      */
     @Transactional
     public void markParticipantPresent(Long meetingId, Long postId, Long participationId) {

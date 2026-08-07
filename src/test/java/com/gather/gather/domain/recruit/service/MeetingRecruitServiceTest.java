@@ -293,7 +293,8 @@ class MeetingRecruitServiceTest {
         Meeting meeting = meeting();
         Post post = recruitPost();
         MeetingMember host = member(MeetingMemberRole.HOST);
-        MeetingRecruitParticipation participation = participation(MeetingRecruitParticipationStatus.APPLIED);
+        MeetingRecruitParticipation participation =
+                participation(MeetingRecruitParticipationStatus.APPLIED);
         when(meetingRepository.findByIdAndDeletedAtIsNull(MEETING_ID))
                 .thenReturn(Optional.of(meeting));
         when(meetingMemberRepository.findByMeeting_IdAndUser_IdAndStatus(

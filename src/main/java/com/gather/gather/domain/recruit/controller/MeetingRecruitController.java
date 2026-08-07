@@ -69,9 +69,7 @@ public class MeetingRecruitController {
         return ApiResponse.success(meetingRecruitService.toggleParticipation(meetingId, postId));
     }
 
-    @Operation(
-            summary = "참여 확정",
-            description = "팀장이 신청(APPLIED) 상태의 참여를 확정(CONFIRMED)합니다.")
+    @Operation(summary = "참여 확정", description = "팀장이 신청(APPLIED) 상태의 참여를 확정(CONFIRMED)합니다.")
     @PatchMapping("/{postId}/recruit/participations/{participationId}/confirm")
     public ApiResponse<Void> confirmParticipation(
             @PathVariable Long meetingId,

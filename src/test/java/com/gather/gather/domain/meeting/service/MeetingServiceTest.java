@@ -53,6 +53,7 @@ class MeetingServiceTest {
     @Mock private MeetingSearchLogService meetingSearchLogService;
     @Mock private org.springframework.context.ApplicationEventPublisher eventPublisher;
     @Mock private RegionNameResolver regionNameResolver;
+
     @Mock
     private com.gather.gather.domain.recruit.repository.MeetingRecruitParticipationRepository
             meetingRecruitParticipationRepository;
@@ -553,8 +554,7 @@ class MeetingServiceTest {
                         org.mockito.ArgumentMatchers.eq(12L), org.mockito.ArgumentMatchers.any()))
                 .thenReturn(true);
 
-        org.assertj.core.api.Assertions.assertThatThrownBy(
-                        () -> meetingService.disbandMeeting(12L))
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> meetingService.disbandMeeting(12L))
                 .isInstanceOf(com.gather.gather.global.exception.BusinessException.class)
                 .hasFieldOrPropertyWithValue(
                         "errorCode",

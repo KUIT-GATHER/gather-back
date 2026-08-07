@@ -2,7 +2,6 @@ package com.gather.gather.domain.recruit.repository;
 
 import com.gather.gather.domain.recruit.dto.MyAppliedRecruitResponse;
 import com.gather.gather.domain.recruit.entity.MeetingRecruitParticipation;
-import com.gather.gather.domain.recruit.entity.MeetingRecruitParticipationStatus;
 import java.time.LocalDate;
 import java.util.Optional;
 import org.springframework.data.domain.Page;
@@ -60,8 +59,8 @@ public interface MeetingRecruitParticipationRepository
     long countMyAppliedRecruits(@Param("userId") Long userId, @Param("meetingId") Long meetingId);
 
     /**
-     * 모임 해산 가능 여부 판단용: 아직 활동일이 지나지 않은 모집공고에 CONFIRMED 참가자가 있는지 확인한다. actDate 기준 날짜 단위로만
-     * 비교한다(당일이면 아직 "종료되지 않음"으로 간주해 보수적으로 막는다).
+     * 모임 해산 가능 여부 판단용: 아직 활동일이 지나지 않은 모집공고에 CONFIRMED 참가자가 있는지 확인한다. actDate 기준 날짜 단위로만 비교한다(당일이면
+     * 아직 "종료되지 않음"으로 간주해 보수적으로 막는다).
      */
     @Query(
             """
