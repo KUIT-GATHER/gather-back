@@ -177,7 +177,8 @@ public class MeetingController {
     public ApiResponse<List<MeetingJoinRequestResponse>> getJoinRequests(
             @PathVariable Long meetingId,
             @RequestParam(required = false) MeetingMemberStatus status) {
-        return ApiResponse.success(meetingJoinRequestManagementService.getJoinRequests(meetingId, status));
+        return ApiResponse.success(
+                meetingJoinRequestManagementService.getJoinRequests(meetingId, status));
     }
 
     @Operation(summary = "가입 신청자 상세", description = "가입 신청자의 연락처 등 상세 정보를 조회합니다(모임장 전용).")
@@ -188,7 +189,9 @@ public class MeetingController {
                 meetingJoinRequestManagementService.getJoinRequestDetail(meetingId, joinRequestId));
     }
 
-    @Operation(summary = "거절한 가입 신청 복구", description = "거절(REJECTED)한 가입 신청을 대기(PENDING) 상태로 되돌립니다(모임장 전용).")
+    @Operation(
+            summary = "거절한 가입 신청 복구",
+            description = "거절(REJECTED)한 가입 신청을 대기(PENDING) 상태로 되돌립니다(모임장 전용).")
     @PatchMapping("/{meetingId}/join-requests/{joinRequestId}/pending")
     public ApiResponse<MeetingJoinRequestResponse> restoreJoinRequestToPending(
             @PathVariable Long meetingId, @PathVariable Long joinRequestId) {

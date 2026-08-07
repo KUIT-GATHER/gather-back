@@ -8,7 +8,6 @@ import java.math.BigInteger;
 import java.sql.Timestamp;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
@@ -17,8 +16,8 @@ import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Repository;
 
 /**
- * 앱 전체 봉사공고 목록(#9)을 위한 통합 조회. 기존 봉사공고(volunteer_posting)와 external=true인 모임 모집공고를 하나의
- * 페이지네이션·정렬 안에서 UNION ALL로 합쳐 반환한다(JPQL/Criteria로는 서로 다른 엔티티를 union할 수 없어 네이티브 SQL을 사용).
+ * 앱 전체 봉사공고 목록(#9)을 위한 통합 조회. 기존 봉사공고(volunteer_posting)와 external=true인 모임 모집공고를 하나의 페이지네이션·정렬 안에서
+ * UNION ALL로 합쳐 반환한다(JPQL/Criteria로는 서로 다른 엔티티를 union할 수 없어 네이티브 SQL을 사용).
  *
  * <p>알려진 단순화(후속 과제)
  *
@@ -60,7 +59,15 @@ public class UnifiedPostingQueryRepository {
             Pageable pageable) {
 
         Map<String, Object> params = new java.util.HashMap<>();
-        String postingWhere = buildPostingWhere(status, regionIds, noticeStartDate, noticeEndDate, keyword, category, params);
+        String postingWhere =
+                buildPostingWhere(
+                        status,
+                        regionIds,
+                        noticeStartDate,
+                        noticeEndDate,
+                        keyword,
+                        category,
+                        params);
         String recruitWhere = buildRecruitWhere(status, regionIds, keyword, category, params);
         String orderBy = buildOrderBy(pageable.getSort());
 
@@ -69,7 +76,12 @@ public class UnifiedPostingQueryRepository {
                         + " UNION ALL "
                         + RECRUIT_SELECT.replace("__WHERE__", recruitWhere);
 
-        String pageSql = "SELECT * FROM (" + unionSql + ") unified " + orderBy + " LIMIT :limit OFFSET :offset";
+        String pageSql =
+                "SELECT * FROM ("
+                        + unionSql
+                        + ") unified "
+                        + orderBy
+                        + " LIMIT :limit OFFSET :offset";
         Query pageQuery = entityManager.createNativeQuery(pageSql);
         bindParams(pageQuery, params);
         pageQuery.setParameter("limit", pageable.getPageSize());
@@ -166,7 +178,9 @@ public class UnifiedPostingQueryRepository {
             String keyword,
             PostingCategory category,
             Map<String, Object> params) {
-        StringBuilder where = new StringBuilder("r.external = 1 AND post.deleted_at IS NULL AND m.deleted_at IS NULL");
+        StringBuilder where =
+                new StringBuilder(
+                        "r.external = 1 AND post.deleted_at IS NULL AND m.deleted_at IS NULL");
         if (status != null) {
             // COMPLETED 상태는 모집공고 쪽에 대응 개념이 없어 항상 결과가 비게 된다(기존 목록과 동일하게 기본은 RECRUITING+CLOSED만 노출).
             where.append(

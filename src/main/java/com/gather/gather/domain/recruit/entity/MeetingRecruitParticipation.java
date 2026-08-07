@@ -20,8 +20,9 @@ import org.hibernate.annotations.UpdateTimestamp;
  * 모집공고(RECRUIT post) 참여신청.
  *
  * <p>이 파일은 모집공고 작성·조회·신청(다른 PR)과 겹칠 수 있다 - 이 PR(팀장용 신청자 관리)에서는 반려·일괄확정·출석 처리가 추가로 필요해
- * applicantType·attendanceStatus·recognizedMinutesApplied 필드와 reject()/confirm()/markPresent()/markAbsent()를
- * 포함한 상위 집합으로 작성했다. 두 PR을 모두 반영할 때는 필드·메서드 합집합을 유지하면 된다.
+ * applicantType·attendanceStatus·recognizedMinutesApplied 필드와
+ * reject()/confirm()/markPresent()/markAbsent()를 포함한 상위 집합으로 작성했다. 두 PR을 모두 반영할 때는 필드·메서드 합집합을 유지하면
+ * 된다.
  */
 @Entity
 @Getter
@@ -69,7 +70,8 @@ public class MeetingRecruitParticipation {
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
 
-    private MeetingRecruitParticipation(Long postId, Long userId, RecruitApplicantType applicantType) {
+    private MeetingRecruitParticipation(
+            Long postId, Long userId, RecruitApplicantType applicantType) {
         this.postId = postId;
         this.userId = userId;
         this.applicantType = applicantType;

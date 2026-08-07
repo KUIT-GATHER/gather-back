@@ -16,7 +16,8 @@ public interface MeetingMemberRepository extends JpaRepository<MeetingMember, Lo
     Optional<MeetingMember> findByMeeting_IdAndUser_Id(Long meetingId, Long userId);
 
     /** 인정 시간 합계 조회용(가입신청/멤버/신청자 상세의 totalRecognizedMinutes). */
-    @Query("SELECT COALESCE(SUM(mm.recognizedMinutes), 0) FROM MeetingMember mm WHERE mm.user.id = :userId")
+    @Query(
+            "SELECT COALESCE(SUM(mm.recognizedMinutes), 0) FROM MeetingMember mm WHERE mm.user.id = :userId")
     int sumRecognizedMinutesByUserId(@Param("userId") Long userId);
 
     /** 뱃지 판정용 — 완료된 모임에서 승인된 멤버십만 조회한다(완료 횟수, 연속 참여 월 계산). */
@@ -78,7 +79,8 @@ public interface MeetingMemberRepository extends JpaRepository<MeetingMember, Lo
             ORDER BY mm.createdAt ASC
             """)
     List<MeetingMember> findAllByMeetingIdAndStatusInFetchUser(
-            @Param("meetingId") Long meetingId, @Param("statuses") Collection<MeetingMemberStatus> statuses);
+            @Param("meetingId") Long meetingId,
+            @Param("statuses") Collection<MeetingMemberStatus> statuses);
 
     /** 가입 신청 상세 조회(#10) - 상태 무관, 이 모임 소속인지만 확인. */
     @Query(

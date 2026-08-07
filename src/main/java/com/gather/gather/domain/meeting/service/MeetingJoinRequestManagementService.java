@@ -25,29 +25,38 @@ import org.springframework.transaction.annotation.Transactional;
 public class MeetingJoinRequestManagementService {
 
     private static final List<MeetingMemberStatus> DEFAULT_STATUSES =
-            List.of(MeetingMemberStatus.PENDING, MeetingMemberStatus.APPROVED, MeetingMemberStatus.REJECTED);
+            List.of(
+                    MeetingMemberStatus.PENDING,
+                    MeetingMemberStatus.APPROVED,
+                    MeetingMemberStatus.REJECTED);
 
     private final MeetingRepository meetingRepository;
     private final MeetingMemberRepository meetingMemberRepository;
     private final UserRecognizedMinutesService userRecognizedMinutesService;
 
-    public List<MeetingJoinRequestResponse> getJoinRequests(Long meetingId, MeetingMemberStatus status) {
+    public List<MeetingJoinRequestResponse> getJoinRequests(
+            Long meetingId, MeetingMemberStatus status) {
         Meeting meeting = getMeeting(meetingId);
         requireHost(meeting, SecurityUtil.getCurrentUserId());
         List<MeetingMemberStatus> statuses = status != null ? List.of(status) : DEFAULT_STATUSES;
-        return meetingMemberRepository.findAllByMeetingIdAndStatusInFetchUser(meetingId, statuses).stream()
+        return meetingMemberRepository
+                .findAllByMeetingIdAndStatusInFetchUser(meetingId, statuses)
+                .stream()
                 .map(MeetingJoinRequestResponse::from)
                 .toList();
     }
 
-    public MeetingJoinRequestDetailResponse getJoinRequestDetail(Long meetingId, Long joinRequestId) {
+    public MeetingJoinRequestDetailResponse getJoinRequestDetail(
+            Long meetingId, Long joinRequestId) {
         Meeting meeting = getMeeting(meetingId);
         requireHost(meeting, SecurityUtil.getCurrentUserId());
         MeetingMember member =
                 meetingMemberRepository
                         .findByIdAndMeetingIdFetchUser(joinRequestId, meetingId)
                         .orElseThrow(
-                                () -> new BusinessException(ErrorCode.MEETING_JOIN_REQUEST_NOT_FOUND));
+                                () ->
+                                        new BusinessException(
+                                                ErrorCode.MEETING_JOIN_REQUEST_NOT_FOUND));
         return toDetail(member);
     }
 
@@ -59,7 +68,9 @@ public class MeetingJoinRequestManagementService {
                 meetingMemberRepository
                         .findRejectedByIdAndMeetingIdForUpdate(joinRequestId, meetingId)
                         .orElseThrow(
-                                () -> new BusinessException(ErrorCode.MEETING_JOIN_REQUEST_NOT_FOUND));
+                                () ->
+                                        new BusinessException(
+                                                ErrorCode.MEETING_JOIN_REQUEST_NOT_FOUND));
         member.requestAgain();
         return MeetingJoinRequestResponse.from(member);
     }
@@ -67,7 +78,8 @@ public class MeetingJoinRequestManagementService {
     private MeetingJoinRequestDetailResponse toDetail(MeetingMember member) {
         User user = member.getUser();
         Region region = user.getActivityRegion();
-        int totalRecognizedMinutes = userRecognizedMinutesService.getTotalRecognizedMinutes(user.getId());
+        int totalRecognizedMinutes =
+                userRecognizedMinutesService.getTotalRecognizedMinutes(user.getId());
         return new MeetingJoinRequestDetailResponse(
                 member.getId(),
                 user.getId(),

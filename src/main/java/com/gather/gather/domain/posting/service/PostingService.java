@@ -30,6 +30,7 @@ import com.gather.gather.global.util.SecurityUtil;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -79,7 +80,13 @@ public class PostingService {
 
         SearchResult result =
                 unifiedPostingQueryRepository.search(
-                        status, regionIds, noticeStartDate, noticeEndDate, keyword, category, pageable);
+                        status,
+                        regionIds,
+                        noticeStartDate,
+                        noticeEndDate,
+                        keyword,
+                        category,
+                        pageable);
 
         logSearchKeywordSafely(keyword);
 
@@ -198,14 +205,26 @@ public class PostingService {
         Map<Long, String> thumbnails = resolveThumbnails(meetingIds);
 
         return rows.stream()
-                .map(row -> toListItem(row, regionNames.get(row.regionId()), thumbnails.get(row.meetingId())))
+                .map(
+                        row ->
+                                toListItem(
+                                        row,
+                                        regionNames.get(row.regionId()),
+                                        row.meetingId() == null
+                                                ? null
+                                                : thumbnails.get(row.meetingId())))
                 .toList();
     }
 
-    /** 모임별 대표 이미지(첫 순번) URL을 배치 조회한다. */
+    /**
+     * 모임별 대표 이미지(첫 순번) URL을 배치 조회한다.
+     *
+     * <p>{@code Map.of()}는 {@code get(null)} 호출 시 예외를 던지므로(불변 맵의 null-key 거부 동작), 일반 봉사공고(POSTING,
+     * meetingId 항상 null)만 있는 페이지에서 호출부가 {@code .get(null)}을 하더라도 안전하도록 일반 빈 맵을 반환한다.
+     */
     private Map<Long, String> resolveThumbnails(Set<Long> meetingIds) {
         if (meetingIds.isEmpty()) {
-            return Map.of();
+            return new HashMap<>();
         }
         return meetingImageRepository.findRepresentativeImagesByMeetingIds(meetingIds).stream()
                 .collect(
@@ -214,7 +233,8 @@ public class PostingService {
                                 image -> meetingImageUrlResolver.resolve(image.getObjectKey())));
     }
 
-    private PostingListItem toListItem(UnifiedPostingRow row, String regionName, String thumbnailUrl) {
+    private PostingListItem toListItem(
+            UnifiedPostingRow row, String regionName, String thumbnailUrl) {
         PostingSourceType sourceType = PostingSourceType.valueOf(row.sourceType());
         return new PostingListItem(
                 sourceType,
@@ -240,8 +260,12 @@ public class PostingService {
             return Collections.emptyList();
         }
         try {
-            List<String> names = objectMapper.readValue(categoriesJson, new TypeReference<List<String>>() {});
-            return names.stream().filter(java.util.Objects::nonNull).map(PostingCategory::valueOf).toList();
+            List<String> names =
+                    objectMapper.readValue(categoriesJson, new TypeReference<List<String>>() {});
+            return names.stream()
+                    .filter(java.util.Objects::nonNull)
+                    .map(PostingCategory::valueOf)
+                    .toList();
         } catch (Exception e) {
             log.warn("모집공고 카테고리 JSON 파싱 실패: {}", categoriesJson, e);
             return Collections.emptyList();

@@ -124,7 +124,8 @@ public class MeetingRecruitManagementService {
 
     /** 신청자 반려: APPLIED -> REJECTED. */
     @Transactional
-    public RejectParticipantResponse rejectParticipant(Long meetingId, Long postId, Long participationId) {
+    public RejectParticipantResponse rejectParticipant(
+            Long meetingId, Long postId, Long participationId) {
         Meeting meeting = getMeeting(meetingId);
         requireHost(meeting, SecurityUtil.getCurrentUserId());
         getRecruit(meetingId, postId);
@@ -210,8 +211,8 @@ public class MeetingRecruitManagementService {
     }
 
     /**
-     * 신청 마감 시각이 지났는데 아직 확정되지 않은 모집공고를 자동 확정한다(스케줄러 전용). 남아 있는 APPLIED 신청자는 CONFIRMED로
-     * 전환하고, 신청자가 0명이어도 모집공고 자체는 확정 처리한다(별도 신청자 상태 변경은 없음).
+     * 신청 마감 시각이 지났는데 아직 확정되지 않은 모집공고를 자동 확정한다(스케줄러 전용). 남아 있는 APPLIED 신청자는 CONFIRMED로 전환하고, 신청자가
+     * 0명이어도 모집공고 자체는 확정 처리한다(별도 신청자 상태 변경은 없음).
      */
     @Transactional
     public int autoConfirmExpiredRecruits() {
@@ -221,7 +222,8 @@ public class MeetingRecruitManagementService {
                         RecruitConfirmationStatus.UNCONFIRMED, now);
         for (MeetingRecruit recruit : expired) {
             participationRepository
-                    .findAllByPostIdAndStatus(recruit.getPostId(), MeetingRecruitParticipationStatus.APPLIED)
+                    .findAllByPostIdAndStatus(
+                            recruit.getPostId(), MeetingRecruitParticipationStatus.APPLIED)
                     .forEach(MeetingRecruitParticipation::confirm);
             recruit.confirm(now);
         }
@@ -250,7 +252,9 @@ public class MeetingRecruitManagementService {
 
     private Map<Long, String> resolveNicknames(List<MeetingRecruitParticipation> participations) {
         Set<Long> userIds =
-                participations.stream().map(MeetingRecruitParticipation::getUserId).collect(Collectors.toSet());
+                participations.stream()
+                        .map(MeetingRecruitParticipation::getUserId)
+                        .collect(Collectors.toSet());
         if (userIds.isEmpty()) {
             return Map.of();
         }
@@ -262,7 +266,10 @@ public class MeetingRecruitManagementService {
         MeetingRecruitParticipation participation =
                 participationRepository
                         .findById(participationId)
-                        .orElseThrow(() -> new BusinessException(ErrorCode.RECRUIT_PARTICIPANT_NOT_FOUND));
+                        .orElseThrow(
+                                () ->
+                                        new BusinessException(
+                                                ErrorCode.RECRUIT_PARTICIPANT_NOT_FOUND));
         if (!participation.getPostId().equals(postId)) {
             throw new BusinessException(ErrorCode.RECRUIT_PARTICIPANT_NOT_FOUND);
         }

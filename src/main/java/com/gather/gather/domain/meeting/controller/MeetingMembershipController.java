@@ -35,7 +35,8 @@ public class MeetingMembershipController {
     @GetMapping("/{userId}")
     public ApiResponse<MeetingMemberDetailResponse> getMemberDetail(
             @PathVariable Long meetingId, @PathVariable Long userId) {
-        return ApiResponse.success(meetingMemberManagementService.getMemberDetail(meetingId, userId));
+        return ApiResponse.success(
+                meetingMemberManagementService.getMemberDetail(meetingId, userId));
     }
 
     @Operation(

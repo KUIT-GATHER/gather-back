@@ -19,9 +19,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-/**
- * 모임원 상세 조회·내보내기(#11). 게시글·댓글·완료된 활동 기록은 내보내기와 무관하게 그대로 유지한다(삭제하지 않음).
- */
+/** 모임원 상세 조회·내보내기(#11). 게시글·댓글·완료된 활동 기록은 내보내기와 무관하게 그대로 유지한다(삭제하지 않음). */
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
@@ -39,10 +37,12 @@ public class MeetingMemberManagementService {
                 meetingMemberRepository
                         .findByMeeting_IdAndUser_IdAndStatus(
                                 meetingId, targetUserId, MeetingMemberStatus.APPROVED)
-                        .orElseThrow(() -> new BusinessException(ErrorCode.MEETING_MEMBER_NOT_FOUND));
+                        .orElseThrow(
+                                () -> new BusinessException(ErrorCode.MEETING_MEMBER_NOT_FOUND));
         User user = member.getUser();
         Region region = user.getActivityRegion();
-        int totalRecognizedMinutes = userRecognizedMinutesService.getTotalRecognizedMinutes(targetUserId);
+        int totalRecognizedMinutes =
+                userRecognizedMinutesService.getTotalRecognizedMinutes(targetUserId);
         return new MeetingMemberDetailResponse(
                 user.getId(),
                 user.getNickname(),
@@ -56,8 +56,8 @@ public class MeetingMemberManagementService {
     }
 
     /**
-     * 팀장이 멤버를 내보낸다. 아직 종료되지 않은 활동에 CONFIRMED 상태로 참가 중이면 409로 거부하고, APPLIED 상태의 신청만 있다면
-     * CANCELLED로 정리한 뒤 내보낸다.
+     * 팀장이 멤버를 내보낸다. 아직 종료되지 않은 활동에 CONFIRMED 상태로 참가 중이면 409로 거부하고, APPLIED 상태의 신청만 있다면 CANCELLED로
+     * 정리한 뒤 내보낸다.
      */
     @Transactional
     public void removeMember(Long meetingId, Long targetUserId) {
@@ -71,10 +71,12 @@ public class MeetingMemberManagementService {
         MeetingMember target =
                 meetingMemberRepository
                         .findApprovedByMeetingIdAndUserIdForUpdate(meetingId, targetUserId)
-                        .orElseThrow(() -> new BusinessException(ErrorCode.MEETING_MEMBER_NOT_FOUND));
+                        .orElseThrow(
+                                () -> new BusinessException(ErrorCode.MEETING_MEMBER_NOT_FOUND));
 
         LocalDateTime now = LocalDateTime.now();
-        if (recruitParticipationRepository.existsActiveConfirmedActivity(meetingId, targetUserId, now)) {
+        if (recruitParticipationRepository.existsActiveConfirmedActivity(
+                meetingId, targetUserId, now)) {
             throw new BusinessException(ErrorCode.MEETING_MEMBER_HAS_ACTIVE_ACTIVITY);
         }
         recruitParticipationRepository

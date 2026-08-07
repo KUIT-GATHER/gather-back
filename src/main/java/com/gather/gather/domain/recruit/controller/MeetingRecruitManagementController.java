@@ -41,23 +41,32 @@ public class MeetingRecruitManagementController {
     @GetMapping("/{postId}/recruit/participants")
     public ApiResponse<RecruitParticipantListResponse> getParticipants(
             @PathVariable Long meetingId, @PathVariable Long postId) {
-        return ApiResponse.success(meetingRecruitManagementService.getParticipants(meetingId, postId));
+        return ApiResponse.success(
+                meetingRecruitManagementService.getParticipants(meetingId, postId));
     }
 
     @Operation(summary = "신청자 상세", description = "신청자 개인정보(연락처 등)를 포함한 상세 정보를 반환합니다(팀장 전용).")
     @GetMapping("/{postId}/recruit/participants/{participationId}")
     public ApiResponse<RecruitParticipantDetailResponse> getParticipantDetail(
-            @PathVariable Long meetingId, @PathVariable Long postId, @PathVariable Long participationId) {
+            @PathVariable Long meetingId,
+            @PathVariable Long postId,
+            @PathVariable Long participationId) {
         return ApiResponse.success(
-                meetingRecruitManagementService.getParticipantDetail(meetingId, postId, participationId));
+                meetingRecruitManagementService.getParticipantDetail(
+                        meetingId, postId, participationId));
     }
 
-    @Operation(summary = "신청자 반려", description = "신청(APPLIED) 상태의 신청자를 반려(REJECTED)합니다(팀장 전용). 반려된 신청은 다시 신청할 수 없습니다.")
+    @Operation(
+            summary = "신청자 반려",
+            description = "신청(APPLIED) 상태의 신청자를 반려(REJECTED)합니다(팀장 전용). 반려된 신청은 다시 신청할 수 없습니다.")
     @PatchMapping("/{postId}/recruit/participants/{participationId}/reject")
     public ApiResponse<RejectParticipantResponse> rejectParticipant(
-            @PathVariable Long meetingId, @PathVariable Long postId, @PathVariable Long participationId) {
+            @PathVariable Long meetingId,
+            @PathVariable Long postId,
+            @PathVariable Long participationId) {
         return ApiResponse.success(
-                meetingRecruitManagementService.rejectParticipant(meetingId, postId, participationId));
+                meetingRecruitManagementService.rejectParticipant(
+                        meetingId, postId, participationId));
     }
 
     @Operation(
@@ -68,7 +77,8 @@ public class MeetingRecruitManagementController {
     @PatchMapping("/{postId}/recruit/participants/confirm")
     public ApiResponse<ConfirmRecruitParticipantsResponse> confirmParticipants(
             @PathVariable Long meetingId, @PathVariable Long postId) {
-        return ApiResponse.success(meetingRecruitManagementService.confirmParticipants(meetingId, postId));
+        return ApiResponse.success(
+                meetingRecruitManagementService.confirmParticipants(meetingId, postId));
     }
 
     @Operation(
