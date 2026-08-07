@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.gather.gather.domain.posting.entity.Posting;
 import com.gather.gather.domain.posting.entity.PostingCategory;
+import com.gather.gather.domain.posting.entity.PostingSource;
 import com.gather.gather.domain.posting.entity.PostingStatus;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -429,6 +430,7 @@ class PostingRepositoryTest {
                 .actEndDate(actEndDate)
                 .category(PostingCategory.ENVIRONMENT)
                 .isActive(true)
+                .source(PostingSource.API_1365)
                 .build();
     }
 
@@ -441,6 +443,7 @@ class PostingRepositoryTest {
                 .actEndDate(actEndDate)
                 .category(PostingCategory.ENVIRONMENT)
                 .isActive(false)
+                .source(PostingSource.API_1365)
                 .build();
     }
 
@@ -451,6 +454,7 @@ class PostingRepositoryTest {
                         .status(status)
                         .activityDate(LocalDate.of(2026, 7, 15))
                         .category(PostingCategory.ENVIRONMENT)
+                        .source(PostingSource.API_1365)
                         .build());
     }
 
@@ -462,6 +466,7 @@ class PostingRepositoryTest {
                         .activityDate(LocalDate.of(2026, 7, 15))
                         .applicantCount(applicantCount)
                         .category(PostingCategory.ENVIRONMENT)
+                        .source(PostingSource.API_1365)
                         .build());
     }
 
@@ -474,6 +479,7 @@ class PostingRepositoryTest {
                         .noticeStartDate(noticeStart)
                         .noticeEndDate(noticeEnd)
                         .category(PostingCategory.ENVIRONMENT)
+                        .source(PostingSource.API_1365)
                         .build());
     }
 
@@ -484,6 +490,7 @@ class PostingRepositoryTest {
                 .activityDate(activityDate)
                 .regionId(regionId)
                 .category(PostingCategory.ENVIRONMENT)
+                .source(PostingSource.API_1365)
                 .build();
     }
 
@@ -493,6 +500,7 @@ class PostingRepositoryTest {
                 .status(PostingStatus.RECRUITING)
                 .activityDate(LocalDate.of(2026, 7, 15))
                 .category(category)
+                .source(PostingSource.API_1365)
                 .build();
     }
 
@@ -504,6 +512,7 @@ class PostingRepositoryTest {
                         .status(PostingStatus.RECRUITING)
                         .activityDate(LocalDate.of(2026, 7, 15))
                         .category(PostingCategory.ENVIRONMENT)
+                        .source(PostingSource.API_1365)
                         .build());
     }
 }
