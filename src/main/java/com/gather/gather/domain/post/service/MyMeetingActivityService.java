@@ -23,7 +23,6 @@ import com.gather.gather.global.exception.BusinessException;
 import com.gather.gather.global.exception.ErrorCode;
 import com.gather.gather.global.util.SecurityUtil;
 import java.time.LocalDate;
-import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -34,9 +33,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * 모임 내부 "나의 활동" 탭 조회. 가입자 전용이며, 작성한 게시글·댓글 단 게시글 목록과 탭 요약(개수)을 제공한다.
+ * 모임 내 "나의 활동" 탭 조회. 가입자 전용이며, 작성한 게시글·댓글단 게시글 목록과 각 요약(개수)을 제공한다.
  *
- * <p>"내가 신청한 봉사"는 모집공고(RECRUIT) 참여신청 기능과 함께 다음 라운드에서 추가한다.
+ * <p>"닫기 신청 봉사"는 모집공고(RECRUIT) 참여신청 기능과 함께 이 클래스에도 추가했다.
  */
 @Service
 @RequiredArgsConstructor
@@ -83,7 +82,7 @@ public class MyMeetingActivityService {
                 recruitParticipationRepository.findMyAppliedRecruits(userId, meetingId, pageable));
     }
 
-    /** 후기 작성 가능 활동 조회 - POSTING(연결 공고 완료) + MEETING_RECRUIT(모집공고 참석 완료) 출처를 합쳐 반환한다. */
+    /** 활동 후기 작성 가능 활동 조회 - POSTING(연결 공고 완료) + MEETING_RECRUIT(모집공고 참석 완료) 출처를 함께 반환한다. */
     public List<ReviewableActivityResponse> getReviewableActivities(Long meetingId) {
         Long userId = requireApprovedMember(meetingId);
         Meeting meeting =
@@ -128,18 +127,12 @@ public class MyMeetingActivityService {
     }
 
     private ReviewableActivityResponse toRecruitActivity(ReviewableRecruitActivity activity) {
-        LocalDateTime start =
-                LocalDateTime.of(
-                        activity.actDate(),
-                        activity.actStartTime() != null ? activity.actStartTime() : LocalTime.MIN);
-        LocalDateTime end =
-                LocalDateTime.of(
-                        activity.actDate(),
-                        activity.actEndTime() != null
-                                ? activity.actEndTime()
-                                : LocalTime.of(23, 59, 59));
         return new ReviewableActivityResponse(
-                ReviewSourceType.MEETING_RECRUIT, activity.postId(), activity.title(), start, end);
+                ReviewSourceType.MEETING_RECRUIT,
+                activity.postId(),
+                activity.title(),
+                activity.activityStartAt(),
+                activity.activityEndAt());
     }
 
     private Long requireApprovedMember(Long meetingId) {

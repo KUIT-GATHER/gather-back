@@ -358,7 +358,7 @@ public class MeetingService {
         Meeting meeting = getMeetingEntityForUpdate(meetingId);
         validateHost(meeting, userId);
         if (meetingRecruitParticipationRepository.existsConfirmedParticipantWithUpcomingActivity(
-                meetingId, LocalDate.now())) {
+                meetingId, LocalDateTime.now())) {
             throw new BusinessException(ErrorCode.MEETING_DISBAND_HAS_CONFIRMED_PARTICIPANTS);
         }
         meeting.delete();
