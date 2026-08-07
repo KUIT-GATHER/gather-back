@@ -1,6 +1,7 @@
 package com.gather.gather.domain.recruit.repository;
 
 import com.gather.gather.domain.recruit.dto.MyAppliedRecruitResponse;
+import com.gather.gather.domain.recruit.dto.ReviewableRecruitActivity;
 import com.gather.gather.domain.recruit.entity.MeetingRecruitParticipation;
 import com.gather.gather.domain.recruit.entity.MeetingRecruitParticipationStatus;
 import java.time.LocalDateTime;
@@ -78,7 +79,7 @@ public interface MeetingRecruitParticipationRepository
     boolean existsConfirmedParticipantWithUpcomingActivity(
             @Param("meetingId") Long meetingId, @Param("now") LocalDateTime now);
 
-    /** 신청자 관리 목록/출석 대상 조회용 - 신청 순으로 전체 참여를 반환한다(페이지네이션 없음). */
+    /** 신청자 관리 목록/출석 처리용 조회 - 신청 순으로 전체 참여를 반환한다(페이지네이션 없음). */
     List<MeetingRecruitParticipation> findAllByPostIdOrderByCreatedAtAsc(Long postId);
 
     long countByPostIdAndStatus(Long postId, MeetingRecruitParticipationStatus status);
@@ -114,7 +115,7 @@ public interface MeetingRecruitParticipationRepository
             @Param("userId") Long userId,
             @Param("now") LocalDateTime now);
 
-    /** 멤버 내보내기용 - 이 모임에서 사용자의 APPLIED 참여 전체(취소 처리 대상) 조회. */
+    /** 멤버 내보내기용 - 이 모임에서 사용자의 APPLIED 참여 전체(취소처리 대상) 조회. */
     @Query(
             """
             SELECT prt
@@ -127,4 +128,24 @@ public interface MeetingRecruitParticipationRepository
             """)
     List<MeetingRecruitParticipation> findApplied(
             @Param("meetingId") Long meetingId, @Param("userId") Long userId);
+
+    /**
+     * 활동 후기 작성 가능 목록(MEETING_RECRUIT 출처) - 이 모임에서 내가 COMPLETED(참석 처리되어 완료)된 모집공고 참여를 조회한다. 이미 후기를
+     * 작성한(REVIEWED) 참여는 제외한다.
+     */
+    @Query(
+            """
+            SELECT new com.gather.gather.domain.recruit.dto.ReviewableRecruitActivity(
+                p.id, p.title, r.activityStartAt, r.activityEndAt)
+            FROM MeetingRecruitParticipation prt
+            JOIN Post p ON p.id = prt.postId
+            JOIN MeetingRecruit r ON r.postId = prt.postId
+            WHERE prt.userId = :userId
+              AND p.meeting.id = :meetingId
+              AND p.deletedAt IS NULL
+              AND prt.status = com.gather.gather.domain.recruit.entity.MeetingRecruitParticipationStatus.COMPLETED
+            ORDER BY r.activityStartAt DESC, p.id DESC
+            """)
+    List<ReviewableRecruitActivity> findReviewableActivities(
+            @Param("userId") Long userId, @Param("meetingId") Long meetingId);
 }

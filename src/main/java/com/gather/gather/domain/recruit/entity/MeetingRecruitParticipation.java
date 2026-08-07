@@ -19,10 +19,14 @@ import org.hibernate.annotations.UpdateTimestamp;
 /**
  * 모집공고(RECRUIT post) 참여신청.
  *
- * <p>이 파일은 모집공고 작성·조회·신청(다른 PR)과 겹칠 수 있다 - 이 PR(팀장용 신청자 관리)에서는 반려·일괄확정·출석 처리가 추가로 필요해
- * applicantType·attendanceStatus·recognizedMinutesApplied 필드와
- * reject()/confirm()/markPresent()/markAbsent()를 포함한 상위 집합으로 작성했다. 두 PR을 모두 반영할 때는 필드·메서드 합집합을 유지하면
- * 된다.
+ * <p>취소는 상태 전이({@code CANCELLED})로 처리하고 {@code (post_id, user_id)} UNIQUE로 중복 신청을 막는다 - 취소 후 재신청은 새
+ * 행이 아니라 같은 행을 {@link #reapply(RecruitApplicantType)}로 되돌린다. 도메인 결합을 피해 post/user를 ID로만 보관한다({@code
+ * PostingParticipation}과 동일 컨벤션).
+ *
+ * <p>이 파일은 여러 PR이 각자의 범위만큼 확장한다: 활동 후기 PR은 {@link #review()}/{@link #unreview()}를, 팀장용 신청자 관리 PR은
+ * {@code attendanceStatus}/{@code recognizedMinutesApplied} 필드와 {@link #reject()}/{@link
+ * #confirm()}/ {@link #markPresent(int)}/{@link #markAbsent()}를 추가한다. 병합 시 각 PR이 추가한 필드·메서드를 모두
+ * 유지한다.
  */
 @Entity
 @Getter
@@ -58,7 +62,7 @@ public class MeetingRecruitParticipation {
     @Column(name = "attendance_status", nullable = false, length = 20)
     private RecruitAttendanceStatus attendanceStatus;
 
-    /** 출석 처리로 실제 반영된 인정 시간(분). ABSENT로 되돌릴 때 정확히 차감하기 위해 적용된 값을 그대로 보관한다. */
+    /** 출석 처리로 실제 반영된 인정 시간(분). ABSENT로 되돌릴 때 정확히 차감하기 위해 적용한 값을 그대로 보관한다. */
     @Column(name = "recognized_minutes_applied", nullable = false)
     private int recognizedMinutesApplied;
 
@@ -90,10 +94,20 @@ public class MeetingRecruitParticipation {
         this.status = MeetingRecruitParticipationStatus.CANCELLED;
     }
 
-    /** 취소(CANCELLED) 상태에서 마감 전 다시 신청한다. */
+    /** 취소(CANCELLED) 상태에서 마감 전 다시 신청한다. 재신청 시점의 사용자 구분을 다시 기록한다. */
     public void reapply(RecruitApplicantType applicantType) {
         this.applicantType = applicantType;
         this.status = MeetingRecruitParticipationStatus.APPLIED;
+    }
+
+    /** 활동 후기를 작성하면 완료(COMPLETED) 상태를 후기 작성됨(REVIEWED)으로 전환한다. */
+    public void review() {
+        this.status = MeetingRecruitParticipationStatus.REVIEWED;
+    }
+
+    /** 후기가 삭제되면 다시 작성할 수 있도록 완료(COMPLETED) 상태로 되돌린다. */
+    public void unreview() {
+        this.status = MeetingRecruitParticipationStatus.COMPLETED;
     }
 
     /** 팀장이 신청(APPLIED)을 반려한다. */
@@ -116,7 +130,7 @@ public class MeetingRecruitParticipation {
         this.recognizedMinutesApplied = recognizedMinutesToApply;
     }
 
-    /** 활동 종료 후 출석 처리 - 결석. 확정(CONFIRMED) 상태로 유지하고 이미 반영된 인정 시간이 있으면 차감(0으로)한다. 이미 ABSENT면 멱등. */
+    /** 활동 종료 후 출석 처리 - 불참. 확정(CONFIRMED) 상태로 유지하고, 이미 반영된 인정 시간이 있으면 차감(0으로)한다. 이미 ABSENT면 멱등. */
     public void markAbsent() {
         if (attendanceStatus == RecruitAttendanceStatus.ABSENT) {
             return;
