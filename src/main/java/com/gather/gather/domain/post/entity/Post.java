@@ -3,6 +3,7 @@ package com.gather.gather.domain.post.entity;
 import com.gather.gather.domain.auth.entity.User;
 import com.gather.gather.domain.meeting.entity.Meeting;
 import com.gather.gather.domain.post.enums.PostType;
+import com.gather.gather.domain.post.enums.ReviewSourceType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -66,6 +67,15 @@ public class Post {
     @Column(name = "comment_count", nullable = false)
     private Integer commentCount;
 
+    /** REVIEW 유형일 때만 사용. 이 후기가 근거로 삼은 활동(공고 참여/모집공고 참여)의 출처 구분. */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "review_source_type", length = 20)
+    private ReviewSourceType reviewSourceType;
+
+    /** REVIEW 유형일 때만 사용. reviewSourceType에 따라 postingId 또는 모집공고 postId를 가리킨다. */
+    @Column(name = "review_source_id")
+    private Long reviewSourceId;
+
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
@@ -121,6 +131,12 @@ public class Post {
 
     public boolean isAuthor(Long userId) {
         return this.user.getId().equals(userId);
+    }
+
+    /** 후기(REVIEW) 게시글을 특정 활동 참여 기록에 연결한다. */
+    public void linkReviewSource(ReviewSourceType reviewSourceType, Long reviewSourceId) {
+        this.reviewSourceType = reviewSourceType;
+        this.reviewSourceId = reviewSourceId;
     }
 
     public void increaseLikeCount() {

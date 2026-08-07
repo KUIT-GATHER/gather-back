@@ -62,6 +62,7 @@ public class PostService {
     private final MeetingMemberRepository meetingMemberRepository;
     private final UserRepository userRepository;
     private final ApplicationEventPublisher eventPublisher;
+    private final PostReviewSourceService postReviewSourceService;
 
     public PageResponse<PostSummaryResponse> getPosts(
             Long meetingId, List<PostType> requestedTypes, Pageable pageable) {
@@ -129,6 +130,12 @@ public class PostService {
         postImageService.setImages(userId, savedPost.getId(), request.imageObjectKeys());
 
         if (request.type() == PostType.REVIEW) {
+            postReviewSourceService.linkAndMarkReviewed(
+                    savedPost,
+                    meeting,
+                    userId,
+                    request.reviewSourceType(),
+                    request.reviewSourceId());
             eventPublisher.publishEvent(
                     new BadgeAwardRequestedEvent(userId, BadgeType.FIRST_REVIEW));
         }
@@ -170,6 +177,9 @@ public class PostService {
             throw new BusinessException(ErrorCode.POST_FORBIDDEN);
         }
 
+        if (post.getType() == PostType.REVIEW) {
+            postReviewSourceService.unlinkOnDelete(post);
+        }
         post.delete();
     }
 

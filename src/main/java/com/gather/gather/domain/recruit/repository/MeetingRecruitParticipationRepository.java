@@ -1,8 +1,10 @@
 package com.gather.gather.domain.recruit.repository;
 
 import com.gather.gather.domain.recruit.dto.MyAppliedRecruitResponse;
+import com.gather.gather.domain.recruit.dto.ReviewableRecruitActivity;
 import com.gather.gather.domain.recruit.entity.MeetingRecruitParticipation;
 import java.time.LocalDate;
+import java.util.List;
 import java.util.Optional;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -75,4 +77,24 @@ public interface MeetingRecruitParticipationRepository
             """)
     boolean existsConfirmedParticipantWithUpcomingActivity(
             @Param("meetingId") Long meetingId, @Param("today") LocalDate today);
+
+    /**
+     * 활동 후기 작성 가능 목록(MEETING_RECRUIT 출처) - 이 모임에서 내가 COMPLETED(참석 처리되어 완료)된 모집공고 참여를 조회한다. 이미 후기를
+     * 작성한(REVIEWED) 참여는 제외한다.
+     */
+    @Query(
+            """
+            SELECT new com.gather.gather.domain.recruit.dto.ReviewableRecruitActivity(
+                p.id, p.title, r.actDate, r.actStartTime, r.actEndTime)
+            FROM MeetingRecruitParticipation prt
+            JOIN Post p ON p.id = prt.postId
+            JOIN MeetingRecruit r ON r.postId = prt.postId
+            WHERE prt.userId = :userId
+              AND p.meeting.id = :meetingId
+              AND p.deletedAt IS NULL
+              AND prt.status = com.gather.gather.domain.recruit.entity.MeetingRecruitParticipationStatus.COMPLETED
+            ORDER BY r.actDate DESC, p.id DESC
+            """)
+    List<ReviewableRecruitActivity> findReviewableActivities(
+            @Param("userId") Long userId, @Param("meetingId") Long meetingId);
 }
