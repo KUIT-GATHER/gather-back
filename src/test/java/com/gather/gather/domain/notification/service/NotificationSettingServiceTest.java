@@ -129,4 +129,34 @@ class NotificationSettingServiceTest {
         verify(notificationSettingRepository)
                 .save(org.mockito.ArgumentMatchers.any(NotificationSetting.class));
     }
+
+    @Test
+    @DisplayName("저장된 모임 댓글 알림 설정을 반환한다")
+    void isMeetingPostCommentEnabledReturnsExistingSetting() {
+        NotificationSetting setting = NotificationSetting.createDefault(user);
+        setting.update(true, true, true, true, true, true, true);
+
+        when(notificationSettingRepository.findByUser_Id(USER_ID)).thenReturn(Optional.of(setting));
+
+        boolean enabled = notificationSettingService.isMeetingPostCommentEnabled(USER_ID);
+
+        assertThat(enabled).isTrue();
+    }
+
+    @Test
+    @DisplayName("설정이 없으면 기본 설정에 따라 모임 댓글 알림을 비활성화한다")
+    void isMeetingPostCommentEnabledCreatesDefaultDisabledSetting() {
+        when(notificationSettingRepository.findByUser_Id(USER_ID)).thenReturn(Optional.empty());
+        when(userRepository.findById(USER_ID)).thenReturn(Optional.of(user));
+        when(notificationSettingRepository.save(
+                        org.mockito.ArgumentMatchers.any(NotificationSetting.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        boolean enabled = notificationSettingService.isMeetingPostCommentEnabled(USER_ID);
+
+        assertThat(enabled).isFalse();
+
+        verify(notificationSettingRepository)
+                .save(org.mockito.ArgumentMatchers.any(NotificationSetting.class));
+    }
 }
