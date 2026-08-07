@@ -127,6 +127,10 @@ public enum ErrorCode {
     // ── 모임 나가기 ──
     MEETING_HOST_CANNOT_LEAVE(HttpStatus.CONFLICT, "모임장은 모임을 나갈 수 없습니다."),
 
+    // ── 모임 해산 ──
+    MEETING_DISBAND_HAS_CONFIRMED_PARTICIPANTS(
+            HttpStatus.CONFLICT, "아직 종료되지 않은 모집 활동에 확정된 참가자가 있어 모임을 해산할 수 없습니다."),
+
     // ── 모집공고(RECRUIT) ──
     POST_RECRUIT_NOT_ALLOWED(HttpStatus.BAD_REQUEST, "모집공고는 전용 API로 작성해주세요."),
     RECRUIT_HOST_ONLY(HttpStatus.FORBIDDEN, "모집공고는 모임장만 작성할 수 있습니다."),
@@ -135,6 +139,10 @@ public enum ErrorCode {
     RECRUIT_APPLICATION_CLOSED(HttpStatus.CONFLICT, "신청 기간이 종료되어 변경할 수 없습니다."),
     RECRUIT_CAPACITY_EXCEEDED(HttpStatus.CONFLICT, "모집 정원이 가득 찼습니다."),
     RECRUIT_MAX_BELOW_APPLIED(HttpStatus.CONFLICT, "현재 신청 인원보다 정원을 적게 줄일 수 없습니다."),
+    RECRUIT_PARTICIPATION_NOT_FOUND(HttpStatus.NOT_FOUND, "참여 신청을 찾을 수 없습니다."),
+    RECRUIT_PARTICIPATION_CONFIRM_NOT_ALLOWED(HttpStatus.CONFLICT, "신청 상태의 참여만 확정할 수 있습니다."),
+    RECRUIT_ACTIVITY_NOT_ENDED(HttpStatus.CONFLICT, "활동이 종료된 이후에만 참석 처리를 할 수 있습니다."),
+    RECRUIT_PRESENT_NOT_ALLOWED(HttpStatus.CONFLICT, "확정된 참여만 참석 처리할 수 있습니다."),
     POST_CONTENT_TOO_LONG(HttpStatus.BAD_REQUEST, "내용 길이가 허용 범위를 초과했습니다."),
     ;
 

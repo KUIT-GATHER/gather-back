@@ -64,6 +64,10 @@ class MeetingServiceTest {
     @Mock private org.springframework.context.ApplicationEventPublisher eventPublisher;
     @Mock private RegionNameResolver regionNameResolver;
 
+    @Mock
+    private com.gather.gather.domain.recruit.repository.MeetingRecruitParticipationRepository
+            meetingRecruitParticipationRepository;
+
     @InjectMocks private MeetingService meetingService;
 
     private Meeting meeting;
@@ -490,6 +494,81 @@ class MeetingServiceTest {
     }
 
     @Test
+    @DisplayName("disbandMeeting soft-deletes the meeting when called by the host")
+    void disbandMeeting_disbandsMeeting_whenCalledByHost() {
+        setAuthenticatedUser(1L);
+        Meeting hostMeeting = mock(Meeting.class);
+        com.gather.gather.domain.auth.entity.User host =
+                mock(com.gather.gather.domain.auth.entity.User.class);
+        when(host.getId()).thenReturn(1L);
+        when(hostMeeting.getHost()).thenReturn(host);
+        when(meetingRepository.findByIdAndDeletedAtIsNullForUpdate(12L))
+                .thenReturn(java.util.Optional.of(hostMeeting));
+        meetingService.disbandMeeting(12L);
+        verify(hostMeeting).delete();
+    }
+
+    @Test
+    @DisplayName("disbandMeeting throws MEETING_HOST_ONLY when called by a non-host")
+    void disbandMeeting_throwsHostOnly_whenNotHost() {
+        setAuthenticatedUser(2L);
+        Meeting hostMeeting = mock(Meeting.class);
+        com.gather.gather.domain.auth.entity.User host =
+                mock(com.gather.gather.domain.auth.entity.User.class);
+        when(host.getId()).thenReturn(1L);
+        when(hostMeeting.getHost()).thenReturn(host);
+        when(meetingRepository.findByIdAndDeletedAtIsNullForUpdate(12L))
+                .thenReturn(java.util.Optional.of(hostMeeting));
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> meetingService.disbandMeeting(12L))
+                .isInstanceOf(com.gather.gather.global.exception.BusinessException.class)
+                .hasFieldOrPropertyWithValue(
+                        "errorCode",
+                        com.gather.gather.global.exception.ErrorCode.MEETING_HOST_ONLY);
+        verify(hostMeeting, never()).delete();
+    }
+
+    @Test
+    @DisplayName(
+            "disbandMeeting throws MEETING_NOT_FOUND when the meeting does not exist or is"
+                    + " already deleted")
+    void disbandMeeting_throwsMeetingNotFound_whenMeetingMissing() {
+        setAuthenticatedUser(1L);
+        when(meetingRepository.findByIdAndDeletedAtIsNullForUpdate(999L))
+                .thenReturn(java.util.Optional.empty());
+        org.assertj.core.api.Assertions.assertThatThrownBy(
+                        () -> meetingService.disbandMeeting(999L))
+                .isInstanceOf(com.gather.gather.global.exception.BusinessException.class)
+                .hasFieldOrPropertyWithValue(
+                        "errorCode",
+                        com.gather.gather.global.exception.ErrorCode.MEETING_NOT_FOUND);
+    }
+
+    @Test
+    @DisplayName(
+            "disbandMeeting throws MEETING_DISBAND_HAS_CONFIRMED_PARTICIPANTS when an upcoming"
+                    + " recruit activity has a confirmed participant")
+    void disbandMeeting_throwsHasConfirmedParticipants_whenUpcomingActivityConfirmed() {
+        setAuthenticatedUser(1L);
+        Meeting hostMeeting = mock(Meeting.class);
+        com.gather.gather.domain.auth.entity.User host =
+                mock(com.gather.gather.domain.auth.entity.User.class);
+        when(host.getId()).thenReturn(1L);
+        when(hostMeeting.getHost()).thenReturn(host);
+        when(meetingRepository.findByIdAndDeletedAtIsNullForUpdate(12L))
+                .thenReturn(java.util.Optional.of(hostMeeting));
+        when(meetingRecruitParticipationRepository.existsConfirmedParticipantWithUpcomingActivity(
+                        org.mockito.ArgumentMatchers.eq(12L), org.mockito.ArgumentMatchers.any()))
+                .thenReturn(true);
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> meetingService.disbandMeeting(12L))
+                .isInstanceOf(com.gather.gather.global.exception.BusinessException.class)
+                .hasFieldOrPropertyWithValue(
+                        "errorCode",
+                        com.gather.gather.global.exception.ErrorCode
+                                .MEETING_DISBAND_HAS_CONFIRMED_PARTICIPANTS);
+        verify(hostMeeting, never()).delete();
+    }
+
+    @Test
     @DisplayName("cancelMyJoinRequest cancels the caller's own pending join request")
     void cancelMyJoinRequest_cancelsPendingRequest_whenCalledByRequester() {
         setAuthenticatedUser(1L);
@@ -498,9 +577,7 @@ class MeetingServiceTest {
         MeetingMember pendingMember = mock(MeetingMember.class);
         when(meetingMemberRepository.findPendingByMeetingIdAndUserIdForUpdate(12L, 1L))
                 .thenReturn(java.util.Optional.of(pendingMember));
-
         meetingService.cancelMyJoinRequest(12L);
-
         verify(pendingMember).cancel();
     }
 
@@ -514,7 +591,6 @@ class MeetingServiceTest {
                 .thenReturn(java.util.Optional.of(meeting));
         when(meetingMemberRepository.findPendingByMeetingIdAndUserIdForUpdate(12L, 1L))
                 .thenReturn(java.util.Optional.empty());
-
         org.assertj.core.api.Assertions.assertThatThrownBy(
                         () -> meetingService.cancelMyJoinRequest(12L))
                 .isInstanceOf(com.gather.gather.global.exception.BusinessException.class)
@@ -530,7 +606,6 @@ class MeetingServiceTest {
         setAuthenticatedUser(1L);
         when(meetingRepository.findByIdAndDeletedAtIsNull(999L))
                 .thenReturn(java.util.Optional.empty());
-
         org.assertj.core.api.Assertions.assertThatThrownBy(
                         () -> meetingService.cancelMyJoinRequest(999L))
                 .isInstanceOf(com.gather.gather.global.exception.BusinessException.class)
@@ -550,13 +625,10 @@ class MeetingServiceTest {
         when(meetingRepository.findByIdAndDeletedAtIsNullForUpdate(12L))
                 .thenReturn(Optional.of(freeMeeting));
         when(regionRepository.existsById(99L)).thenReturn(true);
-
         MeetingUpdateRequest request =
                 updateRequest(
                         25, Set.of(PostingCategory.WELFARE), 99L, LocalDateTime.now().plusDays(3));
-
         MeetingDetailResponse response = meetingService.updateMeeting(12L, request);
-
         assertThat(response.name()).isEqualTo("한강공원 플로깅팀(수정)");
         assertThat(response.maxMember()).isEqualTo(25);
         assertThat(response.regionId()).isEqualTo(99L);
@@ -571,11 +643,9 @@ class MeetingServiceTest {
         Meeting freeMeeting = freeMeeting(20);
         when(meetingRepository.findByIdAndDeletedAtIsNullForUpdate(12L))
                 .thenReturn(Optional.of(freeMeeting));
-
         MeetingUpdateRequest request =
                 updateRequest(
                         60, Set.of(PostingCategory.WELFARE), 99L, LocalDateTime.now().plusDays(3));
-
         assertThatThrownBy(() -> meetingService.updateMeeting(12L, request))
                 .isInstanceOf(BusinessException.class)
                 .hasFieldOrPropertyWithValue("errorCode", ErrorCode.MEETING_HOST_ONLY);
@@ -591,11 +661,9 @@ class MeetingServiceTest {
         freeMeeting.increaseMemberCount(); // currentMemberCount = 4
         when(meetingRepository.findByIdAndDeletedAtIsNullForUpdate(12L))
                 .thenReturn(Optional.of(freeMeeting));
-
         MeetingUpdateRequest request =
                 updateRequest(
                         3, Set.of(PostingCategory.WELFARE), 99L, LocalDateTime.now().plusDays(3));
-
         assertThatThrownBy(() -> meetingService.updateMeeting(12L, request))
                 .isInstanceOf(BusinessException.class)
                 .hasFieldOrPropertyWithValue(
@@ -609,11 +677,9 @@ class MeetingServiceTest {
         Meeting freeMeeting = freeMeeting(20);
         when(meetingRepository.findByIdAndDeletedAtIsNullForUpdate(12L))
                 .thenReturn(Optional.of(freeMeeting));
-
         MeetingUpdateRequest request =
                 updateRequest(
                         31, Set.of(PostingCategory.WELFARE), 99L, LocalDateTime.now().plusDays(3));
-
         assertThatThrownBy(() -> meetingService.updateMeeting(12L, request))
                 .isInstanceOf(BusinessException.class)
                 .hasFieldOrPropertyWithValue("errorCode", ErrorCode.MEETING_MAX_MEMBER_EXCEEDED);
@@ -626,9 +692,7 @@ class MeetingServiceTest {
         Meeting postingMeeting = postingMeeting(20);
         when(meetingRepository.findByIdAndDeletedAtIsNullForUpdate(12L))
                 .thenReturn(Optional.of(postingMeeting));
-
         MeetingUpdateRequest request = updateRequest(31, null, null, postingMeeting.getDeadline());
-
         assertThatThrownBy(() -> meetingService.updateMeeting(12L, request))
                 .isInstanceOf(BusinessException.class)
                 .hasFieldOrPropertyWithValue("errorCode", ErrorCode.MEETING_MAX_MEMBER_EXCEEDED);
@@ -641,13 +705,10 @@ class MeetingServiceTest {
         Meeting postingMeeting = postingMeeting(20);
         when(meetingRepository.findByIdAndDeletedAtIsNullForUpdate(12L))
                 .thenReturn(Optional.of(postingMeeting));
-
         MeetingUpdateRequest request =
                 updateRequest(
                         25, Set.of(PostingCategory.WELFARE), 999L, postingMeeting.getDeadline());
-
         MeetingDetailResponse response = meetingService.updateMeeting(12L, request);
-
         assertThat(response.regionId()).isEqualTo(postingMeeting.getRegionId());
         assertThat(response.categories()).isEqualTo(postingMeeting.getCategories());
         assertThat(response.maxMember()).isEqualTo(25);
@@ -661,11 +722,9 @@ class MeetingServiceTest {
         Meeting freeMeeting = freeMeeting(20);
         when(meetingRepository.findByIdAndDeletedAtIsNullForUpdate(12L))
                 .thenReturn(Optional.of(freeMeeting));
-
         MeetingUpdateRequest request =
                 updateRequest(
                         25, Set.of(PostingCategory.WELFARE), null, LocalDateTime.now().plusDays(3));
-
         assertThatThrownBy(() -> meetingService.updateMeeting(12L, request))
                 .isInstanceOf(BusinessException.class)
                 .hasFieldOrPropertyWithValue("errorCode", ErrorCode.VALIDATION_ERROR);
@@ -678,10 +737,8 @@ class MeetingServiceTest {
         Meeting postingMeeting = postingMeeting(20);
         when(meetingRepository.findByIdAndDeletedAtIsNullForUpdate(12L))
                 .thenReturn(Optional.of(postingMeeting));
-
         MeetingUpdateRequest request =
                 updateRequest(25, null, null, postingMeeting.getActivityStartAt().plusMinutes(1));
-
         assertThatThrownBy(() -> meetingService.updateMeeting(12L, request))
                 .isInstanceOf(BusinessException.class)
                 .hasFieldOrPropertyWithValue("errorCode", ErrorCode.INVALID_MEETING_TIME);
@@ -694,12 +751,9 @@ class MeetingServiceTest {
         Meeting postingMeeting = postingMeeting(20);
         when(meetingRepository.findByIdAndDeletedAtIsNullForUpdate(12L))
                 .thenReturn(Optional.of(postingMeeting));
-
         MeetingUpdateRequest request =
                 updateRequest(25, null, null, postingMeeting.getDeadline(), true);
-
         MeetingDetailResponse response = meetingService.updateMeeting(12L, request);
-
         assertThat(response.timeRecognized()).isTrue();
     }
 
@@ -711,7 +765,6 @@ class MeetingServiceTest {
         when(meetingRepository.findByIdAndDeletedAtIsNullForUpdate(12L))
                 .thenReturn(Optional.of(freeMeeting));
         when(regionRepository.existsById(99L)).thenReturn(true);
-
         MeetingUpdateRequest request =
                 updateRequest(
                         25,
@@ -719,9 +772,7 @@ class MeetingServiceTest {
                         99L,
                         LocalDateTime.now().plusDays(3),
                         true);
-
         MeetingDetailResponse response = meetingService.updateMeeting(12L, request);
-
         assertThat(response.timeRecognized()).isFalse();
     }
 
