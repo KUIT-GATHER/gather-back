@@ -46,8 +46,8 @@ import org.springframework.transaction.annotation.Transactional;
  * <ul>
  *   <li>작성·수정: 모임장(HOST)만
  *   <li>상세 열람: {@code external=false}면 승인된 모임원만, {@code external=true}면 비로그인 포함 누구나
- *   <li>참여신청/취소: {@code external=false}면 승인된 모임원만, {@code external=true}면 로그인한 사용자 누구나. 신청
- *       마감 전이고 아직 확정(CONFIRMED)되지 않은 동안만 가능
+ *   <li>참여신청/취소: {@code external=false}면 승인된 모임원만, {@code external=true}면 로그인한 사용자 누구나. 신청 마감 전이고
+ *       아직 확정(CONFIRMED)되지 않은 동안만 가능
  * </ul>
  */
 @Service
@@ -81,8 +81,8 @@ public class MeetingRecruitService {
         requireHost(meetingId, userId);
         validateSchedule(
                 request.activityStartAt(), request.activityEndAt(), request.applyDeadlineAt());
-        Integer recognizedMinutes = resolveRecognizedMinutes(
-                request.timeRecognized(), request.recognizedMinutes());
+        Integer recognizedMinutes =
+                resolveRecognizedMinutes(request.timeRecognized(), request.recognizedMinutes());
 
         User author = getUser(userId);
         Post post =
@@ -137,7 +137,8 @@ public class MeetingRecruitService {
                 resolveRecognizedMinutes(request.timeRecognized(), request.recognizedMinutes());
 
         MeetingRecruit recruit = getRecruitDetail(postId);
-        long appliedCount = participationRepository.countByPostIdAndStatusIn(postId, ACTIVE_STATUSES);
+        long appliedCount =
+                participationRepository.countByPostIdAndStatusIn(postId, ACTIVE_STATUSES);
         if (request.maxParticipants() < appliedCount) {
             throw new BusinessException(ErrorCode.RECRUIT_MAX_BELOW_APPLIED);
         }
@@ -162,7 +163,15 @@ public class MeetingRecruitService {
                         .orElse(null);
         // 수정은 작성자 본인만 도달하므로 canEdit/canDelete 모두 true.
         return toDetail(
-                post, recruit, meeting, post.getUser(), (int) appliedCount, status, true, true, true);
+                post,
+                recruit,
+                meeting,
+                post.getUser(),
+                (int) appliedCount,
+                status,
+                true,
+                true,
+                true);
     }
 
     public RecruitDetailResponse getRecruit(Long meetingId, Long postId) {
@@ -176,7 +185,8 @@ public class MeetingRecruitService {
             throw new BusinessException(ErrorCode.POST_ACCESS_DENIED);
         }
 
-        long appliedCount = participationRepository.countByPostIdAndStatusIn(postId, ACTIVE_STATUSES);
+        long appliedCount =
+                participationRepository.countByPostIdAndStatusIn(postId, ACTIVE_STATUSES);
         MeetingRecruitParticipationStatus status =
                 userId == null
                         ? null
@@ -277,7 +287,8 @@ public class MeetingRecruitService {
     }
 
     private void requireCapacity(Long postId, MeetingRecruit recruit) {
-        long activeCount = participationRepository.countByPostIdAndStatusIn(postId, ACTIVE_STATUSES);
+        long activeCount =
+                participationRepository.countByPostIdAndStatusIn(postId, ACTIVE_STATUSES);
         if (activeCount >= recruit.getMaxParticipants()) {
             throw new BusinessException(ErrorCode.RECRUIT_CAPACITY_EXCEEDED);
         }
@@ -293,14 +304,18 @@ public class MeetingRecruitService {
             return open ? RecruitParticipationAction.APPLY : RecruitParticipationAction.NONE;
         }
         return switch (status) {
-            case APPLIED -> open ? RecruitParticipationAction.CANCEL : RecruitParticipationAction.NONE;
-            case CANCELLED -> open ? RecruitParticipationAction.APPLY : RecruitParticipationAction.NONE;
+            case APPLIED ->
+                    open ? RecruitParticipationAction.CANCEL : RecruitParticipationAction.NONE;
+            case CANCELLED ->
+                    open ? RecruitParticipationAction.APPLY : RecruitParticipationAction.NONE;
             case REJECTED, CONFIRMED, COMPLETED, REVIEWED -> RecruitParticipationAction.NONE;
         };
     }
 
     private void validateSchedule(
-            LocalDateTime activityStartAt, LocalDateTime activityEndAt, LocalDateTime applyDeadlineAt) {
+            LocalDateTime activityStartAt,
+            LocalDateTime activityEndAt,
+            LocalDateTime applyDeadlineAt) {
         if (!activityStartAt.isBefore(activityEndAt)) {
             throw new BusinessException(ErrorCode.RECRUIT_INVALID_SCHEDULE);
         }
@@ -330,7 +345,10 @@ public class MeetingRecruitService {
         String regionName =
                 recruit.getRegionId() == null
                         ? null
-                        : regionRepository.findById(recruit.getRegionId()).map(r -> r.getName()).orElse(null);
+                        : regionRepository
+                                .findById(recruit.getRegionId())
+                                .map(r -> r.getName())
+                                .orElse(null);
         return new RecruitDetailResponse(
                 post.getId(),
                 meeting.getId(),
@@ -405,7 +423,8 @@ public class MeetingRecruitService {
                 meetingMemberRepository
                         .findByMeeting_IdAndUser_IdAndStatus(
                                 meetingId, userId, MeetingMemberStatus.APPROVED)
-                        .orElseThrow(() -> new BusinessException(ErrorCode.MEETING_MEMBER_REQUIRED));
+                        .orElseThrow(
+                                () -> new BusinessException(ErrorCode.MEETING_MEMBER_REQUIRED));
         if (membership.getRole() != MeetingMemberRole.HOST) {
             throw new BusinessException(ErrorCode.RECRUIT_HOST_ONLY);
         }
@@ -413,7 +432,8 @@ public class MeetingRecruitService {
 
     private boolean isHost(Long meetingId, Long userId) {
         return meetingMemberRepository
-                .findByMeeting_IdAndUser_IdAndStatus(meetingId, userId, MeetingMemberStatus.APPROVED)
+                .findByMeeting_IdAndUser_IdAndStatus(
+                        meetingId, userId, MeetingMemberStatus.APPROVED)
                 .map(member -> member.getRole() == MeetingMemberRole.HOST)
                 .orElse(false);
     }

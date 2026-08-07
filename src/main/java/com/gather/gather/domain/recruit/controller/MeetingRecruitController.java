@@ -30,7 +30,8 @@ public class MeetingRecruitController {
 
     @Operation(
             summary = "모집공고 작성",
-            description = "모임장만 작성할 수 있습니다. RECRUIT 게시글과 모집 확장 정보(지역·장소·활동기간·정원·카테고리·마감일 등)를 함께 생성합니다.")
+            description =
+                    "모임장만 작성할 수 있습니다. RECRUIT 게시글과 모집 확장 정보(지역·장소·활동기간·정원·카테고리·마감일 등)를 함께 생성합니다.")
     @PostMapping("/recruits")
     @ResponseStatus(HttpStatus.CREATED)
     public ApiResponse<RecruitDetailResponse> createRecruit(

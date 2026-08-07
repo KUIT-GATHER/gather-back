@@ -19,9 +19,9 @@ import org.hibernate.annotations.UpdateTimestamp;
 /**
  * 모집공고(RECRUIT post) 참여신청.
  *
- * <p>취소는 상태 전이({@code CANCELLED})로 처리하고 {@code (post_id, user_id)} UNIQUE로 중복 신청을 막는다 - 취소 후
- * 재신청은 새 행이 아니라 같은 행을 {@link #reapply(RecruitApplicantType)}로 되돌린다. 도메인 결합을 피해 post/user를 ID로만
- * 보관한다({@code PostingParticipation}과 동일 컨벤션).
+ * <p>취소는 상태 전이({@code CANCELLED})로 처리하고 {@code (post_id, user_id)} UNIQUE로 중복 신청을 막는다 - 취소 후 재신청은 새
+ * 행이 아니라 같은 행을 {@link #reapply(RecruitApplicantType)}로 되돌린다. 도메인 결합을 피해 post/user를 ID로만 보관한다({@code
+ * PostingParticipation}과 동일 컨벤션).
  *
  * <p>이 파일은 팀장용 신청자 관리(반려/확정/출석) PR과 겹칠 수 있다 - 이 PR(모집공고 작성·조회·신청)에는 신청/취소/재신청만 필요해 그 범위만 구현했고,
  * 확정·반려·출석 관련 메서드는 후속 PR에서 추가한다.
@@ -64,7 +64,8 @@ public class MeetingRecruitParticipation {
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
 
-    private MeetingRecruitParticipation(Long postId, Long userId, RecruitApplicantType applicantType) {
+    private MeetingRecruitParticipation(
+            Long postId, Long userId, RecruitApplicantType applicantType) {
         this.postId = postId;
         this.userId = userId;
         this.applicantType = applicantType;

@@ -26,8 +26,8 @@ import org.hibernate.annotations.UpdateTimestamp;
  * 모임 내부 모집공고(RECRUIT 게시글)의 확장 정보. {@code post_id}로 RECRUIT 유형 {@code Post}와 1:1 대응한다. 도메인 결합을 피해
  * post/region을 연관관계 대신 ID로 보관한다.
  *
- * <p>여러 날짜에 걸친 활동을 허용하기 위해 활동 기간을 {@code activityStartAt}~{@code activityEndAt}(날짜+시각)로 통일해서
- * 관리한다. 신청은 {@code applyDeadlineAt} 시각까지 가능하고, {@code confirmationStatus}가 {@code CONFIRMED}로 바뀌면(팀장이
+ * <p>여러 날짜에 걸친 활동을 허용하기 위해 활동 기간을 {@code activityStartAt}~{@code activityEndAt}(날짜+시각)로 통일해서 관리한다.
+ * 신청은 {@code applyDeadlineAt} 시각까지 가능하고, {@code confirmationStatus}가 {@code CONFIRMED}로 바뀌면(팀장이
  * 신청자를 확정하거나 마감 후 자동 확정되면) 이후로는 신규 신청·취소가 불가능하다.
  */
 @Entity

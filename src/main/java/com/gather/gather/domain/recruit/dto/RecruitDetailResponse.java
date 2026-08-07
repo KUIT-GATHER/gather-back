@@ -34,7 +34,8 @@ public record RecruitDetailResponse(
         @Schema(description = "정원이 찼는지") boolean full,
         RecruitConfirmationStatus confirmationStatus,
         LocalDateTime confirmedAt,
-        @Schema(description = "조회자의 참여 상태. 참여 이력이 없으면 null") MeetingRecruitParticipationStatus participationStatus,
+        @Schema(description = "조회자의 참여 상태. 참여 이력이 없으면 null")
+                MeetingRecruitParticipationStatus participationStatus,
         RecruitParticipationAction participationAction,
         @Schema(description = "조회자가 이 글을 수정할 수 있는지(작성자 본인)") boolean canEdit,
         @Schema(description = "조회자가 이 글을 삭제할 수 있는지(작성자 본인 또는 모임장)") boolean canDelete,

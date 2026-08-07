@@ -9,9 +9,11 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.gather.gather.domain.posting.dto.PostingListItem;
 import com.gather.gather.domain.posting.dto.PostingLocationResponse;
 import com.gather.gather.domain.posting.dto.PostingParticipationAction;
 import com.gather.gather.domain.posting.dto.PostingResponse;
+import com.gather.gather.domain.posting.dto.PostingSourceType;
 import com.gather.gather.domain.posting.dto.PostingSummaryResponse;
 import com.gather.gather.domain.posting.entity.PostingCategory;
 import com.gather.gather.domain.posting.entity.PostingParticipationStatus;
@@ -23,6 +25,7 @@ import com.gather.gather.global.common.PageResponse;
 import com.gather.gather.global.exception.BusinessException;
 import com.gather.gather.global.exception.ErrorCode;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -49,31 +52,35 @@ class PostingControllerTest {
     @Test
     @DisplayName("GET /api/v1/postings returns 200 with a page of postings")
     void getPostings_returns200WithPage() throws Exception {
-        PostingSummaryResponse summary =
-                new PostingSummaryResponse(
+        PostingListItem item =
+                new PostingListItem(
+                        PostingSourceType.POSTING,
                         1L,
+                        null,
                         "동구 환경정화 봉사",
-                        PostingStatus.RECRUITING,
                         "울산 동구청",
-                        LocalDate.of(2026, 7, 10),
-                        LocalDate.of(2026, 7, 10),
-                        "동구 일대",
-                        5,
-                        1,
+                        null,
                         2L,
                         "동구",
-                        PostingCategory.ENVIRONMENT,
-                        LocalDate.of(2026, 7, 5));
+                        "동구 일대",
+                        LocalDateTime.of(2026, 7, 10, 9, 0),
+                        LocalDateTime.of(2026, 7, 10, 18, 0),
+                        LocalDateTime.of(2026, 7, 9, 23, 59),
+                        5,
+                        1,
+                        List.of(PostingCategory.ENVIRONMENT),
+                        "RECRUITING");
         when(postingService.getPostings(any(), any(), any(), any(), any(), any(), any(), any()))
-                .thenReturn(new PageResponse<>(List.of(summary), 1, 1, 0, 20));
+                .thenReturn(new PageResponse<>(List.of(item), 1, 1, 0, 20));
 
         mockMvc.perform(get("/api/v1/postings"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.content").isArray())
                 .andExpect(jsonPath("$.data.content.length()").value(1))
+                .andExpect(jsonPath("$.data.content[0].sourceType").value("POSTING"))
                 .andExpect(jsonPath("$.data.content[0].regionName").value("동구"))
-                .andExpect(jsonPath("$.data.content[0].category").value("ENVIRONMENT"))
+                .andExpect(jsonPath("$.data.content[0].categories[0]").value("ENVIRONMENT"))
                 .andExpect(jsonPath("$.data.totalElements").value(1))
                 .andExpect(jsonPath("$.data.totalPages").value(1))
                 .andExpect(jsonPath("$.data.page").value(0))
@@ -96,11 +103,12 @@ class PostingControllerTest {
     @Test
     @DisplayName("GET /api/v1/postings returns 200 with regionName null when unmatched")
     void getPostings_returns200WithNullRegionName_whenUnmatched() throws Exception {
-        PostingSummaryResponse summary =
-                new PostingSummaryResponse(
+        PostingListItem item =
+                new PostingListItem(
+                        PostingSourceType.POSTING,
                         1L,
+                        null,
                         "무지역 공고",
-                        PostingStatus.RECRUITING,
                         "기관",
                         null,
                         null,
@@ -109,10 +117,12 @@ class PostingControllerTest {
                         null,
                         null,
                         null,
-                        PostingCategory.ENVIRONMENT,
-                        null);
+                        null,
+                        null,
+                        List.of(PostingCategory.ENVIRONMENT),
+                        "RECRUITING");
         when(postingService.getPostings(any(), any(), any(), any(), any(), any(), any(), any()))
-                .thenReturn(new PageResponse<>(List.of(summary), 1, 1, 0, 20));
+                .thenReturn(new PageResponse<>(List.of(item), 1, 1, 0, 20));
 
         mockMvc.perform(get("/api/v1/postings"))
                 .andExpect(status().isOk())

@@ -20,7 +20,8 @@ public interface MeetingRecruitParticipationRepository
     boolean existsByPostIdAndUserId(Long postId, Long userId);
 
     /** 현재 신청 인원(취소·반려 제외) 계산용. */
-    long countByPostIdAndStatusIn(Long postId, Collection<MeetingRecruitParticipationStatus> statuses);
+    long countByPostIdAndStatusIn(
+            Long postId, Collection<MeetingRecruitParticipationStatus> statuses);
 
     /** 나의 활동 - 내가 이 모임에서 신청한 모집공고 목록(활동 시작 최신순). Post·MeetingRecruit를 postId로 조인한다. */
     @Query(
@@ -61,9 +62,7 @@ public interface MeetingRecruitParticipationRepository
             """)
     long countMyAppliedRecruits(@Param("userId") Long userId, @Param("meetingId") Long meetingId);
 
-    /**
-     * 모임 해산 가능 여부 판단용: 아직 활동이 끝나지 않은 모집공고에 CONFIRMED 참가자가 있는지 확인한다(진행 예정 활동 보호).
-     */
+    /** 모임 해산 가능 여부 판단용: 아직 활동이 끝나지 않은 모집공고에 CONFIRMED 참가자가 있는지 확인한다(진행 예정 활동 보호). */
     @Query(
             """
             SELECT COUNT(prt) > 0
