@@ -22,7 +22,8 @@ class KakaoUnlinkReservationTest {
                 new KakaoUnlinkReservation.Outcome[] {
                     KakaoUnlinkReservation.Outcome.BLOCKED,
                     KakaoUnlinkReservation.Outcome.CLAIM_LOST,
-                    KakaoUnlinkReservation.Outcome.TERMINAL
+                    KakaoUnlinkReservation.Outcome.STALE,
+                    KakaoUnlinkReservation.Outcome.DEAD
                 }) {
             assertThat(KakaoUnlinkReservation.of(outcome))
                     .isEqualTo(new KakaoUnlinkReservation(outcome, null));

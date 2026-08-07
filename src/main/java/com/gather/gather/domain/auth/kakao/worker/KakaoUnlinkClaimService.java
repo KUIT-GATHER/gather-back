@@ -62,6 +62,57 @@ public class KakaoUnlinkClaimService {
         return List.copyOf(claims);
     }
 
+    @Transactional
+    public KakaoUnlinkSingleClaimResult claimOne(long taskId) {
+        KakaoUnlinkWorkerControl control =
+                controlRepository
+                        .findSingletonForUpdate()
+                        .orElseThrow(
+                                () ->
+                                        new IllegalStateException(
+                                                "Kakao unlink worker control이 없습니다."));
+        if (!control.isActive()) {
+            return KakaoUnlinkSingleClaimResult.of(
+                    KakaoUnlinkSingleClaimResult.Outcome.CONTROL_BLOCKED);
+        }
+
+        LocalDateTime databaseNow = taskRepository.currentUtcDateTime();
+        KakaoUnlinkTask task = taskRepository.findByIdForUpdateSkipLocked(taskId).orElse(null);
+        if (task == null) {
+            KakaoUnlinkSingleClaimResult.Outcome outcome =
+                    taskRepository.existsById(taskId)
+                            ? KakaoUnlinkSingleClaimResult.Outcome.LOCK_CONFLICT
+                            : KakaoUnlinkSingleClaimResult.Outcome.TASK_NOT_FOUND;
+            return KakaoUnlinkSingleClaimResult.of(outcome);
+        }
+        if (task.getStatus() != KakaoUnlinkTaskStatus.PENDING) {
+            return KakaoUnlinkSingleClaimResult.of(
+                    KakaoUnlinkSingleClaimResult.Outcome.NOT_PENDING);
+        }
+        if (hasAnyClaimField(task)) {
+            return KakaoUnlinkSingleClaimResult.of(
+                    KakaoUnlinkSingleClaimResult.Outcome.INVARIANT_ERROR);
+        }
+        if (task.getNextAttemptAt().isAfter(databaseNow)) {
+            return KakaoUnlinkSingleClaimResult.of(KakaoUnlinkSingleClaimResult.Outcome.NOT_DUE);
+        }
+
+        String token = tokenGenerator.generate();
+        task.claim(
+                token,
+                properties.workerIdentifier(),
+                databaseNow,
+                databaseNow.plus(properties.leaseDuration()));
+        return KakaoUnlinkSingleClaimResult.claimed(toClaim(task, token));
+    }
+
+    private boolean hasAnyClaimField(KakaoUnlinkTask task) {
+        return task.getClaimToken() != null
+                || task.getClaimedBy() != null
+                || task.getClaimedAt() != null
+                || task.getLeaseExpiresAt() != null;
+    }
+
     private KakaoUnlinkClaim toClaim(KakaoUnlinkTask task, String claimToken) {
         return new KakaoUnlinkClaim(
                 task.getId(),
