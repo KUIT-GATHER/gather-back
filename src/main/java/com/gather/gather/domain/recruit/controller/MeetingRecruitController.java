@@ -68,4 +68,28 @@ public class MeetingRecruitController {
             @PathVariable Long meetingId, @PathVariable Long postId) {
         return ApiResponse.success(meetingRecruitService.toggleParticipation(meetingId, postId));
     }
+
+    @Operation(summary = "참여 확정", description = "팀장이 신청(APPLIED) 상태의 참여를 확정(CONFIRMED)합니다.")
+    @PatchMapping("/{postId}/recruit/participations/{participationId}/confirm")
+    public ApiResponse<Void> confirmParticipation(
+            @PathVariable Long meetingId,
+            @PathVariable Long postId,
+            @PathVariable Long participationId) {
+        meetingRecruitService.confirmParticipation(meetingId, postId, participationId);
+        return ApiResponse.success(null);
+    }
+
+    @Operation(
+            summary = "참석 처리",
+            description =
+                    "활동 종료 후 팀장이 확정(CONFIRMED) 참가자의 참석 여부를 처리합니다. 참석 처리된 참가자만 봉사완료(COMPLETED)로"
+                            + " 전환됩니다.")
+    @PatchMapping("/{postId}/recruit/participations/{participationId}/present")
+    public ApiResponse<Void> markParticipantPresent(
+            @PathVariable Long meetingId,
+            @PathVariable Long postId,
+            @PathVariable Long participationId) {
+        meetingRecruitService.markParticipantPresent(meetingId, postId, participationId);
+        return ApiResponse.success(null);
+    }
 }

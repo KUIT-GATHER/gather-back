@@ -27,6 +27,7 @@ import com.gather.gather.domain.recruit.dto.RecruitParticipationResponse;
 import com.gather.gather.domain.recruit.dto.RecruitUpdateRequest;
 import com.gather.gather.domain.recruit.entity.MeetingRecruit;
 import com.gather.gather.domain.recruit.entity.MeetingRecruitParticipation;
+import com.gather.gather.domain.recruit.entity.MeetingRecruitParticipationStatus;
 import com.gather.gather.domain.recruit.repository.MeetingRecruitParticipationRepository;
 import com.gather.gather.domain.recruit.repository.MeetingRecruitRepository;
 import com.gather.gather.global.exception.BusinessException;
@@ -54,6 +55,7 @@ class MeetingRecruitServiceTest {
     private static final Long USER_ID = 1L;
     private static final Long MEETING_ID = 10L;
     private static final Long POST_ID = 100L;
+    private static final Long PARTICIPATION_ID = 500L;
 
     @Mock private PostRepository postRepository;
     @Mock private MeetingRepository meetingRepository;
@@ -298,6 +300,150 @@ class MeetingRecruitServiceTest {
         verify(post, never()).update(Mockito.anyString(), Mockito.anyString());
     }
 
+    @Test
+    @DisplayName("팀장은 신청(APPLIED) 참여를 확정한다")
+    void confirmParticipation_confirmsAppliedParticipation_whenHost() {
+        Meeting meeting = meeting();
+        Post post = recruitPost();
+        MeetingMember host = member(MeetingMemberRole.HOST);
+        MeetingRecruitParticipation participation =
+                participation(MeetingRecruitParticipationStatus.APPLIED);
+        when(meetingRepository.findByIdAndDeletedAtIsNull(MEETING_ID))
+                .thenReturn(Optional.of(meeting));
+        when(meetingMemberRepository.findByMeeting_IdAndUser_IdAndStatus(
+                        MEETING_ID, USER_ID, MeetingMemberStatus.APPROVED))
+                .thenReturn(Optional.of(host));
+        when(postRepository.findByIdFetchUser(POST_ID)).thenReturn(Optional.of(post));
+        when(participationRepository.findById(PARTICIPATION_ID))
+                .thenReturn(Optional.of(participation));
+
+        meetingRecruitService.confirmParticipation(MEETING_ID, POST_ID, PARTICIPATION_ID);
+
+        verify(participation).confirm();
+    }
+
+    @Test
+    @DisplayName("팀원이 참여를 확정하려 하면 RECRUIT_HOST_ONLY로 거부한다")
+    void confirmParticipation_rejectsNonHost() {
+        Meeting meeting = meeting();
+        MeetingMember member = member(MeetingMemberRole.MEMBER);
+        when(meetingRepository.findByIdAndDeletedAtIsNull(MEETING_ID))
+                .thenReturn(Optional.of(meeting));
+        when(meetingMemberRepository.findByMeeting_IdAndUser_IdAndStatus(
+                        MEETING_ID, USER_ID, MeetingMemberStatus.APPROVED))
+                .thenReturn(Optional.of(member));
+
+        assertThatThrownBy(
+                        () ->
+                                meetingRecruitService.confirmParticipation(
+                                        MEETING_ID, POST_ID, PARTICIPATION_ID))
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("errorCode", ErrorCode.RECRUIT_HOST_ONLY);
+    }
+
+    @Test
+    @DisplayName("이미 확정된 참여는 다시 확정할 수 없다")
+    void confirmParticipation_rejectsWhenNotApplied() {
+        Meeting meeting = meeting();
+        Post post = recruitPost();
+        MeetingMember host = member(MeetingMemberRole.HOST);
+        MeetingRecruitParticipation participation =
+                participation(MeetingRecruitParticipationStatus.CONFIRMED);
+        when(meetingRepository.findByIdAndDeletedAtIsNull(MEETING_ID))
+                .thenReturn(Optional.of(meeting));
+        when(meetingMemberRepository.findByMeeting_IdAndUser_IdAndStatus(
+                        MEETING_ID, USER_ID, MeetingMemberStatus.APPROVED))
+                .thenReturn(Optional.of(host));
+        when(postRepository.findByIdFetchUser(POST_ID)).thenReturn(Optional.of(post));
+        when(participationRepository.findById(PARTICIPATION_ID))
+                .thenReturn(Optional.of(participation));
+
+        assertThatThrownBy(
+                        () ->
+                                meetingRecruitService.confirmParticipation(
+                                        MEETING_ID, POST_ID, PARTICIPATION_ID))
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue(
+                        "errorCode", ErrorCode.RECRUIT_PARTICIPATION_CONFIRM_NOT_ALLOWED);
+        verify(participation, never()).confirm();
+    }
+
+    @Test
+    @DisplayName("활동 종료 후 팀장은 확정된 참가자를 참석 처리해 봉사완료로 전환한다")
+    void markParticipantPresent_completesConfirmedParticipation_afterActivityEnded() {
+        Meeting meeting = meeting();
+        Post post = recruitPost();
+        MeetingMember host = member(MeetingMemberRole.HOST);
+        MeetingRecruit recruit = closedRecruit(4);
+        MeetingRecruitParticipation participation =
+                participation(MeetingRecruitParticipationStatus.CONFIRMED);
+        when(meetingRepository.findByIdAndDeletedAtIsNull(MEETING_ID))
+                .thenReturn(Optional.of(meeting));
+        when(meetingMemberRepository.findByMeeting_IdAndUser_IdAndStatus(
+                        MEETING_ID, USER_ID, MeetingMemberStatus.APPROVED))
+                .thenReturn(Optional.of(host));
+        when(postRepository.findByIdFetchUser(POST_ID)).thenReturn(Optional.of(post));
+        when(meetingRecruitRepository.findByPostId(POST_ID)).thenReturn(Optional.of(recruit));
+        when(participationRepository.findById(PARTICIPATION_ID))
+                .thenReturn(Optional.of(participation));
+
+        meetingRecruitService.markParticipantPresent(MEETING_ID, POST_ID, PARTICIPATION_ID);
+
+        verify(participation).complete();
+    }
+
+    @Test
+    @DisplayName("활동이 끝나기 전에는 참석 처리를 할 수 없다")
+    void markParticipantPresent_rejectsBeforeActivityEnds() {
+        Meeting meeting = meeting();
+        Post post = recruitPost();
+        MeetingMember host = member(MeetingMemberRole.HOST);
+        MeetingRecruit recruit = openRecruit(4);
+        when(meetingRepository.findByIdAndDeletedAtIsNull(MEETING_ID))
+                .thenReturn(Optional.of(meeting));
+        when(meetingMemberRepository.findByMeeting_IdAndUser_IdAndStatus(
+                        MEETING_ID, USER_ID, MeetingMemberStatus.APPROVED))
+                .thenReturn(Optional.of(host));
+        when(postRepository.findByIdFetchUser(POST_ID)).thenReturn(Optional.of(post));
+        when(meetingRecruitRepository.findByPostId(POST_ID)).thenReturn(Optional.of(recruit));
+
+        assertThatThrownBy(
+                        () ->
+                                meetingRecruitService.markParticipantPresent(
+                                        MEETING_ID, POST_ID, PARTICIPATION_ID))
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("errorCode", ErrorCode.RECRUIT_ACTIVITY_NOT_ENDED);
+        verify(participationRepository, never()).findById(PARTICIPATION_ID);
+    }
+
+    @Test
+    @DisplayName("확정되지 않은 참여는 참석 처리를 할 수 없다")
+    void markParticipantPresent_rejectsWhenNotConfirmed() {
+        Meeting meeting = meeting();
+        Post post = recruitPost();
+        MeetingMember host = member(MeetingMemberRole.HOST);
+        MeetingRecruit recruit = closedRecruit(4);
+        MeetingRecruitParticipation participation =
+                participation(MeetingRecruitParticipationStatus.APPLIED);
+        when(meetingRepository.findByIdAndDeletedAtIsNull(MEETING_ID))
+                .thenReturn(Optional.of(meeting));
+        when(meetingMemberRepository.findByMeeting_IdAndUser_IdAndStatus(
+                        MEETING_ID, USER_ID, MeetingMemberStatus.APPROVED))
+                .thenReturn(Optional.of(host));
+        when(postRepository.findByIdFetchUser(POST_ID)).thenReturn(Optional.of(post));
+        when(meetingRecruitRepository.findByPostId(POST_ID)).thenReturn(Optional.of(recruit));
+        when(participationRepository.findById(PARTICIPATION_ID))
+                .thenReturn(Optional.of(participation));
+
+        assertThatThrownBy(
+                        () ->
+                                meetingRecruitService.markParticipantPresent(
+                                        MEETING_ID, POST_ID, PARTICIPATION_ID))
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("errorCode", ErrorCode.RECRUIT_PRESENT_NOT_ALLOWED);
+        verify(participation, never()).complete();
+    }
+
     // ---------- fixtures ----------
     // 주의: 스텁을 만드는 헬퍼(meeting()/recruitPost()/member()/author())는 반드시 지역변수로 먼저 받은 뒤
     // when(...) 안에서 쓴다. when(...).thenReturn(헬퍼())처럼 중첩하면 UnfinishedStubbingException이 난다.
@@ -341,6 +487,14 @@ class MeetingRecruitServiceTest {
         MeetingMember member = Mockito.mock(MeetingMember.class);
         Mockito.lenient().when(member.getRole()).thenReturn(role);
         return member;
+    }
+
+    private MeetingRecruitParticipation participation(MeetingRecruitParticipationStatus status) {
+        MeetingRecruitParticipation participation = Mockito.mock(MeetingRecruitParticipation.class);
+        Mockito.lenient().when(participation.getId()).thenReturn(PARTICIPATION_ID);
+        Mockito.lenient().when(participation.getPostId()).thenReturn(POST_ID);
+        Mockito.lenient().when(participation.getStatus()).thenReturn(status);
+        return participation;
     }
 
     private User author() {

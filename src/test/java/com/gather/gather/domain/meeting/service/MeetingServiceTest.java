@@ -1,6 +1,7 @@
 package com.gather.gather.domain.meeting.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
@@ -8,17 +9,21 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.gather.gather.domain.auth.entity.User;
 import com.gather.gather.domain.auth.repository.UserRepository;
 import com.gather.gather.domain.badge.entity.BadgeType;
 import com.gather.gather.domain.badge.event.BadgeAwardRequestedEvent;
 import com.gather.gather.domain.badge.event.MeetingCompletedEvent;
+import com.gather.gather.domain.meeting.dto.MeetingDetailResponse;
 import com.gather.gather.domain.meeting.dto.MeetingResponse;
+import com.gather.gather.domain.meeting.dto.MeetingUpdateRequest;
 import com.gather.gather.domain.meeting.dto.PostingMeetingResponse;
 import com.gather.gather.domain.meeting.entity.Meeting;
 import com.gather.gather.domain.meeting.entity.MeetingMember;
 import com.gather.gather.domain.meeting.enums.MeetingMemberRole;
 import com.gather.gather.domain.meeting.enums.MeetingMemberStatus;
 import com.gather.gather.domain.meeting.enums.MeetingStatus;
+import com.gather.gather.domain.meeting.repository.MeetingBookmarkRepository;
 import com.gather.gather.domain.meeting.repository.MeetingMemberRepository;
 import com.gather.gather.domain.meeting.repository.MeetingRepository;
 import com.gather.gather.domain.posting.entity.PostingCategory;
@@ -26,8 +31,12 @@ import com.gather.gather.domain.posting.repository.PostingRepository;
 import com.gather.gather.domain.posting.service.RegionNameResolver;
 import com.gather.gather.domain.region.repository.RegionRepository;
 import com.gather.gather.global.common.PageResponse;
+import com.gather.gather.global.exception.BusinessException;
+import com.gather.gather.global.exception.ErrorCode;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -46,6 +55,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 class MeetingServiceTest {
 
     @Mock private MeetingRepository meetingRepository;
+    @Mock private MeetingBookmarkRepository meetingBookmarkRepository;
     @Mock private MeetingMemberRepository meetingMemberRepository;
     @Mock private UserRepository userRepository;
     @Mock private RegionRepository regionRepository;
@@ -53,6 +63,10 @@ class MeetingServiceTest {
     @Mock private MeetingSearchLogService meetingSearchLogService;
     @Mock private org.springframework.context.ApplicationEventPublisher eventPublisher;
     @Mock private RegionNameResolver regionNameResolver;
+
+    @Mock
+    private com.gather.gather.domain.recruit.repository.MeetingRecruitParticipationRepository
+            meetingRecruitParticipationRepository;
 
     @InjectMocks private MeetingService meetingService;
 
@@ -479,6 +493,289 @@ class MeetingServiceTest {
         assertThat(responses.get(0).regionName()).isEqualTo("서구");
     }
 
+    @Test
+    @DisplayName("disbandMeeting soft-deletes the meeting when called by the host")
+    void disbandMeeting_disbandsMeeting_whenCalledByHost() {
+        setAuthenticatedUser(1L);
+        Meeting hostMeeting = mock(Meeting.class);
+        com.gather.gather.domain.auth.entity.User host =
+                mock(com.gather.gather.domain.auth.entity.User.class);
+        when(host.getId()).thenReturn(1L);
+        when(hostMeeting.getHost()).thenReturn(host);
+        when(meetingRepository.findByIdAndDeletedAtIsNullForUpdate(12L))
+                .thenReturn(java.util.Optional.of(hostMeeting));
+        meetingService.disbandMeeting(12L);
+        verify(hostMeeting).delete();
+    }
+
+    @Test
+    @DisplayName("disbandMeeting throws MEETING_HOST_ONLY when called by a non-host")
+    void disbandMeeting_throwsHostOnly_whenNotHost() {
+        setAuthenticatedUser(2L);
+        Meeting hostMeeting = mock(Meeting.class);
+        com.gather.gather.domain.auth.entity.User host =
+                mock(com.gather.gather.domain.auth.entity.User.class);
+        when(host.getId()).thenReturn(1L);
+        when(hostMeeting.getHost()).thenReturn(host);
+        when(meetingRepository.findByIdAndDeletedAtIsNullForUpdate(12L))
+                .thenReturn(java.util.Optional.of(hostMeeting));
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> meetingService.disbandMeeting(12L))
+                .isInstanceOf(com.gather.gather.global.exception.BusinessException.class)
+                .hasFieldOrPropertyWithValue(
+                        "errorCode",
+                        com.gather.gather.global.exception.ErrorCode.MEETING_HOST_ONLY);
+        verify(hostMeeting, never()).delete();
+    }
+
+    @Test
+    @DisplayName(
+            "disbandMeeting throws MEETING_NOT_FOUND when the meeting does not exist or is"
+                    + " already deleted")
+    void disbandMeeting_throwsMeetingNotFound_whenMeetingMissing() {
+        setAuthenticatedUser(1L);
+        when(meetingRepository.findByIdAndDeletedAtIsNullForUpdate(999L))
+                .thenReturn(java.util.Optional.empty());
+        org.assertj.core.api.Assertions.assertThatThrownBy(
+                        () -> meetingService.disbandMeeting(999L))
+                .isInstanceOf(com.gather.gather.global.exception.BusinessException.class)
+                .hasFieldOrPropertyWithValue(
+                        "errorCode",
+                        com.gather.gather.global.exception.ErrorCode.MEETING_NOT_FOUND);
+    }
+
+    @Test
+    @DisplayName(
+            "disbandMeeting throws MEETING_DISBAND_HAS_CONFIRMED_PARTICIPANTS when an upcoming"
+                    + " recruit activity has a confirmed participant")
+    void disbandMeeting_throwsHasConfirmedParticipants_whenUpcomingActivityConfirmed() {
+        setAuthenticatedUser(1L);
+        Meeting hostMeeting = mock(Meeting.class);
+        com.gather.gather.domain.auth.entity.User host =
+                mock(com.gather.gather.domain.auth.entity.User.class);
+        when(host.getId()).thenReturn(1L);
+        when(hostMeeting.getHost()).thenReturn(host);
+        when(meetingRepository.findByIdAndDeletedAtIsNullForUpdate(12L))
+                .thenReturn(java.util.Optional.of(hostMeeting));
+        when(meetingRecruitParticipationRepository.existsConfirmedParticipantWithUpcomingActivity(
+                        org.mockito.ArgumentMatchers.eq(12L), org.mockito.ArgumentMatchers.any()))
+                .thenReturn(true);
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> meetingService.disbandMeeting(12L))
+                .isInstanceOf(com.gather.gather.global.exception.BusinessException.class)
+                .hasFieldOrPropertyWithValue(
+                        "errorCode",
+                        com.gather.gather.global.exception.ErrorCode
+                                .MEETING_DISBAND_HAS_CONFIRMED_PARTICIPANTS);
+        verify(hostMeeting, never()).delete();
+    }
+
+    @Test
+    @DisplayName("cancelMyJoinRequest cancels the caller's own pending join request")
+    void cancelMyJoinRequest_cancelsPendingRequest_whenCalledByRequester() {
+        setAuthenticatedUser(1L);
+        when(meetingRepository.findByIdAndDeletedAtIsNull(12L))
+                .thenReturn(java.util.Optional.of(meeting));
+        MeetingMember pendingMember = mock(MeetingMember.class);
+        when(meetingMemberRepository.findPendingByMeetingIdAndUserIdForUpdate(12L, 1L))
+                .thenReturn(java.util.Optional.of(pendingMember));
+        meetingService.cancelMyJoinRequest(12L);
+        verify(pendingMember).cancel();
+    }
+
+    @Test
+    @DisplayName(
+            "cancelMyJoinRequest throws MEETING_JOIN_REQUEST_NOT_FOUND when the caller has no"
+                    + " pending request")
+    void cancelMyJoinRequest_throwsNotFound_whenNoPendingRequest() {
+        setAuthenticatedUser(1L);
+        when(meetingRepository.findByIdAndDeletedAtIsNull(12L))
+                .thenReturn(java.util.Optional.of(meeting));
+        when(meetingMemberRepository.findPendingByMeetingIdAndUserIdForUpdate(12L, 1L))
+                .thenReturn(java.util.Optional.empty());
+        org.assertj.core.api.Assertions.assertThatThrownBy(
+                        () -> meetingService.cancelMyJoinRequest(12L))
+                .isInstanceOf(com.gather.gather.global.exception.BusinessException.class)
+                .hasFieldOrPropertyWithValue(
+                        "errorCode",
+                        com.gather.gather.global.exception.ErrorCode
+                                .MEETING_JOIN_REQUEST_NOT_FOUND);
+    }
+
+    @Test
+    @DisplayName("cancelMyJoinRequest throws MEETING_NOT_FOUND when the meeting does not exist")
+    void cancelMyJoinRequest_throwsMeetingNotFound_whenMeetingMissing() {
+        setAuthenticatedUser(1L);
+        when(meetingRepository.findByIdAndDeletedAtIsNull(999L))
+                .thenReturn(java.util.Optional.empty());
+        org.assertj.core.api.Assertions.assertThatThrownBy(
+                        () -> meetingService.cancelMyJoinRequest(999L))
+                .isInstanceOf(com.gather.gather.global.exception.BusinessException.class)
+                .hasFieldOrPropertyWithValue(
+                        "errorCode",
+                        com.gather.gather.global.exception.ErrorCode.MEETING_NOT_FOUND);
+        verify(meetingMemberRepository, never())
+                .findPendingByMeetingIdAndUserIdForUpdate(
+                        org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    @DisplayName("모임장은 자유 모임의 이름·정원·카테고리·지역을 수정할 수 있다")
+    void updateMeeting_updatesFreeMeeting_whenCalledByHost() {
+        setAuthenticatedUser(1L);
+        Meeting freeMeeting = freeMeeting(20);
+        when(meetingRepository.findByIdAndDeletedAtIsNullForUpdate(12L))
+                .thenReturn(Optional.of(freeMeeting));
+        when(regionRepository.existsById(99L)).thenReturn(true);
+        MeetingUpdateRequest request =
+                updateRequest(
+                        25, Set.of(PostingCategory.WELFARE), 99L, LocalDateTime.now().plusDays(3));
+        MeetingDetailResponse response = meetingService.updateMeeting(12L, request);
+        assertThat(response.name()).isEqualTo("한강공원 플로깅팀(수정)");
+        assertThat(response.maxMember()).isEqualTo(25);
+        assertThat(response.regionId()).isEqualTo(99L);
+        assertThat(response.categories()).containsExactly(PostingCategory.WELFARE);
+        assertThat(response.participationCondition()).isEqualTo("우천 시 취소");
+    }
+
+    @Test
+    @DisplayName("모임장이 아니면 모임 정보를 수정할 수 없다")
+    void updateMeeting_rejectsNonHost() {
+        setAuthenticatedUser(2L);
+        Meeting freeMeeting = freeMeeting(20);
+        when(meetingRepository.findByIdAndDeletedAtIsNullForUpdate(12L))
+                .thenReturn(Optional.of(freeMeeting));
+        MeetingUpdateRequest request =
+                updateRequest(
+                        60, Set.of(PostingCategory.WELFARE), 99L, LocalDateTime.now().plusDays(3));
+        assertThatThrownBy(() -> meetingService.updateMeeting(12L, request))
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("errorCode", ErrorCode.MEETING_HOST_ONLY);
+    }
+
+    @Test
+    @DisplayName("현재 참여 인원보다 정원을 적게 줄이면 거부한다")
+    void updateMeeting_rejectsMaxMemberBelowCurrentMembers() {
+        setAuthenticatedUser(1L);
+        Meeting freeMeeting = freeMeeting(20);
+        freeMeeting.increaseMemberCount();
+        freeMeeting.increaseMemberCount();
+        freeMeeting.increaseMemberCount(); // currentMemberCount = 4
+        when(meetingRepository.findByIdAndDeletedAtIsNullForUpdate(12L))
+                .thenReturn(Optional.of(freeMeeting));
+        MeetingUpdateRequest request =
+                updateRequest(
+                        3, Set.of(PostingCategory.WELFARE), 99L, LocalDateTime.now().plusDays(3));
+        assertThatThrownBy(() -> meetingService.updateMeeting(12L, request))
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue(
+                        "errorCode", ErrorCode.MEETING_MAX_BELOW_CURRENT_MEMBER);
+    }
+
+    @Test
+    @DisplayName("자유 모임은 최대 인원을 30명보다 크게 설정할 수 없다")
+    void updateMeeting_rejectsFreeMeetingMaxMemberOverLimit() {
+        setAuthenticatedUser(1L);
+        Meeting freeMeeting = freeMeeting(20);
+        when(meetingRepository.findByIdAndDeletedAtIsNullForUpdate(12L))
+                .thenReturn(Optional.of(freeMeeting));
+        MeetingUpdateRequest request =
+                updateRequest(
+                        31, Set.of(PostingCategory.WELFARE), 99L, LocalDateTime.now().plusDays(3));
+        assertThatThrownBy(() -> meetingService.updateMeeting(12L, request))
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("errorCode", ErrorCode.MEETING_MAX_MEMBER_EXCEEDED);
+    }
+
+    @Test
+    @DisplayName("공고 기반 모임은 최대 인원을 30명보다 크게 설정할 수 없다")
+    void updateMeeting_rejectsPostingMeetingMaxMemberOverLimit() {
+        setAuthenticatedUser(1L);
+        Meeting postingMeeting = postingMeeting(20);
+        when(meetingRepository.findByIdAndDeletedAtIsNullForUpdate(12L))
+                .thenReturn(Optional.of(postingMeeting));
+        MeetingUpdateRequest request = updateRequest(31, null, null, postingMeeting.getDeadline());
+        assertThatThrownBy(() -> meetingService.updateMeeting(12L, request))
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("errorCode", ErrorCode.MEETING_MAX_MEMBER_EXCEEDED);
+    }
+
+    @Test
+    @DisplayName("공고 기반 모임은 요청에 지역·카테고리를 담아도 기존 값을 유지한다")
+    void updateMeeting_keepsRegionAndCategoriesForPostingBasedMeeting() {
+        setAuthenticatedUser(1L);
+        Meeting postingMeeting = postingMeeting(20);
+        when(meetingRepository.findByIdAndDeletedAtIsNullForUpdate(12L))
+                .thenReturn(Optional.of(postingMeeting));
+        MeetingUpdateRequest request =
+                updateRequest(
+                        25, Set.of(PostingCategory.WELFARE), 999L, postingMeeting.getDeadline());
+        MeetingDetailResponse response = meetingService.updateMeeting(12L, request);
+        assertThat(response.regionId()).isEqualTo(postingMeeting.getRegionId());
+        assertThat(response.categories()).isEqualTo(postingMeeting.getCategories());
+        assertThat(response.maxMember()).isEqualTo(25);
+        verify(regionRepository, never()).existsById(999L);
+    }
+
+    @Test
+    @DisplayName("자유 모임은 지역 없이 수정할 수 없다")
+    void updateMeeting_rejectsFreeMeetingWithoutRegionId() {
+        setAuthenticatedUser(1L);
+        Meeting freeMeeting = freeMeeting(20);
+        when(meetingRepository.findByIdAndDeletedAtIsNullForUpdate(12L))
+                .thenReturn(Optional.of(freeMeeting));
+        MeetingUpdateRequest request =
+                updateRequest(
+                        25, Set.of(PostingCategory.WELFARE), null, LocalDateTime.now().plusDays(3));
+        assertThatThrownBy(() -> meetingService.updateMeeting(12L, request))
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("errorCode", ErrorCode.VALIDATION_ERROR);
+    }
+
+    @Test
+    @DisplayName("공고 기반 모임은 신청 마감일을 활동 시작 시간 이후로 변경할 수 없다")
+    void updateMeeting_rejectsDeadlineAfterActivityStart() {
+        setAuthenticatedUser(1L);
+        Meeting postingMeeting = postingMeeting(20);
+        when(meetingRepository.findByIdAndDeletedAtIsNullForUpdate(12L))
+                .thenReturn(Optional.of(postingMeeting));
+        MeetingUpdateRequest request =
+                updateRequest(25, null, null, postingMeeting.getActivityStartAt().plusMinutes(1));
+        assertThatThrownBy(() -> meetingService.updateMeeting(12L, request))
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("errorCode", ErrorCode.INVALID_MEETING_TIME);
+    }
+
+    @Test
+    @DisplayName("공고 기반 모임은 봉사시간 인정 여부를 수정할 수 있다")
+    void updateMeeting_updatesTimeRecognized_forPostingBasedMeeting() {
+        setAuthenticatedUser(1L);
+        Meeting postingMeeting = postingMeeting(20);
+        when(meetingRepository.findByIdAndDeletedAtIsNullForUpdate(12L))
+                .thenReturn(Optional.of(postingMeeting));
+        MeetingUpdateRequest request =
+                updateRequest(25, null, null, postingMeeting.getDeadline(), true);
+        MeetingDetailResponse response = meetingService.updateMeeting(12L, request);
+        assertThat(response.timeRecognized()).isTrue();
+    }
+
+    @Test
+    @DisplayName("자유 모임은 봉사시간 인정 요청 값과 무관하게 항상 false로 유지된다")
+    void updateMeeting_keepsTimeRecognizedFalse_forFreeMeeting() {
+        setAuthenticatedUser(1L);
+        Meeting freeMeeting = freeMeeting(20);
+        when(meetingRepository.findByIdAndDeletedAtIsNullForUpdate(12L))
+                .thenReturn(Optional.of(freeMeeting));
+        when(regionRepository.existsById(99L)).thenReturn(true);
+        MeetingUpdateRequest request =
+                updateRequest(
+                        25,
+                        Set.of(PostingCategory.WELFARE),
+                        99L,
+                        LocalDateTime.now().plusDays(3),
+                        true);
+        MeetingDetailResponse response = meetingService.updateMeeting(12L, request);
+        assertThat(response.timeRecognized()).isFalse();
+    }
+
     private void setAuthenticatedUser(Long userId) {
         SecurityContextHolder.getContext()
                 .setAuthentication(
@@ -490,5 +787,65 @@ class MeetingServiceTest {
         when(membership.getMeeting()).thenReturn(meeting);
         when(membership.getRole()).thenReturn(role);
         return membership;
+    }
+
+    private Meeting freeMeeting(int maxMember) {
+        User host = mock(User.class);
+        when(host.getId()).thenReturn(1L);
+        return Meeting.create(
+                "한강공원 플로깅팀",
+                "소개",
+                maxMember,
+                LocalDateTime.now().plusDays(5),
+                null,
+                Set.of(PostingCategory.ENVIRONMENT),
+                5L,
+                host,
+                null,
+                null,
+                null,
+                null);
+    }
+
+    private Meeting postingMeeting(int maxMember) {
+        User host = mock(User.class);
+        when(host.getId()).thenReturn(1L);
+        LocalDateTime activityStart = LocalDateTime.now().plusDays(5);
+        LocalDateTime activityEnd = activityStart.plusHours(3);
+        return Meeting.create(
+                "한강공원 플로깅팀",
+                "소개",
+                maxMember,
+                activityStart.minusDays(1),
+                null,
+                Set.of(PostingCategory.ENVIRONMENT),
+                5L,
+                host,
+                null,
+                10L,
+                activityStart,
+                activityEnd);
+    }
+
+    private MeetingUpdateRequest updateRequest(
+            int maxMember, Set<PostingCategory> categories, Long regionId, LocalDateTime deadline) {
+        return updateRequest(maxMember, categories, regionId, deadline, false);
+    }
+
+    private MeetingUpdateRequest updateRequest(
+            int maxMember,
+            Set<PostingCategory> categories,
+            Long regionId,
+            LocalDateTime deadline,
+            boolean timeRecognized) {
+        return new MeetingUpdateRequest(
+                "한강공원 플로깅팀(수정)",
+                "소개 수정",
+                maxMember,
+                deadline,
+                categories,
+                "우천 시 취소",
+                regionId,
+                timeRecognized);
     }
 }

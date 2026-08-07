@@ -6,6 +6,7 @@ import com.gather.gather.domain.meeting.dto.MeetingJoinRequestResponse;
 import com.gather.gather.domain.meeting.dto.MeetingJoinResponse;
 import com.gather.gather.domain.meeting.dto.MeetingRecognizedMinutesRequest;
 import com.gather.gather.domain.meeting.dto.MeetingResponse;
+import com.gather.gather.domain.meeting.dto.MeetingUpdateRequest;
 import com.gather.gather.domain.meeting.enums.MeetingStatus;
 import com.gather.gather.domain.meeting.service.MeetingKeywordRecommendationService;
 import com.gather.gather.domain.meeting.service.MeetingRecommendationService;
@@ -25,6 +26,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -53,7 +55,9 @@ public class MeetingController {
                             + "자유 모임은 volunteerPostingId, activityStartAt, activityEndAt을 생략하거나 null로 요청할 수 있습니다. "
                             + "공고 기반 모임은 volunteerPostingId와 활동 시작·종료 시간이 모두 필요합니다. "
                             + "활동 기간을 전달하는 경우 활동 시작 시간은 종료 시간보다 빨라야 하며, "
-                            + "신청 마감 시간은 활동 시작 시간보다 늦을 수 없습니다.")
+                            + "신청 마감 시간은 활동 시작 시간보다 늦을 수 없습니다. "
+                            + "최대 인원은 자유 모임·공고 기반 모임 모두 30명까지 설정할 수 있습니다(MEETING_MAX_MEMBER_EXCEEDED). "
+                            + "timeRecognized(봉사시간 인정 여부)는 공고 기반 모임에서만 반영되며, 자유 모임은 항상 false로 저장됩니다.")
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public ApiResponse<MeetingResponse> createMeeting(
@@ -150,6 +154,16 @@ public class MeetingController {
         return ApiResponse.success(meetingService.joinMeeting(meetingId));
     }
 
+    @Operation(
+            summary = "가입 신청 취소",
+            description =
+                    "신청자 본인이 대기 중인(PENDING) 가입 신청을 취소합니다. 모임장의 거절(REJECTED)과는 별도로 CANCELLED 상태가 됩니다.")
+    @DeleteMapping("/{meetingId}/join")
+    public ApiResponse<Void> cancelMyJoinRequest(@PathVariable Long meetingId) {
+        meetingService.cancelMyJoinRequest(meetingId);
+        return ApiResponse.success(null);
+    }
+
     @Operation(summary = "가입 신청 목록 조회", description = "모임장이 승인 대기 중인 가입 신청 목록을 조회합니다.")
     @GetMapping("/{meetingId}/join-requests")
     public ApiResponse<List<MeetingJoinRequestResponse>> getPendingJoinRequests(
@@ -175,6 +189,61 @@ public class MeetingController {
     @GetMapping("/{meetingId}")
     public ApiResponse<MeetingDetailResponse> getMeeting(@PathVariable Long meetingId) {
         return ApiResponse.success(meetingService.getMeeting(meetingId));
+    }
+
+    @Operation(
+            summary = "모임 해산",
+            description =
+                    "모임장이 모임을 해산합니다. 해산된 모임은 목록·상세 조회, 게시글, 멤버 정보 등 사용자 화면의 모든 조회에서 제외됩니다."
+                            + " 되돌릴 수 없습니다.")
+    @ApiResponses({
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                responseCode = "200",
+                description = "해산 성공"),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                responseCode = "403",
+                description = "모임장이 아님(MEETING_HOST_ONLY)"),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                responseCode = "404",
+                description = "모임을 찾을 수 없음(MEETING_NOT_FOUND)")
+    })
+    @DeleteMapping("/{meetingId}")
+    public ApiResponse<Void> disbandMeeting(@PathVariable Long meetingId) {
+        meetingService.disbandMeeting(meetingId);
+        return ApiResponse.success(null);
+    }
+
+    @Operation(
+            summary = "모임 정보 수정",
+            description =
+                    "모임장이 모임 기본 정보(이름, 소개, 최대 인원, 신청 마감일, 카테고리, 참여 조건)를 수정합니다. "
+                            + "최대 인원은 현재 참여 인원보다 적게 설정할 수 없으며, "
+                            + "자유 모임·공고 기반 모임 모두 최대 30명까지 설정할 수 있습니다. "
+                            + "자유 모임은 categories(1~3개)와 regionId를 함께 수정할 수 있습니다. "
+                            + "공고 기반 모임은 연결된 봉사공고를 기준으로 지역·카테고리가 고정되어 있어, "
+                            + "요청에 포함하더라도 반영되지 않고 기존 값이 유지됩니다. "
+                            + "timeRecognized(봉사시간 인정 여부)는 공고 기반 모임에서만 반영되며, "
+                            + "자유 모임은 요청 값과 무관하게 항상 false로 유지됩니다.")
+    @ApiResponses({
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                responseCode = "200",
+                description = "수정 성공"),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                responseCode = "403",
+                description = "모임장이 아님(MEETING_HOST_ONLY)"),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                responseCode = "400",
+                description =
+                        "모임 유형별 최대 인원 초과(MEETING_MAX_MEMBER_EXCEEDED) / 요청 값 오류(VALIDATION_ERROR)"
+                                + " / 모임 시간 오류(INVALID_MEETING_TIME)"),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                responseCode = "409",
+                description = "현재 참여 인원보다 정원이 적음(MEETING_MAX_BELOW_CURRENT_MEMBER)")
+    })
+    @PatchMapping("/{meetingId}")
+    public ApiResponse<MeetingDetailResponse> updateMeeting(
+            @PathVariable Long meetingId, @Valid @RequestBody MeetingUpdateRequest request) {
+        return ApiResponse.success(meetingService.updateMeeting(meetingId, request));
     }
 
     @Operation(
