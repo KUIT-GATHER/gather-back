@@ -114,5 +114,10 @@ class KakaoUnlinkWorkerConfigurationValidatorTest {
         KakaoUnlinkResultService resultService() {
             return mock(KakaoUnlinkResultService.class);
         }
+
+        @Bean
+        KakaoUnlinkTaskProcessor taskProcessor() {
+            return mock(KakaoUnlinkTaskProcessor.class);
+        }
     }
 }

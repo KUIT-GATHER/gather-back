@@ -23,10 +23,10 @@ spring:
   jpa:
     hibernate:
       ddl-auto: validate
-    show-sql: true
+    show-sql: false
     properties:
       hibernate:
-        format_sql: true
+        format_sql: false
         jdbc:
           time_zone: UTC
   mail:
@@ -54,6 +54,8 @@ gather:
       task-ids: ${KAKAO_UNLINK_RESUME_TASK_IDS:}
       actor: ${KAKAO_UNLINK_RESUME_ACTOR:}
       reason: ${KAKAO_UNLINK_RESUME_REASON:}
+    unlink-canary:
+      enabled: false
   aws:
     s3:
       region: ${GATHER_AWS_REGION:ap-northeast-2}

@@ -3,7 +3,6 @@ package com.gather.gather.domain.recruit.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -107,22 +106,14 @@ class MeetingRecruitServiceTest {
         assertThat(response.canEdit()).isTrue();
 
         verify(meetingRecruitRepository).save(any(MeetingRecruit.class));
-
         verify(eventPublisher)
                 .publishEvent(
-                        argThat(
-                                (Object event) ->
-                                        event
-                                                        instanceof
-                                                        MeetingPostNotificationRequestedEvent
-                                                                        request
-                                                && request.meetingId().equals(MEETING_ID)
-                                                && request.postId().equals(POST_ID)
-                                                && request.authorId().equals(USER_ID)
-                                                && request.type()
-                                                        == NotificationType.MEETING_POSTING_CREATED
-                                                && request.message()
-                                                        .equals("[한강공원 플로깅]에 새 봉사공고가 등록되었어요.")));
+                        new MeetingPostNotificationRequestedEvent(
+                                MEETING_ID,
+                                POST_ID,
+                                USER_ID,
+                                NotificationType.MEETING_POSTING_CREATED,
+                                "[한강공원 플로깅]에 새 봉사공고가 등록되었어요."));
     }
 
     @Test
@@ -166,6 +157,7 @@ class MeetingRecruitServiceTest {
                 .hasFieldOrPropertyWithValue(
                         "errorCode", ErrorCode.RECRUIT_RECOGNIZED_MINUTES_REQUIRED);
         verify(postRepository, never()).save(any());
+        verify(eventPublisher, never()).publishEvent(Mockito.any(Object.class));
     }
 
     @Test

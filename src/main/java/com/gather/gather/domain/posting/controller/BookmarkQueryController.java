@@ -11,6 +11,7 @@ import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.ExampleObject;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import java.time.LocalDate;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableDefault;
@@ -46,7 +47,9 @@ public class BookmarkQueryController {
             description =
                     "로그인한 사용자가 북마크한 봉사공고 목록을 북마크한 시각 최신순으로 페이지 단위 조회합니다. "
                             + "category를 지정하면 해당 봉사분야 북마크만, keyword를 지정하면 제목/모집기관명 부분일치로 "
-                            + "필터링합니다. 정렬 기준은 항상 북마크한 시각 최신순으로 고정되며, sort 파라미터를 지정해 요청하면 "
+                            + "필터링합니다. regionId는 상위 지역(시/도) 선택 시 하위 시군구 공고까지 포함합니다. "
+                            + "noticeStartDate/noticeEndDate는 각각 모집시작일 하한/모집종료일 상한 필터입니다. "
+                            + "정렬 기준은 항상 북마크한 시각 최신순으로 고정되며, sort 파라미터를 지정해 요청하면 "
                             + "400 VALIDATION_ERROR가 반환됩니다.")
     @ApiResponses({
         @io.swagger.v3.oas.annotations.responses.ApiResponse(
@@ -123,8 +126,16 @@ public class BookmarkQueryController {
             @Parameter(description = "봉사분야 카테고리 (미지정 시 전체)") @RequestParam(required = false)
                     PostingCategory category,
             @Parameter(description = "검색 키워드 (제목/모집기관명 부분일치)") @RequestParam(required = false)
-                    String keyword) {
+                    String keyword,
+            @Parameter(description = "활동 지역 ID (상위 시/도 선택 시 하위 시군구 공고 포함)")
+                    @RequestParam(required = false)
+                    Long regionId,
+            @Parameter(description = "모집 기간 시작일 하한 (yyyy-MM-dd)") @RequestParam(required = false)
+                    LocalDate noticeStartDate,
+            @Parameter(description = "모집 기간 종료일 상한 (yyyy-MM-dd)") @RequestParam(required = false)
+                    LocalDate noticeEndDate) {
         return ApiResponse.success(
-                bookmarkService.getBookmarkedPostings(category, keyword, pageable));
+                bookmarkService.getBookmarkedPostings(
+                        category, keyword, regionId, noticeStartDate, noticeEndDate, pageable));
     }
 }

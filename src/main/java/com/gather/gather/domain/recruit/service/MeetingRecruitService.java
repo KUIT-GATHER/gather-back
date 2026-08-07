@@ -96,6 +96,7 @@ public class MeetingRecruitService {
 
         String message = POSTING_CREATED_MESSAGE.formatted(meeting.getName());
 
+        // 일반 게시글과 동일하게 등록 알림을 발행한다(모임원에게 새 모집공고 알림).
         eventPublisher.publishEvent(
                 new MeetingPostNotificationRequestedEvent(
                         meeting.getId(),

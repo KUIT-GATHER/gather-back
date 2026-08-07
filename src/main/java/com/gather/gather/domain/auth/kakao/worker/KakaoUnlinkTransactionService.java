@@ -88,7 +88,7 @@ public class KakaoUnlinkTransactionService {
                 || !account.isUnlinkPending()
                 || user.getStatus() != UserStatus.WITHDRAWAL_PENDING) {
             task.stale(claim.claimToken(), leaseNow, attemptNow);
-            return KakaoUnlinkReservation.of(KakaoUnlinkReservation.Outcome.TERMINAL);
+            return KakaoUnlinkReservation.of(KakaoUnlinkReservation.Outcome.STALE);
         }
         if (task.getAttemptCount() >= properties.maximumAttempts()) {
             task.dead(
@@ -98,7 +98,7 @@ public class KakaoUnlinkTransactionService {
                     null,
                     null,
                     KakaoUnlinkTaskErrorType.ATTEMPT_EXHAUSTED);
-            return KakaoUnlinkReservation.of(KakaoUnlinkReservation.Outcome.TERMINAL);
+            return KakaoUnlinkReservation.of(KakaoUnlinkReservation.Outcome.DEAD);
         }
 
         String decryptedProviderId;
@@ -142,11 +142,11 @@ public class KakaoUnlinkTransactionService {
                 claim.retryCycle(),
                 task.getAttemptCount(),
                 errorType);
-        return KakaoUnlinkReservation.of(KakaoUnlinkReservation.Outcome.TERMINAL);
+        return KakaoUnlinkReservation.of(KakaoUnlinkReservation.Outcome.DEAD);
     }
 
     @Transactional
-    public void markStale(KakaoUnlinkClaim claim) {
+    public KakaoUnlinkProcessingResult markStale(KakaoUnlinkClaim claim) {
         // This path starts at SocialAccount because it does not require the global control lock.
         LockedEntities locked = lockEntities(claim);
         SocialAccount account = locked.account();
@@ -158,7 +158,9 @@ public class KakaoUnlinkTransactionService {
                 && user != null
                 && matchesClaim(task, claim, leaseNow)) {
             task.stale(claim.claimToken(), leaseNow, LocalDateTime.now(clock));
+            return KakaoUnlinkProcessingResult.STALE;
         }
+        return KakaoUnlinkProcessingResult.CLAIM_LOST;
     }
 
     private boolean matchesClaim(

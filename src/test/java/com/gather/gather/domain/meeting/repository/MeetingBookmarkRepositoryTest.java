@@ -187,7 +187,7 @@ class MeetingBookmarkRepositoryTest {
 
         Page<Meeting> page =
                 meetingBookmarkRepository.findBookmarkedMeetings(
-                        userId, null, null, PageRequest.of(0, 20));
+                        userId, null, null, false, List.of(-1L), null, null, PageRequest.of(0, 20));
 
         assertThat(page.getContent())
                 .extracting(Meeting::getId)
@@ -205,9 +205,81 @@ class MeetingBookmarkRepositoryTest {
 
         Page<Meeting> page =
                 meetingBookmarkRepository.findBookmarkedMeetings(
-                        userId, PostingCategory.EDUCATION, null, PageRequest.of(0, 20));
+                        userId,
+                        PostingCategory.EDUCATION,
+                        null,
+                        false,
+                        List.of(-1L),
+                        null,
+                        null,
+                        PageRequest.of(0, 20));
 
         assertThat(page.getContent()).extracting(Meeting::getId).containsExactly(education.getId());
+    }
+
+    @Test
+    void findBookmarkedMeetings_filtersByRegionIncludingChildren() {
+        Region parentRegion = regionRepository.save(Region.create("서울", 1, "seoul-mb", null));
+        Region childRegion =
+                regionRepository.save(Region.create("강남구", 2, "gangnam-mb", parentRegion));
+        Region otherRegion = regionRepository.save(Region.create("부산", 1, "busan-mb", null));
+        Meeting inChildRegion = meetingRepository.save(meeting(childRegion));
+        Meeting inOtherRegion = meetingRepository.save(meeting(otherRegion));
+        Long userId = bookmarker(childRegion).getId();
+        meetingBookmarkRepository.saveAndFlush(
+                MeetingBookmark.create(userId, inChildRegion.getId()));
+        meetingBookmarkRepository.saveAndFlush(
+                MeetingBookmark.create(userId, inOtherRegion.getId()));
+
+        Page<Meeting> page =
+                meetingBookmarkRepository.findBookmarkedMeetings(
+                        userId,
+                        null,
+                        null,
+                        true,
+                        List.of(parentRegion.getId(), childRegion.getId()),
+                        null,
+                        null,
+                        PageRequest.of(0, 20));
+
+        assertThat(page.getContent())
+                .extracting(Meeting::getId)
+                .containsExactly(inChildRegion.getId());
+    }
+
+    @Test
+    void findBookmarkedMeetings_filtersByActivityPeriodOverlap() {
+        Region region = region();
+        LocalDateTime now = LocalDateTime.now();
+        Meeting overlapping = meetingRepository.save(meeting(region));
+        Meeting outsideRange =
+                meetingRepository.save(
+                        meeting(
+                                region,
+                                "다른 시기 모임",
+                                "설명",
+                                PostingCategory.ENVIRONMENT,
+                                now.plusDays(30),
+                                now.plusDays(31)));
+        Long userId = bookmarker(region).getId();
+        meetingBookmarkRepository.saveAndFlush(MeetingBookmark.create(userId, overlapping.getId()));
+        meetingBookmarkRepository.saveAndFlush(
+                MeetingBookmark.create(userId, outsideRange.getId()));
+
+        Page<Meeting> page =
+                meetingBookmarkRepository.findBookmarkedMeetings(
+                        userId,
+                        null,
+                        null,
+                        false,
+                        List.of(-1L),
+                        now.plusDays(4),
+                        now.plusDays(6),
+                        PageRequest.of(0, 20));
+
+        assertThat(page.getContent())
+                .extracting(Meeting::getId)
+                .containsExactly(overlapping.getId());
     }
 
     @Test
@@ -221,7 +293,7 @@ class MeetingBookmarkRepositoryTest {
 
         Page<Meeting> page =
                 meetingBookmarkRepository.findBookmarkedMeetings(
-                        userId, null, null, PageRequest.of(0, 20));
+                        userId, null, null, false, List.of(-1L), null, null, PageRequest.of(0, 20));
 
         assertThat(page.getContent()).isEmpty();
     }
@@ -234,7 +306,7 @@ class MeetingBookmarkRepositoryTest {
 
         Page<Meeting> page =
                 meetingBookmarkRepository.findBookmarkedMeetings(
-                        userId, null, null, PageRequest.of(0, 20));
+                        userId, null, null, false, List.of(-1L), null, null, PageRequest.of(0, 20));
 
         assertThat(page.getContent()).isEmpty();
     }
@@ -250,7 +322,14 @@ class MeetingBookmarkRepositoryTest {
 
         Page<Meeting> page =
                 meetingBookmarkRepository.findBookmarkedMeetings(
-                        userId, null, "환경정화", PageRequest.of(0, 20));
+                        userId,
+                        null,
+                        "환경정화",
+                        false,
+                        List.of(-1L),
+                        null,
+                        null,
+                        PageRequest.of(0, 20));
 
         assertThat(page.getContent()).extracting(Meeting::getId).containsExactly(matching.getId());
     }
@@ -270,7 +349,14 @@ class MeetingBookmarkRepositoryTest {
 
         Page<Meeting> page =
                 meetingBookmarkRepository.findBookmarkedMeetings(
-                        userId, null, "환경정화", PageRequest.of(0, 20));
+                        userId,
+                        null,
+                        "환경정화",
+                        false,
+                        List.of(-1L),
+                        null,
+                        null,
+                        PageRequest.of(0, 20));
 
         assertThat(page.getContent()).extracting(Meeting::getId).containsExactly(matching.getId());
     }
@@ -288,7 +374,14 @@ class MeetingBookmarkRepositoryTest {
 
         Page<Meeting> page =
                 meetingBookmarkRepository.findBookmarkedMeetings(
-                        userId, null, LikeKeywordEscaper.escape("A_B"), PageRequest.of(0, 20));
+                        userId,
+                        null,
+                        LikeKeywordEscaper.escape("A_B"),
+                        false,
+                        List.of(-1L),
+                        null,
+                        null,
+                        PageRequest.of(0, 20));
 
         assertThat(page.getContent())
                 .extracting(Meeting::getId)
@@ -311,10 +404,10 @@ class MeetingBookmarkRepositoryTest {
 
         Page<Meeting> firstPage =
                 meetingBookmarkRepository.findBookmarkedMeetings(
-                        userId, null, null, PageRequest.of(0, 1));
+                        userId, null, null, false, List.of(-1L), null, null, PageRequest.of(0, 1));
         Page<Meeting> secondPage =
                 meetingBookmarkRepository.findBookmarkedMeetings(
-                        userId, null, null, PageRequest.of(1, 1));
+                        userId, null, null, false, List.of(-1L), null, null, PageRequest.of(1, 1));
 
         assertThat(firstPage.getContent())
                 .extracting(Meeting::getId)
@@ -342,7 +435,14 @@ class MeetingBookmarkRepositoryTest {
 
         Page<Meeting> page =
                 meetingBookmarkRepository.findBookmarkedMeetings(
-                        userId, PostingCategory.ENVIRONMENT, "환경정화", PageRequest.of(0, 20));
+                        userId,
+                        PostingCategory.ENVIRONMENT,
+                        "환경정화",
+                        false,
+                        List.of(-1L),
+                        null,
+                        null,
+                        PageRequest.of(0, 20));
 
         assertThat(page.getContent()).extracting(Meeting::getId).containsExactly(matching.getId());
     }
@@ -358,7 +458,7 @@ class MeetingBookmarkRepositoryTest {
 
         Page<Meeting> firstPage =
                 meetingBookmarkRepository.findBookmarkedMeetings(
-                        userId, null, null, PageRequest.of(0, 2));
+                        userId, null, null, false, List.of(-1L), null, null, PageRequest.of(0, 2));
 
         assertThat(firstPage.getContent()).hasSize(2);
         assertThat(firstPage.getTotalElements()).isEqualTo(3);
@@ -366,7 +466,7 @@ class MeetingBookmarkRepositoryTest {
 
         Page<Meeting> secondPage =
                 meetingBookmarkRepository.findBookmarkedMeetings(
-                        userId, null, null, PageRequest.of(1, 2));
+                        userId, null, null, false, List.of(-1L), null, null, PageRequest.of(1, 2));
 
         assertThat(secondPage.getContent()).hasSize(1);
         assertThat(secondPage.getTotalElements()).isEqualTo(3);
@@ -396,22 +496,33 @@ class MeetingBookmarkRepositoryTest {
 
     private Meeting meeting(
             Region region, String name, String description, PostingCategory category) {
-        User host = userRepository.save(user("host", region));
         LocalDateTime now = LocalDateTime.now();
+        return meeting(
+                region, name, description, category, now.plusDays(5), now.plusDays(5).plusHours(2));
+    }
+
+    private Meeting meeting(
+            Region region,
+            String name,
+            String description,
+            PostingCategory category,
+            LocalDateTime activityStartAt,
+            LocalDateTime activityEndAt) {
+        User host = userRepository.save(user("host", region));
 
         return Meeting.create(
                 name,
                 description,
                 10,
-                now.plusDays(3),
+                activityStartAt.minusDays(2),
                 null,
                 Set.of(category),
                 region.getId(),
                 host,
                 null,
                 null,
-                now.plusDays(5),
-                now.plusDays(5).plusHours(2));
+                activityStartAt,
+                activityEndAt);
     }
 
     private User bookmarker(Region region) {

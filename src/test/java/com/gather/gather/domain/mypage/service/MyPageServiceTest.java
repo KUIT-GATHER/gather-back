@@ -2,7 +2,7 @@ package com.gather.gather.domain.mypage.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.anyCollection;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mockStatic;
@@ -38,6 +38,7 @@ import com.gather.gather.global.exception.BusinessException;
 import com.gather.gather.global.exception.ErrorCode;
 import com.gather.gather.global.util.SecurityUtil;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.YearMonth;
 import java.util.List;
 import java.util.Optional;
@@ -85,6 +86,9 @@ class MyPageServiceTest {
                 .when(
                         meetingMemberRepository.findAllByUserIdAndStatusAndMeetingStatus(
                                 USER_ID, MeetingMemberStatus.APPROVED, MeetingStatus.COMPLETED))
+                .thenReturn(List.of());
+        lenient()
+                .when(meetingMemberRepository.findApprovedForCalendar(eq(USER_ID), any(), any()))
                 .thenReturn(List.of());
     }
 
@@ -168,8 +172,7 @@ class MyPageServiceTest {
 
         try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
             securityUtil.when(SecurityUtil::getCurrentUserId).thenReturn(USER_ID);
-            when(postingParticipationRepository.findByUserIdAndStatusNotIn(
-                            eq(USER_ID), anyCollection()))
+            when(postingParticipationRepository.findByUserId(USER_ID))
                     .thenReturn(
                             List.of(
                                     laterParticipation,
@@ -188,24 +191,140 @@ class MyPageServiceTest {
     }
 
     @Test
-    @DisplayName("getActivities excludes COMPLETED/REVIEWED statuses via the repository query")
-    void getActivities_requestsCalendarExcludedStatuses() {
+    @DisplayName(
+            "getActivities includes COMPLETED/REVIEWED participations so the 봉사 완료 tag can be"
+                    + " shown, using the unfiltered repository query")
+    void getActivities_includesCompletedAndReviewedParticipations() {
+        Posting completedPosting = posting(701L, LocalDate.of(2026, 7, 10));
+        Posting reviewedPosting = posting(702L, LocalDate.of(2026, 7, 11));
+        PostingParticipation completedParticipation = PostingParticipation.create(USER_ID, 701L);
+        ReflectionTestUtils.setField(
+                completedParticipation, "status", PostingParticipationStatus.COMPLETED);
+        PostingParticipation reviewedParticipation = PostingParticipation.create(USER_ID, 702L);
+        ReflectionTestUtils.setField(
+                reviewedParticipation, "status", PostingParticipationStatus.REVIEWED);
+
         try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
             securityUtil.when(SecurityUtil::getCurrentUserId).thenReturn(USER_ID);
-            when(postingParticipationRepository.findByUserIdAndStatusNotIn(
-                            eq(USER_ID), anyCollection()))
+            when(postingParticipationRepository.findByUserId(USER_ID))
+                    .thenReturn(List.of(completedParticipation, reviewedParticipation));
+            when(postingRepository.findAllById(List.of(701L, 702L)))
+                    .thenReturn(List.of(completedPosting, reviewedPosting));
+
+            List<MyPageActivityResponse> activities =
+                    myPageService.getActivities(YearMonth.of(2026, 7));
+
+            assertThat(activities)
+                    .extracting(MyPageActivityResponse::postingId)
+                    .containsExactlyInAnyOrder(701L, 702L);
+            assertThat(activities)
+                    .extracting(MyPageActivityResponse::status)
+                    .containsExactlyInAnyOrder("COMPLETED", "REVIEWED");
+            verify(postingParticipationRepository).findByUserId(USER_ID);
+        }
+    }
+
+    @Test
+    @DisplayName(
+            "getActivities includes approved meeting memberships as MEETING cards alongside"
+                    + " VOLUNTEER cards, merged and sorted by actStartDate")
+    void getActivities_mergesMeetingActivitiesWithVolunteerActivities() {
+        Posting volunteerPosting = posting(801L, LocalDate.of(2026, 7, 20));
+        PostingParticipation participation = PostingParticipation.create(USER_ID, 801L);
+        MeetingMember meetingMember =
+                approvedCalendarMeetingMember(
+                        3L,
+                        LocalDate.of(2026, 7, 5).atStartOfDay(),
+                        LocalDate.of(2026, 7, 6).atStartOfDay());
+
+        try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
+            securityUtil.when(SecurityUtil::getCurrentUserId).thenReturn(USER_ID);
+            when(postingParticipationRepository.findByUserId(USER_ID))
+                    .thenReturn(List.of(participation));
+            when(postingRepository.findAllById(List.of(801L)))
+                    .thenReturn(List.of(volunteerPosting));
+            when(meetingMemberRepository.findApprovedForCalendar(eq(USER_ID), any(), any()))
+                    .thenReturn(List.of(meetingMember));
+
+            List<MyPageActivityResponse> activities =
+                    myPageService.getActivities(YearMonth.of(2026, 7));
+
+            assertThat(activities)
+                    .extracting(MyPageActivityResponse::activityType)
+                    .containsExactly(
+                            MyPageActivityResponse.ActivityType.MEETING,
+                            MyPageActivityResponse.ActivityType.VOLUNTEER);
+            assertThat(activities.get(0).meetingId()).isEqualTo(3L);
+            assertThat(activities.get(0).postingId()).isNull();
+            assertThat(activities.get(0).volunteerPostingId()).isNull();
+            assertThat(activities.get(0).meetingStatus()).isEqualTo("RECRUITING");
+            assertThat(activities.get(0).postingParticipationStatus()).isNull();
+            assertThat(activities.get(1).meetingId()).isNull();
+            assertThat(activities.get(1).postingId()).isEqualTo(801L);
+            verify(postingParticipationRepository, never())
+                    .findAllByUserIdAndPostingIdIn(any(), any());
+        }
+    }
+
+    @Test
+    @DisplayName(
+            "getActivities returns the linked posting's PostingParticipation status as"
+                    + " postingParticipationStatus for a posting-based MEETING card")
+    void getActivities_returnsPostingParticipationStatus_forPostingBasedMeetingWithParticipation() {
+        MeetingMember meetingMember =
+                approvedCalendarMeetingMember(
+                        3L,
+                        10L,
+                        LocalDate.of(2026, 7, 5).atStartOfDay(),
+                        LocalDate.of(2026, 7, 6).atStartOfDay());
+        PostingParticipation linkedParticipation = PostingParticipation.create(USER_ID, 10L);
+        ReflectionTestUtils.setField(
+                linkedParticipation, "status", PostingParticipationStatus.APPLIED);
+
+        try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
+            securityUtil.when(SecurityUtil::getCurrentUserId).thenReturn(USER_ID);
+            when(postingParticipationRepository.findByUserId(USER_ID)).thenReturn(List.of());
+            when(meetingMemberRepository.findApprovedForCalendar(eq(USER_ID), any(), any()))
+                    .thenReturn(List.of(meetingMember));
+            when(postingParticipationRepository.findAllByUserIdAndPostingIdIn(
+                            USER_ID, List.of(10L)))
+                    .thenReturn(List.of(linkedParticipation));
+
+            List<MyPageActivityResponse> activities =
+                    myPageService.getActivities(YearMonth.of(2026, 7));
+
+            assertThat(activities.get(0).volunteerPostingId()).isEqualTo(10L);
+            assertThat(activities.get(0).meetingStatus()).isEqualTo("RECRUITING");
+            assertThat(activities.get(0).postingParticipationStatus()).isEqualTo("APPLIED");
+        }
+    }
+
+    @Test
+    @DisplayName(
+            "getActivities returns null postingParticipationStatus when the posting-based MEETING's"
+                    + " linked posting has no participation record for the user")
+    void getActivities_returnsNullPostingParticipationStatus_whenLinkedPostingHasNoParticipation() {
+        MeetingMember meetingMember =
+                approvedCalendarMeetingMember(
+                        3L,
+                        10L,
+                        LocalDate.of(2026, 7, 5).atStartOfDay(),
+                        LocalDate.of(2026, 7, 6).atStartOfDay());
+
+        try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
+            securityUtil.when(SecurityUtil::getCurrentUserId).thenReturn(USER_ID);
+            when(postingParticipationRepository.findByUserId(USER_ID)).thenReturn(List.of());
+            when(meetingMemberRepository.findApprovedForCalendar(eq(USER_ID), any(), any()))
+                    .thenReturn(List.of(meetingMember));
+            when(postingParticipationRepository.findAllByUserIdAndPostingIdIn(
+                            USER_ID, List.of(10L)))
                     .thenReturn(List.of());
 
             List<MyPageActivityResponse> activities =
                     myPageService.getActivities(YearMonth.of(2026, 7));
 
-            assertThat(activities).isEmpty();
-            verify(postingParticipationRepository)
-                    .findByUserIdAndStatusNotIn(
-                            USER_ID,
-                            Set.of(
-                                    PostingParticipationStatus.COMPLETED,
-                                    PostingParticipationStatus.REVIEWED));
+            assertThat(activities.get(0).volunteerPostingId()).isEqualTo(10L);
+            assertThat(activities.get(0).postingParticipationStatus()).isNull();
         }
     }
 
@@ -221,8 +340,7 @@ class MyPageServiceTest {
 
         try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
             securityUtil.when(SecurityUtil::getCurrentUserId).thenReturn(USER_ID);
-            when(postingParticipationRepository.findByUserIdAndStatusNotIn(
-                            eq(USER_ID), anyCollection()))
+            when(postingParticipationRepository.findByUserId(USER_ID))
                     .thenReturn(List.of(firstDayParticipation, lastDayParticipation));
             when(postingRepository.findAllById(List.of(201L, 202L)))
                     .thenReturn(List.of(firstDayPosting, lastDayPosting));
@@ -247,8 +365,7 @@ class MyPageServiceTest {
 
         try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
             securityUtil.when(SecurityUtil::getCurrentUserId).thenReturn(USER_ID);
-            when(postingParticipationRepository.findByUserIdAndStatusNotIn(
-                            eq(USER_ID), anyCollection()))
+            when(postingParticipationRepository.findByUserId(USER_ID))
                     .thenReturn(List.of(participation));
             when(postingRepository.findAllById(List.of(401L))).thenReturn(List.of(multiDayPosting));
 
@@ -277,8 +394,7 @@ class MyPageServiceTest {
 
         try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
             securityUtil.when(SecurityUtil::getCurrentUserId).thenReturn(USER_ID);
-            when(postingParticipationRepository.findByUserIdAndStatusNotIn(
-                            eq(USER_ID), anyCollection()))
+            when(postingParticipationRepository.findByUserId(USER_ID))
                     .thenReturn(List.of(participation));
             when(postingRepository.findAllById(List.of(301L)))
                     .thenReturn(List.of(unscheduledPosting));
@@ -562,8 +678,106 @@ class MyPageServiceTest {
         }
     }
 
+    @Test
+    @DisplayName(
+            "getActivitySummary sums totalRecognizedMinutes and counts"
+                    + " timeCertifiableCompletedCount across posting participations and meeting"
+                    + " memberships, ignoring cards with no recognizedMinutes submitted")
+    void getActivitySummary_aggregatesRecognizedMinutesAndTimeCertifiableCount() {
+        Posting certifiedPosting = posting(101L, LocalDate.of(2026, 7, 20));
+        PostingParticipation certifiedParticipation = PostingParticipation.create(USER_ID, 101L);
+        certifiedParticipation.submitRecognizedMinutes(90);
+        Posting uncertifiedPosting =
+                posting(102L, LocalDate.of(2026, 7, 21), PostingCategory.EDUCATION);
+        PostingParticipation uncertifiedParticipation = PostingParticipation.create(USER_ID, 102L);
+
+        MeetingMember certifiedMember = approvedMeetingMember();
+        certifiedMember.submitRecognizedMinutes(60);
+        MeetingMember uncertifiedMember = approvedMeetingMember();
+
+        try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
+            securityUtil.when(SecurityUtil::getCurrentUserId).thenReturn(USER_ID);
+            when(postingParticipationRepository.findAllByUserIdAndStatusIn(
+                            USER_ID, COMPLETED_STATUSES))
+                    .thenReturn(List.of(certifiedParticipation, uncertifiedParticipation));
+            when(postingRepository.findAllById(List.of(101L, 102L)))
+                    .thenReturn(List.of(certifiedPosting, uncertifiedPosting));
+            when(meetingMemberRepository.findAllByUserIdAndStatusAndMeetingStatus(
+                            USER_ID, MeetingMemberStatus.APPROVED, MeetingStatus.COMPLETED))
+                    .thenReturn(List.of(certifiedMember, uncertifiedMember));
+
+            MyPageActivitySummaryResponse summary = myPageService.getActivitySummary();
+
+            assertThat(summary.totalRecognizedMinutes()).isEqualTo(150);
+            assertThat(summary.timeCertifiableCompletedCount()).isEqualTo(2);
+        }
+    }
+
+    @Test
+    @DisplayName(
+            "getActivityRecords sets timeCertifiable=true only for cards with recognizedMinutes"
+                    + " already submitted")
+    void getActivityRecords_setsTimeCertifiableBasedOnRecognizedMinutes() {
+        Posting certifiedPosting = posting(201L, LocalDate.of(2026, 7, 10));
+        Posting uncertifiedPosting = posting(202L, LocalDate.of(2026, 7, 11));
+        PostingParticipation certifiedParticipation = PostingParticipation.create(USER_ID, 201L);
+        certifiedParticipation.submitRecognizedMinutes(120);
+        PostingParticipation uncertifiedParticipation = PostingParticipation.create(USER_ID, 202L);
+
+        try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
+            securityUtil.when(SecurityUtil::getCurrentUserId).thenReturn(USER_ID);
+            when(postingParticipationRepository.findAllByUserIdAndStatusIn(
+                            USER_ID, COMPLETED_STATUSES))
+                    .thenReturn(List.of(certifiedParticipation, uncertifiedParticipation));
+            when(postingRepository.findAllById(List.of(201L, 202L)))
+                    .thenReturn(List.of(certifiedPosting, uncertifiedPosting));
+
+            List<MyPageActivityRecordResponse> records =
+                    myPageService.getActivityRecords(null, defaultPageable()).content();
+
+            assertThat(records)
+                    .filteredOn(record -> record.postingId().equals(201L))
+                    .extracting(MyPageActivityRecordResponse::timeCertifiable)
+                    .containsExactly(true);
+            assertThat(records)
+                    .filteredOn(record -> record.postingId().equals(202L))
+                    .extracting(MyPageActivityRecordResponse::timeCertifiable)
+                    .containsExactly(false);
+        }
+    }
+
     private Pageable defaultPageable() {
         return PageRequest.of(0, 20);
+    }
+
+    private MeetingMember approvedCalendarMeetingMember(
+            Long meetingId, LocalDateTime activityStartAt, LocalDateTime activityEndAt) {
+        return approvedCalendarMeetingMember(meetingId, null, activityStartAt, activityEndAt);
+    }
+
+    private MeetingMember approvedCalendarMeetingMember(
+            Long meetingId,
+            Long volunteerPostingId,
+            LocalDateTime activityStartAt,
+            LocalDateTime activityEndAt) {
+        Meeting meeting =
+                Meeting.create(
+                        "테스트 모임",
+                        "설명",
+                        5,
+                        activityStartAt.minusDays(10),
+                        null,
+                        Set.of(PostingCategory.ENVIRONMENT),
+                        1L,
+                        user(),
+                        null,
+                        volunteerPostingId,
+                        activityStartAt,
+                        activityEndAt);
+        ReflectionTestUtils.setField(meeting, "id", meetingId);
+        MeetingMember member = MeetingMember.createHost(user(), meeting);
+        ReflectionTestUtils.setField(member, "status", MeetingMemberStatus.APPROVED);
+        return member;
     }
 
     private MeetingMember approvedMeetingMember() {

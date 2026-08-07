@@ -5,9 +5,6 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.gather.gather.domain.auth.kakao.admin.client.KakaoAdminApiClient;
-import com.gather.gather.domain.auth.kakao.admin.client.KakaoAdminUnlinkDisposition;
-import com.gather.gather.domain.auth.kakao.admin.client.KakaoAdminUnlinkResult;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -21,71 +18,61 @@ import org.springframework.boot.test.system.OutputCaptureExtension;
 class KakaoUnlinkWorkerTest {
 
     @Mock private KakaoUnlinkClaimService claimService;
-    @Mock private KakaoUnlinkTransactionService transactionService;
-    @Mock private KakaoAdminApiClient adminApiClient;
-    @Mock private KakaoUnlinkResultService resultService;
+    @Mock private KakaoUnlinkTaskProcessor taskProcessor;
 
     private KakaoUnlinkWorker worker;
 
     @BeforeEach
     void setUp() {
-        worker =
-                new KakaoUnlinkWorker(
-                        claimService, transactionService, adminApiClient, resultService);
+        worker = new KakaoUnlinkWorker(claimService, taskProcessor);
     }
 
     @Test
-    void alreadyUnlinked_finalizesLocallyWithoutReservationOrHttp() {
-        KakaoUnlinkClaim claim = claim(1L);
-        when(claimService.claimBatch()).thenReturn(List.of(claim));
-        when(transactionService.preflight(claim))
-                .thenReturn(KakaoUnlinkPreflightOutcome.LOCAL_FINALIZE);
-
-        worker.runBatch();
-
-        verify(resultService).finalizeLocally(claim);
-        verify(transactionService, never()).reserveAttempt(claim);
-        verify(adminApiClient, never()).unlink(org.mockito.ArgumentMatchers.anyLong());
-    }
-
-    @Test
-    void configurationFailure_stopsBeforeRemainingClaimedTask() {
+    void configurationBlocked_stopsBeforeRemainingClaimedTask() {
         KakaoUnlinkClaim first = claim(1L);
         KakaoUnlinkClaim second = claim(2L);
-        KakaoUnlinkAttempt attempt = new KakaoUnlinkAttempt(first, 123L, 1);
-        KakaoAdminUnlinkResult configurationFailure =
-                new KakaoAdminUnlinkResult(
-                        KakaoAdminUnlinkDisposition.PERMANENT_CONFIGURATION, 401, -401, null);
         when(claimService.claimBatch()).thenReturn(List.of(first, second));
-        when(transactionService.preflight(first)).thenReturn(KakaoUnlinkPreflightOutcome.RESERVE);
-        when(transactionService.reserveAttempt(first))
-                .thenReturn(KakaoUnlinkReservation.reserved(attempt));
-        when(adminApiClient.unlink(123L)).thenReturn(configurationFailure);
-        when(resultService.applyConfigurationFailure(attempt, configurationFailure))
-                .thenReturn(KakaoUnlinkBatchAction.STOP_BATCH);
+        when(taskProcessor.process(first))
+                .thenReturn(KakaoUnlinkProcessingResult.CONFIGURATION_BLOCKED);
 
         worker.runBatch();
 
-        verify(transactionService, never()).preflight(second);
-        verify(transactionService, never()).reserveAttempt(second);
+        verify(taskProcessor, never()).process(second);
     }
 
     @Test
-    void unexpectedTaskFailure_logsStackTraceWithoutClaimToken(CapturedOutput output) {
-        KakaoUnlinkClaim claim = claim(1L);
-        when(claimService.claimBatch()).thenReturn(List.of(claim));
-        when(transactionService.preflight(claim))
-                .thenThrow(new IllegalStateException("unexpected-worker-failure"));
+    void nonBlockingResults_continueWithRemainingClaims() {
+        KakaoUnlinkClaim first = claim(1L);
+        KakaoUnlinkClaim second = claim(2L);
+        when(claimService.claimBatch()).thenReturn(List.of(first, second));
+        when(taskProcessor.process(first)).thenReturn(KakaoUnlinkProcessingResult.DEAD);
+        when(taskProcessor.process(second)).thenReturn(KakaoUnlinkProcessingResult.STALE);
 
         worker.runBatch();
 
+        verify(taskProcessor).process(first);
+        verify(taskProcessor).process(second);
+    }
+
+    @Test
+    void unexpectedTaskFailure_logsStackTraceWithoutClaimTokenAndContinues(CapturedOutput output) {
+        KakaoUnlinkClaim first = claim(1L);
+        KakaoUnlinkClaim second = claim(2L);
+        when(claimService.claimBatch()).thenReturn(List.of(first, second));
+        when(taskProcessor.process(first))
+                .thenThrow(new IllegalStateException("unexpected-worker-failure"));
+        when(taskProcessor.process(second)).thenReturn(KakaoUnlinkProcessingResult.SUCCEEDED);
+
+        worker.runBatch();
+
+        verify(taskProcessor).process(second);
         assertThat(output)
                 .contains("failureType=java.lang.IllegalStateException")
                 .contains("java.lang.IllegalStateException: unexpected-worker-failure")
-                .doesNotContain(claim.claimToken());
+                .doesNotContain(first.claimToken());
     }
 
     private KakaoUnlinkClaim claim(Long taskId) {
-        return new KakaoUnlinkClaim(taskId, taskId, taskId, 1L, "opaque-token", 0);
+        return new KakaoUnlinkClaim(taskId, taskId, taskId, 1L, "opaque-token-" + taskId, 0);
     }
 }

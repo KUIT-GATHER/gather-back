@@ -8,8 +8,10 @@ import static org.mockito.Mockito.verify;
 import com.gather.gather.domain.notification.enums.NotificationType;
 import com.gather.gather.domain.notification.event.MeetingJoinResultNotificationRequestedEvent;
 import com.gather.gather.domain.notification.event.MeetingPostNotificationRequestedEvent;
+import com.gather.gather.domain.notification.event.PostCommentNotificationRequestedEvent;
 import com.gather.gather.domain.notification.service.MeetingPostNotificationService;
 import com.gather.gather.domain.notification.service.NotificationCreateService;
+import com.gather.gather.domain.notification.service.PostCommentNotificationService;
 import java.lang.reflect.Method;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -25,6 +27,7 @@ class NotificationEventListenerTest {
 
     @Mock private NotificationCreateService notificationCreateService;
     @Mock private MeetingPostNotificationService meetingPostNotificationService;
+    @Mock private PostCommentNotificationService postCommentNotificationService;
 
     @InjectMocks private NotificationEventListener notificationEventListener;
 
@@ -108,6 +111,46 @@ class NotificationEventListenerTest {
                 NotificationEventListener.class.getMethod(
                         "onMeetingPostNotificationRequested",
                         MeetingPostNotificationRequestedEvent.class);
+
+        TransactionalEventListener annotation =
+                listenerMethod.getAnnotation(TransactionalEventListener.class);
+
+        assertThat(annotation).isNotNull();
+        assertThat(annotation.phase()).isEqualTo(TransactionPhase.AFTER_COMMIT);
+    }
+
+    @Test
+    @DisplayName("댓글 저장 커밋 후 게시글 작성자에게 댓글 알림을 생성한다")
+    void onPostCommentNotificationRequestedCreatesNotification() {
+        PostCommentNotificationRequestedEvent event =
+                new PostCommentNotificationRequestedEvent(1L, 10L, 100L, "한강공원 플로깅");
+
+        notificationEventListener.onPostCommentNotificationRequested(event);
+
+        verify(postCommentNotificationService).createNotification(1L, 10L, 100L, "한강공원 플로깅");
+    }
+
+    @Test
+    @DisplayName("댓글 알림 생성 실패를 댓글 작성 결과로 전파하지 않는다")
+    void onPostCommentNotificationRequestedDoesNotPropagateFailure() {
+        PostCommentNotificationRequestedEvent event =
+                new PostCommentNotificationRequestedEvent(1L, 10L, 100L, "한강공원 플로깅");
+
+        doThrow(new IllegalStateException("notification failed"))
+                .when(postCommentNotificationService)
+                .createNotification(1L, 10L, 100L, "한강공원 플로깅");
+
+        assertThatCode(() -> notificationEventListener.onPostCommentNotificationRequested(event))
+                .doesNotThrowAnyException();
+    }
+
+    @Test
+    @DisplayName("댓글 알림 리스너는 댓글 트랜잭션 커밋 후 실행된다")
+    void postCommentListenerRunsAfterCommit() throws NoSuchMethodException {
+        Method listenerMethod =
+                NotificationEventListener.class.getMethod(
+                        "onPostCommentNotificationRequested",
+                        PostCommentNotificationRequestedEvent.class);
 
         TransactionalEventListener annotation =
                 listenerMethod.getAnnotation(TransactionalEventListener.class);

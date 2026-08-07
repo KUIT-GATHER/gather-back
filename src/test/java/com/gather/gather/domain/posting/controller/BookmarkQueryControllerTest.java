@@ -60,7 +60,8 @@ class BookmarkQueryControllerTest {
                         LocalDate.of(2026, 7, 5));
         Page<PostingSummaryResponse> page =
                 new PageImpl<>(List.of(posting), PageRequest.of(0, 20), 1);
-        when(bookmarkService.getBookmarkedPostings(isNull(), isNull(), any()))
+        when(bookmarkService.getBookmarkedPostings(
+                        isNull(), isNull(), isNull(), isNull(), isNull(), any()))
                 .thenReturn(PageResponse.from(page));
 
         mockMvc.perform(get("/api/v1/postings/bookmarks"))
@@ -77,7 +78,12 @@ class BookmarkQueryControllerTest {
         Page<PostingSummaryResponse> emptyPage =
                 new PageImpl<>(List.of(), PageRequest.of(0, 20), 0);
         when(bookmarkService.getBookmarkedPostings(
-                        eq(PostingCategory.ENVIRONMENT), eq("정화"), any()))
+                        eq(PostingCategory.ENVIRONMENT),
+                        eq("정화"),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        any()))
                 .thenReturn(PageResponse.from(emptyPage));
 
         mockMvc.perform(
@@ -92,7 +98,8 @@ class BookmarkQueryControllerTest {
     @Test
     @DisplayName("GET /api/v1/postings/bookmarks returns 401 when not authenticated")
     void getBookmarkedPostings_returns401_whenUnauthenticated() throws Exception {
-        when(bookmarkService.getBookmarkedPostings(isNull(), isNull(), any()))
+        when(bookmarkService.getBookmarkedPostings(
+                        isNull(), isNull(), isNull(), isNull(), isNull(), any()))
                 .thenThrow(new BusinessException(ErrorCode.UNAUTHORIZED));
 
         mockMvc.perform(get("/api/v1/postings/bookmarks"))
@@ -105,14 +112,17 @@ class BookmarkQueryControllerTest {
     @DisplayName("GET /api/v1/postings/bookmarks?page=1&size=5 binds page/size query params")
     void getBookmarkedPostings_bindsPageableFromQueryParams() throws Exception {
         Page<PostingSummaryResponse> emptyPage = new PageImpl<>(List.of(), PageRequest.of(1, 5), 0);
-        when(bookmarkService.getBookmarkedPostings(isNull(), isNull(), any()))
+        when(bookmarkService.getBookmarkedPostings(
+                        isNull(), isNull(), isNull(), isNull(), isNull(), any()))
                 .thenReturn(PageResponse.from(emptyPage));
 
         mockMvc.perform(get("/api/v1/postings/bookmarks").param("page", "1").param("size", "5"))
                 .andExpect(status().isOk());
 
         ArgumentCaptor<Pageable> captor = ArgumentCaptor.forClass(Pageable.class);
-        verify(bookmarkService).getBookmarkedPostings(isNull(), isNull(), captor.capture());
+        verify(bookmarkService)
+                .getBookmarkedPostings(
+                        isNull(), isNull(), isNull(), isNull(), isNull(), captor.capture());
         assertThat(captor.getValue().getPageNumber()).isEqualTo(1);
         assertThat(captor.getValue().getPageSize()).isEqualTo(5);
     }
@@ -121,7 +131,8 @@ class BookmarkQueryControllerTest {
     @DisplayName(
             "GET /api/v1/postings/bookmarks?sort=... returns 400 when the service rejects sort")
     void getBookmarkedPostings_returns400_whenServiceRejectsSort() throws Exception {
-        when(bookmarkService.getBookmarkedPostings(isNull(), isNull(), any()))
+        when(bookmarkService.getBookmarkedPostings(
+                        isNull(), isNull(), isNull(), isNull(), isNull(), any()))
                 .thenThrow(new BusinessException(ErrorCode.VALIDATION_ERROR));
 
         mockMvc.perform(get("/api/v1/postings/bookmarks").param("sort", "title,desc"))

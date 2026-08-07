@@ -1,11 +1,14 @@
 package com.gather.gather.domain.recruit.repository;
 
+import com.gather.gather.domain.post.enums.PostType;
 import com.gather.gather.domain.recruit.dto.MyAppliedRecruitResponse;
 import com.gather.gather.domain.recruit.entity.MeetingRecruitParticipation;
+import com.gather.gather.domain.recruit.entity.MeetingRecruitParticipationStatus;
 import java.util.Optional;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -56,4 +59,25 @@ public interface MeetingRecruitParticipationRepository
               AND p.deletedAt IS NULL
             """)
     long countMyAppliedRecruits(@Param("userId") Long userId, @Param("meetingId") Long meetingId);
+
+    /** 모임 완료 시, 해당 모임 모집공고 참여의 상태를 일괄 전환한다(신청 → 봉사완료). 벌크 업데이트. */
+    @Modifying(clearAutomatically = true)
+    @Query(
+            """
+            UPDATE MeetingRecruitParticipation prt
+            SET prt.status = :toStatus
+            WHERE prt.status = :fromStatus
+              AND prt.postId IN (
+                  SELECT p.id
+                  FROM Post p
+                  WHERE p.meeting.id = :meetingId
+                    AND p.type = :recruitType
+                    AND p.deletedAt IS NULL
+              )
+            """)
+    int updateStatusByMeeting(
+            @Param("meetingId") Long meetingId,
+            @Param("fromStatus") MeetingRecruitParticipationStatus fromStatus,
+            @Param("toStatus") MeetingRecruitParticipationStatus toStatus,
+            @Param("recruitType") PostType recruitType);
 }

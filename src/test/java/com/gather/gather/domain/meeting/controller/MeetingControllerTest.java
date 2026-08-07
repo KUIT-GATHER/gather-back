@@ -81,6 +81,7 @@ class MeetingControllerTest {
                         3,
                         10,
                         2L,
+                        "동구",
                         Set.of(PostingCategory.ENVIRONMENT),
                         MeetingStatus.RECRUITING,
                         LocalDateTime.of(2026, 7, 31, 23, 59, 59),

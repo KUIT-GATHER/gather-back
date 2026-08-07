@@ -12,6 +12,7 @@ import com.gather.gather.domain.auth.repository.UserRepository;
 import com.gather.gather.domain.badge.entity.BadgeType;
 import com.gather.gather.domain.badge.event.BadgeAwardRequestedEvent;
 import com.gather.gather.domain.badge.event.MeetingCompletedEvent;
+import com.gather.gather.domain.meeting.dto.MeetingResponse;
 import com.gather.gather.domain.meeting.dto.PostingMeetingResponse;
 import com.gather.gather.domain.meeting.entity.Meeting;
 import com.gather.gather.domain.meeting.entity.MeetingMember;
@@ -22,9 +23,11 @@ import com.gather.gather.domain.meeting.repository.MeetingMemberRepository;
 import com.gather.gather.domain.meeting.repository.MeetingRepository;
 import com.gather.gather.domain.posting.entity.PostingCategory;
 import com.gather.gather.domain.posting.repository.PostingRepository;
+import com.gather.gather.domain.posting.service.RegionNameResolver;
 import com.gather.gather.domain.region.repository.RegionRepository;
 import com.gather.gather.global.common.PageResponse;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -49,6 +52,7 @@ class MeetingServiceTest {
     @Mock private PostingRepository postingRepository;
     @Mock private MeetingSearchLogService meetingSearchLogService;
     @Mock private org.springframework.context.ApplicationEventPublisher eventPublisher;
+    @Mock private RegionNameResolver regionNameResolver;
 
     @InjectMocks private MeetingService meetingService;
 
@@ -431,6 +435,48 @@ class MeetingServiceTest {
 
         verify(pendingMember).approve();
         verify(eventPublisher, never()).publishEvent(org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    @DisplayName("getMeetings resolves regionName via RegionNameResolver for each meeting")
+    void getMeetings_populatesRegionNameFromResolver() {
+        when(meeting.getRegionId()).thenReturn(5L);
+        when(meetingRepository.searchMeetings(
+                        org.mockito.ArgumentMatchers.any(),
+                        org.mockito.ArgumentMatchers.anyBoolean(),
+                        anyList(),
+                        org.mockito.ArgumentMatchers.any(),
+                        org.mockito.ArgumentMatchers.any(),
+                        org.mockito.ArgumentMatchers.anyBoolean(),
+                        org.mockito.ArgumentMatchers.any(),
+                        org.mockito.ArgumentMatchers.any(),
+                        org.mockito.ArgumentMatchers.any(),
+                        org.mockito.ArgumentMatchers.any(),
+                        org.mockito.ArgumentMatchers.any()))
+                .thenReturn(new PageImpl<>(List.of(meeting), PageRequest.of(0, 10), 1));
+        when(regionNameResolver.resolve(List.of(5L))).thenReturn(Map.of(5L, "동구"));
+
+        PageResponse<MeetingResponse> responses =
+                meetingService.getMeetings(
+                        null, null, null, null, null, null, null, PageRequest.of(0, 10));
+
+        assertThat(responses.content().get(0).regionName()).isEqualTo("동구");
+    }
+
+    @Test
+    @DisplayName("getMyMeetings resolves regionName via RegionNameResolver for each membership")
+    void getMyMeetings_populatesRegionNameFromResolver() {
+        setAuthenticatedUser(1L);
+        when(meeting.getRegionId()).thenReturn(7L);
+        MeetingMember membership = createMembership(MeetingMemberRole.MEMBER);
+        when(meetingMemberRepository.findAllByUserIdAndStatusFetchMeeting(
+                        1L, MeetingMemberStatus.APPROVED))
+                .thenReturn(List.of(membership));
+        when(regionNameResolver.resolve(List.of(7L))).thenReturn(Map.of(7L, "서구"));
+
+        List<MeetingResponse> responses = meetingService.getMyMeetings();
+
+        assertThat(responses.get(0).regionName()).isEqualTo("서구");
     }
 
     private void setAuthenticatedUser(Long userId) {
