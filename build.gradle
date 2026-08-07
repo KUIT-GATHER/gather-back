@@ -37,6 +37,7 @@ dependencies {
 	implementation 'org.apache.lucene:lucene-analysis-nori:9.12.3'
 	implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.8.16'
 	implementation 'com.fasterxml.jackson.dataformat:jackson-dataformat-xml'
+	implementation 'org.jsoup:jsoup:1.18.3'
 	implementation 'io.jsonwebtoken:jjwt-api:0.13.0'
 	implementation platform('software.amazon.awssdk:bom:2.46.8')
 	implementation 'software.amazon.awssdk:s3'

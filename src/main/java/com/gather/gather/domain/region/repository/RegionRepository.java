@@ -50,4 +50,7 @@ public interface RegionRepository extends JpaRepository<Region, Long> {
     /** 특정 지역의 직계 자식 목록(예: 시군구의 읍/면/동)을 반환한다. */
     @Query("select r from Region r where r.parent.id = :parentId")
     List<Region> findByParentId(@Param("parentId") Long parentId);
+
+    /** 최상위 시도(level 1) 목록을 반환한다. VMS 크롤링 지역 텍스트 매칭의 1단계 후보로 쓰인다. */
+    List<Region> findByParentIsNull();
 }

@@ -7,6 +7,7 @@ import com.gather.gather.domain.posting.client.dto.VolunteerApiSearchItemDto;
 import com.gather.gather.domain.posting.entity.Posting;
 import com.gather.gather.domain.posting.entity.PostingCategory;
 import com.gather.gather.domain.posting.entity.PostingLocation;
+import com.gather.gather.domain.posting.entity.PostingSource;
 import com.gather.gather.domain.posting.entity.PostingStatus;
 import com.gather.gather.domain.posting.repository.PostingLocationRepository;
 import com.gather.gather.domain.posting.repository.PostingRepository;
@@ -248,6 +249,7 @@ public class PostingSyncService {
                                         detail.postAdres(),
                                         detail.actPlace()))
                         .category(resolveCategory(detail.srvcClCode()))
+                        .source(PostingSource.API_1365)
                         .build();
 
         Posting saved = postingRepository.save(posting);
