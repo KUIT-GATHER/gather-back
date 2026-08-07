@@ -342,6 +342,22 @@ public class MeetingService {
         return MeetingJoinRequestResponse.from(member);
     }
 
+    /** 신청자 본인이 자신의 대기 중인 가입 신청을 취소한다(재신청 시 MEETING_JOIN_REQUEST_DUPLICATE에 막히지 않도록 상태를 해제). */
+    @Transactional
+    public void cancelMyJoinRequest(Long meetingId) {
+        Long userId = SecurityUtil.getCurrentUserId();
+        getMeetingEntity(meetingId);
+
+        MeetingMember member =
+                meetingMemberRepository
+                        .findPendingByMeetingIdAndUserIdForUpdate(meetingId, userId)
+                        .orElseThrow(
+                                () ->
+                                        new BusinessException(
+                                                ErrorCode.MEETING_JOIN_REQUEST_NOT_FOUND));
+        member.cancel();
+    }
+
     /** 모임(그룹) 봉사 완료 판정: 모임장이 직접 완료 처리한다(개인 봉사는 본인이 활동종료일 이후 완료 처리한다). */
     @Transactional
     public void completeMeeting(Long meetingId) {

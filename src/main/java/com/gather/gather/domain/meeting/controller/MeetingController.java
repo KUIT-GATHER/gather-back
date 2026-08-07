@@ -26,6 +26,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -151,6 +152,16 @@ public class MeetingController {
     @PostMapping("/{meetingId}/join")
     public ApiResponse<MeetingJoinResponse> joinMeeting(@PathVariable Long meetingId) {
         return ApiResponse.success(meetingService.joinMeeting(meetingId));
+    }
+
+    @Operation(
+            summary = "가입 신청 취소",
+            description =
+                    "신청자 본인이 대기 중인(PENDING) 가입 신청을 취소합니다. 모임장의 거절(REJECTED)과는 별도로 CANCELLED 상태가 됩니다.")
+    @DeleteMapping("/{meetingId}/join")
+    public ApiResponse<Void> cancelMyJoinRequest(@PathVariable Long meetingId) {
+        meetingService.cancelMyJoinRequest(meetingId);
+        return ApiResponse.success(null);
     }
 
     @Operation(summary = "가입 신청 목록 조회", description = "모임장이 승인 대기 중인 가입 신청 목록을 조회합니다.")

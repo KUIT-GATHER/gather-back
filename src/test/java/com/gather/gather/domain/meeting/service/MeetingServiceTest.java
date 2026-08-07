@@ -490,6 +490,59 @@ class MeetingServiceTest {
     }
 
     @Test
+    @DisplayName("cancelMyJoinRequest cancels the caller's own pending join request")
+    void cancelMyJoinRequest_cancelsPendingRequest_whenCalledByRequester() {
+        setAuthenticatedUser(1L);
+        when(meetingRepository.findByIdAndDeletedAtIsNull(12L))
+                .thenReturn(java.util.Optional.of(meeting));
+        MeetingMember pendingMember = mock(MeetingMember.class);
+        when(meetingMemberRepository.findPendingByMeetingIdAndUserIdForUpdate(12L, 1L))
+                .thenReturn(java.util.Optional.of(pendingMember));
+
+        meetingService.cancelMyJoinRequest(12L);
+
+        verify(pendingMember).cancel();
+    }
+
+    @Test
+    @DisplayName(
+            "cancelMyJoinRequest throws MEETING_JOIN_REQUEST_NOT_FOUND when the caller has no"
+                    + " pending request")
+    void cancelMyJoinRequest_throwsNotFound_whenNoPendingRequest() {
+        setAuthenticatedUser(1L);
+        when(meetingRepository.findByIdAndDeletedAtIsNull(12L))
+                .thenReturn(java.util.Optional.of(meeting));
+        when(meetingMemberRepository.findPendingByMeetingIdAndUserIdForUpdate(12L, 1L))
+                .thenReturn(java.util.Optional.empty());
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(
+                        () -> meetingService.cancelMyJoinRequest(12L))
+                .isInstanceOf(com.gather.gather.global.exception.BusinessException.class)
+                .hasFieldOrPropertyWithValue(
+                        "errorCode",
+                        com.gather.gather.global.exception.ErrorCode
+                                .MEETING_JOIN_REQUEST_NOT_FOUND);
+    }
+
+    @Test
+    @DisplayName("cancelMyJoinRequest throws MEETING_NOT_FOUND when the meeting does not exist")
+    void cancelMyJoinRequest_throwsMeetingNotFound_whenMeetingMissing() {
+        setAuthenticatedUser(1L);
+        when(meetingRepository.findByIdAndDeletedAtIsNull(999L))
+                .thenReturn(java.util.Optional.empty());
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(
+                        () -> meetingService.cancelMyJoinRequest(999L))
+                .isInstanceOf(com.gather.gather.global.exception.BusinessException.class)
+                .hasFieldOrPropertyWithValue(
+                        "errorCode",
+                        com.gather.gather.global.exception.ErrorCode.MEETING_NOT_FOUND);
+        verify(meetingMemberRepository, never())
+                .findPendingByMeetingIdAndUserIdForUpdate(
+                        org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
     @DisplayName("모임장은 자유 모임의 이름·정원·카테고리·지역을 수정할 수 있다")
     void updateMeeting_updatesFreeMeeting_whenCalledByHost() {
         setAuthenticatedUser(1L);

@@ -58,6 +58,14 @@ public class MeetingHomeService {
                                         m.getUser().getId().equals(userId)
                                                 && m.getRole() == MeetingMemberRole.HOST);
 
+        MeetingMember pendingMembership =
+                userId == null
+                        ? null
+                        : meetingMemberRepository
+                                .findByMeeting_IdAndUser_IdAndStatus(
+                                        meetingId, userId, MeetingMemberStatus.PENDING)
+                                .orElse(null);
+
         List<MeetingMemberResponse> memberResponses =
                 members.stream()
                         // 팀장(HOST)이 항상 첫 번째, 이후 순서는 가입 순
@@ -92,7 +100,9 @@ public class MeetingHomeService {
                 memberResponses,
                 linkedPosting == null ? null : UpcomingActivityResponse.from(linkedPosting),
                 member,
-                host);
+                host,
+                pendingMembership != null,
+                pendingMembership == null ? null : pendingMembership.getId());
     }
 
     private Posting resolveLinkedPosting(Long volunteerPostingId) {
