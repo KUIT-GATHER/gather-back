@@ -30,7 +30,7 @@ public class MeetingRecruitController {
 
     @Operation(
             summary = "모집공고 작성",
-            description = "모임장만 작성할 수 있습니다. RECRUIT 게시글과 모집 확장 정보(장소·일정·정원·카테고리·마감일 등)를 함께 생성합니다.")
+            description = "모임장만 작성할 수 있습니다. RECRUIT 게시글과 모집 확장 정보(지역·장소·활동기간·정원·카테고리·마감일 등)를 함께 생성합니다.")
     @PostMapping("/recruits")
     @ResponseStatus(HttpStatus.CREATED)
     public ApiResponse<RecruitDetailResponse> createRecruit(
@@ -39,8 +39,10 @@ public class MeetingRecruitController {
     }
 
     @Operation(
-            summary = "모집공고 상세 조회",
-            description = "기본 게시글 정보에 모집 확장 필드와 참여 현황(n/N)·내 신청 상태를 더해 반환합니다. 가입자만 조회할 수 있습니다.")
+            summary = "모집공고 상세 조회(실제 봉사 모집공고 화면)",
+            description =
+                    "기본 게시글 정보에 모집 확장 필드와 참여 현황(n/N)·확정 상태·내 참여 상태를 더해 반환합니다."
+                            + " external=false면 승인된 모임원만 조회할 수 있고, external=true면 비로그인 사용자도 조회할 수 있습니다.")
     @GetMapping("/{postId}/recruit")
     public ApiResponse<RecruitDetailResponse> getRecruit(
             @PathVariable Long meetingId, @PathVariable Long postId) {
@@ -49,7 +51,7 @@ public class MeetingRecruitController {
 
     @Operation(
             summary = "모집공고 수정",
-            description = "작성한 팀장 본인만 수정할 수 있습니다. 정원은 현재 신청 인원보다 적게 줄일 수 없습니다.")
+            description = "작성한 팀장 본인만 수정할 수 있습니다. 정원은 현재 신청 인원(취소·반려 제외)보다 적게 줄일 수 없습니다.")
     @PatchMapping("/{postId}/recruit")
     public ApiResponse<RecruitDetailResponse> updateRecruit(
             @PathVariable Long meetingId,
@@ -61,35 +63,13 @@ public class MeetingRecruitController {
     @Operation(
             summary = "참여신청 토글",
             description =
-                    "가입자가 모집공고에 참여신청하거나 취소합니다. 신청 마감일 이후에는 변경할 수 없고, 정원을 초과해 신청할 수 없습니다."
-                            + " 응답의 applied/appliedCount로 버튼과 현황을 갱신합니다.")
+                    "external=false면 승인된 모임원만, external=true면 로그인한 사용자라면 모임 미가입자도 신청·취소할 수"
+                            + " 있습니다. 신청 마감 시각 이전이고 아직 확정(CONFIRMED)되지 않은 동안에만 신청·취소가 가능합니다."
+                            + " 취소(CANCELLED)한 사용자는 마감 전 다시 신청할 수 있고, 반려(REJECTED)된 사용자는 다시 신청할 수"
+                            + " 없습니다.")
     @PostMapping("/{postId}/recruit/participation")
     public ApiResponse<RecruitParticipationResponse> toggleParticipation(
             @PathVariable Long meetingId, @PathVariable Long postId) {
         return ApiResponse.success(meetingRecruitService.toggleParticipation(meetingId, postId));
-    }
-
-    @Operation(summary = "참여 확정", description = "팀장이 신청(APPLIED) 상태의 참여를 확정(CONFIRMED)합니다.")
-    @PatchMapping("/{postId}/recruit/participations/{participationId}/confirm")
-    public ApiResponse<Void> confirmParticipation(
-            @PathVariable Long meetingId,
-            @PathVariable Long postId,
-            @PathVariable Long participationId) {
-        meetingRecruitService.confirmParticipation(meetingId, postId, participationId);
-        return ApiResponse.success(null);
-    }
-
-    @Operation(
-            summary = "참석 처리",
-            description =
-                    "활동 종료 후 팀장이 확정(CONFIRMED) 참가자의 참석 여부를 처리합니다. 참석 처리된 참가자만 봉사완료(COMPLETED)로"
-                            + " 전환됩니다.")
-    @PatchMapping("/{postId}/recruit/participations/{participationId}/present")
-    public ApiResponse<Void> markParticipantPresent(
-            @PathVariable Long meetingId,
-            @PathVariable Long postId,
-            @PathVariable Long participationId) {
-        meetingRecruitService.markParticipantPresent(meetingId, postId, participationId);
-        return ApiResponse.success(null);
     }
 }

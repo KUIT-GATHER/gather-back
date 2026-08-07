@@ -9,8 +9,7 @@ import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.Size;
-import java.time.LocalDate;
-import java.time.LocalTime;
+import java.time.LocalDateTime;
 import java.util.Set;
 
 /** 모집공고(RECRUIT) 수정 요청. 작성한 팀장 본인만 수정할 수 있다. 필드 구성은 작성 요청과 동일하다. */
@@ -23,11 +22,13 @@ public record RecruitUpdateRequest(
                 @NotBlank(message = "활동 소개는 필수입니다.")
                 @Size(max = 1000, message = "활동 소개는 1000자 이내여야 합니다.")
                 String content,
+        @Schema(description = "지역 ID") @NotNull(message = "지역은 필수입니다.") Long regionId,
         @Schema(description = "활동 장소") @NotBlank(message = "장소는 필수입니다.") @Size(max = 255)
                 String place,
-        @Schema(description = "활동 날짜") @NotNull(message = "활동 날짜는 필수입니다.") LocalDate actDate,
-        @Schema(description = "활동 시작 시간(선택)") LocalTime actStartTime,
-        @Schema(description = "활동 종료 시간(선택)") LocalTime actEndTime,
+        @Schema(description = "활동 시작 일시") @NotNull(message = "활동 시작 일시는 필수입니다.")
+                LocalDateTime activityStartAt,
+        @Schema(description = "활동 종료 일시") @NotNull(message = "활동 종료 일시는 필수입니다.")
+                LocalDateTime activityEndAt,
         @Schema(description = "최대 인원(최대 50)")
                 @NotNull(message = "최대 인원은 필수입니다.")
                 @Min(value = 1, message = "최대 인원은 1 이상이어야 합니다.")
@@ -40,6 +41,6 @@ public record RecruitUpdateRequest(
         @Schema(description = "봉사시간 인정 여부") boolean timeRecognized,
         @Schema(description = "인정 시간(분). timeRecognized=true일 때 필수") @Positive
                 Integer recognizedMinutes,
-        @Schema(description = "신청 마감일") @NotNull(message = "신청 마감일은 필수입니다.")
-                LocalDate applyDeadline,
-        @Schema(description = "외부 공고 공개 여부") boolean isExternal) {}
+        @Schema(description = "신청 마감 일시") @NotNull(message = "신청 마감 일시는 필수입니다.")
+                LocalDateTime applyDeadlineAt,
+        @Schema(description = "외부 공개 여부") boolean external) {}
