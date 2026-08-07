@@ -63,6 +63,8 @@ public enum ErrorCode {
     MEETING_COMPLETE_NOT_ALLOWED(HttpStatus.CONFLICT, "활동종료일이 지나야 완료 처리를 할 수 있습니다."),
     MEETING_HOURS_NOT_ALLOWED(HttpStatus.CONFLICT, "완료 처리된 모임에서만 인정시간을 입력할 수 있습니다."),
     MEETING_HOURS_ALREADY_SUBMITTED(HttpStatus.CONFLICT, "이미 인정시간을 입력했습니다."),
+    MEETING_MAX_MEMBER_EXCEEDED(HttpStatus.BAD_REQUEST, "모임 유형별 최대 인원 제한을 초과했습니다."),
+    MEETING_MAX_BELOW_CURRENT_MEMBER(HttpStatus.CONFLICT, "현재 참여 인원보다 정원을 적게 변경할 수 없습니다."),
 
     POSTING_NOT_FOUND(HttpStatus.NOT_FOUND, "봉사공고를 찾을 수 없습니다."),
     POSTING_CLOSED(HttpStatus.CONFLICT, "마감된 봉사공고입니다."),
