@@ -149,6 +149,21 @@ public enum ErrorCode {
     RECRUIT_REAPPLY_NOT_ALLOWED(HttpStatus.CONFLICT, "반려된 신청은 다시 신청할 수 없습니다."),
     POST_CONTENT_TOO_LONG(HttpStatus.BAD_REQUEST, "내용 길이가 허용 범위를 초과했습니다."),
 
+    // ── 멤버 관리(#11) ──
+    MEETING_MEMBER_NOT_FOUND(HttpStatus.NOT_FOUND, "모임원을 찾을 수 없습니다."),
+    MEETING_MEMBER_HOST_CANNOT_BE_REMOVED(HttpStatus.CONFLICT, "모임장은 내보낼 수 없습니다."),
+    MEETING_MEMBER_HAS_ACTIVE_ACTIVITY(HttpStatus.CONFLICT, "아직 종료되지 않은 활동에 확정된 참가자는 내보낼 수 없습니다."),
+
+    // ── 모집공고 신청자 관리(#13) ──
+    RECRUIT_PARTICIPANT_NOT_FOUND(HttpStatus.NOT_FOUND, "신청자를 찾을 수 없습니다."),
+    RECRUIT_PARTICIPANT_NOT_APPLIED(HttpStatus.CONFLICT, "신청(APPLIED) 상태의 참여만 처리할 수 있습니다."),
+    RECRUIT_ALREADY_CONFIRMED(HttpStatus.CONFLICT, "이미 확정된 모집공고입니다."),
+    RECRUIT_NO_APPLICANTS_TO_CONFIRM(HttpStatus.CONFLICT, "확정할 신청자가 없습니다."),
+    RECRUIT_ATTENDANCE_NOT_ALLOWED(
+            HttpStatus.CONFLICT, "참가 인원 확정 후, 활동 종료 시각이 지난 뒤에만 출석 처리를 할 수 있습니다."),
+    RECRUIT_ATTENDANCE_INVALID_STATUS(
+            HttpStatus.BAD_REQUEST, "출석 상태는 PRESENT 또는 ABSENT만 지정할 수 있습니다."),
+
     // ── 활동 후기(REVIEW) ──
     POST_REVIEW_SOURCE_REQUIRED(
             HttpStatus.BAD_REQUEST, "후기는 근거 활동(reviewSourceType/reviewSourceId)이 필요합니다."),

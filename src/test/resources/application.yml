@@ -36,6 +36,9 @@ notification:
 
 
 gather:
+  recruit:
+    auto-confirm:
+      scheduler-enabled: false
   aws:
     s3:
       region: ap-northeast-2
