@@ -8,13 +8,16 @@ import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.gather.gather.domain.meeting.repository.MeetingImageRepository;
+import com.gather.gather.domain.meeting.service.MeetingImageUrlResolver;
+import com.gather.gather.domain.posting.dto.PostingListItem;
 import com.gather.gather.domain.posting.dto.PostingParticipationAction;
 import com.gather.gather.domain.posting.dto.PostingResponse;
-import com.gather.gather.domain.posting.dto.PostingSummaryResponse;
+import com.gather.gather.domain.posting.dto.PostingSourceType;
 import com.gather.gather.domain.posting.entity.Posting;
 import com.gather.gather.domain.posting.entity.PostingCategory;
 import com.gather.gather.domain.posting.entity.PostingLocation;
@@ -25,6 +28,9 @@ import com.gather.gather.domain.posting.repository.BookmarkRepository;
 import com.gather.gather.domain.posting.repository.PostingLocationRepository;
 import com.gather.gather.domain.posting.repository.PostingParticipationRepository;
 import com.gather.gather.domain.posting.repository.PostingRepository;
+import com.gather.gather.domain.posting.repository.UnifiedPostingQueryRepository;
+import com.gather.gather.domain.posting.repository.UnifiedPostingQueryRepository.SearchResult;
+import com.gather.gather.domain.posting.repository.UnifiedPostingRow;
 import com.gather.gather.domain.region.entity.Region;
 import com.gather.gather.domain.region.repository.RegionRepository;
 import com.gather.gather.global.common.PageResponse;
@@ -32,6 +38,7 @@ import com.gather.gather.global.exception.BusinessException;
 import com.gather.gather.global.exception.ErrorCode;
 import com.gather.gather.global.util.SecurityUtil;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
@@ -43,7 +50,6 @@ import org.junit.jupiter.params.provider.CsvSource;
 import org.mockito.Mock;
 import org.mockito.MockedStatic;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
@@ -58,6 +64,9 @@ class PostingServiceTest {
     @Mock private PostingSearchLogService postingSearchLogService;
     @Mock private BookmarkRepository bookmarkRepository;
     @Mock private PostingParticipationRepository postingParticipationRepository;
+    @Mock private UnifiedPostingQueryRepository unifiedPostingQueryRepository;
+    @Mock private MeetingImageRepository meetingImageRepository;
+    @Mock private MeetingImageUrlResolver meetingImageUrlResolver;
 
     private PostingService postingService;
 
@@ -71,20 +80,24 @@ class PostingServiceTest {
                         postingSearchLogService,
                         new RegionNameResolver(regionRepository),
                         bookmarkRepository,
-                        postingParticipationRepository);
+                        postingParticipationRepository,
+                        unifiedPostingQueryRepository,
+                        meetingImageRepository,
+                        meetingImageUrlResolver,
+                        new ObjectMapper());
     }
 
     @Test
     @DisplayName("getPostings passes a null status through to the repository unchanged")
     void getPostings_passesNullStatusThrough_whenStatusNotProvided() {
         Pageable pageable = PageRequest.of(0, 20);
-        when(postingRepository.search(
+        when(unifiedPostingQueryRepository.search(
                         isNull(), isNull(), isNull(), isNull(), isNull(), isNull(), eq(pageable)))
-                .thenReturn(new PageImpl<>(List.of()));
+                .thenReturn(new SearchResult(List.of(), 0));
 
         postingService.getPostings(pageable, null, null, null, null, null, null, null);
 
-        verify(postingRepository).search(null, null, null, null, null, null, pageable);
+        verify(unifiedPostingQueryRepository).search(null, null, null, null, null, null, pageable);
         verify(regionRepository, never()).findIdsIncludingChildren(any());
         verify(regionRepository, never()).findIdsIncludingChildrenByGroupId(any());
     }
@@ -93,7 +106,7 @@ class PostingServiceTest {
     @DisplayName("getPostings passes an explicitly given status through unchanged")
     void getPostings_usesGivenStatus_whenProvided() {
         Pageable pageable = PageRequest.of(0, 20);
-        when(postingRepository.search(
+        when(unifiedPostingQueryRepository.search(
                         eq(PostingStatus.CLOSED),
                         isNull(),
                         isNull(),
@@ -101,12 +114,12 @@ class PostingServiceTest {
                         isNull(),
                         isNull(),
                         eq(pageable)))
-                .thenReturn(new PageImpl<>(List.of()));
+                .thenReturn(new SearchResult(List.of(), 0));
 
         postingService.getPostings(
                 pageable, null, null, PostingStatus.CLOSED, null, null, null, null);
 
-        verify(postingRepository)
+        verify(unifiedPostingQueryRepository)
                 .search(PostingStatus.CLOSED, null, null, null, null, null, pageable);
     }
 
@@ -115,7 +128,7 @@ class PostingServiceTest {
     void getPostings_resolvesRegionHierarchy_whenRegionIdProvided() {
         Pageable pageable = PageRequest.of(0, 20);
         when(regionRepository.findIdsIncludingChildren(1L)).thenReturn(List.of(1L, 2L, 3L));
-        when(postingRepository.search(
+        when(unifiedPostingQueryRepository.search(
                         isNull(),
                         eq(List.of(1L, 2L, 3L)),
                         isNull(),
@@ -123,12 +136,12 @@ class PostingServiceTest {
                         isNull(),
                         isNull(),
                         eq(pageable)))
-                .thenReturn(new PageImpl<>(List.of()));
+                .thenReturn(new SearchResult(List.of(), 0));
 
         postingService.getPostings(pageable, 1L, null, null, null, null, null, null);
 
         verify(regionRepository).findIdsIncludingChildren(1L);
-        verify(postingRepository)
+        verify(unifiedPostingQueryRepository)
                 .search(null, List.of(1L, 2L, 3L), null, null, null, null, pageable);
     }
 
@@ -140,7 +153,7 @@ class PostingServiceTest {
         Pageable pageable = PageRequest.of(0, 20);
         when(regionRepository.findIdsIncludingChildrenByGroupId(7L))
                 .thenReturn(List.of(10L, 11L, 12L, 13L));
-        when(postingRepository.search(
+        when(unifiedPostingQueryRepository.search(
                         isNull(),
                         eq(List.of(10L, 11L, 12L, 13L)),
                         isNull(),
@@ -148,13 +161,13 @@ class PostingServiceTest {
                         isNull(),
                         isNull(),
                         eq(pageable)))
-                .thenReturn(new PageImpl<>(List.of()));
+                .thenReturn(new SearchResult(List.of(), 0));
 
         postingService.getPostings(pageable, null, 7L, null, null, null, null, null);
 
         verify(regionRepository).findIdsIncludingChildrenByGroupId(7L);
         verify(regionRepository, never()).findIdsIncludingChildren(any());
-        verify(postingRepository)
+        verify(unifiedPostingQueryRepository)
                 .search(null, List.of(10L, 11L, 12L, 13L), null, null, null, null, pageable);
     }
 
@@ -172,30 +185,51 @@ class PostingServiceTest {
                         ex ->
                                 assertThat(((BusinessException) ex).getErrorCode())
                                         .isEqualTo(ErrorCode.VALIDATION_ERROR));
-        verify(postingRepository, never()).search(any(), any(), any(), any(), any(), any(), any());
+        verify(unifiedPostingQueryRepository, never())
+                .search(any(), any(), any(), any(), any(), any(), any());
         verify(postingSearchLogService, never()).log(any());
     }
 
     @Test
-    @DisplayName("getPostings does not log the keyword when sort validation fails")
-    void getPostings_doesNotLogKeyword_whenSortInvalid() {
+    @DisplayName("getPostings throws VALIDATION_ERROR when sort property is not whitelisted")
+    void getPostings_throwsValidationError_whenSortPropertyUnknown() {
         Pageable pageable = PageRequest.of(0, 20, Sort.by("string"));
 
         assertThatThrownBy(
                         () ->
                                 postingService.getPostings(
                                         pageable, null, null, null, null, null, "환경", null))
-                .isInstanceOf(BusinessException.class);
-
+                .isInstanceOf(BusinessException.class)
+                .satisfies(
+                        ex ->
+                                assertThat(((BusinessException) ex).getErrorCode())
+                                        .isEqualTo(ErrorCode.VALIDATION_ERROR));
         verify(postingSearchLogService, never()).log(any());
+        verify(unifiedPostingQueryRepository, never())
+                .search(any(), any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("getPostings allows sorting by a whitelisted property")
+    void getPostings_allowsSort_whenPropertyKnown() {
+        Pageable pageable = PageRequest.of(0, 20, Sort.by("activityStartAt").ascending());
+        when(unifiedPostingQueryRepository.isSortable("activityStartAt")).thenReturn(true);
+        when(unifiedPostingQueryRepository.search(
+                        isNull(), isNull(), isNull(), isNull(), isNull(), isNull(), eq(pageable)))
+                .thenReturn(new SearchResult(List.of(), 0));
+
+        postingService.getPostings(pageable, null, null, null, null, null, null, null);
+
+        verify(unifiedPostingQueryRepository).search(null, null, null, null, null, null, pageable);
     }
 
     @Test
     @DisplayName("getPostings logs the keyword only after the search succeeds")
     void getPostings_logsKeyword_onlyAfterSearchSucceeds() {
         Pageable pageable = PageRequest.of(0, 20);
-        when(postingRepository.search(null, null, null, null, "환경", null, pageable))
-                .thenReturn(new PageImpl<>(List.of()));
+        when(unifiedPostingQueryRepository.search(
+                        isNull(), isNull(), isNull(), isNull(), eq("환경"), isNull(), eq(pageable)))
+                .thenReturn(new SearchResult(List.of(), 0));
 
         postingService.getPostings(pageable, null, null, null, null, null, "환경", null);
 
@@ -206,31 +240,15 @@ class PostingServiceTest {
     @DisplayName("getPostings still returns results when search-log recording throws")
     void getPostings_returnsResults_whenSearchLoggingThrows() {
         Pageable pageable = PageRequest.of(0, 20);
-        when(postingRepository.search(null, null, null, null, "환경", null, pageable))
-                .thenReturn(new PageImpl<>(List.of()));
+        when(unifiedPostingQueryRepository.search(
+                        isNull(), isNull(), isNull(), isNull(), eq("환경"), isNull(), eq(pageable)))
+                .thenReturn(new SearchResult(List.of(), 0));
         doThrow(new RuntimeException("logging failed")).when(postingSearchLogService).log("환경");
 
-        PageResponse<PostingSummaryResponse> result =
+        PageResponse<PostingListItem> result =
                 postingService.getPostings(pageable, null, null, null, null, null, "환경", null);
 
         assertThat(result.content()).isEmpty();
-    }
-
-    @Test
-    @DisplayName(
-            "getPostings returns results unaffected when the keyword exceeds the search-log column length")
-    void getPostings_returnsResults_whenKeywordExceedsSearchLogColumnLength() {
-        String longKeyword = "가".repeat(101);
-        Pageable pageable = PageRequest.of(0, 20);
-        when(postingRepository.search(null, null, null, null, longKeyword, null, pageable))
-                .thenReturn(new PageImpl<>(List.of()));
-
-        PageResponse<PostingSummaryResponse> result =
-                postingService.getPostings(
-                        pageable, null, null, null, null, null, longKeyword, null);
-
-        assertThat(result.content()).isEmpty();
-        verify(postingSearchLogService).log(longKeyword);
     }
 
     @Test
@@ -239,128 +257,123 @@ class PostingServiceTest {
         Pageable pageable = PageRequest.of(0, 20);
         LocalDate from = LocalDate.of(2026, 7, 1);
         LocalDate to = LocalDate.of(2026, 7, 31);
-        when(postingRepository.search(null, null, from, to, null, null, pageable))
-                .thenReturn(new PageImpl<>(List.of()));
+        when(unifiedPostingQueryRepository.search(
+                        isNull(), isNull(), eq(from), eq(to), isNull(), isNull(), eq(pageable)))
+                .thenReturn(new SearchResult(List.of(), 0));
 
         postingService.getPostings(pageable, null, null, null, from, to, null, null);
 
-        verify(postingRepository).search(null, null, from, to, null, null, pageable);
-    }
-
-    @Test
-    @DisplayName("getPostings passes the keyword through to the repository")
-    void getPostings_passesKeyword_whenProvided() {
-        Pageable pageable = PageRequest.of(0, 20);
-        when(postingRepository.search(null, null, null, null, "환경", null, pageable))
-                .thenReturn(new PageImpl<>(List.of()));
-
-        postingService.getPostings(pageable, null, null, null, null, null, "환경", null);
-
-        verify(postingRepository).search(null, null, null, null, "환경", null, pageable);
+        verify(unifiedPostingQueryRepository).search(null, null, from, to, null, null, pageable);
     }
 
     @Test
     @DisplayName("getPostings passes the category through to the repository")
     void getPostings_passesCategory_whenProvided() {
         Pageable pageable = PageRequest.of(0, 20);
-        when(postingRepository.search(
-                        null, null, null, null, null, PostingCategory.WELFARE, pageable))
-                .thenReturn(new PageImpl<>(List.of()));
+        when(unifiedPostingQueryRepository.search(
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        eq(PostingCategory.WELFARE),
+                        eq(pageable)))
+                .thenReturn(new SearchResult(List.of(), 0));
 
         postingService.getPostings(
                 pageable, null, null, null, null, null, null, PostingCategory.WELFARE);
 
-        verify(postingRepository)
+        verify(unifiedPostingQueryRepository)
                 .search(null, null, null, null, null, PostingCategory.WELFARE, pageable);
     }
 
     @Test
-    @DisplayName("getPostings fills regionName and passes through category when matches exist")
-    void getPostings_mapsRegionNameAndCategory_whenMatched() {
-        Posting posting = postingWithId(1L, "동구 환경정화 봉사", 2L, PostingCategory.ENVIRONMENT);
+    @DisplayName(
+            "getPostings maps a POSTING-sourced row to a PostingListItem with a null thumbnail")
+    void getPostings_mapsPostingSourcedRow_withNullThumbnail() {
         Pageable pageable = PageRequest.of(0, 20);
-        when(postingRepository.search(null, null, null, null, null, null, pageable))
-                .thenReturn(new PageImpl<>(List.of(posting)));
+        UnifiedPostingRow row =
+                new UnifiedPostingRow(
+                        "POSTING",
+                        1L,
+                        null,
+                        "동구 환경정화 봉사",
+                        "울산 동구청",
+                        2L,
+                        "동구 일대",
+                        LocalDateTime.of(2026, 7, 10, 9, 0),
+                        LocalDateTime.of(2026, 7, 10, 18, 0),
+                        LocalDateTime.of(2026, 7, 9, 23, 59),
+                        5,
+                        1,
+                        "[\"ENVIRONMENT\"]",
+                        "RECRUITING");
+        when(unifiedPostingQueryRepository.search(any(), any(), any(), any(), any(), any(), any()))
+                .thenReturn(new SearchResult(List.of(row), 1));
         when(regionRepository.findAllById(any())).thenReturn(List.of(regionWithId(2L, "동구")));
 
-        PageResponse<PostingSummaryResponse> result =
+        PageResponse<PostingListItem> result =
                 postingService.getPostings(pageable, null, null, null, null, null, null, null);
 
         assertThat(result.content()).hasSize(1);
-        PostingSummaryResponse response = result.content().get(0);
-        assertThat(response.regionName()).isEqualTo("동구");
-        assertThat(response.category()).isEqualTo(PostingCategory.ENVIRONMENT);
+        PostingListItem item = result.content().get(0);
+        assertThat(item.sourceType()).isEqualTo(PostingSourceType.POSTING);
+        assertThat(item.regionName()).isEqualTo("동구");
+        assertThat(item.thumbnailUrl()).isNull();
+        assertThat(item.categories()).containsExactly(PostingCategory.ENVIRONMENT);
         assertThat(result.totalElements()).isEqualTo(1);
+        verify(meetingImageRepository, never()).findRepresentativeImagesByMeetingIds(any());
     }
 
     @Test
-    @DisplayName("getPostings leaves regionName null when regionId is null or unmatched")
-    void getPostings_regionNameNull_whenRegionIdNullOrUnmatched() {
-        Posting posting = postingWithId(1L, "무지역 공고", null, PostingCategory.ENVIRONMENT);
+    @DisplayName("getPostings resolves a thumbnail for a MEETING_RECRUIT-sourced row")
+    void getPostings_resolvesThumbnail_forMeetingRecruitSourcedRow() {
         Pageable pageable = PageRequest.of(0, 20);
-        when(postingRepository.search(null, null, null, null, null, null, pageable))
-                .thenReturn(new PageImpl<>(List.of(posting)));
+        UnifiedPostingRow row =
+                new UnifiedPostingRow(
+                        "MEETING_RECRUIT",
+                        100L,
+                        9L,
+                        "6월 정기 활동 팀원 모집",
+                        "한강공원 플로깅",
+                        2L,
+                        "여의도동",
+                        LocalDateTime.of(2026, 7, 10, 9, 0),
+                        LocalDateTime.of(2026, 7, 10, 18, 0),
+                        LocalDateTime.of(2026, 7, 9, 23, 59),
+                        4,
+                        2,
+                        "[\"ENVIRONMENT\"]",
+                        "RECRUITING");
+        com.gather.gather.domain.meeting.entity.MeetingImage image =
+                com.gather.gather.domain.meeting.entity.MeetingImage.create(
+                        9L, "meetings/9/a.jpg", 0);
+        when(unifiedPostingQueryRepository.search(any(), any(), any(), any(), any(), any(), any()))
+                .thenReturn(new SearchResult(List.of(row), 1));
         when(regionRepository.findAllById(any())).thenReturn(List.of());
+        when(meetingImageRepository.findRepresentativeImagesByMeetingIds(any()))
+                .thenReturn(List.of(image));
+        when(meetingImageUrlResolver.resolve("meetings/9/a.jpg"))
+                .thenReturn("https://cdn.example.com/meetings/9/a.jpg");
 
-        PageResponse<PostingSummaryResponse> result =
+        PageResponse<PostingListItem> result =
                 postingService.getPostings(pageable, null, null, null, null, null, null, null);
 
-        assertThat(result.content().get(0).regionName()).isNull();
-        assertThat(result.content().get(0).category()).isEqualTo(PostingCategory.ENVIRONMENT);
+        PostingListItem item = result.content().get(0);
+        assertThat(item.sourceType()).isEqualTo(PostingSourceType.MEETING_RECRUIT);
+        assertThat(item.meetingId()).isEqualTo(9L);
+        assertThat(item.thumbnailUrl()).isEqualTo("https://cdn.example.com/meetings/9/a.jpg");
     }
 
     @Test
-    @DisplayName("getPostings batches region lookups exactly once regardless of item count")
-    void getPostings_batchesRegionLookup_exactlyOncePerCall() {
-        Posting first = postingWithId(1L, "공고1", 2L, PostingCategory.ENVIRONMENT);
-        Posting second = postingWithId(2L, "공고2", 2L, PostingCategory.ENVIRONMENT);
+    @DisplayName("getPostings returns empty PageResponse when no rows exist")
+    void getPostings_returnsEmptyPageResponse_whenNoRowsExist() {
         Pageable pageable = PageRequest.of(0, 20);
-        when(postingRepository.search(null, null, null, null, null, null, pageable))
-                .thenReturn(new PageImpl<>(List.of(first, second)));
-        when(regionRepository.findAllById(any())).thenReturn(List.of(regionWithId(2L, "동구")));
+        when(unifiedPostingQueryRepository.search(
+                        isNull(), isNull(), isNull(), isNull(), isNull(), isNull(), eq(pageable)))
+                .thenReturn(new SearchResult(List.of(), 0));
 
-        postingService.getPostings(pageable, null, null, null, null, null, null, null);
-
-        verify(regionRepository, times(1)).findAllById(any());
-    }
-
-    @Test
-    @DisplayName("getPostings throws VALIDATION_ERROR when sort property does not exist on Posting")
-    void getPostings_throwsValidationError_whenSortPropertyUnknown() {
-        Pageable pageable = PageRequest.of(0, 20, Sort.by("string"));
-
-        assertThatThrownBy(
-                        () ->
-                                postingService.getPostings(
-                                        pageable, null, null, null, null, null, null, null))
-                .isInstanceOf(BusinessException.class)
-                .satisfies(
-                        ex ->
-                                assertThat(((BusinessException) ex).getErrorCode())
-                                        .isEqualTo(ErrorCode.VALIDATION_ERROR));
-        verify(postingRepository, never()).search(any(), any(), any(), any(), any(), any(), any());
-    }
-
-    @Test
-    @DisplayName("getPostings allows sorting by a known Posting property")
-    void getPostings_allowsSort_whenPropertyKnown() {
-        Pageable pageable = PageRequest.of(0, 20, Sort.by("title").ascending());
-        when(postingRepository.search(null, null, null, null, null, null, pageable))
-                .thenReturn(new PageImpl<>(List.of()));
-
-        postingService.getPostings(pageable, null, null, null, null, null, null, null);
-
-        verify(postingRepository).search(null, null, null, null, null, null, pageable);
-    }
-
-    @Test
-    @DisplayName("getPostings returns empty PageResponse when no postings exist")
-    void getPostings_returnsEmptyPageResponse_whenNoPostingsExist() {
-        Pageable pageable = PageRequest.of(0, 20);
-        when(postingRepository.search(null, null, null, null, null, null, pageable))
-                .thenReturn(new PageImpl<>(List.of()));
-
-        PageResponse<PostingSummaryResponse> result =
+        PageResponse<PostingListItem> result =
                 postingService.getPostings(pageable, null, null, null, null, null, null, null);
 
         assertThat(result.content()).isEmpty();

@@ -48,6 +48,17 @@ public interface KakaoUnlinkTaskRepository extends JpaRepository<KakaoUnlinkTask
     @Query(value = "SELECT UTC_TIMESTAMP(6)", nativeQuery = true)
     LocalDateTime currentUtcDateTime();
 
+    @Query(
+            value =
+                    """
+                    SELECT *
+                    FROM kakao_unlink_task
+                    WHERE id = :id
+                    FOR UPDATE SKIP LOCKED
+                    """,
+            nativeQuery = true)
+    Optional<KakaoUnlinkTask> findByIdForUpdateSkipLocked(@Param("id") Long id);
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT task FROM KakaoUnlinkTask task WHERE task.id = :id")
     Optional<KakaoUnlinkTask> findByIdForUpdate(@Param("id") Long id);

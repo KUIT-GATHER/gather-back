@@ -2,12 +2,14 @@ package com.gather.gather.domain.post.controller;
 
 import com.gather.gather.domain.post.dto.MyMeetingActivitySummaryResponse;
 import com.gather.gather.domain.post.dto.PostSummaryResponse;
+import com.gather.gather.domain.post.dto.ReviewableActivityResponse;
 import com.gather.gather.domain.post.service.MyMeetingActivityService;
 import com.gather.gather.domain.recruit.dto.MyAppliedRecruitResponse;
 import com.gather.gather.global.common.ApiResponse;
 import com.gather.gather.global.common.PageResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
@@ -65,11 +67,27 @@ public class MyMeetingActivityController {
 
     @Operation(
             summary = "내가 신청한 봉사 목록",
-            description = "이 모임에서 내가 참여신청한 모집공고를 활동일 최신순으로 페이지 조회합니다. 가입자 전용입니다.")
+            description =
+                    "이 모임에서 내가 참여신청한 모집공고를 활동일 최신순으로 페이지 조회합니다. 가입자 전용입니다. "
+                            + "status는 참여 상태(APPLIED/CONFIRMED/COMPLETED/REVIEWED)이며, 모임장이 모임을 완료 처리하기 전까지는"
+                            + " APPLIED, 완료 처리 이후에는 COMPLETED로 내려옵니다. CONFIRMED·REVIEWED는 참여 승인·후기 작성 기능이 아직 없어"
+                            + " 현재는 내려오지 않는 예약값입니다. 화면에는 APPLIED/CONFIRMED를 \"신청중\", COMPLETED/REVIEWED를 \"봉사"
+                            + " 완료\"로 묶어 표시하면 됩니다.")
     @GetMapping("/applied-recruits")
     public ApiResponse<PageResponse<MyAppliedRecruitResponse>> getMyAppliedRecruits(
             @PathVariable Long meetingId, @PageableDefault(size = 20) Pageable pageable) {
         return ApiResponse.success(
                 myMeetingActivityService.getMyAppliedRecruits(meetingId, pageable));
+    }
+
+    @Operation(
+            summary = "후기 작성 가능 활동 조회",
+            description =
+                    "이 모임과 관련해 내가 완료한 활동(연결 공고 참여 완료, 모집공고 참석 완료) 중 아직 활성 후기를 쓰지 않은 것만 반환합니다."
+                            + " 가입자 전용입니다.")
+    @GetMapping("/reviewable-activities")
+    public ApiResponse<List<ReviewableActivityResponse>> getReviewableActivities(
+            @PathVariable Long meetingId) {
+        return ApiResponse.success(myMeetingActivityService.getReviewableActivities(meetingId));
     }
 }

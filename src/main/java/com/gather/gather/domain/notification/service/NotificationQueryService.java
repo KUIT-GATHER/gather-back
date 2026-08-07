@@ -10,6 +10,8 @@ import com.gather.gather.global.exception.BusinessException;
 import com.gather.gather.global.exception.ErrorCode;
 import com.gather.gather.global.util.SecurityUtil;
 import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -22,16 +24,25 @@ import org.springframework.transaction.annotation.Transactional;
 public class NotificationQueryService {
 
     private final NotificationRepository notificationRepository;
+    private final NotificationThumbnailResolver notificationThumbnailResolver;
 
     public PageResponse<NotificationResponse> getNotifications(
             NotificationCategory category, Pageable pageable) {
 
         Long userId = SecurityUtil.getCurrentUserId();
 
+        Page<Notification> notifications =
+                notificationRepository.findAllByUser_IdAndCategoryAndDeletedAtIsNull(
+                        userId, category, pageable);
+
+        Map<Long, String> thumbnailUrls =
+                notificationThumbnailResolver.resolveByNotificationId(notifications.getContent());
+
         Page<NotificationResponse> responses =
-                notificationRepository
-                        .findAllByUser_IdAndCategoryAndDeletedAtIsNull(userId, category, pageable)
-                        .map(NotificationResponse::from);
+                notifications.map(
+                        notification ->
+                                NotificationResponse.from(
+                                        notification, thumbnailUrls.get(notification.getId())));
 
         return PageResponse.from(responses);
     }
@@ -57,7 +68,10 @@ public class NotificationQueryService {
 
         notification.markAsRead();
 
-        return NotificationResponse.from(notification);
+        Map<Long, String> thumbnailUrls =
+                notificationThumbnailResolver.resolveByNotificationId(List.of(notification));
+
+        return NotificationResponse.from(notification, thumbnailUrls.get(notification.getId()));
     }
 
     @Transactional

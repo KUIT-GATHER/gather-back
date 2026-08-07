@@ -13,9 +13,18 @@ import org.springframework.data.repository.query.Param;
 
 public interface PostingParticipationRepository extends JpaRepository<PostingParticipation, Long> {
 
+    /** 인정 시간 합계 조회용(가입신청/멤버/신청자 상세의 totalRecognizedMinutes). */
+    @Query(
+            "SELECT COALESCE(SUM(pp.recognizedMinutes), 0) FROM PostingParticipation pp WHERE pp.userId = :userId")
+    int sumRecognizedMinutesByUserId(@Param("userId") Long userId);
+
     boolean existsByUserIdAndPostingId(Long userId, Long postingId);
 
     Optional<PostingParticipation> findByUserIdAndPostingId(Long userId, Long postingId);
+
+    /** 마이페이지 활동 캘린더 - 공고 기반 모임들의 연결 봉사공고 참여 상태를 배치 조회한다(N+1 방지). */
+    List<PostingParticipation> findAllByUserIdAndPostingIdIn(
+            Long userId, Collection<Long> postingIds);
 
     List<PostingParticipation> findByUserIdAndStatusNotIn(
             Long userId, Collection<PostingParticipationStatus> excludedStatuses);

@@ -64,6 +64,16 @@ public class NotificationSettingService {
         return setting.isMeetingJoinResultEnabled();
     }
 
+    @Transactional
+    public boolean isMeetingPostCommentEnabled(Long userId) {
+        NotificationSetting setting =
+                notificationSettingRepository
+                        .findByUser_Id(userId)
+                        .orElseGet(() -> createDefaultSetting(userId));
+
+        return setting.isMeetingPostCommentEnabled();
+    }
+
     private NotificationSetting createDefaultSetting(Long userId) {
         User user =
                 userRepository

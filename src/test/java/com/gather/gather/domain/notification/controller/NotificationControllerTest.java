@@ -48,6 +48,7 @@ class NotificationControllerTest {
                         NotificationTargetType.MEETING,
                         10L,
                         null,
+                        "https://example.com/meeting-thumbnail.jpg",
                         false,
                         LocalDateTime.of(2026, 7, 27, 12, 0));
 
@@ -61,6 +62,9 @@ class NotificationControllerTest {
                 .andExpect(jsonPath("$.data.content[0].id").value(1))
                 .andExpect(jsonPath("$.data.content[0].category").value("MEETING"))
                 .andExpect(jsonPath("$.data.content[0].targetMeetingId").value(nullValue()))
+                .andExpect(
+                        jsonPath("$.data.content[0].thumbnailUrl")
+                                .value("https://example.com/meeting-thumbnail.jpg"))
                 .andExpect(jsonPath("$.data.content[0].read").value(false));
     }
 
@@ -76,6 +80,7 @@ class NotificationControllerTest {
                         NotificationTargetType.POST,
                         10L,
                         3L,
+                        "https://example.com/meeting-thumbnail.jpg",
                         false,
                         LocalDateTime.of(2026, 7, 27, 12, 0));
 
@@ -87,7 +92,10 @@ class NotificationControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.content[0].targetType").value("POST"))
                 .andExpect(jsonPath("$.data.content[0].targetId").value(10))
-                .andExpect(jsonPath("$.data.content[0].targetMeetingId").value(3));
+                .andExpect(jsonPath("$.data.content[0].targetMeetingId").value(3))
+                .andExpect(
+                        jsonPath("$.data.content[0].thumbnailUrl")
+                                .value("https://example.com/meeting-thumbnail.jpg"));
     }
 
     @Test
@@ -102,6 +110,7 @@ class NotificationControllerTest {
                         NotificationTargetType.MEETING,
                         10L,
                         null,
+                        "https://example.com/meeting-thumbnail.jpg",
                         true,
                         LocalDateTime.of(2026, 7, 27, 12, 0));
 
@@ -109,7 +118,36 @@ class NotificationControllerTest {
 
         mockMvc.perform(patch("/api/v1/notifications/1/read"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.read").value(true));
+                .andExpect(jsonPath("$.data.read").value(true))
+                .andExpect(
+                        jsonPath("$.data.thumbnailUrl")
+                                .value("https://example.com/meeting-thumbnail.jpg"));
+    }
+
+    @Test
+    @DisplayName("대표 이미지가 없는 알림은 thumbnailUrl을 null로 반환한다")
+    void getNotificationsReturnsNullThumbnailWhenImageDoesNotExist() throws Exception {
+        NotificationResponse notification =
+                new NotificationResponse(
+                        3L,
+                        NotificationCategory.ACTIVITY,
+                        NotificationType.BADGE_EARNED,
+                        "새로운 배지를 획득했어요.",
+                        NotificationTargetType.MY_PAGE,
+                        null,
+                        null,
+                        null,
+                        false,
+                        LocalDateTime.of(2026, 7, 27, 12, 0));
+
+        when(notificationQueryService.getNotifications(
+                        any(NotificationCategory.class), any(Pageable.class)))
+                .thenReturn(new PageResponse<>(List.of(notification), 1, 1, 0, 20));
+
+        mockMvc.perform(get("/api/v1/notifications").param("category", "ACTIVITY"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.content[0].type").value("BADGE_EARNED"))
+                .andExpect(jsonPath("$.data.content[0].thumbnailUrl").value(nullValue()));
     }
 
     @Test

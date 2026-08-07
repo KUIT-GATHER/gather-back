@@ -115,6 +115,12 @@ public class SecurityConfig {
                                         .requestMatchers(
                                                 HttpMethod.GET, "/api/v1/meetings/*/images")
                                         .permitAll()
+                                        // 모집공고 상세(external=true면 비로그인 공개 - 서비스 레이어에서 최종 판단)
+                                        .requestMatchers(
+                                                new RegexRequestMatcher(
+                                                        "^/api/v1/meetings/[0-9]+/posts/[0-9]+/recruit$",
+                                                        "GET"))
+                                        .permitAll()
                                         .requestMatchers(PERMIT_ALL_PATHS)
                                         .permitAll()
                                         .requestMatchers(HttpMethod.POST, ADMIN_ONLY_SYNC_PATH)

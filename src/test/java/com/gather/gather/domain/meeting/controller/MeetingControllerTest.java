@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -13,6 +14,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.gather.gather.domain.meeting.dto.MeetingCreateRequest;
 import com.gather.gather.domain.meeting.dto.MeetingResponse;
 import com.gather.gather.domain.meeting.enums.MeetingStatus;
+import com.gather.gather.domain.meeting.service.MeetingJoinRequestManagementService;
 import com.gather.gather.domain.meeting.service.MeetingKeywordRecommendationService;
 import com.gather.gather.domain.meeting.service.MeetingRecommendationService;
 import com.gather.gather.domain.meeting.service.MeetingService;
@@ -37,6 +39,8 @@ class MeetingControllerTest {
     @Autowired private MockMvc mockMvc;
 
     @MockitoBean private MeetingService meetingService;
+
+    @MockitoBean private MeetingJoinRequestManagementService meetingJoinRequestManagementService;
 
     @MockitoBean private MeetingKeywordRecommendationService meetingKeywordRecommendationService;
 
@@ -71,6 +75,17 @@ class MeetingControllerTest {
     }
 
     @Test
+    @DisplayName(
+            "DELETE /api/v1/meetings/{meetingId}/join cancels the caller's pending join request")
+    void cancelMyJoinRequest_returns200_andCallsService() throws Exception {
+        mockMvc.perform(delete("/api/v1/meetings/1/join"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true));
+
+        verify(meetingService).cancelMyJoinRequest(1L);
+    }
+
+    @Test
     @DisplayName("GET /api/v1/meetings/recommended returns 200 with recommended meetings")
     void getRecommendedMeetings_returns200WithRecommendations() throws Exception {
         MeetingResponse response =
@@ -81,6 +96,7 @@ class MeetingControllerTest {
                         3,
                         10,
                         2L,
+                        "동구",
                         Set.of(PostingCategory.ENVIRONMENT),
                         MeetingStatus.RECRUITING,
                         LocalDateTime.of(2026, 7, 31, 23, 59, 59),

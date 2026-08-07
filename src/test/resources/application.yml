@@ -30,8 +30,15 @@ notification:
     scheduler-enabled: false
     cron: "0 10 9 * * *"
 
+  bookmarked-meeting-deadline:
+    scheduler-enabled: false
+    cron: "0 20 9 * * *"
+
 
 gather:
+  recruit:
+    auto-confirm:
+      scheduler-enabled: false
   aws:
     s3:
       region: ap-northeast-2

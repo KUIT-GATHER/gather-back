@@ -123,7 +123,8 @@ class BookmarkRepositoryTest {
         bookmarkRepository.saveAndFlush(Bookmark.create(2L, othersPosting.getId()));
 
         Page<Posting> page =
-                bookmarkRepository.findBookmarkedPostings(1L, null, null, PageRequest.of(0, 20));
+                bookmarkRepository.findBookmarkedPostings(
+                        1L, null, null, false, List.of(-1L), null, null, PageRequest.of(0, 20));
 
         assertThat(page.getContent())
                 .extracting(Posting::getId)
@@ -140,7 +141,14 @@ class BookmarkRepositoryTest {
 
         Page<Posting> page =
                 bookmarkRepository.findBookmarkedPostings(
-                        1L, PostingCategory.EDUCATION, null, PageRequest.of(0, 20));
+                        1L,
+                        PostingCategory.EDUCATION,
+                        null,
+                        false,
+                        List.of(-1L),
+                        null,
+                        null,
+                        PageRequest.of(0, 20));
 
         assertThat(page.getContent()).extracting(Posting::getId).containsExactly(education.getId());
     }
@@ -155,7 +163,8 @@ class BookmarkRepositoryTest {
         bookmarkRepository.saveAndFlush(Bookmark.create(1L, nonMatching.getId()));
 
         Page<Posting> page =
-                bookmarkRepository.findBookmarkedPostings(1L, null, "환경정화", PageRequest.of(0, 20));
+                bookmarkRepository.findBookmarkedPostings(
+                        1L, null, "환경정화", false, List.of(-1L), null, null, PageRequest.of(0, 20));
 
         assertThat(page.getContent()).extracting(Posting::getId).containsExactly(matching.getId());
     }
@@ -165,7 +174,8 @@ class BookmarkRepositoryTest {
         postingRepository.save(posting());
 
         Page<Posting> page =
-                bookmarkRepository.findBookmarkedPostings(1L, null, null, PageRequest.of(0, 20));
+                bookmarkRepository.findBookmarkedPostings(
+                        1L, null, null, false, List.of(-1L), null, null, PageRequest.of(0, 20));
 
         assertThat(page.getContent()).isEmpty();
     }
@@ -180,7 +190,8 @@ class BookmarkRepositoryTest {
         bookmarkRepository.saveAndFlush(Bookmark.create(1L, nonMatching.getId()));
 
         Page<Posting> page =
-                bookmarkRepository.findBookmarkedPostings(1L, null, "환경정화", PageRequest.of(0, 20));
+                bookmarkRepository.findBookmarkedPostings(
+                        1L, null, "환경정화", false, List.of(-1L), null, null, PageRequest.of(0, 20));
 
         assertThat(page.getContent()).extracting(Posting::getId).containsExactly(matching.getId());
     }
@@ -196,7 +207,14 @@ class BookmarkRepositoryTest {
 
         Page<Posting> page =
                 bookmarkRepository.findBookmarkedPostings(
-                        1L, null, LikeKeywordEscaper.escape("100%"), PageRequest.of(0, 20));
+                        1L,
+                        null,
+                        LikeKeywordEscaper.escape("100%"),
+                        false,
+                        List.of(-1L),
+                        null,
+                        null,
+                        PageRequest.of(0, 20));
 
         assertThat(page.getContent())
                 .extracting(Posting::getId)
@@ -216,9 +234,11 @@ class BookmarkRepositoryTest {
         bookmarkRepository.saveAndFlush(secondBookmark);
 
         Page<Posting> firstPage =
-                bookmarkRepository.findBookmarkedPostings(1L, null, null, PageRequest.of(0, 1));
+                bookmarkRepository.findBookmarkedPostings(
+                        1L, null, null, false, List.of(-1L), null, null, PageRequest.of(0, 1));
         Page<Posting> secondPage =
-                bookmarkRepository.findBookmarkedPostings(1L, null, null, PageRequest.of(1, 1));
+                bookmarkRepository.findBookmarkedPostings(
+                        1L, null, null, false, List.of(-1L), null, null, PageRequest.of(1, 1));
 
         assertThat(firstPage.getContent())
                 .extracting(Posting::getId)
@@ -242,7 +262,14 @@ class BookmarkRepositoryTest {
 
         Page<Posting> page =
                 bookmarkRepository.findBookmarkedPostings(
-                        1L, PostingCategory.ENVIRONMENT, "환경정화", PageRequest.of(0, 20));
+                        1L,
+                        PostingCategory.ENVIRONMENT,
+                        "환경정화",
+                        false,
+                        List.of(-1L),
+                        null,
+                        null,
+                        PageRequest.of(0, 20));
 
         assertThat(page.getContent()).extracting(Posting::getId).containsExactly(matching.getId());
     }
@@ -255,18 +282,75 @@ class BookmarkRepositoryTest {
         }
 
         Page<Posting> firstPage =
-                bookmarkRepository.findBookmarkedPostings(1L, null, null, PageRequest.of(0, 2));
+                bookmarkRepository.findBookmarkedPostings(
+                        1L, null, null, false, List.of(-1L), null, null, PageRequest.of(0, 2));
 
         assertThat(firstPage.getContent()).hasSize(2);
         assertThat(firstPage.getTotalElements()).isEqualTo(3);
         assertThat(firstPage.getTotalPages()).isEqualTo(2);
 
         Page<Posting> secondPage =
-                bookmarkRepository.findBookmarkedPostings(1L, null, null, PageRequest.of(1, 2));
+                bookmarkRepository.findBookmarkedPostings(
+                        1L, null, null, false, List.of(-1L), null, null, PageRequest.of(1, 2));
 
         assertThat(secondPage.getContent()).hasSize(1);
         assertThat(secondPage.getTotalElements()).isEqualTo(3);
         assertThat(secondPage.getTotalPages()).isEqualTo(2);
+    }
+
+    @Test
+    void findBookmarkedPostings_filtersByRegionIncludingChildren() {
+        Region parentRegion = regionRepository.save(Region.create("서울", 1, "seoul-region", null));
+        Region childRegion =
+                regionRepository.save(Region.create("강남구", 2, "gangnam-region", parentRegion));
+        Region otherRegion = regionRepository.save(Region.create("부산", 1, "busan-region", null));
+
+        Posting inChildRegion = postingRepository.save(postingInRegion(childRegion.getId()));
+        Posting inOtherRegion = postingRepository.save(postingInRegion(otherRegion.getId()));
+        bookmarkRepository.saveAndFlush(Bookmark.create(1L, inChildRegion.getId()));
+        bookmarkRepository.saveAndFlush(Bookmark.create(1L, inOtherRegion.getId()));
+
+        Page<Posting> page =
+                bookmarkRepository.findBookmarkedPostings(
+                        1L,
+                        null,
+                        null,
+                        true,
+                        List.of(parentRegion.getId(), childRegion.getId()),
+                        null,
+                        null,
+                        PageRequest.of(0, 20));
+
+        assertThat(page.getContent())
+                .extracting(Posting::getId)
+                .containsExactly(inChildRegion.getId());
+    }
+
+    @Test
+    void findBookmarkedPostings_filtersByNoticeDateRange() {
+        Posting inRange =
+                postingRepository.save(
+                        postingWithNoticePeriod(
+                                LocalDate.of(2026, 7, 10), LocalDate.of(2026, 7, 20)));
+        Posting startsBeforeRange =
+                postingRepository.save(
+                        postingWithNoticePeriod(
+                                LocalDate.of(2026, 7, 1), LocalDate.of(2026, 7, 20)));
+        bookmarkRepository.saveAndFlush(Bookmark.create(1L, inRange.getId()));
+        bookmarkRepository.saveAndFlush(Bookmark.create(1L, startsBeforeRange.getId()));
+
+        Page<Posting> page =
+                bookmarkRepository.findBookmarkedPostings(
+                        1L,
+                        null,
+                        null,
+                        false,
+                        List.of(-1L),
+                        LocalDate.of(2026, 7, 5),
+                        LocalDate.of(2026, 7, 25),
+                        PageRequest.of(0, 20));
+
+        assertThat(page.getContent()).extracting(Posting::getId).containsExactly(inRange.getId());
     }
 
     @Test
@@ -398,6 +482,27 @@ class BookmarkRepositoryTest {
                 .status(PostingStatus.RECRUITING)
                 .activityDate(LocalDate.of(2026, 7, 15))
                 .category(category)
+                .build();
+    }
+
+    private Posting postingInRegion(Long regionId) {
+        return Posting.builder()
+                .title("테스트 공고")
+                .status(PostingStatus.RECRUITING)
+                .activityDate(LocalDate.of(2026, 7, 15))
+                .category(PostingCategory.ENVIRONMENT)
+                .regionId(regionId)
+                .build();
+    }
+
+    private Posting postingWithNoticePeriod(LocalDate noticeStartDate, LocalDate noticeEndDate) {
+        return Posting.builder()
+                .title("테스트 공고")
+                .status(PostingStatus.RECRUITING)
+                .activityDate(LocalDate.of(2026, 7, 15))
+                .category(PostingCategory.ENVIRONMENT)
+                .noticeStartDate(noticeStartDate)
+                .noticeEndDate(noticeEndDate)
                 .build();
     }
 

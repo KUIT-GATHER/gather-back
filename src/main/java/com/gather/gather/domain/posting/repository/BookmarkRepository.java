@@ -23,7 +23,12 @@ public interface BookmarkRepository extends JpaRepository<Bookmark, Long> {
 
     Optional<Bookmark> findByUserIdAndPostingId(Long userId, Long postingId);
 
-    /** Bookmark는 Posting과 연관관계 없이 FK id만 보관하므로(Bookmark.java 참고) 명시적 ON 절로 조인한다. */
+    /**
+     * Bookmark는 Posting과 연관관계 없이 FK id만 보관하므로(Bookmark.java 참고) 명시적 ON 절로 조인한다.
+     *
+     * <p>noticeStartDate/noticeEndDate는 PostingRepositoryImpl.buildPredicates와 동일하게 각각 모집시작일
+     * 하한/모집종료일 상한 필터다(PostingController와 동일 정책).
+     */
     @Query(
             """
             select p from Posting p
@@ -33,12 +38,19 @@ public interface BookmarkRepository extends JpaRepository<Bookmark, Long> {
               and (:keyword is null
                    or p.title like concat('%', :keyword, '%') escape '\\'
                    or p.recruitOrg like concat('%', :keyword, '%') escape '\\')
+              and (:hasRegionFilter = false or p.regionId in :regionIds)
+              and (:noticeStartDate is null or p.noticeStartDate >= :noticeStartDate)
+              and (:noticeEndDate is null or p.noticeEndDate <= :noticeEndDate)
             order by b.createdAt desc, b.id desc
             """)
     Page<Posting> findBookmarkedPostings(
             @Param("userId") Long userId,
             @Param("category") PostingCategory category,
             @Param("keyword") String keyword,
+            @Param("hasRegionFilter") boolean hasRegionFilter,
+            @Param("regionIds") List<Long> regionIds,
+            @Param("noticeStartDate") LocalDate noticeStartDate,
+            @Param("noticeEndDate") LocalDate noticeEndDate,
             Pageable pageable);
 
     @Query(

@@ -63,6 +63,8 @@ public enum ErrorCode {
     MEETING_COMPLETE_NOT_ALLOWED(HttpStatus.CONFLICT, "활동종료일이 지나야 완료 처리를 할 수 있습니다."),
     MEETING_HOURS_NOT_ALLOWED(HttpStatus.CONFLICT, "완료 처리된 모임에서만 인정시간을 입력할 수 있습니다."),
     MEETING_HOURS_ALREADY_SUBMITTED(HttpStatus.CONFLICT, "이미 인정시간을 입력했습니다."),
+    MEETING_MAX_MEMBER_EXCEEDED(HttpStatus.BAD_REQUEST, "모임 유형별 최대 인원 제한을 초과했습니다."),
+    MEETING_MAX_BELOW_CURRENT_MEMBER(HttpStatus.CONFLICT, "현재 참여 인원보다 정원을 적게 변경할 수 없습니다."),
 
     POSTING_NOT_FOUND(HttpStatus.NOT_FOUND, "봉사공고를 찾을 수 없습니다."),
     POSTING_CLOSED(HttpStatus.CONFLICT, "마감된 봉사공고입니다."),
@@ -125,6 +127,10 @@ public enum ErrorCode {
     // ── 모임 나가기 ──
     MEETING_HOST_CANNOT_LEAVE(HttpStatus.CONFLICT, "모임장은 모임을 나갈 수 없습니다."),
 
+    // ── 모임 해산 ──
+    MEETING_DISBAND_HAS_CONFIRMED_PARTICIPANTS(
+            HttpStatus.CONFLICT, "아직 종료되지 않은 모집 활동에 확정된 참가자가 있어 모임을 해산할 수 없습니다."),
+
     // ── 모집공고(RECRUIT) ──
     POST_RECRUIT_NOT_ALLOWED(HttpStatus.BAD_REQUEST, "모집공고는 전용 API로 작성해주세요."),
     RECRUIT_HOST_ONLY(HttpStatus.FORBIDDEN, "모집공고는 모임장만 작성할 수 있습니다."),
@@ -133,7 +139,37 @@ public enum ErrorCode {
     RECRUIT_APPLICATION_CLOSED(HttpStatus.CONFLICT, "신청 기간이 종료되어 변경할 수 없습니다."),
     RECRUIT_CAPACITY_EXCEEDED(HttpStatus.CONFLICT, "모집 정원이 가득 찼습니다."),
     RECRUIT_MAX_BELOW_APPLIED(HttpStatus.CONFLICT, "현재 신청 인원보다 정원을 적게 줄일 수 없습니다."),
+    RECRUIT_PARTICIPATION_NOT_FOUND(HttpStatus.NOT_FOUND, "참여 신청을 찾을 수 없습니다."),
+    RECRUIT_PARTICIPATION_CONFIRM_NOT_ALLOWED(HttpStatus.CONFLICT, "신청 상태의 참여만 확정할 수 있습니다."),
+    RECRUIT_ACTIVITY_NOT_ENDED(HttpStatus.CONFLICT, "활동이 종료된 이후에만 참석 처리를 할 수 있습니다."),
+    RECRUIT_PRESENT_NOT_ALLOWED(HttpStatus.CONFLICT, "확정된 참여만 참석 처리할 수 있습니다."),
+    RECRUIT_INVALID_SCHEDULE(HttpStatus.BAD_REQUEST, "활동 시작 일시는 종료 일시보다 빨라야 합니다."),
+    RECRUIT_INVALID_DEADLINE(HttpStatus.BAD_REQUEST, "신청 마감 일시는 활동 시작 일시보다 늦을 수 없습니다."),
+    RECRUIT_CONFIRMED_LOCKED(HttpStatus.CONFLICT, "참가자가 확정된 이후에는 신청·취소할 수 없습니다."),
+    RECRUIT_REAPPLY_NOT_ALLOWED(HttpStatus.CONFLICT, "반려된 신청은 다시 신청할 수 없습니다."),
     POST_CONTENT_TOO_LONG(HttpStatus.BAD_REQUEST, "내용 길이가 허용 범위를 초과했습니다."),
+
+    // ── 멤버 관리(#11) ──
+    MEETING_MEMBER_NOT_FOUND(HttpStatus.NOT_FOUND, "모임원을 찾을 수 없습니다."),
+    MEETING_MEMBER_HOST_CANNOT_BE_REMOVED(HttpStatus.CONFLICT, "모임장은 내보낼 수 없습니다."),
+    MEETING_MEMBER_HAS_ACTIVE_ACTIVITY(HttpStatus.CONFLICT, "아직 종료되지 않은 활동에 확정된 참가자는 내보낼 수 없습니다."),
+
+    // ── 모집공고 신청자 관리(#13) ──
+    RECRUIT_PARTICIPANT_NOT_FOUND(HttpStatus.NOT_FOUND, "신청자를 찾을 수 없습니다."),
+    RECRUIT_PARTICIPANT_NOT_APPLIED(HttpStatus.CONFLICT, "신청(APPLIED) 상태의 참여만 처리할 수 있습니다."),
+    RECRUIT_ALREADY_CONFIRMED(HttpStatus.CONFLICT, "이미 확정된 모집공고입니다."),
+    RECRUIT_NO_APPLICANTS_TO_CONFIRM(HttpStatus.CONFLICT, "확정할 신청자가 없습니다."),
+    RECRUIT_ATTENDANCE_NOT_ALLOWED(
+            HttpStatus.CONFLICT, "참가 인원 확정 후, 활동 종료 시각이 지난 뒤에만 출석 처리를 할 수 있습니다."),
+    RECRUIT_ATTENDANCE_INVALID_STATUS(
+            HttpStatus.BAD_REQUEST, "출석 상태는 PRESENT 또는 ABSENT만 지정할 수 있습니다."),
+
+    // ── 활동 후기(REVIEW) ──
+    POST_REVIEW_SOURCE_REQUIRED(
+            HttpStatus.BAD_REQUEST, "후기는 근거 활동(reviewSourceType/reviewSourceId)이 필요합니다."),
+    POST_REVIEW_ACTIVITY_NOT_FOUND(HttpStatus.NOT_FOUND, "후기를 작성할 활동을 찾을 수 없습니다."),
+    POST_REVIEW_ACTIVITY_NOT_COMPLETED(HttpStatus.CONFLICT, "완료된 활동에 대해서만 후기를 작성할 수 있습니다."),
+    POST_REVIEW_ALREADY_EXISTS(HttpStatus.CONFLICT, "이미 이 활동에 대한 후기가 존재합니다."),
     ;
 
     private final HttpStatus status;

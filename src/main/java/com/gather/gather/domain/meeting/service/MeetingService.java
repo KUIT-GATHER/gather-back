@@ -10,6 +10,7 @@ import com.gather.gather.domain.meeting.dto.MeetingDetailResponse;
 import com.gather.gather.domain.meeting.dto.MeetingJoinRequestResponse;
 import com.gather.gather.domain.meeting.dto.MeetingJoinResponse;
 import com.gather.gather.domain.meeting.dto.MeetingResponse;
+import com.gather.gather.domain.meeting.dto.MeetingUpdateRequest;
 import com.gather.gather.domain.meeting.dto.PostingMeetingResponse;
 import com.gather.gather.domain.meeting.entity.Meeting;
 import com.gather.gather.domain.meeting.entity.MeetingMember;
@@ -23,6 +24,9 @@ import com.gather.gather.domain.notification.event.MeetingJoinResultNotification
 import com.gather.gather.domain.posting.entity.Posting;
 import com.gather.gather.domain.posting.entity.PostingCategory;
 import com.gather.gather.domain.posting.repository.PostingRepository;
+import com.gather.gather.domain.posting.service.RegionNameResolver;
+import com.gather.gather.domain.recruit.repository.MeetingRecruitParticipationRepository;
+import com.gather.gather.domain.region.entity.Region;
 import com.gather.gather.domain.region.repository.RegionRepository;
 import com.gather.gather.global.common.PageResponse;
 import com.gather.gather.global.exception.BusinessException;
@@ -52,6 +56,9 @@ import org.springframework.transaction.annotation.Transactional;
 @Transactional(readOnly = true)
 public class MeetingService {
 
+    // 자유 모임·공고 기반 모임 모두 최대 30명까지 허용한다(정책 통일).
+    private static final int MEETING_MAX_MEMBER_LIMIT = 30;
+
     private static final Set<String> SORTABLE_PROPERTIES =
             Set.of(
                     "id",
@@ -71,7 +78,9 @@ public class MeetingService {
     private final MeetingMemberRepository meetingMemberRepository;
     private final UserRepository userRepository;
     private final RegionRepository regionRepository;
+    private final RegionNameResolver regionNameResolver;
     private final PostingRepository postingRepository;
+    private final MeetingRecruitParticipationRepository meetingRecruitParticipationRepository;
     private final MeetingSearchLogService meetingSearchLogService;
     private final ApplicationEventPublisher eventPublisher;
 
@@ -83,6 +92,7 @@ public class MeetingService {
                 request.activityEndAt(),
                 request.volunteerPostingId());
         validateRegionExists(request.regionId());
+        validateMaxMember(request.maxMember());
         Set<PostingCategory> categories = resolveCategories(request);
         Long userId = SecurityUtil.getCurrentUserId();
         User host = getUser(userId);
@@ -101,6 +111,8 @@ public class MeetingService {
                         request.volunteerPostingId(),
                         request.activityStartAt(),
                         request.activityEndAt());
+        // 봉사시간 인정은 공고 기반 모임 전용 개념이라 자유 모임은 요청 값과 무관하게 항상 false로 둔다.
+        meeting.applyTimeRecognized(meeting.isPostingBased() && request.timeRecognized());
 
         Meeting savedMeeting = meetingRepository.save(meeting);
 
@@ -108,7 +120,12 @@ public class MeetingService {
         meetingMemberRepository.save(hostMember);
         eventPublisher.publishEvent(new BadgeAwardRequestedEvent(userId, BadgeType.TEAM_CREATED));
 
-        return MeetingResponse.from(savedMeeting, resolveDisplayStatus(savedMeeting));
+        String regionName =
+                regionRepository
+                        .findById(savedMeeting.getRegionId())
+                        .map(Region::getName)
+                        .orElse(null);
+        return MeetingResponse.from(savedMeeting, resolveDisplayStatus(savedMeeting), regionName);
     }
 
     public PageResponse<MeetingResponse> getMeetings(
@@ -137,27 +154,36 @@ public class MeetingService {
         LocalDateTime activityEndAt =
                 activityEndDate == null ? null : activityEndDate.atTime(LocalTime.MAX);
 
+        Page<Meeting> meetings =
+                meetingRepository.searchMeetings(
+                        keyword,
+                        hasRegionFilter,
+                        regionIdParam,
+                        category,
+                        status,
+                        recruitingOnly,
+                        now,
+                        activityStartAt,
+                        activityEndAt,
+                        postingBasedFirst,
+                        pageable);
+        Map<Long, String> regionNames =
+                regionNameResolver.resolve(regionIdsOf(meetings.getContent()));
+
         Page<MeetingResponse> responses =
-                meetingRepository
-                        .searchMeetings(
-                                keyword,
-                                hasRegionFilter,
-                                regionIdParam,
-                                category,
-                                status,
-                                recruitingOnly,
-                                now,
-                                activityStartAt,
-                                activityEndAt,
-                                postingBasedFirst,
-                                pageable)
-                        .map(
-                                meeting ->
-                                        MeetingResponse.from(
-                                                meeting, resolveDisplayStatus(meeting)));
+                meetings.map(
+                        meeting ->
+                                MeetingResponse.from(
+                                        meeting,
+                                        resolveDisplayStatus(meeting),
+                                        regionNames.get(meeting.getRegionId())));
 
         logSearchKeywordSafely(keyword);
         return PageResponse.from(responses);
+    }
+
+    private List<Long> regionIdsOf(List<Meeting> meetings) {
+        return meetings.stream().map(Meeting::getRegionId).toList();
     }
 
     public PageResponse<PostingMeetingResponse> getMeetingsByPosting(
@@ -214,6 +240,38 @@ public class MeetingService {
         Long userId = SecurityUtil.getCurrentUserIdOrNull();
         return userId != null
                 && meetingBookmarkRepository.existsByUserIdAndMeetingId(userId, meetingId);
+    }
+
+    /**
+     * 모임 기본 정보를 수정한다(모임장 전용).
+     *
+     * <p>자유 모임과 공고 기반 모임은 생성 정책이 달라 검증 조건을 구분한다. 공고 기반 모임은 연결된 봉사공고 기준으로 지역·카테고리가 고정되므로 요청 값과 무관하게
+     * 기존 값을 유지한다.
+     */
+    @Transactional
+    public MeetingDetailResponse updateMeeting(Long meetingId, MeetingUpdateRequest request) {
+        Long userId = SecurityUtil.getCurrentUserId();
+        Meeting meeting = getMeetingEntityForUpdate(meetingId);
+        validateHost(meeting, userId);
+
+        validateMaxMemberForUpdate(meeting, request.maxMember());
+        validateDeadlineForUpdate(meeting, request.deadline());
+        Set<PostingCategory> categories = resolveCategoriesForUpdate(meeting, request);
+        Long regionId = resolveRegionIdForUpdate(meeting, request.regionId());
+
+        meeting.update(
+                request.name(),
+                request.description(),
+                request.maxMember(),
+                request.deadline(),
+                categories,
+                request.participationCondition(),
+                regionId);
+        // 봉사시간 인정은 공고 기반 모임에서만 수정 가능하고, 자유 모임은 항상 false로 고정한다.
+        meeting.applyTimeRecognized(meeting.isPostingBased() && request.timeRecognized());
+
+        return MeetingDetailResponse.from(
+                meeting, resolveDisplayStatus(meeting), isBookmarkedByCurrentUser(meetingId));
     }
 
     @Transactional
@@ -286,6 +344,41 @@ public class MeetingService {
         return MeetingJoinRequestResponse.from(member);
     }
 
+    /**
+     * 모임을 해산한다(모임장 전용, 소프트 삭제).
+     *
+     * <p>아직 활동일이 지나지 않은 모집공고에 확정(CONFIRMED)된 참가자가 있으면 해산할 수 없다(진행 예정 활동 보호). 확정된 참가자가 없거나 이미 활동이 끝난
+     * 경우에만 해산 가능하다. {@code Meeting.deletedAt}만 채우면 된다 — 이 레포의 모임 관련 조회는 전부 {@code
+     * findByIdAndDeletedAtIsNull}류를 통해 상위 모임 존재를 먼저 확인하므로, 게시글·멤버·북마크·나의 모임 목록 등 하위 조회도 이 시점부터 함께
+     * 막힌다. 완료된 개인 봉사 기록·인정시간·후기·뱃지는 모임 삭제와 무관하게 그대로 유지된다. 되돌릴 수 없다.
+     */
+    @Transactional
+    public void disbandMeeting(Long meetingId) {
+        Long userId = SecurityUtil.getCurrentUserId();
+        Meeting meeting = getMeetingEntityForUpdate(meetingId);
+        validateHost(meeting, userId);
+        if (meetingRecruitParticipationRepository.existsConfirmedParticipantWithUpcomingActivity(
+                meetingId, LocalDateTime.now())) {
+            throw new BusinessException(ErrorCode.MEETING_DISBAND_HAS_CONFIRMED_PARTICIPANTS);
+        }
+        meeting.delete();
+    }
+
+    /** 신청자 본인이 자신의 대기 중인 가입 신청을 취소한다(재신청 시 MEETING_JOIN_REQUEST_DUPLICATE에 막히지 않도록 상태를 해제). */
+    @Transactional
+    public void cancelMyJoinRequest(Long meetingId) {
+        Long userId = SecurityUtil.getCurrentUserId();
+        getMeetingEntity(meetingId);
+        MeetingMember member =
+                meetingMemberRepository
+                        .findPendingByMeetingIdAndUserIdForUpdate(meetingId, userId)
+                        .orElseThrow(
+                                () ->
+                                        new BusinessException(
+                                                ErrorCode.MEETING_JOIN_REQUEST_NOT_FOUND));
+        member.cancel();
+    }
+
     /** 모임(그룹) 봉사 완료 판정: 모임장이 직접 완료 처리한다(개인 봉사는 본인이 활동종료일 이후 완료 처리한다). */
     @Transactional
     public void completeMeeting(Long meetingId) {
@@ -332,14 +425,20 @@ public class MeetingService {
     public List<MeetingResponse> getMyMeetings() {
         Long userId = SecurityUtil.getCurrentUserId();
 
-        return meetingMemberRepository
-                .findAllByUserIdAndStatusFetchMeeting(userId, MeetingMemberStatus.APPROVED)
-                .stream()
+        List<MeetingMember> members =
+                meetingMemberRepository.findAllByUserIdAndStatusFetchMeeting(
+                        userId, MeetingMemberStatus.APPROVED);
+        Map<Long, String> regionNames =
+                regionNameResolver.resolve(
+                        members.stream().map(member -> member.getMeeting().getRegionId()).toList());
+
+        return members.stream()
                 .map(
                         member ->
                                 MeetingResponse.from(
                                         member.getMeeting(),
                                         resolveDisplayStatus(member.getMeeting()),
+                                        regionNames.get(member.getMeeting().getRegionId()),
                                         member.getRole(), // ← HOST/MEMBER
                                         member.getRecognizedMinutes()))
                 .toList();
@@ -452,6 +551,59 @@ public class MeetingService {
         if (!regionRepository.existsById(regionId)) {
             throw new BusinessException(ErrorCode.REGION_NOT_FOUND);
         }
+    }
+
+    private void validateMaxMember(Integer maxMember) {
+        if (maxMember > MEETING_MAX_MEMBER_LIMIT) {
+            throw new BusinessException(ErrorCode.MEETING_MAX_MEMBER_EXCEEDED);
+        }
+    }
+
+    private void validateMaxMemberForUpdate(Meeting meeting, Integer maxMember) {
+        validateMaxMember(maxMember);
+        // 이미 참여 중인 인원보다 정원을 적게 줄일 수는 없다.
+        if (maxMember < meeting.getCurrentMemberCount()) {
+            throw new BusinessException(ErrorCode.MEETING_MAX_BELOW_CURRENT_MEMBER);
+        }
+    }
+
+    private void validateDeadlineForUpdate(Meeting meeting, LocalDateTime deadline) {
+        // 활동 기간이 있는(공고 기반) 모임은 신청 마감이 활동 시작보다 늦을 수 없다(생성 시 정책과 동일).
+        if (meeting.hasActivityPeriod() && deadline.isAfter(meeting.getActivityStartAt())) {
+            throw new BusinessException(ErrorCode.INVALID_MEETING_TIME);
+        }
+    }
+
+    private Set<PostingCategory> resolveCategoriesForUpdate(
+            Meeting meeting, MeetingUpdateRequest request) {
+        // 공고 기반 모임의 카테고리는 연결된 봉사공고에서 정해지며 이 API로 바꿀 수 없다.
+        if (meeting.isPostingBased()) {
+            return meeting.getCategories();
+        }
+
+        if (request.categories() == null || request.categories().isEmpty()) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR);
+        }
+
+        if (request.categories().size() > 3) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR);
+        }
+
+        return Set.copyOf(request.categories());
+    }
+
+    private Long resolveRegionIdForUpdate(Meeting meeting, Long requestedRegionId) {
+        // 공고 기반 모임의 지역은 연결된 봉사공고 기준으로 고정되며 이 API로 바꿀 수 없다.
+        if (meeting.isPostingBased()) {
+            return meeting.getRegionId();
+        }
+
+        if (requestedRegionId == null) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR);
+        }
+
+        validateRegionExists(requestedRegionId);
+        return requestedRegionId;
     }
 
     private void validateMeetingTime(

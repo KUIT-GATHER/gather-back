@@ -6,10 +6,12 @@ notification:
     scheduler-enabled: ${NOTIFICATION_VOLUNTEER_SCHEDULE_SCHEDULER_ENABLED:true}
     cron: ${NOTIFICATION_VOLUNTEER_SCHEDULE_CRON:0 0 9 * * *}
 
+  bookmarked-meeting-deadline:
+    scheduler-enabled: ${NOTIFICATION_BOOKMARKED_MEETING_DEADLINE_SCHEDULER_ENABLED:true}
+    cron: ${NOTIFICATION_BOOKMARKED_MEETING_DEADLINE_CRON:0 20 9 * * *}
   bookmarked-posting-deadline:
     scheduler-enabled: ${NOTIFICATION_BOOKMARKED_POSTING_DEADLINE_SCHEDULER_ENABLED:true}
     cron: ${NOTIFICATION_BOOKMARKED_POSTING_DEADLINE_CRON:0 10 9 * * *}
-
 
 spring:
   application:
@@ -21,10 +23,10 @@ spring:
   jpa:
     hibernate:
       ddl-auto: validate
-    show-sql: true
+    show-sql: false
     properties:
       hibernate:
-        format_sql: true
+        format_sql: false
         jdbc:
           time_zone: UTC
   mail:
@@ -46,12 +48,18 @@ spring:
 gather:
   scheduling:
     enabled: ${GATHER_SCHEDULING_ENABLED:true}
+  recruit:
+    auto-confirm:
+      scheduler-enabled: ${GATHER_RECRUIT_AUTO_CONFIRM_SCHEDULER_ENABLED:true}
+      cron: ${GATHER_RECRUIT_AUTO_CONFIRM_CRON:0 5 * * * *}
   kakao:
     unlink-resume:
       enabled: ${KAKAO_UNLINK_RESUME_ENABLED:false}
       task-ids: ${KAKAO_UNLINK_RESUME_TASK_IDS:}
       actor: ${KAKAO_UNLINK_RESUME_ACTOR:}
       reason: ${KAKAO_UNLINK_RESUME_REASON:}
+    unlink-canary:
+      enabled: false
   aws:
     s3:
       region: ${GATHER_AWS_REGION:ap-northeast-2}

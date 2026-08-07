@@ -9,11 +9,15 @@ import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.Size;
-import java.time.LocalDate;
-import java.time.LocalTime;
+import java.time.LocalDateTime;
 import java.util.Set;
 
-/** 모집공고(RECRUIT) 작성 요청. 팀장만 작성할 수 있다. 봉사시간 인정 시 recognizedMinutes는 서비스에서 필수 검증한다. */
+/**
+ * 모집공고(RECRUIT) 작성 요청. 팀장만 작성할 수 있다.
+ *
+ * <p>교차 필드 검증(activityStartAt &lt; activityEndAt, applyDeadlineAt &lt;= activityStartAt,
+ * timeRecognized=true면 recognizedMinutes 필수)은 서비스에서 수행한다.
+ */
 public record RecruitCreateRequest(
         @Schema(description = "활동 제목", example = "6월 정기 활동 팀원 모집")
                 @NotBlank(message = "활동 제목은 필수입니다.")
@@ -23,14 +27,15 @@ public record RecruitCreateRequest(
                 @NotBlank(message = "활동 소개는 필수입니다.")
                 @Size(max = 1000, message = "활동 소개는 1000자 이내여야 합니다.")
                 String content,
+        @Schema(description = "지역 ID") @NotNull(message = "지역은 필수입니다.") Long regionId,
         @Schema(description = "활동 장소", example = "서울 영등포구 여의도동")
                 @NotBlank(message = "장소는 필수입니다.")
                 @Size(max = 255)
                 String place,
-        @Schema(description = "활동 날짜", example = "2026-05-20") @NotNull(message = "활동 날짜는 필수입니다.")
-                LocalDate actDate,
-        @Schema(description = "활동 시작 시간(선택)", example = "09:00") LocalTime actStartTime,
-        @Schema(description = "활동 종료 시간(선택)", example = "12:00") LocalTime actEndTime,
+        @Schema(description = "활동 시작 일시") @NotNull(message = "활동 시작 일시는 필수입니다.")
+                LocalDateTime activityStartAt,
+        @Schema(description = "활동 종료 일시") @NotNull(message = "활동 종료 일시는 필수입니다.")
+                LocalDateTime activityEndAt,
         @Schema(description = "최대 인원(최대 50)", example = "30")
                 @NotNull(message = "최대 인원은 필수입니다.")
                 @Min(value = 1, message = "최대 인원은 1 이상이어야 합니다.")
@@ -43,6 +48,6 @@ public record RecruitCreateRequest(
         @Schema(description = "봉사시간 인정 여부") boolean timeRecognized,
         @Schema(description = "인정 시간(분). timeRecognized=true일 때 필수") @Positive
                 Integer recognizedMinutes,
-        @Schema(description = "신청 마감일", example = "2026-06-12") @NotNull(message = "신청 마감일은 필수입니다.")
-                LocalDate applyDeadline,
-        @Schema(description = "외부 공고 공개 여부(현재는 플래그만 저장)") boolean isExternal) {}
+        @Schema(description = "신청 마감 일시") @NotNull(message = "신청 마감 일시는 필수입니다.")
+                LocalDateTime applyDeadlineAt,
+        @Schema(description = "외부 공개 여부") boolean external) {}
