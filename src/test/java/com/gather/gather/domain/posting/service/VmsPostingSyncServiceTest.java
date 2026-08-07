@@ -8,6 +8,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.gather.gather.domain.posting.crawler.VmsCrawlClient;
+import com.gather.gather.domain.posting.crawler.VmsCrawlException;
 import com.gather.gather.domain.posting.crawler.VmsCrawlProperties;
 import com.gather.gather.domain.posting.crawler.dto.VmsPostingDetail;
 import com.gather.gather.domain.posting.crawler.dto.VmsPostingListItem;
@@ -26,6 +27,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.transaction.PlatformTransactionManager;
 
 @ExtendWith(MockitoExtension.class)
 class VmsPostingSyncServiceTest {
@@ -33,6 +35,7 @@ class VmsPostingSyncServiceTest {
     @Mock private VmsCrawlClient vmsCrawlClient;
     @Mock private PostingRepository postingRepository;
     @Mock private VmsRegionResolver vmsRegionResolver;
+    @Mock private PlatformTransactionManager transactionManager;
 
     private VmsPostingSyncService vmsPostingSyncService;
 
@@ -42,7 +45,11 @@ class VmsPostingSyncServiceTest {
                 new VmsCrawlProperties("https://www.vms.or.kr", "test-agent", 1, 0, 30, 100);
         vmsPostingSyncService =
                 new VmsPostingSyncService(
-                        vmsCrawlClient, properties, postingRepository, vmsRegionResolver);
+                        vmsCrawlClient,
+                        properties,
+                        postingRepository,
+                        vmsRegionResolver,
+                        transactionManager);
     }
 
     @Test
@@ -97,7 +104,11 @@ class VmsPostingSyncServiceTest {
                 new VmsCrawlProperties("https://www.vms.or.kr", "test-agent", 1, 0, 30, 0);
         vmsPostingSyncService =
                 new VmsPostingSyncService(
-                        vmsCrawlClient, zeroBudgetProperties, postingRepository, vmsRegionResolver);
+                        vmsCrawlClient,
+                        zeroBudgetProperties,
+                        postingRepository,
+                        vmsRegionResolver,
+                        transactionManager);
         when(vmsCrawlClient.fetchList(eq(1), any(), any()))
                 .thenReturn(List.of(listItem("517551", "모집중")))
                 .thenReturn(List.of());
@@ -140,6 +151,49 @@ class VmsPostingSyncServiceTest {
         assertThat(result).isEqualTo(new PostingSyncResult(1, 0, 0, 1, 0));
     }
 
+    @Test
+    @DisplayName("목록카드 활동기간 파싱에 실패해도 기존 활동기간을 null로 덮어쓰지 않는다")
+    void syncRecentPostings_keepsExistingActPeriod_whenListCardPeriodUnparseable() {
+        Posting existing = existingPosting("vms:517531");
+        VmsPostingListItem unparseablePeriodItem =
+                new VmsPostingListItem("517531", "제목-517531", "기관-517531", "상시모집", "모집중");
+        when(vmsCrawlClient.fetchList(eq(1), any(), any()))
+                .thenReturn(List.of(unparseablePeriodItem))
+                .thenReturn(List.of());
+        when(postingRepository.findByExtId("vms:517531")).thenReturn(Optional.of(existing));
+
+        vmsPostingSyncService.syncRecentPostings();
+
+        assertThat(existing.getActStartDate()).isEqualTo(LocalDate.of(2026, 8, 11));
+        assertThat(existing.getActEndDate()).isEqualTo(LocalDate.of(2026, 8, 13));
+        assertThat(existing.getStatus()).isEqualTo(PostingStatus.RECRUITING);
+    }
+
+    @Test
+    @DisplayName("상세조회가 실패해도 실행당 상세조회 상한 소진에 반영된다")
+    void syncRecentPostings_countsFailedDetailFetch_towardBudget() {
+        VmsCrawlProperties oneBudgetProperties =
+                new VmsCrawlProperties("https://www.vms.or.kr", "test-agent", 1, 0, 30, 1);
+        vmsPostingSyncService =
+                new VmsPostingSyncService(
+                        vmsCrawlClient,
+                        oneBudgetProperties,
+                        postingRepository,
+                        vmsRegionResolver,
+                        transactionManager);
+        when(vmsCrawlClient.fetchList(eq(1), any(), any()))
+                .thenReturn(List.of(listItem("111", "모집중"), listItem("222", "모집중")))
+                .thenReturn(List.of());
+        when(postingRepository.findByExtId("vms:111")).thenReturn(Optional.empty());
+        when(postingRepository.findByExtId("vms:222")).thenReturn(Optional.empty());
+        when(vmsCrawlClient.fetchDetail("111")).thenThrow(new VmsCrawlException("네트워크 오류"));
+
+        PostingSyncResult result = vmsPostingSyncService.syncRecentPostings();
+
+        verify(vmsCrawlClient, never()).fetchDetail("222");
+        assertThat(result).isEqualTo(new PostingSyncResult(2, 0, 0, 1, 1));
+    }
+
     private VmsPostingListItem listItem(String seq, String statusText) {
         return new VmsPostingListItem(
                 seq, "제목-" + seq, "기관-" + seq, "2026-08-11 ~ 2026-08-13", statusText);
@@ -169,6 +223,8 @@ class VmsPostingSyncServiceTest {
                 .title("기존 제목")
                 .status(PostingStatus.RECRUITING)
                 .activityDate(LocalDate.of(2026, 8, 11))
+                .actStartDate(LocalDate.of(2026, 8, 11))
+                .actEndDate(LocalDate.of(2026, 8, 13))
                 .isActive(true)
                 .category(PostingCategory.WELFARE)
                 .source(PostingSource.VMS_CRAWL)
