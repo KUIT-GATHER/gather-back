@@ -1,19 +1,32 @@
 package com.gather.gather.domain.post.service;
 
+import com.gather.gather.domain.meeting.entity.Meeting;
 import com.gather.gather.domain.meeting.enums.MeetingMemberStatus;
 import com.gather.gather.domain.meeting.repository.MeetingMemberRepository;
 import com.gather.gather.domain.meeting.repository.MeetingRepository;
 import com.gather.gather.domain.post.dto.MyMeetingActivitySummaryResponse;
 import com.gather.gather.domain.post.dto.PostSummaryResponse;
+import com.gather.gather.domain.post.dto.ReviewableActivityResponse;
 import com.gather.gather.domain.post.entity.Post;
+import com.gather.gather.domain.post.enums.ReviewSourceType;
 import com.gather.gather.domain.post.repository.PostCommentRepository;
 import com.gather.gather.domain.post.repository.PostRepository;
+import com.gather.gather.domain.posting.entity.Posting;
+import com.gather.gather.domain.posting.entity.PostingParticipationStatus;
+import com.gather.gather.domain.posting.repository.PostingParticipationRepository;
+import com.gather.gather.domain.posting.repository.PostingRepository;
 import com.gather.gather.domain.recruit.dto.MyAppliedRecruitResponse;
+import com.gather.gather.domain.recruit.dto.ReviewableRecruitActivity;
 import com.gather.gather.domain.recruit.repository.MeetingRecruitParticipationRepository;
 import com.gather.gather.global.common.PageResponse;
 import com.gather.gather.global.exception.BusinessException;
 import com.gather.gather.global.exception.ErrorCode;
 import com.gather.gather.global.util.SecurityUtil;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.LocalTime;
+import java.util.ArrayList;
+import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -36,6 +49,8 @@ public class MyMeetingActivityService {
     private final MeetingRepository meetingRepository;
     private final MeetingMemberRepository meetingMemberRepository;
     private final MeetingRecruitParticipationRepository recruitParticipationRepository;
+    private final PostingParticipationRepository postingParticipationRepository;
+    private final PostingRepository postingRepository;
 
     public PageResponse<PostSummaryResponse> getMyPosts(Long meetingId, Pageable pageable) {
         Long userId = requireApprovedMember(meetingId);
@@ -66,6 +81,66 @@ public class MyMeetingActivityService {
         Long userId = requireApprovedMember(meetingId);
         return PageResponse.from(
                 recruitParticipationRepository.findMyAppliedRecruits(userId, meetingId, pageable));
+    }
+
+    /** 후기 작성 가능 활동 조회 - POSTING(연결 공고 완료) + MEETING_RECRUIT(모집공고 참석 완료) 출처를 합쳐 반환한다. */
+    public List<ReviewableActivityResponse> getReviewableActivities(Long meetingId) {
+        Long userId = requireApprovedMember(meetingId);
+        Meeting meeting =
+                meetingRepository
+                        .findByIdAndDeletedAtIsNull(meetingId)
+                        .orElseThrow(() -> new BusinessException(ErrorCode.MEETING_NOT_FOUND));
+
+        List<ReviewableActivityResponse> activities = new ArrayList<>();
+        addReviewablePosting(meeting, userId, activities);
+        recruitParticipationRepository.findReviewableActivities(userId, meetingId).stream()
+                .map(this::toRecruitActivity)
+                .forEach(activities::add);
+        return activities;
+    }
+
+    private void addReviewablePosting(
+            Meeting meeting, Long userId, List<ReviewableActivityResponse> activities) {
+        Long volunteerPostingId = meeting.getVolunteerPostingId();
+        if (volunteerPostingId == null) {
+            return;
+        }
+        postingParticipationRepository
+                .findByUserIdAndPostingId(userId, volunteerPostingId)
+                .filter(p -> p.getStatus() == PostingParticipationStatus.COMPLETED)
+                .flatMap(p -> postingRepository.findById(volunteerPostingId))
+                .map(this::toPostingActivity)
+                .ifPresent(activities::add);
+    }
+
+    private ReviewableActivityResponse toPostingActivity(Posting posting) {
+        LocalDate startDate =
+                posting.getActStartDate() != null
+                        ? posting.getActStartDate()
+                        : posting.getActivityDate();
+        LocalDate endDate =
+                posting.getActEndDate() != null ? posting.getActEndDate() : startDate;
+        return new ReviewableActivityResponse(
+                ReviewSourceType.POSTING,
+                posting.getId(),
+                posting.getTitle(),
+                startDate.atStartOfDay(),
+                endDate.atTime(LocalTime.of(23, 59, 59)));
+    }
+
+    private ReviewableActivityResponse toRecruitActivity(ReviewableRecruitActivity activity) {
+        LocalDateTime start =
+                LocalDateTime.of(
+                        activity.actDate(),
+                        activity.actStartTime() != null ? activity.actStartTime() : LocalTime.MIN);
+        LocalDateTime end =
+                LocalDateTime.of(
+                        activity.actDate(),
+                        activity.actEndTime() != null
+                                ? activity.actEndTime()
+                                : LocalTime.of(23, 59, 59));
+        return new ReviewableActivityResponse(
+                ReviewSourceType.MEETING_RECRUIT, activity.postId(), activity.title(), start, end);
     }
 
     private Long requireApprovedMember(Long meetingId) {
