@@ -110,6 +110,34 @@ class MeetingCreationServiceTest {
     }
 
     @Test
+    @DisplayName("모임은 최대 인원을 30명보다 크게 생성할 수 없다")
+    void createMeeting_rejectsMaxMemberOverLimit() {
+        setAuthenticatedUser(1L);
+        when(regionRepository.existsById(1L)).thenReturn(true);
+        MeetingCreateRequest request =
+                new MeetingCreateRequest(
+                        "자유 모임",
+                        "설명",
+                        31,
+                        LocalDateTime.of(2026, 8, 1, 23, 59),
+                        null,
+                        Set.of(PostingCategory.ENVIRONMENT),
+                        1L,
+                        "누구나 참여할 수 있습니다.",
+                        null,
+                        null,
+                        null,
+                        false);
+
+        assertThatThrownBy(() -> meetingService.createMeeting(request))
+                .isInstanceOfSatisfying(
+                        BusinessException.class,
+                        exception ->
+                                assertThat(exception.getErrorCode())
+                                        .isEqualTo(ErrorCode.MEETING_MAX_MEMBER_EXCEEDED));
+    }
+
+    @Test
     @DisplayName("자유 모임은 카테고리가 없으면 생성할 수 없다")
     void createMeeting_rejectsFreeMeetingWithoutCategory() {
         MeetingCreateRequest request = createRequest(null, null, null, Set.of());
@@ -188,7 +216,8 @@ class MeetingCreationServiceTest {
                 "누구나 참여할 수 있습니다.",
                 volunteerPostingId,
                 activityStartAt,
-                activityEndAt);
+                activityEndAt,
+                false);
     }
 
     private void setAuthenticatedUser(Long userId) {

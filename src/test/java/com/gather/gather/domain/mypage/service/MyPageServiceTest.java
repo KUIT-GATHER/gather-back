@@ -31,6 +31,7 @@ import com.gather.gather.domain.posting.entity.PostingStatus;
 import com.gather.gather.domain.posting.repository.BookmarkRepository;
 import com.gather.gather.domain.posting.repository.PostingParticipationRepository;
 import com.gather.gather.domain.posting.repository.PostingRepository;
+import com.gather.gather.domain.posting.service.RegionNameResolver;
 import com.gather.gather.domain.region.entity.Region;
 import com.gather.gather.domain.user.service.ProfileImageUrlResolver;
 import com.gather.gather.global.common.PageResponse;
@@ -40,7 +41,9 @@ import com.gather.gather.global.util.SecurityUtil;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.YearMonth;
+import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import org.junit.jupiter.api.BeforeEach;
@@ -67,6 +70,7 @@ class MyPageServiceTest {
     @Mock private PostingParticipationRepository postingParticipationRepository;
     @Mock private PostingRepository postingRepository;
     @Mock private MeetingMemberRepository meetingMemberRepository;
+    @Mock private RegionNameResolver regionNameResolver;
     @Mock private ProfileImageUrlResolver profileImageUrlResolver;
 
     private MyPageService myPageService;
@@ -81,6 +85,7 @@ class MyPageServiceTest {
                         postingParticipationRepository,
                         postingRepository,
                         meetingMemberRepository,
+                        regionNameResolver,
                         profileImageUrlResolver);
         lenient()
                 .when(
@@ -90,6 +95,7 @@ class MyPageServiceTest {
         lenient()
                 .when(meetingMemberRepository.findApprovedForCalendar(eq(USER_ID), any(), any()))
                 .thenReturn(List.of());
+        lenient().when(regionNameResolver.resolve(any(Collection.class))).thenReturn(Map.of());
     }
 
     @Test
@@ -263,6 +269,41 @@ class MyPageServiceTest {
             assertThat(activities.get(1).postingId()).isEqualTo(801L);
             verify(postingParticipationRepository, never())
                     .findAllByUserIdAndPostingIdIn(any(), any());
+        }
+    }
+
+    @Test
+    @DisplayName(
+            "getActivities returns the meeting's region name as regionName for a MEETING card, and"
+                    + " null regionName for a VOLUNTEER card")
+    void getActivities_returnsRegionNameForMeetingCard_andNullForVolunteerCard() {
+        Posting volunteerPosting = posting(801L, LocalDate.of(2026, 7, 20));
+        PostingParticipation participation = PostingParticipation.create(USER_ID, 801L);
+        MeetingMember meetingMember =
+                approvedCalendarMeetingMember(
+                        3L,
+                        LocalDate.of(2026, 7, 5).atStartOfDay(),
+                        LocalDate.of(2026, 7, 6).atStartOfDay());
+
+        try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
+            securityUtil.when(SecurityUtil::getCurrentUserId).thenReturn(USER_ID);
+            when(postingParticipationRepository.findByUserId(USER_ID))
+                    .thenReturn(List.of(participation));
+            when(postingRepository.findAllById(List.of(801L)))
+                    .thenReturn(List.of(volunteerPosting));
+            when(meetingMemberRepository.findApprovedForCalendar(eq(USER_ID), any(), any()))
+                    .thenReturn(List.of(meetingMember));
+            when(regionNameResolver.resolve(List.of(1L))).thenReturn(Map.of(1L, "강남구"));
+
+            List<MyPageActivityResponse> activities =
+                    myPageService.getActivities(YearMonth.of(2026, 7));
+
+            assertThat(activities.get(0).activityType())
+                    .isEqualTo(MyPageActivityResponse.ActivityType.MEETING);
+            assertThat(activities.get(0).regionName()).isEqualTo("강남구");
+            assertThat(activities.get(1).activityType())
+                    .isEqualTo(MyPageActivityResponse.ActivityType.VOLUNTEER);
+            assertThat(activities.get(1).regionName()).isNull();
         }
     }
 

@@ -12,7 +12,7 @@ import java.util.List;
  * <p>참고
  *
  * <ul>
- *   <li>{@code timeVerified}: 봉사시간 인증 기능이 아직 없어 항상 {@code false}. 프론트는 "확인 필요"로 렌더한다.
+ *   <li>{@code timeRecognized}: 봉사시간 인정 여부(공고 기반 모임 전용). 자유 모임은 항상 {@code false}.
  *   <li>연관 공고가 없으면 {@code linkedPostingId}·{@code linkedPostingTitle}·{@code upcomingActivity}는 모두
  *       null.
  *   <li>모임 북마크(하트)는 별도 기능이라 이 응답에 포함하지 않는다.
@@ -26,7 +26,7 @@ public record MeetingHomeResponse(
         String regionName,
         Integer currentMemberCount,
         Integer maxMember,
-        boolean timeVerified,
+        boolean timeRecognized,
         MeetingStatus status,
         boolean basedOnPosting,
         Long linkedPostingId,

@@ -6,6 +6,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -24,6 +25,7 @@ import com.gather.gather.domain.auth.entity.WithdrawalReason;
 import com.gather.gather.domain.auth.kakao.admin.client.KakaoAdminApiClient;
 import com.gather.gather.domain.auth.kakao.admin.client.KakaoAdminUnlinkDisposition;
 import com.gather.gather.domain.auth.kakao.admin.client.KakaoAdminUnlinkResult;
+import com.gather.gather.domain.auth.kakao.admin.config.KakaoAdminProperties;
 import com.gather.gather.domain.auth.repository.KakaoUnlinkTaskRepository;
 import com.gather.gather.domain.auth.repository.KakaoUnlinkWorkerControlRepository;
 import com.gather.gather.domain.auth.repository.SocialAccountRepository;
@@ -32,6 +34,8 @@ import com.gather.gather.domain.auth.service.SocialAccountProviderIdCipher;
 import com.gather.gather.domain.user.repository.ProfileImageUploadRepository;
 import com.gather.gather.domain.user.service.ProfileImageDeletionService;
 import com.gather.gather.global.infra.s3.ObjectStorage;
+import java.net.URI;
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -45,9 +49,14 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.mock.env.MockEnvironment;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -70,6 +79,7 @@ class KakaoUnlinkWorkerIntegrationTest {
     @Autowired private KakaoUnlinkTransactionService transactionService;
     @Autowired private KakaoUnlinkResultService resultService;
     @Autowired private KakaoUnlinkWorkerResumeService resumeService;
+    @Autowired private KakaoUnlinkWorkerProperties workerProperties;
     @Autowired private PlatformTransactionManager transactionManager;
     @Autowired private JdbcTemplate jdbcTemplate;
 
@@ -110,6 +120,177 @@ class KakaoUnlinkWorkerIntegrationTest {
                         });
         createdUserIds.clear();
         createdSocialAccountIds.clear();
+    }
+
+    @Test
+    void singleClaim_claimsOnlyRequestedTaskAndLeavesEarlierTaskPending() {
+        Fixture earlier = createFixture(false, false);
+        Fixture requested = createFixture(false, false);
+
+        KakaoUnlinkSingleClaimResult result = claimService.claimOne(requested.taskId());
+
+        assertThat(result.outcome()).isEqualTo(KakaoUnlinkSingleClaimResult.Outcome.CLAIMED);
+        assertThat(result.claim().taskId()).isEqualTo(requested.taskId());
+        KakaoUnlinkTask requestedTask = taskRepository.findById(requested.taskId()).orElseThrow();
+        assertThat(requestedTask.getStatus()).isEqualTo(KakaoUnlinkTaskStatus.PROCESSING);
+        assertThat(requestedTask.getClaimToken()).isNotBlank();
+        assertThat(requestedTask.getClaimedBy()).isNotBlank();
+        assertThat(requestedTask.getClaimedAt()).isNotNull();
+        assertThat(requestedTask.getLeaseExpiresAt()).isAfter(requestedTask.getClaimedAt());
+        KakaoUnlinkTask earlierTask = taskRepository.findById(earlier.taskId()).orElseThrow();
+        assertThat(earlierTask.getStatus()).isEqualTo(KakaoUnlinkTaskStatus.PENDING);
+        assertThat(earlierTask.getClaimToken()).isNull();
+    }
+
+    @Test
+    void singleClaim_distinguishesMissingNotPendingAndNotDue() {
+        assertThat(claimService.claimOne(Long.MAX_VALUE).outcome())
+                .isEqualTo(KakaoUnlinkSingleClaimResult.Outcome.TASK_NOT_FOUND);
+
+        Fixture processing = createFixture(false, false);
+        assertThat(claimService.claimOne(processing.taskId()).outcome())
+                .isEqualTo(KakaoUnlinkSingleClaimResult.Outcome.CLAIMED);
+        assertThat(claimService.claimOne(processing.taskId()).outcome())
+                .isEqualTo(KakaoUnlinkSingleClaimResult.Outcome.NOT_PENDING);
+
+        Fixture future = createFixture(false, false);
+        jdbcTemplate.update(
+                "UPDATE kakao_unlink_task SET next_attempt_at = UTC_TIMESTAMP(6) + INTERVAL 1 HOUR WHERE id = ?",
+                future.taskId());
+        assertThat(claimService.claimOne(future.taskId()).outcome())
+                .isEqualTo(KakaoUnlinkSingleClaimResult.Outcome.NOT_DUE);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"claim_token", "claimed_by", "claimed_at", "lease_expires_at"})
+    void singleClaim_pendingClaimFieldInvariant_isRejectedWithoutMutation(String column) {
+        Fixture fixture = createFixture(false, false);
+        setPendingClaimField(fixture.taskId(), column);
+
+        KakaoUnlinkSingleClaimResult result = claimService.claimOne(fixture.taskId());
+
+        assertThat(result.outcome())
+                .isEqualTo(KakaoUnlinkSingleClaimResult.Outcome.INVARIANT_ERROR);
+        assertThat(taskRepository.findById(fixture.taskId()).orElseThrow().getStatus())
+                .isEqualTo(KakaoUnlinkTaskStatus.PENDING);
+    }
+
+    @Test
+    void singleClaim_claimInvariantTakesPriorityOverFutureDue() {
+        Fixture fixture = createFixture(false, false);
+        jdbcTemplate.update(
+                "UPDATE kakao_unlink_task SET claim_token = 'corrupt-token', next_attempt_at = UTC_TIMESTAMP(6) + INTERVAL 1 HOUR WHERE id = ?",
+                fixture.taskId());
+
+        assertThat(claimService.claimOne(fixture.taskId()).outcome())
+                .isEqualTo(KakaoUnlinkSingleClaimResult.Outcome.INVARIANT_ERROR);
+    }
+
+    @Test
+    void singleClaim_whenTaskRowIsLocked_returnsLockConflict() throws Exception {
+        Fixture fixture = createFixture(false, false);
+        CountDownLatch taskLocked = new CountDownLatch(1);
+        CountDownLatch releaseTaskLock = new CountDownLatch(1);
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        Future<?> locker =
+                executor.submit(
+                        () ->
+                                new TransactionTemplate(transactionManager)
+                                        .executeWithoutResult(
+                                                status -> {
+                                                    taskRepository
+                                                            .findByIdForUpdate(fixture.taskId())
+                                                            .orElseThrow();
+                                                    taskLocked.countDown();
+                                                    await(releaseTaskLock);
+                                                }));
+
+        try {
+            assertThat(taskLocked.await(5, TimeUnit.SECONDS)).isTrue();
+
+            Future<KakaoUnlinkSingleClaimResult> claimFuture =
+                    executor.submit(() -> claimService.claimOne(fixture.taskId()));
+            assertThat(claimFuture.get(5, TimeUnit.SECONDS).outcome())
+                    .isEqualTo(KakaoUnlinkSingleClaimResult.Outcome.LOCK_CONFLICT);
+            assertThat(locker).isNotDone();
+        } finally {
+            releaseTaskLock.countDown();
+            try {
+                locker.get(5, TimeUnit.SECONDS);
+            } finally {
+                executor.shutdownNow();
+                assertThat(executor.awaitTermination(5, TimeUnit.SECONDS)).isTrue();
+            }
+        }
+    }
+
+    @Test
+    void singleClaim_whenWorkerControlIsBlocked_returnsControlBlocked() {
+        Fixture fixture = createFixture(false, false);
+        jdbcTemplate.update(
+                "UPDATE kakao_unlink_worker_control SET status = 'CONFIGURATION_BLOCKED', blocked_reason = 'CONFIGURATION', blocked_at = UTC_TIMESTAMP(6) WHERE id = ?",
+                KakaoUnlinkWorkerControl.SINGLETON_ID);
+
+        assertThat(claimService.claimOne(fixture.taskId()).outcome())
+                .isEqualTo(KakaoUnlinkSingleClaimResult.Outcome.CONTROL_BLOCKED);
+        assertThat(taskRepository.findById(fixture.taskId()).orElseThrow().getStatus())
+                .isEqualTo(KakaoUnlinkTaskStatus.PENDING);
+    }
+
+    @Test
+    void workerAndSingleClaimCompetition_allowsOnlyOneOwner() {
+        Fixture fixture = createFixture(false, false);
+
+        CompletableFuture<List<KakaoUnlinkClaim>> batch =
+                CompletableFuture.supplyAsync(claimService::claimBatch);
+        CompletableFuture<KakaoUnlinkSingleClaimResult> single =
+                CompletableFuture.supplyAsync(() -> claimService.claimOne(fixture.taskId()));
+        CompletableFuture.allOf(batch, single).join();
+
+        long batchClaims =
+                batch.join().stream()
+                        .filter(claim -> claim.taskId().equals(fixture.taskId()))
+                        .count();
+        long singleClaims =
+                single.join().outcome() == KakaoUnlinkSingleClaimResult.Outcome.CLAIMED ? 1 : 0;
+        assertThat(batchClaims + singleClaims).isOne();
+    }
+
+    @Test
+    void canaryExecutor_processesOnlyRequestedTaskAndReturnsSuccess() {
+        Fixture other = createFixture(false, false);
+        Fixture requested = createFixture(false, false);
+        when(adminApiClient.unlink(requested.kakaoUserId()))
+                .thenReturn(
+                        new KakaoAdminUnlinkResult(
+                                KakaoAdminUnlinkDisposition.SUCCESS, 200, null, null));
+        KakaoUnlinkTaskProcessor processor =
+                new KakaoUnlinkTaskProcessor(transactionService, adminApiClient, resultService);
+        MockEnvironment environment = new MockEnvironment();
+        environment.setProperty("spring.main.web-application-type", "none");
+        environment.setProperty("gather.scheduling.enabled", "false");
+        KakaoUnlinkCanaryCommandExecutor executor =
+                new KakaoUnlinkCanaryCommandExecutor(
+                        mock(ConfigurableApplicationContext.class),
+                        environment,
+                        new KakaoUnlinkCanaryCommandProperties(true, requested.taskId().toString()),
+                        new KakaoAdminProperties(
+                                true,
+                                "test-admin-key",
+                                URI.create("https://kapi.kakao.com"),
+                                Duration.ofSeconds(2),
+                                Duration.ofSeconds(5)),
+                        workerProperties,
+                        claimService,
+                        processorProvider(processor));
+
+        assertThat(executor.execute()).isEqualTo(KakaoUnlinkCanaryCommandExecutor.EXIT_SUCCESS);
+        assertThat(taskRepository.findById(requested.taskId()).orElseThrow().getStatus())
+                .isEqualTo(KakaoUnlinkTaskStatus.SUCCEEDED);
+        assertThat(taskRepository.findById(other.taskId()).orElseThrow().getStatus())
+                .isEqualTo(KakaoUnlinkTaskStatus.PENDING);
+        verify(adminApiClient).unlink(requested.kakaoUserId());
+        verify(adminApiClient, never()).unlink(other.kakaoUserId());
     }
 
     @Test
@@ -198,9 +379,12 @@ class KakaoUnlinkWorkerIntegrationTest {
                 fixture.taskId());
 
         KakaoUnlinkClaim newClaim = claimFor(fixture.taskId());
-        resultService.apply(
-                oldAttempt,
-                new KakaoAdminUnlinkResult(KakaoAdminUnlinkDisposition.SUCCESS, 200, null, null));
+        assertThat(
+                        resultService.apply(
+                                oldAttempt,
+                                new KakaoAdminUnlinkResult(
+                                        KakaoAdminUnlinkDisposition.SUCCESS, 200, null, null)))
+                .isEqualTo(KakaoUnlinkProcessingResult.CLAIM_LOST);
 
         KakaoUnlinkTask task = taskRepository.findById(fixture.taskId()).orElseThrow();
         assertThat(newClaim.claimToken()).isNotEqualTo(oldClaim.claimToken());
@@ -222,9 +406,12 @@ class KakaoUnlinkWorkerIntegrationTest {
         KakaoUnlinkClaim claim = claimFor(fixture.taskId());
         KakaoUnlinkAttempt attempt = transactionService.reserveAttempt(claim).attempt();
 
-        resultService.apply(
-                attempt,
-                new KakaoAdminUnlinkResult(KakaoAdminUnlinkDisposition.SUCCESS, 200, null, null));
+        assertThat(
+                        resultService.apply(
+                                attempt,
+                                new KakaoAdminUnlinkResult(
+                                        KakaoAdminUnlinkDisposition.SUCCESS, 200, null, null)))
+                .isEqualTo(KakaoUnlinkProcessingResult.SUCCEEDED);
 
         KakaoUnlinkTask task = taskRepository.findById(fixture.taskId()).orElseThrow();
         SocialAccount account = socialAccountRepository.findById(socialAccountId).orElseThrow();
@@ -313,7 +500,8 @@ class KakaoUnlinkWorkerIntegrationTest {
 
         assertThat(transactionService.preflight(claim))
                 .isEqualTo(KakaoUnlinkPreflightOutcome.LOCAL_FINALIZE);
-        resultService.finalizeLocally(claim);
+        assertThat(resultService.finalizeLocally(claim))
+                .isEqualTo(KakaoUnlinkProcessingResult.SUCCEEDED);
 
         KakaoUnlinkTask task = taskRepository.findById(fixture.taskId()).orElseThrow();
         SocialAccount account = socialAccountRepository.findById(socialAccountId).orElseThrow();
@@ -341,7 +529,7 @@ class KakaoUnlinkWorkerIntegrationTest {
         KakaoUnlinkClaim claim = claimFor(fixture.taskId());
         KakaoUnlinkAttempt attempt = transactionService.reserveAttempt(claim).attempt();
 
-        KakaoUnlinkBatchAction action =
+        KakaoUnlinkProcessingResult action =
                 resultService.applyConfigurationFailure(
                         attempt,
                         new KakaoAdminUnlinkResult(
@@ -350,7 +538,7 @@ class KakaoUnlinkWorkerIntegrationTest {
                                 -401,
                                 null));
 
-        assertThat(action).isEqualTo(KakaoUnlinkBatchAction.STOP_BATCH);
+        assertThat(action).isEqualTo(KakaoUnlinkProcessingResult.CONFIGURATION_BLOCKED);
         KakaoUnlinkTask blockedTask = taskRepository.findById(fixture.taskId()).orElseThrow();
         assertThat(blockedTask.getStatus()).isEqualTo(KakaoUnlinkTaskStatus.DEAD);
         assertThat(blockedTask.getLastErrorType())
@@ -382,6 +570,89 @@ class KakaoUnlinkWorkerIntegrationTest {
     }
 
     @Test
+    void reservation_whenUserInvariantChanges_returnsStaleAndTransitionsTask() {
+        Fixture fixture = createFixture(false, false);
+        KakaoUnlinkClaim claim = claimFor(fixture.taskId());
+        jdbcTemplate.update("UPDATE users SET status = 'ACTIVE' WHERE id = ?", userId);
+
+        KakaoUnlinkReservation reservation = transactionService.reserveAttempt(claim);
+
+        assertThat(reservation.outcome()).isEqualTo(KakaoUnlinkReservation.Outcome.STALE);
+        assertThat(taskRepository.findById(fixture.taskId()).orElseThrow().getStatus())
+                .isEqualTo(KakaoUnlinkTaskStatus.STALE);
+    }
+
+    @Test
+    void resultApplication_whenInvariantChanges_returnsStale() {
+        Fixture fixture = createFixture(false, false);
+        KakaoUnlinkClaim claim = claimFor(fixture.taskId());
+        KakaoUnlinkAttempt attempt = transactionService.reserveAttempt(claim).attempt();
+        jdbcTemplate.update("UPDATE users SET status = 'ACTIVE' WHERE id = ?", userId);
+
+        KakaoUnlinkProcessingResult result =
+                resultService.apply(
+                        attempt,
+                        new KakaoAdminUnlinkResult(
+                                KakaoAdminUnlinkDisposition.SUCCESS, 200, null, null));
+
+        assertThat(result).isEqualTo(KakaoUnlinkProcessingResult.STALE);
+        assertThat(taskRepository.findById(fixture.taskId()).orElseThrow().getStatus())
+                .isEqualTo(KakaoUnlinkTaskStatus.STALE);
+    }
+
+    @Test
+    void resultApplication_alreadyUnlinkedConvergesToSuccess() {
+        Fixture fixture = createFixture(false, false);
+        KakaoUnlinkClaim claim = claimFor(fixture.taskId());
+        KakaoUnlinkAttempt attempt = transactionService.reserveAttempt(claim).attempt();
+
+        KakaoUnlinkProcessingResult result =
+                resultService.apply(
+                        attempt,
+                        new KakaoAdminUnlinkResult(
+                                KakaoAdminUnlinkDisposition.ALREADY_UNLINKED, 400, -101, null));
+
+        assertThat(result).isEqualTo(KakaoUnlinkProcessingResult.SUCCEEDED);
+        assertThat(taskRepository.findById(fixture.taskId()).orElseThrow().getStatus())
+                .isEqualTo(KakaoUnlinkTaskStatus.SUCCEEDED);
+    }
+
+    @Test
+    void resultApplication_permanentRequestReturnsDeadWithoutBlockingControl() {
+        Fixture fixture = createFixture(false, false);
+        KakaoUnlinkClaim claim = claimFor(fixture.taskId());
+        KakaoUnlinkAttempt attempt = transactionService.reserveAttempt(claim).attempt();
+
+        KakaoUnlinkProcessingResult result =
+                resultService.apply(
+                        attempt,
+                        new KakaoAdminUnlinkResult(
+                                KakaoAdminUnlinkDisposition.PERMANENT_REQUEST, 400, -2, null));
+
+        assertThat(result).isEqualTo(KakaoUnlinkProcessingResult.DEAD);
+        assertThat(taskRepository.findById(fixture.taskId()).orElseThrow().getStatus())
+                .isEqualTo(KakaoUnlinkTaskStatus.DEAD);
+        assertThat(
+                        controlRepository
+                                .findById(KakaoUnlinkWorkerControl.SINGLETON_ID)
+                                .orElseThrow()
+                                .getStatus())
+                .isEqualTo(KakaoUnlinkWorkerControlStatus.ACTIVE);
+    }
+
+    @Test
+    void localFinalize_whenLeaseExpires_returnsClaimLost() {
+        Fixture fixture = createFixture(true, false);
+        KakaoUnlinkClaim claim = claimFor(fixture.taskId());
+        jdbcTemplate.update(
+                "UPDATE kakao_unlink_task SET lease_expires_at = UTC_TIMESTAMP(6) - INTERVAL 1 SECOND WHERE id = ?",
+                fixture.taskId());
+
+        assertThat(resultService.finalizeLocally(claim))
+                .isEqualTo(KakaoUnlinkProcessingResult.CLAIM_LOST);
+    }
+
+    @Test
     void reservation_withMissingProviderIdentifier_becomesInvariantDeadWithoutAttempt() {
         Fixture fixture = createFixture(false, false);
         jdbcTemplate.update(
@@ -392,7 +663,7 @@ class KakaoUnlinkWorkerIntegrationTest {
         KakaoUnlinkReservation reservation = transactionService.reserveAttempt(claim);
 
         KakaoUnlinkTask task = taskRepository.findById(fixture.taskId()).orElseThrow();
-        assertThat(reservation.outcome()).isEqualTo(KakaoUnlinkReservation.Outcome.TERMINAL);
+        assertThat(reservation.outcome()).isEqualTo(KakaoUnlinkReservation.Outcome.DEAD);
         assertThat(task.getStatus()).isEqualTo(KakaoUnlinkTaskStatus.DEAD);
         assertThat(task.getLastErrorType()).isEqualTo(KakaoUnlinkTaskErrorType.INVARIANT);
         assertThat(task.getAttemptCount()).isZero();
@@ -412,7 +683,7 @@ class KakaoUnlinkWorkerIntegrationTest {
         KakaoUnlinkReservation reservation = transactionService.reserveAttempt(claim);
 
         KakaoUnlinkTask task = taskRepository.findById(fixture.taskId()).orElseThrow();
-        assertThat(reservation.outcome()).isEqualTo(KakaoUnlinkReservation.Outcome.TERMINAL);
+        assertThat(reservation.outcome()).isEqualTo(KakaoUnlinkReservation.Outcome.DEAD);
         assertThat(task.getLastErrorType()).isEqualTo(KakaoUnlinkTaskErrorType.INVARIANT);
         assertThat(task.getAttemptCount()).isZero();
     }
@@ -425,9 +696,12 @@ class KakaoUnlinkWorkerIntegrationTest {
         KakaoUnlinkClaim claim = claimFor(fixture.taskId());
         KakaoUnlinkAttempt attempt = transactionService.reserveAttempt(claim).attempt();
 
-        resultService.apply(
-                attempt,
-                new KakaoAdminUnlinkResult(KakaoAdminUnlinkDisposition.RETRYABLE, 503, null, null));
+        assertThat(
+                        resultService.apply(
+                                attempt,
+                                new KakaoAdminUnlinkResult(
+                                        KakaoAdminUnlinkDisposition.RETRYABLE, 503, null, null)))
+                .isEqualTo(KakaoUnlinkProcessingResult.DEAD);
 
         KakaoUnlinkTask task = taskRepository.findById(fixture.taskId()).orElseThrow();
         assertThat(task.getAttemptCount()).isEqualTo(12);
@@ -443,9 +717,12 @@ class KakaoUnlinkWorkerIntegrationTest {
         KakaoUnlinkClaim claim = claimFor(fixture.taskId());
         KakaoUnlinkAttempt attempt = transactionService.reserveAttempt(claim).attempt();
 
-        resultService.apply(
-                attempt,
-                new KakaoAdminUnlinkResult(KakaoAdminUnlinkDisposition.RETRYABLE, 503, null, null));
+        assertThat(
+                        resultService.apply(
+                                attempt,
+                                new KakaoAdminUnlinkResult(
+                                        KakaoAdminUnlinkDisposition.RETRYABLE, 503, null, null)))
+                .isEqualTo(KakaoUnlinkProcessingResult.RETRY_SCHEDULED);
 
         KakaoUnlinkTask task = taskRepository.findById(fixture.taskId()).orElseThrow();
         assertThat(task.getAttemptCount()).isEqualTo(11);
@@ -474,7 +751,7 @@ class KakaoUnlinkWorkerIntegrationTest {
 
         KakaoUnlinkTask task = taskRepository.findById(fixture.taskId()).orElseThrow();
         assertThat(newClaim.claimToken()).isNotEqualTo(oldClaim.claimToken());
-        assertThat(exhausted.outcome()).isEqualTo(KakaoUnlinkReservation.Outcome.TERMINAL);
+        assertThat(exhausted.outcome()).isEqualTo(KakaoUnlinkReservation.Outcome.DEAD);
         assertThat(task.getStatus()).isEqualTo(KakaoUnlinkTaskStatus.DEAD);
         assertThat(task.getAttemptCount()).isEqualTo(12);
         assertThat(task.getCompletedAt()).isNotNull();
@@ -566,9 +843,9 @@ class KakaoUnlinkWorkerIntegrationTest {
                             return new KakaoAdminUnlinkResult(
                                     KakaoAdminUnlinkDisposition.SUCCESS, 200, null, null);
                         });
-        KakaoUnlinkWorker worker =
-                new KakaoUnlinkWorker(
-                        claimService, transactionService, adminApiClient, resultService);
+        KakaoUnlinkTaskProcessor processor =
+                new KakaoUnlinkTaskProcessor(transactionService, adminApiClient, resultService);
+        KakaoUnlinkWorker worker = new KakaoUnlinkWorker(claimService, processor);
 
         worker.runBatch();
 
@@ -788,6 +1065,26 @@ class KakaoUnlinkWorkerIntegrationTest {
             Thread.currentThread().interrupt();
             throw new IllegalStateException("Interrupted while holding task lock", exception);
         }
+    }
+
+    private void setPendingClaimField(Long taskId, String column) {
+        String value =
+                switch (column) {
+                    case "claim_token" -> "'corrupt-token'";
+                    case "claimed_by" -> "'corrupt-owner'";
+                    case "claimed_at", "lease_expires_at" -> "UTC_TIMESTAMP(6)";
+                    default -> throw new IllegalArgumentException("Unsupported claim column");
+                };
+        jdbcTemplate.update(
+                "UPDATE kakao_unlink_task SET " + column + " = " + value + " WHERE id = ?", taskId);
+    }
+
+    @SuppressWarnings("unchecked")
+    private ObjectProvider<KakaoUnlinkTaskProcessor> processorProvider(
+            KakaoUnlinkTaskProcessor processor) {
+        ObjectProvider<KakaoUnlinkTaskProcessor> provider = mock(ObjectProvider.class);
+        when(provider.getIfAvailable()).thenReturn(processor);
+        return provider;
     }
 
     private Fixture createFixture(boolean alreadyUnlinked, boolean withProfileImage) {

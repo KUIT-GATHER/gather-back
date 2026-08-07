@@ -22,6 +22,7 @@ public record MeetingDetailResponse(
         LocalDateTime deadline,
         LocalDateTime activityStartAt,
         LocalDateTime activityEndAt,
+        boolean timeRecognized,
         boolean bookmarked) {
 
     public static MeetingDetailResponse from(
@@ -42,6 +43,7 @@ public record MeetingDetailResponse(
                 meeting.getDeadline(),
                 meeting.getActivityStartAt(),
                 meeting.getActivityEndAt(),
+                meeting.isTimeRecognized(),
                 bookmarked);
     }
 }

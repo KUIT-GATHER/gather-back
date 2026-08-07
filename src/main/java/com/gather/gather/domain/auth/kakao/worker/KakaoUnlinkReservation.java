@@ -18,7 +18,8 @@ public record KakaoUnlinkReservation(Outcome outcome, KakaoUnlinkAttempt attempt
         RESERVED,
         BLOCKED,
         CLAIM_LOST,
-        TERMINAL
+        STALE,
+        DEAD
     }
 
     static KakaoUnlinkReservation reserved(KakaoUnlinkAttempt attempt) {
