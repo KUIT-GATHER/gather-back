@@ -4,6 +4,7 @@ import com.gather.gather.domain.region.entity.Region;
 import com.gather.gather.domain.region.repository.RegionRepository;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
@@ -19,6 +20,17 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 public class VmsRegionResolver {
 
+    /**
+     * 2026년 행정구역 개편(강원특별자치도·전북특별자치도 전환, 전남·광주 통합)으로 VMS는 신명칭을 쓰지만, 이 프로젝트 region 시드(V4)는 1365 API와의
+     * 매칭을 위해 구명칭을 그대로 유지한다(V4 마이그레이션 주석 참고). 시도 단계 매칭이 실패했을 때만 시도하는 폴백이며, 구명칭 매칭을 대체하지 않는다. 전남·광주는
+     * 통합으로 시도 자체가 사라져 후보가 2개(전라남도/광주광역시)라 시군구 이름으로 실제 소속을 가려낸다.
+     */
+    private static final Map<String, List<String>> SIDO_RENAME_ALIASES =
+            Map.of(
+                    "강원특별자치도", List.of("강원도"),
+                    "전북특별자치도", List.of("전라북도"),
+                    "전남광주통합특별시", List.of("전라남도", "광주광역시"));
+
     private final RegionRepository regionRepository;
 
     @Transactional(readOnly = true)
@@ -27,13 +39,35 @@ public class VmsRegionResolver {
             return null;
         }
 
-        Region sido = findMatch(regionRepository.findByParentIsNull(), vmsAreaText);
-        if (sido == null) {
-            return null;
+        List<Region> sidoCandidates = regionRepository.findByParentIsNull();
+        Region sido = findMatch(sidoCandidates, vmsAreaText);
+        if (sido != null) {
+            Region sigungu = findMatch(regionRepository.findByParentId(sido.getId()), vmsAreaText);
+            return sigungu != null ? sigungu.getId() : sido.getId();
         }
 
-        Region sigungu = findMatch(regionRepository.findByParentId(sido.getId()), vmsAreaText);
-        return sigungu != null ? sigungu.getId() : sido.getId();
+        return resolveViaRenameAlias(sidoCandidates, vmsAreaText);
+    }
+
+    private Long resolveViaRenameAlias(List<Region> sidoCandidates, String vmsAreaText) {
+        for (Map.Entry<String, List<String>> alias : SIDO_RENAME_ALIASES.entrySet()) {
+            if (!vmsAreaText.contains(alias.getKey())) {
+                continue;
+            }
+            List<Region> oldNameSidos =
+                    sidoCandidates.stream()
+                            .filter(candidate -> alias.getValue().contains(candidate.getName()))
+                            .toList();
+            for (Region oldSido : oldNameSidos) {
+                Region sigungu =
+                        findMatch(regionRepository.findByParentId(oldSido.getId()), vmsAreaText);
+                if (sigungu != null) {
+                    return sigungu.getId();
+                }
+            }
+            return oldNameSidos.size() == 1 ? oldNameSidos.get(0).getId() : null;
+        }
+        return null;
     }
 
     private Region findMatch(List<Region> candidates, String text) {
