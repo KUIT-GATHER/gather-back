@@ -5,6 +5,7 @@ import com.gather.gather.domain.meeting.dto.MeetingImagePresignedUrlRequest;
 import com.gather.gather.domain.meeting.dto.MeetingImagePresignedUrlResponse;
 import com.gather.gather.domain.meeting.dto.MeetingImageUpdateRequest;
 import com.gather.gather.domain.meeting.dto.MeetingImageUpdateResponse;
+import com.gather.gather.domain.meeting.dto.MeetingManageImageResponse;
 import com.gather.gather.domain.meeting.entity.Meeting;
 import com.gather.gather.domain.meeting.entity.MeetingImage;
 import com.gather.gather.domain.meeting.entity.MeetingImageUpload;
@@ -59,6 +60,27 @@ public class MeetingImageService {
                         .map(urlResolver::resolve)
                         .toList();
         return new MeetingImageListResponse(urls);
+    }
+
+    /** 이미지 수정 화면용 - objectKey를 포함해 반환한다(모임장 전용). 재정렬·부분 유지 시 objectKey가 필요하다. */
+    @Transactional(readOnly = true)
+    public List<MeetingManageImageResponse> getManageImages(Long meetingId) {
+        Long userId = SecurityUtil.getCurrentUserId();
+        Meeting meeting =
+                meetingRepository
+                        .findByIdAndDeletedAtIsNull(meetingId)
+                        .orElseThrow(() -> new BusinessException(ErrorCode.MEETING_NOT_FOUND));
+        if (!meeting.getHost().getId().equals(userId)) {
+            throw new BusinessException(ErrorCode.MEETING_IMAGE_FORBIDDEN);
+        }
+        return meetingImageRepository.findByMeetingIdOrderBySortOrderAsc(meetingId).stream()
+                .map(
+                        image ->
+                                new MeetingManageImageResponse(
+                                        image.getObjectKey(),
+                                        urlResolver.resolve(image.getObjectKey()),
+                                        image.getSortOrder()))
+                .toList();
     }
 
     @Transactional
@@ -173,7 +195,8 @@ public class MeetingImageService {
     }
 
     private void validateKeyList(List<String> keys) {
-        if (keys == null || keys.isEmpty()) {
+        // 빈 배열은 전체 이미지 삭제 요청으로 허용한다(정책). null만 막는다.
+        if (keys == null) {
             throw new BusinessException(ErrorCode.VALIDATION_ERROR);
         }
         if (keys.size() > MAX_IMAGES) {

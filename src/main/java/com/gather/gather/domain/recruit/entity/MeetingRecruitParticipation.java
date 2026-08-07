@@ -87,4 +87,14 @@ public class MeetingRecruitParticipation {
         this.applicantType = applicantType;
         this.status = MeetingRecruitParticipationStatus.APPLIED;
     }
+
+    /** 활동 후기를 작성해 완료(COMPLETED) 상태를 후기 작성됨(REVIEWED)으로 전환한다. */
+    public void review() {
+        this.status = MeetingRecruitParticipationStatus.REVIEWED;
+    }
+
+    /** 후기가 삭제되면 다시 작성할 수 있도록 완료(COMPLETED) 상태로 되돌린다. */
+    public void unreview() {
+        this.status = MeetingRecruitParticipationStatus.COMPLETED;
+    }
 }
