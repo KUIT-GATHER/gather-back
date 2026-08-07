@@ -541,7 +541,7 @@ class MeetingServiceTest {
                 .findPendingByMeetingIdAndUserIdForUpdate(
                         org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any());
     }
-  
+
     @Test
     @DisplayName("모임장은 자유 모임의 이름·정원·카테고리·지역을 수정할 수 있다")
     void updateMeeting_updatesFreeMeeting_whenCalledByHost() {
