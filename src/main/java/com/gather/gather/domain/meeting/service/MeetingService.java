@@ -190,6 +190,8 @@ public class MeetingService {
                         postingId, pageable);
         Map<Long, MeetingMemberRole> membershipRoles =
                 getMembershipRoles(SecurityUtil.getCurrentUserIdOrNull(), meetings.getContent());
+        Map<Long, String> regionNames =
+                regionNameResolver.resolve(regionIdsOf(meetings.getContent()));
 
         Page<PostingMeetingResponse> responses =
                 meetings.map(
@@ -198,6 +200,7 @@ public class MeetingService {
                             return PostingMeetingResponse.from(
                                     meeting,
                                     resolveDisplayStatus(meeting),
+                                    regionNames.get(meeting.getRegionId()),
                                     role != null,
                                     role == MeetingMemberRole.HOST);
                         });
