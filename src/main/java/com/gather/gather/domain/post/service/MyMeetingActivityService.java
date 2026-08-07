@@ -118,8 +118,7 @@ public class MyMeetingActivityService {
                 posting.getActStartDate() != null
                         ? posting.getActStartDate()
                         : posting.getActivityDate();
-        LocalDate endDate =
-                posting.getActEndDate() != null ? posting.getActEndDate() : startDate;
+        LocalDate endDate = posting.getActEndDate() != null ? posting.getActEndDate() : startDate;
         return new ReviewableActivityResponse(
                 ReviewSourceType.POSTING,
                 posting.getId(),

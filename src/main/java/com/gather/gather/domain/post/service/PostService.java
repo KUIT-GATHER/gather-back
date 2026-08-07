@@ -131,7 +131,11 @@ public class PostService {
 
         if (request.type() == PostType.REVIEW) {
             postReviewSourceService.linkAndMarkReviewed(
-                    savedPost, meeting, userId, request.reviewSourceType(), request.reviewSourceId());
+                    savedPost,
+                    meeting,
+                    userId,
+                    request.reviewSourceType(),
+                    request.reviewSourceId());
             eventPublisher.publishEvent(
                     new BadgeAwardRequestedEvent(userId, BadgeType.FIRST_REVIEW));
         }

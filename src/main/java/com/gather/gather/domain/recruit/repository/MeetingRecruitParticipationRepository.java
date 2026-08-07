@@ -79,8 +79,8 @@ public interface MeetingRecruitParticipationRepository
             @Param("meetingId") Long meetingId, @Param("today") LocalDate today);
 
     /**
-     * 활동 후기 작성 가능 목록(MEETING_RECRUIT 출처) - 이 모임에서 내가 COMPLETED(참석 처리되어 완료)된 모집공고 참여를 조회한다. 이미
-     * 후기를 작성한(REVIEWED) 참여는 제외한다.
+     * 활동 후기 작성 가능 목록(MEETING_RECRUIT 출처) - 이 모임에서 내가 COMPLETED(참석 처리되어 완료)된 모집공고 참여를 조회한다. 이미 후기를
+     * 작성한(REVIEWED) 참여는 제외한다.
      */
     @Query(
             """

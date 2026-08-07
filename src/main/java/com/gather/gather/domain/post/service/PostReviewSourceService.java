@@ -78,8 +78,11 @@ public class PostReviewSourceService {
                 postingParticipationRepository
                         .findByUserIdAndPostingId(userId, postingId)
                         .orElseThrow(
-                                () -> new BusinessException(ErrorCode.POST_REVIEW_ACTIVITY_NOT_FOUND));
-        requireReviewable(participation.getStatus() == PostingParticipationStatus.REVIEWED,
+                                () ->
+                                        new BusinessException(
+                                                ErrorCode.POST_REVIEW_ACTIVITY_NOT_FOUND));
+        requireReviewable(
+                participation.getStatus() == PostingParticipationStatus.REVIEWED,
                 participation.getStatus() == PostingParticipationStatus.COMPLETED);
         participation.review();
     }
@@ -89,7 +92,9 @@ public class PostReviewSourceService {
                 postRepository
                         .findByIdFetchUser(recruitPostId)
                         .orElseThrow(
-                                () -> new BusinessException(ErrorCode.POST_REVIEW_ACTIVITY_NOT_FOUND));
+                                () ->
+                                        new BusinessException(
+                                                ErrorCode.POST_REVIEW_ACTIVITY_NOT_FOUND));
         if (!recruitPost.getMeeting().getId().equals(meeting.getId())) {
             throw new BusinessException(ErrorCode.POST_REVIEW_ACTIVITY_NOT_FOUND);
         }
@@ -97,7 +102,9 @@ public class PostReviewSourceService {
                 meetingRecruitParticipationRepository
                         .findByPostIdAndUserId(recruitPostId, userId)
                         .orElseThrow(
-                                () -> new BusinessException(ErrorCode.POST_REVIEW_ACTIVITY_NOT_FOUND));
+                                () ->
+                                        new BusinessException(
+                                                ErrorCode.POST_REVIEW_ACTIVITY_NOT_FOUND));
         requireReviewable(
                 participation.getStatus() == MeetingRecruitParticipationStatus.REVIEWED,
                 participation.getStatus() == MeetingRecruitParticipationStatus.COMPLETED);

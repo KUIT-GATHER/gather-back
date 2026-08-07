@@ -1,11 +1,11 @@
 package com.gather.gather.domain.meeting.service;
 
 import com.gather.gather.domain.meeting.dto.MeetingImageListResponse;
-import com.gather.gather.domain.meeting.dto.MeetingManageImageResponse;
 import com.gather.gather.domain.meeting.dto.MeetingImagePresignedUrlRequest;
 import com.gather.gather.domain.meeting.dto.MeetingImagePresignedUrlResponse;
 import com.gather.gather.domain.meeting.dto.MeetingImageUpdateRequest;
 import com.gather.gather.domain.meeting.dto.MeetingImageUpdateResponse;
+import com.gather.gather.domain.meeting.dto.MeetingManageImageResponse;
 import com.gather.gather.domain.meeting.entity.Meeting;
 import com.gather.gather.domain.meeting.entity.MeetingImage;
 import com.gather.gather.domain.meeting.entity.MeetingImageUpload;

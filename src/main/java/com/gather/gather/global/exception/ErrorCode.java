@@ -146,7 +146,8 @@ public enum ErrorCode {
     POST_CONTENT_TOO_LONG(HttpStatus.BAD_REQUEST, "내용 길이가 허용 범위를 초과했습니다."),
 
     // ── 활동 후기(REVIEW) ──
-    POST_REVIEW_SOURCE_REQUIRED(HttpStatus.BAD_REQUEST, "후기는 근거 활동(reviewSourceType/reviewSourceId)이 필요합니다."),
+    POST_REVIEW_SOURCE_REQUIRED(
+            HttpStatus.BAD_REQUEST, "후기는 근거 활동(reviewSourceType/reviewSourceId)이 필요합니다."),
     POST_REVIEW_ACTIVITY_NOT_FOUND(HttpStatus.NOT_FOUND, "후기를 작성할 활동을 찾을 수 없습니다."),
     POST_REVIEW_ACTIVITY_NOT_COMPLETED(HttpStatus.CONFLICT, "완료된 활동에 대해서만 후기를 작성할 수 있습니다."),
     POST_REVIEW_ALREADY_EXISTS(HttpStatus.CONFLICT, "이미 이 활동에 대한 후기가 존재합니다."),
