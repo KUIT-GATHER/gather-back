@@ -13,6 +13,11 @@ import org.springframework.data.repository.query.Param;
 
 public interface PostingParticipationRepository extends JpaRepository<PostingParticipation, Long> {
 
+    /** 인정 시간 합계 조회용(가입신청/멤버/신청자 상세의 totalRecognizedMinutes). */
+    @Query(
+            "SELECT COALESCE(SUM(pp.recognizedMinutes), 0) FROM PostingParticipation pp WHERE pp.userId = :userId")
+    int sumRecognizedMinutesByUserId(@Param("userId") Long userId);
+
     boolean existsByUserIdAndPostingId(Long userId, Long postingId);
 
     Optional<PostingParticipation> findByUserIdAndPostingId(Long userId, Long postingId);

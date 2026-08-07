@@ -2,12 +2,15 @@ package com.gather.gather.domain.meeting.controller;
 
 import com.gather.gather.domain.meeting.dto.MeetingCreateRequest;
 import com.gather.gather.domain.meeting.dto.MeetingDetailResponse;
+import com.gather.gather.domain.meeting.dto.MeetingJoinRequestDetailResponse;
 import com.gather.gather.domain.meeting.dto.MeetingJoinRequestResponse;
 import com.gather.gather.domain.meeting.dto.MeetingJoinResponse;
 import com.gather.gather.domain.meeting.dto.MeetingRecognizedMinutesRequest;
 import com.gather.gather.domain.meeting.dto.MeetingResponse;
 import com.gather.gather.domain.meeting.dto.MeetingUpdateRequest;
+import com.gather.gather.domain.meeting.enums.MeetingMemberStatus;
 import com.gather.gather.domain.meeting.enums.MeetingStatus;
+import com.gather.gather.domain.meeting.service.MeetingJoinRequestManagementService;
 import com.gather.gather.domain.meeting.service.MeetingKeywordRecommendationService;
 import com.gather.gather.domain.meeting.service.MeetingRecommendationService;
 import com.gather.gather.domain.meeting.service.MeetingService;
@@ -44,6 +47,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class MeetingController {
 
     private final MeetingService meetingService;
+    private final MeetingJoinRequestManagementService meetingJoinRequestManagementService;
     private final MeetingKeywordRecommendationService meetingKeywordRecommendationService;
     private final MeetingRecommendationService meetingRecommendationService;
 
@@ -164,11 +168,32 @@ public class MeetingController {
         return ApiResponse.success(null);
     }
 
-    @Operation(summary = "가입 신청 목록 조회", description = "모임장이 승인 대기 중인 가입 신청 목록을 조회합니다.")
+    @Operation(
+            summary = "가입 신청 목록 조회",
+            description =
+                    "모임장이 가입 신청 목록을 상태별로 조회합니다. status를 생략하면 PENDING/APPROVED/REJECTED 전체를"
+                            + " 반환합니다(CANCELLED/LEFT/REMOVED 제외). 페이지네이션 없음, 개인정보 미포함.")
     @GetMapping("/{meetingId}/join-requests")
-    public ApiResponse<List<MeetingJoinRequestResponse>> getPendingJoinRequests(
-            @PathVariable Long meetingId) {
-        return ApiResponse.success(meetingService.getPendingJoinRequests(meetingId));
+    public ApiResponse<List<MeetingJoinRequestResponse>> getJoinRequests(
+            @PathVariable Long meetingId,
+            @RequestParam(required = false) MeetingMemberStatus status) {
+        return ApiResponse.success(meetingJoinRequestManagementService.getJoinRequests(meetingId, status));
+    }
+
+    @Operation(summary = "가입 신청자 상세", description = "가입 신청자의 연락처 등 상세 정보를 조회합니다(모임장 전용).")
+    @GetMapping("/{meetingId}/join-requests/{joinRequestId}")
+    public ApiResponse<MeetingJoinRequestDetailResponse> getJoinRequestDetail(
+            @PathVariable Long meetingId, @PathVariable Long joinRequestId) {
+        return ApiResponse.success(
+                meetingJoinRequestManagementService.getJoinRequestDetail(meetingId, joinRequestId));
+    }
+
+    @Operation(summary = "거절한 가입 신청 복구", description = "거절(REJECTED)한 가입 신청을 대기(PENDING) 상태로 되돌립니다(모임장 전용).")
+    @PatchMapping("/{meetingId}/join-requests/{joinRequestId}/pending")
+    public ApiResponse<MeetingJoinRequestResponse> restoreJoinRequestToPending(
+            @PathVariable Long meetingId, @PathVariable Long joinRequestId) {
+        return ApiResponse.success(
+                meetingJoinRequestManagementService.restoreToPending(meetingId, joinRequestId));
     }
 
     @Operation(summary = "모임 가입 승인", description = "모임장이 가입 신청을 승인합니다.")

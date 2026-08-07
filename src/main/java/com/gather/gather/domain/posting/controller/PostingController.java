@@ -1,5 +1,6 @@
 package com.gather.gather.domain.posting.controller;
 
+import com.gather.gather.domain.posting.dto.PostingListItem;
 import com.gather.gather.domain.posting.dto.PostingResponse;
 import com.gather.gather.domain.posting.dto.PostingSummaryResponse;
 import com.gather.gather.domain.posting.entity.PostingCategory;
@@ -144,7 +145,7 @@ public class PostingController {
                                                         """)))
     })
     @GetMapping
-    public ApiResponse<PageResponse<PostingSummaryResponse>> getPostings(
+    public ApiResponse<PageResponse<PostingListItem>> getPostings(
             @PageableDefault(size = 20, sort = "id", direction = Sort.Direction.DESC)
                     Pageable pageable,
             @Parameter(description = "지역 ID (상위 지역 선택 시 하위 지역까지 포함, regionGroupId와 동시 지정 불가)")

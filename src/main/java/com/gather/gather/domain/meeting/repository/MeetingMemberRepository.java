@@ -4,6 +4,7 @@ import com.gather.gather.domain.meeting.entity.MeetingMember;
 import com.gather.gather.domain.meeting.enums.MeetingMemberStatus;
 import jakarta.persistence.LockModeType;
 import java.time.LocalDateTime;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -13,6 +14,10 @@ import org.springframework.data.repository.query.Param;
 
 public interface MeetingMemberRepository extends JpaRepository<MeetingMember, Long> {
     Optional<MeetingMember> findByMeeting_IdAndUser_Id(Long meetingId, Long userId);
+
+    /** 인정 시간 합계 조회용(가입신청/멤버/신청자 상세의 totalRecognizedMinutes). */
+    @Query("SELECT COALESCE(SUM(mm.recognizedMinutes), 0) FROM MeetingMember mm WHERE mm.user.id = :userId")
+    int sumRecognizedMinutesByUserId(@Param("userId") Long userId);
 
     /** 뱃지 판정용 — 완료된 모임에서 승인된 멤버십만 조회한다(완료 횟수, 연속 참여 월 계산). */
     @Query(
@@ -61,6 +66,59 @@ public interface MeetingMemberRepository extends JpaRepository<MeetingMember, Lo
             ORDER BY mm.createdAt ASC
             """)
     List<MeetingMember> findPendingByMeetingIdFetchUser(@Param("meetingId") Long meetingId);
+
+    /** 가입 신청 상태별 조회(#10) - status 미지정 시 PENDING/APPROVED/REJECTED 전체(취소·탈퇴·내보내기 제외). */
+    @Query(
+            """
+            SELECT mm
+            FROM MeetingMember mm
+            JOIN FETCH mm.user
+            WHERE mm.meeting.id = :meetingId
+              AND mm.status IN :statuses
+            ORDER BY mm.createdAt ASC
+            """)
+    List<MeetingMember> findAllByMeetingIdAndStatusInFetchUser(
+            @Param("meetingId") Long meetingId, @Param("statuses") Collection<MeetingMemberStatus> statuses);
+
+    /** 가입 신청 상세 조회(#10) - 상태 무관, 이 모임 소속인지만 확인. */
+    @Query(
+            """
+            SELECT mm
+            FROM MeetingMember mm
+            JOIN FETCH mm.user
+            WHERE mm.id = :joinRequestId
+              AND mm.meeting.id = :meetingId
+            """)
+    Optional<MeetingMember> findByIdAndMeetingIdFetchUser(
+            @Param("joinRequestId") Long joinRequestId, @Param("meetingId") Long meetingId);
+
+    /** 거절된 가입 신청 복구(#10)용 락 조회. */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query(
+            """
+            SELECT mm
+            FROM MeetingMember mm
+            JOIN FETCH mm.user
+            WHERE mm.id = :joinRequestId
+              AND mm.meeting.id = :meetingId
+              AND mm.status = com.gather.gather.domain.meeting.enums.MeetingMemberStatus.REJECTED
+            """)
+    Optional<MeetingMember> findRejectedByIdAndMeetingIdForUpdate(
+            @Param("joinRequestId") Long joinRequestId, @Param("meetingId") Long meetingId);
+
+    /** 멤버 내보내기(#11)용 락 조회 - 승인된 멤버 한정. */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query(
+            """
+            SELECT mm
+            FROM MeetingMember mm
+            JOIN FETCH mm.user
+            WHERE mm.meeting.id = :meetingId
+              AND mm.user.id = :userId
+              AND mm.status = com.gather.gather.domain.meeting.enums.MeetingMemberStatus.APPROVED
+            """)
+    Optional<MeetingMember> findApprovedByMeetingIdAndUserIdForUpdate(
+            @Param("meetingId") Long meetingId, @Param("userId") Long userId);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query(

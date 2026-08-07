@@ -48,6 +48,10 @@ spring:
 gather:
   scheduling:
     enabled: ${GATHER_SCHEDULING_ENABLED:true}
+  recruit:
+    auto-confirm:
+      scheduler-enabled: ${GATHER_RECRUIT_AUTO_CONFIRM_SCHEDULER_ENABLED:true}
+      cron: ${GATHER_RECRUIT_AUTO_CONFIRM_CRON:0 5 * * * *}
   kakao:
     unlink-resume:
       enabled: ${KAKAO_UNLINK_RESUME_ENABLED:false}

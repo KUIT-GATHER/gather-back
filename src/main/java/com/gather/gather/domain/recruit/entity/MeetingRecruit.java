@@ -13,9 +13,7 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.Table;
-import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.time.LocalTime;
 import java.util.LinkedHashSet;
 import java.util.Set;
 import lombok.AccessLevel;
@@ -26,10 +24,11 @@ import org.hibernate.annotations.UpdateTimestamp;
 
 /**
  * 모임 내부 모집공고(RECRUIT 게시글)의 확장 정보. {@code post_id}로 RECRUIT 유형 {@code Post}와 1:1 대응한다. 도메인 결합을 피해
- * post를 연관관계 대신 ID로 보관한다.
+ * post/region을 연관관계 대신 ID로 보관한다.
  *
- * <p>봉사시간 인정({@code timeRecognized}/{@code recognizedMinutes})과 외부 공개({@code isExternal})는 현재 값만
- * 저장하고 실제 반영/공개 로직은 후속으로 둔다.
+ * <p>여러 날짜에 걸친 활동을 허용하기 위해 활동 기간을 {@code activityStartAt}~{@code activityEndAt}(날짜+시각)로 통일해서
+ * 관리한다. 신청은 {@code applyDeadlineAt} 시각까지 가능하고, {@code confirmationStatus}가 {@code CONFIRMED}로 바뀌면(팀장이
+ * 신청자를 확정하거나 마감 후 자동 확정되면) 이후로는 신규 신청·취소가 불가능하다.
  */
 @Entity
 @Getter
@@ -44,17 +43,17 @@ public class MeetingRecruit {
     @Column(name = "post_id", nullable = false)
     private Long postId;
 
+    @Column(name = "region_id")
+    private Long regionId;
+
     @Column(nullable = false, length = 255)
     private String place;
 
-    @Column(name = "act_date", nullable = false)
-    private LocalDate actDate;
+    @Column(name = "activity_start_at", nullable = false)
+    private LocalDateTime activityStartAt;
 
-    @Column(name = "act_start_time")
-    private LocalTime actStartTime;
-
-    @Column(name = "act_end_time")
-    private LocalTime actEndTime;
+    @Column(name = "activity_end_at", nullable = false)
+    private LocalDateTime activityEndAt;
 
     @Column(name = "max_participants", nullable = false)
     private int maxParticipants;
@@ -65,11 +64,18 @@ public class MeetingRecruit {
     @Column(name = "recognized_minutes")
     private Integer recognizedMinutes;
 
-    @Column(name = "apply_deadline", nullable = false)
-    private LocalDate applyDeadline;
+    @Column(name = "apply_deadline_at", nullable = false)
+    private LocalDateTime applyDeadlineAt;
 
-    @Column(name = "is_external", nullable = false)
-    private boolean isExternal;
+    @Column(nullable = false)
+    private boolean external;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "confirmation_status", nullable = false, length = 20)
+    private RecruitConfirmationStatus confirmationStatus;
+
+    @Column(name = "confirmed_at")
+    private LocalDateTime confirmedAt;
 
     @ElementCollection(fetch = FetchType.LAZY)
     @CollectionTable(
@@ -89,93 +95,93 @@ public class MeetingRecruit {
 
     private MeetingRecruit(
             Long postId,
+            Long regionId,
             String place,
-            LocalDate actDate,
-            LocalTime actStartTime,
-            LocalTime actEndTime,
+            LocalDateTime activityStartAt,
+            LocalDateTime activityEndAt,
             int maxParticipants,
             boolean timeRecognized,
             Integer recognizedMinutes,
-            LocalDate applyDeadline,
-            boolean isExternal,
+            LocalDateTime applyDeadlineAt,
+            boolean external,
             Set<PostingCategory> categories) {
         this.postId = postId;
+        this.regionId = regionId;
         this.place = place;
-        this.actDate = actDate;
-        this.actStartTime = actStartTime;
-        this.actEndTime = actEndTime;
+        this.activityStartAt = activityStartAt;
+        this.activityEndAt = activityEndAt;
         this.maxParticipants = maxParticipants;
         this.timeRecognized = timeRecognized;
         this.recognizedMinutes = recognizedMinutes;
-        this.applyDeadline = applyDeadline;
-        this.isExternal = isExternal;
+        this.applyDeadlineAt = applyDeadlineAt;
+        this.external = external;
+        this.confirmationStatus = RecruitConfirmationStatus.UNCONFIRMED;
         this.categories = new LinkedHashSet<>(categories);
     }
 
     public static MeetingRecruit create(
             Long postId,
+            Long regionId,
             String place,
-            LocalDate actDate,
-            LocalTime actStartTime,
-            LocalTime actEndTime,
+            LocalDateTime activityStartAt,
+            LocalDateTime activityEndAt,
             int maxParticipants,
             boolean timeRecognized,
             Integer recognizedMinutes,
-            LocalDate applyDeadline,
-            boolean isExternal,
+            LocalDateTime applyDeadlineAt,
+            boolean external,
             Set<PostingCategory> categories) {
         return new MeetingRecruit(
                 postId,
+                regionId,
                 place,
-                actDate,
-                actStartTime,
-                actEndTime,
+                activityStartAt,
+                activityEndAt,
                 maxParticipants,
                 timeRecognized,
                 recognizedMinutes,
-                applyDeadline,
-                isExternal,
+                applyDeadlineAt,
+                external,
                 categories);
     }
 
-    /** 신청 가능 기간인지: 오늘이 신청 마감일 이하이면 열려 있다(마감일 당일까지 신청 가능). */
-    public boolean isApplicationOpen(LocalDate today) {
-        return !today.isAfter(applyDeadline);
+    /** 신청 가능한 시각인지: 신청 마감 시각까지(포함) 신청 가능하다. 확정 여부는 서비스에서 별도로 확인한다. */
+    public boolean isApplicationOpen(LocalDateTime now) {
+        return !now.isAfter(applyDeadlineAt);
     }
 
-    /**
-     * 활동이 종료됐는지: 종료 시간이 있으면 그 시각, 없으면 활동일 자정(23:59:59.999999999)을 기준으로 판단한다. 참석 처리(PRESENT)는 활동이 끝난
-     * 뒤에만 할 수 있다.
-     */
+    /** 활동이 종료됐는지. */
     public boolean isActivityEnded(LocalDateTime now) {
-        LocalDateTime activityEnd =
-                actEndTime != null
-                        ? LocalDateTime.of(actDate, actEndTime)
-                        : actDate.atTime(LocalTime.MAX);
-        return activityEnd.isBefore(now);
+        return activityEndAt.isBefore(now);
+    }
+
+    /** 팀장이 신청자를 확정하거나(수동) 마감 후 자동 확정될 때 호출한다. */
+    public void confirm(LocalDateTime now) {
+        this.confirmationStatus = RecruitConfirmationStatus.CONFIRMED;
+        this.confirmedAt = now;
     }
 
     /** 모집공고 확장 필드 수정. 제목·내용은 연결된 Post에서 별도로 갱신한다. */
     public void update(
+            Long regionId,
             String place,
-            LocalDate actDate,
-            LocalTime actStartTime,
-            LocalTime actEndTime,
+            LocalDateTime activityStartAt,
+            LocalDateTime activityEndAt,
             int maxParticipants,
             boolean timeRecognized,
             Integer recognizedMinutes,
-            LocalDate applyDeadline,
-            boolean isExternal,
+            LocalDateTime applyDeadlineAt,
+            boolean external,
             Set<PostingCategory> categories) {
+        this.regionId = regionId;
         this.place = place;
-        this.actDate = actDate;
-        this.actStartTime = actStartTime;
-        this.actEndTime = actEndTime;
+        this.activityStartAt = activityStartAt;
+        this.activityEndAt = activityEndAt;
         this.maxParticipants = maxParticipants;
         this.timeRecognized = timeRecognized;
         this.recognizedMinutes = recognizedMinutes;
-        this.applyDeadline = applyDeadline;
-        this.isExternal = isExternal;
+        this.applyDeadlineAt = applyDeadlineAt;
+        this.external = external;
         this.categories = new LinkedHashSet<>(categories);
     }
 }
