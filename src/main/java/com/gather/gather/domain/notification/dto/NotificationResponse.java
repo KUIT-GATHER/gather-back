@@ -41,8 +41,4 @@ public record NotificationResponse(
                 notification.isRead(),
                 notification.getCreatedAt());
     }
-
-    public static NotificationResponse from(Notification notification) {
-        return from(notification, null);
-    }
 }
