@@ -20,6 +20,7 @@ import com.gather.gather.domain.posting.entity.PostingParticipationStatus;
 import com.gather.gather.domain.posting.repository.BookmarkRepository;
 import com.gather.gather.domain.posting.repository.PostingParticipationRepository;
 import com.gather.gather.domain.posting.repository.PostingRepository;
+import com.gather.gather.domain.posting.service.RegionNameResolver;
 import com.gather.gather.domain.user.service.ProfileImageUrlResolver;
 import com.gather.gather.global.common.PageResponse;
 import com.gather.gather.global.exception.BusinessException;
@@ -60,6 +61,7 @@ public class MyPageService {
     private final PostingParticipationRepository postingParticipationRepository;
     private final PostingRepository postingRepository;
     private final MeetingMemberRepository meetingMemberRepository;
+    private final RegionNameResolver regionNameResolver;
     private final ProfileImageUrlResolver profileImageUrlResolver;
 
     public MyPageHomeResponse getHome() {
@@ -124,6 +126,11 @@ public class MyPageService {
 
         Map<Long, PostingParticipationStatus> participationStatusByPostingId =
                 fetchLinkedParticipationStatuses(userId, approvedMembers);
+        Map<Long, String> regionNamesByRegionId =
+                regionNameResolver.resolve(
+                        approvedMembers.stream()
+                                .map(member -> member.getMeeting().getRegionId())
+                                .toList());
 
         return approvedMembers.stream()
                 .map(
@@ -132,7 +139,9 @@ public class MyPageService {
                                         member.getMeeting(),
                                         resolveLinkedParticipationStatus(
                                                 member.getMeeting(),
-                                                participationStatusByPostingId)))
+                                                participationStatusByPostingId),
+                                        regionNamesByRegionId.get(
+                                                member.getMeeting().getRegionId())))
                 .toList();
     }
 

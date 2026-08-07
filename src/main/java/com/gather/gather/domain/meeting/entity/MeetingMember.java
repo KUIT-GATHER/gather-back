@@ -101,6 +101,11 @@ public class MeetingMember {
         this.status = MeetingMemberStatus.REJECTED;
     }
 
+    /** 신청자 본인이 대기 중인 가입 신청을 취소한다. */
+    public void cancel() {
+        this.status = MeetingMemberStatus.CANCELLED;
+    }
+
     public void leave() {
         this.status = MeetingMemberStatus.LEFT;
     }

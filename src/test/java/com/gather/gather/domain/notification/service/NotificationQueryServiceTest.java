@@ -2,6 +2,7 @@ package com.gather.gather.domain.notification.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.anyCollection;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -18,6 +19,7 @@ import com.gather.gather.global.common.PageResponse;
 import com.gather.gather.global.exception.BusinessException;
 import com.gather.gather.global.exception.ErrorCode;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -41,6 +43,7 @@ class NotificationQueryServiceTest {
 
     @Mock private NotificationRepository notificationRepository;
     @Mock private User user;
+    @Mock private NotificationThumbnailResolver notificationThumbnailResolver;
 
     @InjectMocks private NotificationQueryService notificationQueryService;
 
@@ -65,6 +68,9 @@ class NotificationQueryServiceTest {
                         USER_ID, NotificationCategory.MEETING, PageRequest.of(0, 20)))
                 .thenReturn(new PageImpl<>(List.of(notification), PageRequest.of(0, 20), 1));
 
+        when(notificationThumbnailResolver.resolveByNotificationId(anyCollection()))
+                .thenReturn(Map.of(NOTIFICATION_ID, "https://example.com/meeting-thumbnail.jpg"));
+
         PageResponse<NotificationResponse> response =
                 notificationQueryService.getNotifications(
                         NotificationCategory.MEETING, PageRequest.of(0, 20));
@@ -81,6 +87,9 @@ class NotificationQueryServiceTest {
 
         when(notificationRepository.findByIdAndUser_IdAndDeletedAtIsNull(NOTIFICATION_ID, USER_ID))
                 .thenReturn(Optional.of(notification));
+
+        when(notificationThumbnailResolver.resolveByNotificationId(anyCollection()))
+                .thenReturn(Map.of(NOTIFICATION_ID, "https://example.com/meeting-thumbnail.jpg"));
 
         NotificationResponse response = notificationQueryService.markAsRead(NOTIFICATION_ID);
 

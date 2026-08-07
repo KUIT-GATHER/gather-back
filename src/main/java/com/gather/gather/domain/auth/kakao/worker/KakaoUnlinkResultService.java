@@ -40,19 +40,24 @@ public class KakaoUnlinkResultService {
     private final Clock clock;
 
     @Transactional
-    public KakaoUnlinkBatchAction apply(KakaoUnlinkAttempt attempt, KakaoAdminUnlinkResult result) {
+    public KakaoUnlinkProcessingResult apply(
+            KakaoUnlinkAttempt attempt, KakaoAdminUnlinkResult result) {
         if (result.disposition() == KakaoAdminUnlinkDisposition.PERMANENT_CONFIGURATION) {
             throw new IllegalArgumentException("설정 오류는 applyConfigurationFailure로 처리해야 합니다.");
         }
-        LockedContext context = lockAndValidate(attempt.claim(), attempt.attemptCount());
-        if (context == null) {
-            return KakaoUnlinkBatchAction.CONTINUE;
+        LockedContextResult locked = lockAndValidate(attempt.claim(), attempt.attemptCount());
+        if (locked.context() == null) {
+            return locked.outcome();
         }
+        LockedContext context = locked.context();
         LocalDateTime resultNow = LocalDateTime.now(clock);
         KakaoUnlinkTask task = context.task();
 
-        switch (result.disposition()) {
-            case SUCCESS, ALREADY_UNLINKED -> finalizeWithdrawal(context, resultNow);
+        return switch (result.disposition()) {
+            case SUCCESS, ALREADY_UNLINKED -> {
+                finalizeWithdrawal(context, resultNow);
+                yield KakaoUnlinkProcessingResult.SUCCEEDED;
+            }
             case RETRYABLE -> {
                 if (task.getAttemptCount() >= properties.maximumAttempts()) {
                     task.dead(
@@ -69,6 +74,7 @@ public class KakaoUnlinkResultService {
                             task.getAttemptCount(),
                             result.httpStatus(),
                             result.kakaoCode());
+                    yield KakaoUnlinkProcessingResult.DEAD;
                 } else {
                     LocalDateTime nextAttemptAt =
                             retryPolicy.nextAttemptAt(
@@ -80,13 +86,17 @@ public class KakaoUnlinkResultService {
                             resultNow,
                             result.httpStatus(),
                             result.kakaoCode());
+                    yield KakaoUnlinkProcessingResult.RETRY_SCHEDULED;
                 }
             }
-            case PERMANENT_REQUEST ->
-                    markDead(context, attempt, result, resultNow, KakaoUnlinkTaskErrorType.REQUEST);
-            case RESPONSE_FAILURE ->
-                    markDead(
-                            context, attempt, result, resultNow, KakaoUnlinkTaskErrorType.RESPONSE);
+            case PERMANENT_REQUEST -> {
+                markDead(context, attempt, result, resultNow, KakaoUnlinkTaskErrorType.REQUEST);
+                yield KakaoUnlinkProcessingResult.DEAD;
+            }
+            case RESPONSE_FAILURE -> {
+                markDead(context, attempt, result, resultNow, KakaoUnlinkTaskErrorType.RESPONSE);
+                yield KakaoUnlinkProcessingResult.DEAD;
+            }
             case SECURITY_FAILURE -> {
                 markDead(context, attempt, result, resultNow, KakaoUnlinkTaskErrorType.SECURITY);
                 log.error(
@@ -94,6 +104,7 @@ public class KakaoUnlinkResultService {
                         attempt.claim().taskId(),
                         result.httpStatus(),
                         result.kakaoCode());
+                yield KakaoUnlinkProcessingResult.DEAD;
             }
             case UNKNOWN_PERMANENT -> {
                 markDead(context, attempt, result, resultNow, KakaoUnlinkTaskErrorType.UNKNOWN);
@@ -102,14 +113,14 @@ public class KakaoUnlinkResultService {
                         attempt.claim().taskId(),
                         result.httpStatus(),
                         result.kakaoCode());
+                yield KakaoUnlinkProcessingResult.DEAD;
             }
             case PERMANENT_CONFIGURATION -> throw new IllegalStateException("unreachable");
-        }
-        return KakaoUnlinkBatchAction.CONTINUE;
+        };
     }
 
     @Transactional
-    public KakaoUnlinkBatchAction applyConfigurationFailure(
+    public KakaoUnlinkProcessingResult applyConfigurationFailure(
             KakaoUnlinkAttempt attempt, KakaoAdminUnlinkResult result) {
         if (result.disposition() != KakaoAdminUnlinkDisposition.PERMANENT_CONFIGURATION) {
             throw new IllegalArgumentException("설정 오류 결과만 처리할 수 있습니다.");
@@ -121,10 +132,11 @@ public class KakaoUnlinkResultService {
                                 () ->
                                         new IllegalStateException(
                                                 "Kakao unlink worker control이 없습니다."));
-        LockedContext context = lockAndValidate(attempt.claim(), attempt.attemptCount());
-        if (context == null) {
-            return KakaoUnlinkBatchAction.CONTINUE;
+        LockedContextResult locked = lockAndValidate(attempt.claim(), attempt.attemptCount());
+        if (locked.context() == null) {
+            return locked.outcome();
         }
+        LockedContext context = locked.context();
         LocalDateTime resultNow = LocalDateTime.now(clock);
         context.task()
                 .dead(
@@ -140,24 +152,27 @@ public class KakaoUnlinkResultService {
                 attempt.claim().taskId(),
                 result.httpStatus(),
                 result.kakaoCode());
-        return KakaoUnlinkBatchAction.STOP_BATCH;
+        return KakaoUnlinkProcessingResult.CONFIGURATION_BLOCKED;
     }
 
     @Transactional
-    public void finalizeLocally(KakaoUnlinkClaim claim) {
-        LockedContext context = lockAndValidate(claim, null);
-        if (context == null) {
-            return;
+    public KakaoUnlinkProcessingResult finalizeLocally(KakaoUnlinkClaim claim) {
+        LockedContextResult locked = lockAndValidate(claim, null);
+        if (locked.context() == null) {
+            return locked.outcome();
         }
+        LockedContext context = locked.context();
         if (!context.account().isUnlinked()
                 || context.user().getStatus() != UserStatus.WITHDRAWAL_PENDING) {
             context.task().stale(claim.claimToken(), context.leaseNow(), LocalDateTime.now(clock));
-            return;
+            return KakaoUnlinkProcessingResult.STALE;
         }
         finalizeWithdrawal(context, LocalDateTime.now(clock));
+        return KakaoUnlinkProcessingResult.SUCCEEDED;
     }
 
-    private LockedContext lockAndValidate(KakaoUnlinkClaim claim, Integer expectedAttemptCount) {
+    private LockedContextResult lockAndValidate(
+            KakaoUnlinkClaim claim, Integer expectedAttemptCount) {
         // Global lock order after an optional WorkerControl lock: SocialAccount -> Task -> User.
         SocialAccount account =
                 socialAccountRepository.findByIdForUpdate(claim.socialAccountId()).orElse(null);
@@ -169,10 +184,10 @@ public class KakaoUnlinkResultService {
                 || user == null
                 || !task.hasOwnedValidClaim(claim.claimToken(), leaseNow)
                 || task.getRetryCycle() != claim.retryCycle()) {
-            return null;
+            return LockedContextResult.outcome(KakaoUnlinkProcessingResult.CLAIM_LOST);
         }
         if (expectedAttemptCount != null && task.getAttemptCount() != expectedAttemptCount) {
-            return null;
+            return LockedContextResult.outcome(KakaoUnlinkProcessingResult.CLAIM_LOST);
         }
         if (!account.getId().equals(claim.socialAccountId())
                 || !account.getUser().getId().equals(claim.userId())
@@ -183,9 +198,10 @@ public class KakaoUnlinkResultService {
                 || !task.getSocialAccount().getId().equals(account.getId())
                 || user.getStatus() != UserStatus.WITHDRAWAL_PENDING) {
             task.stale(claim.claimToken(), leaseNow, LocalDateTime.now(clock));
-            return null;
+            return LockedContextResult.outcome(KakaoUnlinkProcessingResult.STALE);
         }
-        return new LockedContext(account, task, user, leaseNow, claim.claimToken());
+        return LockedContextResult.context(
+                new LockedContext(account, task, user, leaseNow, claim.claimToken()));
     }
 
     private void finalizeWithdrawal(LockedContext context, LocalDateTime resultNow) {
@@ -233,4 +249,15 @@ public class KakaoUnlinkResultService {
             User user,
             LocalDateTime leaseNow,
             String claimToken) {}
+
+    private record LockedContextResult(LockedContext context, KakaoUnlinkProcessingResult outcome) {
+
+        private static LockedContextResult context(LockedContext context) {
+            return new LockedContextResult(context, null);
+        }
+
+        private static LockedContextResult outcome(KakaoUnlinkProcessingResult outcome) {
+            return new LockedContextResult(null, outcome);
+        }
+    }
 }

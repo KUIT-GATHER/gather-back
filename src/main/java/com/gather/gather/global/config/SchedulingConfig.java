@@ -7,7 +7,7 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 
 @Configuration(proxyBeanMethods = false)
 @EnableScheduling
-@Profile("!kakao-unlink-resume")
+@Profile("!kakao-unlink-resume & !kakao-unlink-canary")
 @ConditionalOnProperty(
         name = "gather.scheduling.enabled",
         havingValue = "true",

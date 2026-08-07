@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -68,6 +69,17 @@ class MeetingControllerTest {
                 .andExpect(jsonPath("$.error.code").value("VALIDATION_ERROR"));
 
         verifyNoInteractions(meetingService);
+    }
+
+    @Test
+    @DisplayName(
+            "DELETE /api/v1/meetings/{meetingId}/join cancels the caller's pending join request")
+    void cancelMyJoinRequest_returns200_andCallsService() throws Exception {
+        mockMvc.perform(delete("/api/v1/meetings/1/join"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true));
+
+        verify(meetingService).cancelMyJoinRequest(1L);
     }
 
     @Test

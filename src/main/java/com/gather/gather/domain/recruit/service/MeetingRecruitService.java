@@ -49,6 +49,7 @@ import org.springframework.transaction.annotation.Transactional;
 @Transactional(readOnly = true)
 public class MeetingRecruitService {
 
+    private static final String POSTING_CREATED_MESSAGE = "[%s]에 새 봉사공고가 등록되었어요.";
     private final PostRepository postRepository;
     private final MeetingRepository meetingRepository;
     private final MeetingMemberRepository meetingMemberRepository;
@@ -56,8 +57,6 @@ public class MeetingRecruitService {
     private final MeetingRecruitRepository meetingRecruitRepository;
     private final MeetingRecruitParticipationRepository participationRepository;
     private final ApplicationEventPublisher eventPublisher;
-
-    private static final String RECRUIT_CREATED_MESSAGE = "[%s]에 새 모집공고가 등록되었어요.";
 
     @Transactional
     public RecruitDetailResponse createRecruit(Long meetingId, RecruitCreateRequest request) {
@@ -97,14 +96,16 @@ public class MeetingRecruitService {
                                 request.isExternal(),
                                 request.categories()));
 
+        String message = POSTING_CREATED_MESSAGE.formatted(meeting.getName());
+
         // 일반 게시글과 동일하게 등록 알림을 발행한다(모임원에게 새 모집공고 알림).
         eventPublisher.publishEvent(
                 new MeetingPostNotificationRequestedEvent(
                         meeting.getId(),
                         post.getId(),
                         author.getId(),
-                        NotificationType.MEETING_POST_CREATED,
-                        RECRUIT_CREATED_MESSAGE.formatted(meeting.getName())));
+                        NotificationType.MEETING_POSTING_CREATED,
+                        message));
 
         return toDetail(post, recruit, author, 0, false, true, true);
     }

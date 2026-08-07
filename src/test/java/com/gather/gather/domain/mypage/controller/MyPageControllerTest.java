@@ -121,7 +121,7 @@ class MyPageControllerTest {
                 .thenReturn(
                         List.of(
                                 MyPageActivityResponse.ofMeeting(
-                                        meeting, PostingParticipationStatus.APPLIED)));
+                                        meeting, PostingParticipationStatus.APPLIED, "강남구")));
 
         mockMvc.perform(get("/api/v1/mypage/activities").param("yearMonth", "2026-07"))
                 .andExpect(status().isOk())
@@ -129,6 +129,7 @@ class MyPageControllerTest {
                 .andExpect(jsonPath("$.data[0].meetingId").value(3))
                 .andExpect(jsonPath("$.data[0].postingId").doesNotExist())
                 .andExpect(jsonPath("$.data[0].volunteerPostingId").value(10))
+                .andExpect(jsonPath("$.data[0].regionName").value("강남구"))
                 .andExpect(jsonPath("$.data[0].meetingStatus").value("RECRUITING"))
                 .andExpect(jsonPath("$.data[0].postingParticipationStatus").value("APPLIED"));
     }
