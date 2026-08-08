@@ -460,11 +460,28 @@ class AuthServiceTest {
     }
 
     @Test
-    @DisplayName("회원가입에서 level=1 시도를 활동 지역으로 선택하면 실패한다")
-    void signup_withLevel1ActivityRegion_throwsRegionNotFound() {
+    @DisplayName("회원가입은 level=1 시도 활동 지역 1개를 User에 저장한다")
+    void signup_withLevel1ActivityRegion_savesUserActivityRegion() {
+        Region activityRegion = Region.create("서울", 1, "11", null);
+        prepareVerifiedEmail();
+        when(regionRepository.findById(1L)).thenReturn(Optional.of(activityRegion));
+        when(passwordEncoder.encode("password123!")).thenReturn("encoded-password");
+        when(userRepository.saveAndFlush(any(User.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        authService.signup(signupRequest(1L));
+
+        ArgumentCaptor<User> captor = ArgumentCaptor.forClass(User.class);
+        verify(userRepository).saveAndFlush(captor.capture());
+        assertThat(captor.getValue().getActivityRegion()).isSameAs(activityRegion);
+    }
+
+    @Test
+    @DisplayName("회원가입에서 level=4 읍/면/동을 활동 지역으로 선택하면 실패한다")
+    void signup_withLevel4ActivityRegion_throwsRegionNotFound() {
         prepareVerifiedEmail();
         when(regionRepository.findById(1L))
-                .thenReturn(Optional.of(Region.create("서울", 1, "11", null)));
+                .thenReturn(Optional.of(Region.create("역삼동", 4, "1168010100", null)));
 
         assertThatThrownBy(() -> authService.signup(signupRequest(1L)))
                 .isInstanceOfSatisfying(
