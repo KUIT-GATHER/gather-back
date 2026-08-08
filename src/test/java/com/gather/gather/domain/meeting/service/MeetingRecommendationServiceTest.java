@@ -16,6 +16,7 @@ import com.gather.gather.domain.meeting.dto.MeetingResponse;
 import com.gather.gather.domain.meeting.entity.Meeting;
 import com.gather.gather.domain.meeting.entity.MeetingMember;
 import com.gather.gather.domain.meeting.enums.MeetingMemberStatus;
+import com.gather.gather.domain.meeting.repository.MeetingImageRepository;
 import com.gather.gather.domain.meeting.repository.MeetingMemberRepository;
 import com.gather.gather.domain.meeting.repository.MeetingRepository;
 import com.gather.gather.domain.posting.entity.PostingCategory;
@@ -52,6 +53,8 @@ class MeetingRecommendationServiceTest {
     @Mock private MeetingMemberRepository meetingMemberRepository;
     @Mock private UserRepository userRepository;
     @Mock private RegionNameResolver regionNameResolver;
+    @Mock private MeetingImageRepository meetingImageRepository;
+    @Mock private MeetingImageUrlResolver meetingImageUrlResolver;
 
     private MeetingRecommendationService meetingRecommendationService;
 
@@ -66,7 +69,9 @@ class MeetingRecommendationServiceTest {
                         new PreferredCategoryResolver(userRepository),
                         new CategoryDeadlineScoreCalculator(
                                 new RecommendationProperties(0.7, 0.3, 30)),
-                        regionNameResolver);
+                        regionNameResolver,
+                        meetingImageRepository,
+                        meetingImageUrlResolver);
         lenient().when(regionNameResolver.resolve(anyList())).thenReturn(Map.of());
     }
 

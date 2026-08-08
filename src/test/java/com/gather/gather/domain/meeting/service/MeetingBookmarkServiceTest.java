@@ -20,6 +20,7 @@ import com.gather.gather.domain.meeting.entity.Meeting;
 import com.gather.gather.domain.meeting.entity.MeetingBookmark;
 import com.gather.gather.domain.meeting.enums.MeetingStatus;
 import com.gather.gather.domain.meeting.repository.MeetingBookmarkRepository;
+import com.gather.gather.domain.meeting.repository.MeetingImageRepository;
 import com.gather.gather.domain.meeting.repository.MeetingRepository;
 import com.gather.gather.domain.posting.entity.PostingCategory;
 import com.gather.gather.domain.posting.service.RegionNameResolver;
@@ -55,6 +56,8 @@ class MeetingBookmarkServiceTest {
     @Mock private MeetingRepository meetingRepository;
     @Mock private RegionRepository regionRepository;
     @Mock private RegionNameResolver regionNameResolver;
+    @Mock private MeetingImageRepository meetingImageRepository;
+    @Mock private MeetingImageUrlResolver meetingImageUrlResolver;
     @Mock private Meeting meeting;
 
     private MeetingBookmarkService meetingBookmarkService;
@@ -66,7 +69,9 @@ class MeetingBookmarkServiceTest {
                         meetingBookmarkRepository,
                         meetingRepository,
                         regionRepository,
-                        regionNameResolver);
+                        regionNameResolver,
+                        meetingImageRepository,
+                        meetingImageUrlResolver);
         lenient().when(regionNameResolver.resolve(anyList())).thenReturn(Map.of());
     }
 

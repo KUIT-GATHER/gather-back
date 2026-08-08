@@ -19,11 +19,13 @@ import com.gather.gather.domain.meeting.dto.MeetingResponse;
 import com.gather.gather.domain.meeting.dto.MeetingUpdateRequest;
 import com.gather.gather.domain.meeting.dto.PostingMeetingResponse;
 import com.gather.gather.domain.meeting.entity.Meeting;
+import com.gather.gather.domain.meeting.entity.MeetingImage;
 import com.gather.gather.domain.meeting.entity.MeetingMember;
 import com.gather.gather.domain.meeting.enums.MeetingMemberRole;
 import com.gather.gather.domain.meeting.enums.MeetingMemberStatus;
 import com.gather.gather.domain.meeting.enums.MeetingStatus;
 import com.gather.gather.domain.meeting.repository.MeetingBookmarkRepository;
+import com.gather.gather.domain.meeting.repository.MeetingImageRepository;
 import com.gather.gather.domain.meeting.repository.MeetingMemberRepository;
 import com.gather.gather.domain.meeting.repository.MeetingRepository;
 import com.gather.gather.domain.posting.entity.PostingCategory;
@@ -63,6 +65,8 @@ class MeetingServiceTest {
     @Mock private MeetingSearchLogService meetingSearchLogService;
     @Mock private org.springframework.context.ApplicationEventPublisher eventPublisher;
     @Mock private RegionNameResolver regionNameResolver;
+    @Mock private MeetingImageRepository meetingImageRepository;
+    @Mock private MeetingImageUrlResolver meetingImageUrlResolver;
 
     @Mock
     private com.gather.gather.domain.recruit.repository.MeetingRecruitParticipationRepository
@@ -475,6 +479,64 @@ class MeetingServiceTest {
                         null, null, null, null, null, null, null, PageRequest.of(0, 10));
 
         assertThat(responses.content().get(0).regionName()).isEqualTo("동구");
+    }
+
+    @Test
+    @DisplayName("getMeetings populates thumbnailUrl from the meeting's first-sortOrder image")
+    void getMeetings_populatesThumbnailUrlFromRepresentativeImage() {
+        when(meeting.getId()).thenReturn(1L);
+        when(meetingRepository.searchMeetings(
+                        org.mockito.ArgumentMatchers.any(),
+                        org.mockito.ArgumentMatchers.anyBoolean(),
+                        anyList(),
+                        org.mockito.ArgumentMatchers.any(),
+                        org.mockito.ArgumentMatchers.any(),
+                        org.mockito.ArgumentMatchers.anyBoolean(),
+                        org.mockito.ArgumentMatchers.any(),
+                        org.mockito.ArgumentMatchers.any(),
+                        org.mockito.ArgumentMatchers.any(),
+                        org.mockito.ArgumentMatchers.any(),
+                        org.mockito.ArgumentMatchers.any()))
+                .thenReturn(new PageImpl<>(List.of(meeting), PageRequest.of(0, 10), 1));
+        MeetingImage image = MeetingImage.create(1L, "meetings/1/photo.jpg", 0);
+        when(meetingImageRepository.findRepresentativeImagesByMeetingIds(List.of(1L)))
+                .thenReturn(List.of(image));
+        when(meetingImageUrlResolver.resolve("meetings/1/photo.jpg"))
+                .thenReturn("https://cdn.example.com/meetings/1/photo.jpg");
+
+        PageResponse<MeetingResponse> responses =
+                meetingService.getMeetings(
+                        null, null, null, null, null, null, null, PageRequest.of(0, 10));
+
+        assertThat(responses.content().get(0).thumbnailUrl())
+                .isEqualTo("https://cdn.example.com/meetings/1/photo.jpg");
+    }
+
+    @Test
+    @DisplayName("getMeetings sets thumbnailUrl to null when the meeting has no registered image")
+    void getMeetings_thumbnailUrlIsNull_whenNoImageRegistered() {
+        when(meeting.getId()).thenReturn(1L);
+        when(meetingRepository.searchMeetings(
+                        org.mockito.ArgumentMatchers.any(),
+                        org.mockito.ArgumentMatchers.anyBoolean(),
+                        anyList(),
+                        org.mockito.ArgumentMatchers.any(),
+                        org.mockito.ArgumentMatchers.any(),
+                        org.mockito.ArgumentMatchers.anyBoolean(),
+                        org.mockito.ArgumentMatchers.any(),
+                        org.mockito.ArgumentMatchers.any(),
+                        org.mockito.ArgumentMatchers.any(),
+                        org.mockito.ArgumentMatchers.any(),
+                        org.mockito.ArgumentMatchers.any()))
+                .thenReturn(new PageImpl<>(List.of(meeting), PageRequest.of(0, 10), 1));
+        when(meetingImageRepository.findRepresentativeImagesByMeetingIds(List.of(1L)))
+                .thenReturn(List.of());
+
+        PageResponse<MeetingResponse> responses =
+                meetingService.getMeetings(
+                        null, null, null, null, null, null, null, PageRequest.of(0, 10));
+
+        assertThat(responses.content().get(0).thumbnailUrl()).isNull();
     }
 
     @Test
