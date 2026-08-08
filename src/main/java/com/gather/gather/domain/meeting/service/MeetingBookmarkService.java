@@ -133,8 +133,8 @@ public class MeetingBookmarkService {
     }
 
     /**
-     * 모임별 대표 이미지(sortOrder가 가장 앞선 1장) URL을 배치 조회한다. 모임마다 {@code MeetingImageRepository}를 개별
-     * 호출하지 않도록 목록에 포함된 meetingId를 모아 한 번에 조회한다({@code /postings}의 대표 이미지 조회와 동일한 패턴).
+     * 모임별 대표 이미지(sortOrder가 가장 앞선 1장) URL을 배치 조회한다. 모임마다 {@code MeetingImageRepository}를 개별 호출하지
+     * 않도록 목록에 포함된 meetingId를 모아 한 번에 조회한다({@code /postings}의 대표 이미지 조회와 동일한 패턴).
      */
     private Map<Long, String> resolveThumbnails(Collection<Long> meetingIds) {
         if (meetingIds.isEmpty()) {
