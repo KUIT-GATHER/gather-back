@@ -19,13 +19,11 @@ import com.gather.gather.domain.meeting.dto.MeetingResponse;
 import com.gather.gather.domain.meeting.dto.MeetingUpdateRequest;
 import com.gather.gather.domain.meeting.dto.PostingMeetingResponse;
 import com.gather.gather.domain.meeting.entity.Meeting;
-import com.gather.gather.domain.meeting.entity.MeetingImage;
 import com.gather.gather.domain.meeting.entity.MeetingMember;
 import com.gather.gather.domain.meeting.enums.MeetingMemberRole;
 import com.gather.gather.domain.meeting.enums.MeetingMemberStatus;
 import com.gather.gather.domain.meeting.enums.MeetingStatus;
 import com.gather.gather.domain.meeting.repository.MeetingBookmarkRepository;
-import com.gather.gather.domain.meeting.repository.MeetingImageRepository;
 import com.gather.gather.domain.meeting.repository.MeetingMemberRepository;
 import com.gather.gather.domain.meeting.repository.MeetingRepository;
 import com.gather.gather.domain.posting.entity.PostingCategory;
@@ -65,8 +63,7 @@ class MeetingServiceTest {
     @Mock private MeetingSearchLogService meetingSearchLogService;
     @Mock private org.springframework.context.ApplicationEventPublisher eventPublisher;
     @Mock private RegionNameResolver regionNameResolver;
-    @Mock private MeetingImageRepository meetingImageRepository;
-    @Mock private MeetingImageUrlResolver meetingImageUrlResolver;
+    @Mock private MeetingThumbnailResolver meetingThumbnailResolver;
 
     @Mock
     private com.gather.gather.domain.recruit.repository.MeetingRecruitParticipationRepository
@@ -498,11 +495,8 @@ class MeetingServiceTest {
                         org.mockito.ArgumentMatchers.any(),
                         org.mockito.ArgumentMatchers.any()))
                 .thenReturn(new PageImpl<>(List.of(meeting), PageRequest.of(0, 10), 1));
-        MeetingImage image = MeetingImage.create(1L, "meetings/1/photo.jpg", 0);
-        when(meetingImageRepository.findRepresentativeImagesByMeetingIds(List.of(1L)))
-                .thenReturn(List.of(image));
-        when(meetingImageUrlResolver.resolve("meetings/1/photo.jpg"))
-                .thenReturn("https://cdn.example.com/meetings/1/photo.jpg");
+        when(meetingThumbnailResolver.resolve(List.of(1L)))
+                .thenReturn(Map.of(1L, "https://cdn.example.com/meetings/1/photo.jpg"));
 
         PageResponse<MeetingResponse> responses =
                 meetingService.getMeetings(
@@ -529,8 +523,7 @@ class MeetingServiceTest {
                         org.mockito.ArgumentMatchers.any(),
                         org.mockito.ArgumentMatchers.any()))
                 .thenReturn(new PageImpl<>(List.of(meeting), PageRequest.of(0, 10), 1));
-        when(meetingImageRepository.findRepresentativeImagesByMeetingIds(List.of(1L)))
-                .thenReturn(List.of());
+        when(meetingThumbnailResolver.resolve(List.of(1L))).thenReturn(Map.of());
 
         PageResponse<MeetingResponse> responses =
                 meetingService.getMeetings(

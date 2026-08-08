@@ -1,8 +1,6 @@
 package com.gather.gather.domain.notification.service;
 
-import com.gather.gather.domain.meeting.entity.MeetingImage;
-import com.gather.gather.domain.meeting.repository.MeetingImageRepository;
-import com.gather.gather.domain.meeting.service.MeetingImageUrlResolver;
+import com.gather.gather.domain.meeting.service.MeetingThumbnailResolver;
 import com.gather.gather.domain.notification.entity.Notification;
 import com.gather.gather.domain.notification.enums.NotificationTargetType;
 import java.util.Collection;
@@ -16,8 +14,7 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class NotificationThumbnailResolver {
 
-    private final MeetingImageRepository meetingImageRepository;
-    private final MeetingImageUrlResolver meetingImageUrlResolver;
+    private final MeetingThumbnailResolver meetingThumbnailResolver;
 
     public Map<Long, String> resolveByNotificationId(Collection<Notification> notifications) {
 
@@ -31,16 +28,7 @@ public class NotificationThumbnailResolver {
         }
 
         Map<Long, String> thumbnailUrlByMeetingId =
-                meetingImageRepository
-                        .findRepresentativeImagesByMeetingIds(meetingIdByNotificationId.values())
-                        .stream()
-                        .collect(
-                                Collectors.toMap(
-                                        MeetingImage::getMeetingId,
-                                        image ->
-                                                meetingImageUrlResolver.resolve(
-                                                        image.getObjectKey()),
-                                        (first, ignored) -> first));
+                meetingThumbnailResolver.resolve(meetingIdByNotificationId.values());
 
         return meetingIdByNotificationId.entrySet().stream()
                 .filter(entry -> thumbnailUrlByMeetingId.containsKey(entry.getValue()))

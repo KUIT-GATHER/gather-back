@@ -16,7 +16,6 @@ import com.gather.gather.domain.meeting.dto.MeetingResponse;
 import com.gather.gather.domain.meeting.entity.Meeting;
 import com.gather.gather.domain.meeting.entity.MeetingMember;
 import com.gather.gather.domain.meeting.enums.MeetingMemberStatus;
-import com.gather.gather.domain.meeting.repository.MeetingImageRepository;
 import com.gather.gather.domain.meeting.repository.MeetingMemberRepository;
 import com.gather.gather.domain.meeting.repository.MeetingRepository;
 import com.gather.gather.domain.posting.entity.PostingCategory;
@@ -53,8 +52,7 @@ class MeetingRecommendationServiceTest {
     @Mock private MeetingMemberRepository meetingMemberRepository;
     @Mock private UserRepository userRepository;
     @Mock private RegionNameResolver regionNameResolver;
-    @Mock private MeetingImageRepository meetingImageRepository;
-    @Mock private MeetingImageUrlResolver meetingImageUrlResolver;
+    @Mock private MeetingThumbnailResolver meetingThumbnailResolver;
 
     private MeetingRecommendationService meetingRecommendationService;
 
@@ -70,9 +68,9 @@ class MeetingRecommendationServiceTest {
                         new CategoryDeadlineScoreCalculator(
                                 new RecommendationProperties(0.7, 0.3, 30)),
                         regionNameResolver,
-                        meetingImageRepository,
-                        meetingImageUrlResolver);
+                        meetingThumbnailResolver);
         lenient().when(regionNameResolver.resolve(anyList())).thenReturn(Map.of());
+        lenient().when(meetingThumbnailResolver.resolve(anyList())).thenReturn(Map.of());
     }
 
     @Test
@@ -189,6 +187,65 @@ class MeetingRecommendationServiceTest {
                     meetingRecommendationService.getRecommendedMeetings();
 
             assertThat(recommended).extracting(MeetingResponse::meetingId).containsExactly(1L, 2L);
+        }
+    }
+
+    @Test
+    @DisplayName("getRecommendedMeetings populates thumbnailUrl from the meeting's representative image")
+    void getRecommendedMeetings_populatesThumbnailUrlFromRepresentativeImage() {
+        Meeting m1 = meeting(1L, PostingCategory.ENVIRONMENT, now.plusDays(1));
+
+        when(meetingRepository.searchMeetings(
+                        isNull(),
+                        eq(false),
+                        eq(List.of(-1L)),
+                        isNull(),
+                        isNull(),
+                        eq(true),
+                        any(LocalDateTime.class),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of(m1)));
+        when(meetingThumbnailResolver.resolve(List.of(1L)))
+                .thenReturn(Map.of(1L, "https://cdn.example.com/meetings/1/photo.jpg"));
+
+        try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
+            securityUtil.when(SecurityUtil::getCurrentUserIdOrNull).thenReturn(null);
+
+            List<MeetingResponse> recommended = meetingRecommendationService.getRecommendedMeetings();
+
+            assertThat(recommended.get(0).thumbnailUrl())
+                    .isEqualTo("https://cdn.example.com/meetings/1/photo.jpg");
+        }
+    }
+
+    @Test
+    @DisplayName("getRecommendedMeetings sets thumbnailUrl to null when the meeting has no registered image")
+    void getRecommendedMeetings_thumbnailUrlIsNull_whenNoImageRegistered() {
+        Meeting m1 = meeting(1L, PostingCategory.ENVIRONMENT, now.plusDays(1));
+
+        when(meetingRepository.searchMeetings(
+                        isNull(),
+                        eq(false),
+                        eq(List.of(-1L)),
+                        isNull(),
+                        isNull(),
+                        eq(true),
+                        any(LocalDateTime.class),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of(m1)));
+
+        try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
+            securityUtil.when(SecurityUtil::getCurrentUserIdOrNull).thenReturn(null);
+
+            List<MeetingResponse> recommended = meetingRecommendationService.getRecommendedMeetings();
+
+            assertThat(recommended.get(0).thumbnailUrl()).isNull();
         }
     }
 

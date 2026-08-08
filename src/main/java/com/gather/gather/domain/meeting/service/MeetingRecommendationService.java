@@ -2,10 +2,8 @@ package com.gather.gather.domain.meeting.service;
 
 import com.gather.gather.domain.meeting.dto.MeetingResponse;
 import com.gather.gather.domain.meeting.entity.Meeting;
-import com.gather.gather.domain.meeting.entity.MeetingImage;
 import com.gather.gather.domain.meeting.enums.MeetingMemberStatus;
 import com.gather.gather.domain.meeting.enums.MeetingStatus;
-import com.gather.gather.domain.meeting.repository.MeetingImageRepository;
 import com.gather.gather.domain.meeting.repository.MeetingMemberRepository;
 import com.gather.gather.domain.meeting.repository.MeetingRepository;
 import com.gather.gather.domain.posting.entity.PostingCategory;
@@ -15,14 +13,11 @@ import com.gather.gather.global.util.PreferredCategoryResolver;
 import com.gather.gather.global.util.SecurityUtil;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.Comparator;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -58,8 +53,7 @@ public class MeetingRecommendationService {
     private final PreferredCategoryResolver preferredCategoryResolver;
     private final CategoryDeadlineScoreCalculator scoreCalculator;
     private final RegionNameResolver regionNameResolver;
-    private final MeetingImageRepository meetingImageRepository;
-    private final MeetingImageUrlResolver meetingImageUrlResolver;
+    private final MeetingThumbnailResolver meetingThumbnailResolver;
 
     public List<MeetingResponse> getRecommendedMeetings() {
         Long userId = SecurityUtil.getCurrentUserIdOrNull();
@@ -84,7 +78,7 @@ public class MeetingRecommendationService {
         Map<Long, String> regionNames =
                 regionNameResolver.resolve(ranked.stream().map(Meeting::getRegionId).toList());
         Map<Long, String> thumbnails =
-                resolveThumbnails(ranked.stream().map(Meeting::getId).toList());
+                meetingThumbnailResolver.resolve(ranked.stream().map(Meeting::getId).toList());
 
         return ranked.stream()
                 .map(
@@ -95,21 +89,6 @@ public class MeetingRecommendationService {
                                         regionNames.get(meeting.getRegionId()),
                                         thumbnails.get(meeting.getId())))
                 .toList();
-    }
-
-    /**
-     * 모임별 대표 이미지(sortOrder가 가장 앞선 1장) URL을 배치 조회한다. 모임마다 {@code MeetingImageRepository}를 개별 호출하지
-     * 않도록 목록에 포함된 meetingId를 모아 한 번에 조회한다({@code /postings}의 대표 이미지 조회와 동일한 패턴).
-     */
-    private Map<Long, String> resolveThumbnails(Collection<Long> meetingIds) {
-        if (meetingIds.isEmpty()) {
-            return new HashMap<>();
-        }
-        return meetingImageRepository.findRepresentativeImagesByMeetingIds(meetingIds).stream()
-                .collect(
-                        Collectors.toMap(
-                                MeetingImage::getMeetingId,
-                                image -> meetingImageUrlResolver.resolve(image.getObjectKey())));
     }
 
     /**

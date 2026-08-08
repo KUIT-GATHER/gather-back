@@ -13,13 +13,11 @@ import com.gather.gather.domain.meeting.dto.MeetingResponse;
 import com.gather.gather.domain.meeting.dto.MeetingUpdateRequest;
 import com.gather.gather.domain.meeting.dto.PostingMeetingResponse;
 import com.gather.gather.domain.meeting.entity.Meeting;
-import com.gather.gather.domain.meeting.entity.MeetingImage;
 import com.gather.gather.domain.meeting.entity.MeetingMember;
 import com.gather.gather.domain.meeting.enums.MeetingMemberRole;
 import com.gather.gather.domain.meeting.enums.MeetingMemberStatus;
 import com.gather.gather.domain.meeting.enums.MeetingStatus;
 import com.gather.gather.domain.meeting.repository.MeetingBookmarkRepository;
-import com.gather.gather.domain.meeting.repository.MeetingImageRepository;
 import com.gather.gather.domain.meeting.repository.MeetingMemberRepository;
 import com.gather.gather.domain.meeting.repository.MeetingRepository;
 import com.gather.gather.domain.notification.event.MeetingJoinResultNotificationRequestedEvent;
@@ -38,8 +36,6 @@ import com.gather.gather.global.util.SecurityUtil;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
-import java.util.Collection;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -87,8 +83,7 @@ public class MeetingService {
     private final MeetingRecruitParticipationRepository meetingRecruitParticipationRepository;
     private final MeetingSearchLogService meetingSearchLogService;
     private final ApplicationEventPublisher eventPublisher;
-    private final MeetingImageRepository meetingImageRepository;
-    private final MeetingImageUrlResolver meetingImageUrlResolver;
+    private final MeetingThumbnailResolver meetingThumbnailResolver;
 
     @Transactional
     public MeetingResponse createMeeting(MeetingCreateRequest request) {
@@ -176,7 +171,8 @@ public class MeetingService {
         Map<Long, String> regionNames =
                 regionNameResolver.resolve(regionIdsOf(meetings.getContent()));
         Map<Long, String> thumbnails =
-                resolveThumbnails(meetings.getContent().stream().map(Meeting::getId).toList());
+                meetingThumbnailResolver.resolve(
+                        meetings.getContent().stream().map(Meeting::getId).toList());
 
         Page<MeetingResponse> responses =
                 meetings.map(
@@ -193,21 +189,6 @@ public class MeetingService {
 
     private List<Long> regionIdsOf(List<Meeting> meetings) {
         return meetings.stream().map(Meeting::getRegionId).toList();
-    }
-
-    /**
-     * 모임별 대표 이미지(sortOrder가 가장 앞선 1장) URL을 배치 조회한다. 모임마다 {@code MeetingImageRepository}를 개별 호출하지
-     * 않도록 목록에 포함된 meetingId를 모아 한 번에 조회한다({@code /postings}의 대표 이미지 조회와 동일한 패턴).
-     */
-    private Map<Long, String> resolveThumbnails(Collection<Long> meetingIds) {
-        if (meetingIds.isEmpty()) {
-            return new HashMap<>();
-        }
-        return meetingImageRepository.findRepresentativeImagesByMeetingIds(meetingIds).stream()
-                .collect(
-                        Collectors.toMap(
-                                MeetingImage::getMeetingId,
-                                image -> meetingImageUrlResolver.resolve(image.getObjectKey())));
     }
 
     public PageResponse<PostingMeetingResponse> getMeetingsByPosting(
@@ -456,7 +437,7 @@ public class MeetingService {
                 regionNameResolver.resolve(
                         members.stream().map(member -> member.getMeeting().getRegionId()).toList());
         Map<Long, String> thumbnails =
-                resolveThumbnails(
+                meetingThumbnailResolver.resolve(
                         members.stream().map(member -> member.getMeeting().getId()).toList());
 
         return members.stream()

@@ -4,10 +4,8 @@ import com.gather.gather.domain.meeting.dto.MeetingBookmarkResponse;
 import com.gather.gather.domain.meeting.dto.MeetingResponse;
 import com.gather.gather.domain.meeting.entity.Meeting;
 import com.gather.gather.domain.meeting.entity.MeetingBookmark;
-import com.gather.gather.domain.meeting.entity.MeetingImage;
 import com.gather.gather.domain.meeting.enums.MeetingStatus;
 import com.gather.gather.domain.meeting.repository.MeetingBookmarkRepository;
-import com.gather.gather.domain.meeting.repository.MeetingImageRepository;
 import com.gather.gather.domain.meeting.repository.MeetingRepository;
 import com.gather.gather.domain.posting.entity.PostingCategory;
 import com.gather.gather.domain.posting.service.RegionNameResolver;
@@ -20,11 +18,8 @@ import com.gather.gather.global.util.SecurityUtil;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
-import java.util.Collection;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
@@ -42,8 +37,7 @@ public class MeetingBookmarkService {
     private final MeetingRepository meetingRepository;
     private final RegionRepository regionRepository;
     private final RegionNameResolver regionNameResolver;
-    private final MeetingImageRepository meetingImageRepository;
-    private final MeetingImageUrlResolver meetingImageUrlResolver;
+    private final MeetingThumbnailResolver meetingThumbnailResolver;
 
     @Transactional
     public MeetingBookmarkResponse addBookmark(Long meetingId) {
@@ -118,7 +112,8 @@ public class MeetingBookmarkService {
                 regionNameResolver.resolve(
                         meetings.getContent().stream().map(Meeting::getRegionId).toList());
         Map<Long, String> thumbnails =
-                resolveThumbnails(meetings.getContent().stream().map(Meeting::getId).toList());
+                meetingThumbnailResolver.resolve(
+                        meetings.getContent().stream().map(Meeting::getId).toList());
 
         Page<MeetingResponse> responses =
                 meetings.map(
@@ -130,21 +125,6 @@ public class MeetingBookmarkService {
                                         thumbnails.get(meeting.getId())));
 
         return PageResponse.from(responses);
-    }
-
-    /**
-     * 모임별 대표 이미지(sortOrder가 가장 앞선 1장) URL을 배치 조회한다. 모임마다 {@code MeetingImageRepository}를 개별 호출하지
-     * 않도록 목록에 포함된 meetingId를 모아 한 번에 조회한다({@code /postings}의 대표 이미지 조회와 동일한 패턴).
-     */
-    private Map<Long, String> resolveThumbnails(Collection<Long> meetingIds) {
-        if (meetingIds.isEmpty()) {
-            return new HashMap<>();
-        }
-        return meetingImageRepository.findRepresentativeImagesByMeetingIds(meetingIds).stream()
-                .collect(
-                        Collectors.toMap(
-                                MeetingImage::getMeetingId,
-                                image -> meetingImageUrlResolver.resolve(image.getObjectKey())));
     }
 
     /** 시작일·종료일이 모두 주어졌는데 시작일이 종료일보다 늦으면(역전 범위) 빈 목록 대신 명시적으로 400을 반환한다. */
