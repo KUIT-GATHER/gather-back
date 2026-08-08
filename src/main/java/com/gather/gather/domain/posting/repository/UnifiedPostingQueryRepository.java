@@ -8,6 +8,7 @@ import java.math.BigInteger;
 import java.sql.Timestamp;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
@@ -23,7 +24,6 @@ import org.springframework.stereotype.Repository;
  *
  * <ul>
  *   <li>noticeStartDate/noticeEndDate 필터는 기존 봉사공고 쪽에만 적용된다(모집공고에는 대응 개념이 없음).
- *   <li>기존 목록의 "마감임박인데 상태 동기화 지연" 보정, null 마감일 우선순위 보정 등 세부 정렬 규칙은 이번 통합 쿼리에서는 단순화했다.
  * </ul>
  */
 @Repository
@@ -40,6 +40,8 @@ public class UnifiedPostingQueryRepository {
 
     private static final List<String> ACTIVE_PARTICIPATION_STATUSES =
             List.of("APPLIED", "CONFIRMED", "COMPLETED", "REVIEWED");
+
+    private static final ZoneId SEOUL_ZONE = ZoneId.of("Asia/Seoul");
 
     private final EntityManager entityManager;
 
@@ -69,7 +71,8 @@ public class UnifiedPostingQueryRepository {
                         category,
                         params);
         String recruitWhere = buildRecruitWhere(status, regionIds, keyword, category, params);
-        String orderBy = buildOrderBy(pageable.getSort());
+        Map<String, Object> orderParams = new java.util.HashMap<>();
+        String orderBy = buildOrderBy(status, pageable.getSort(), orderParams);
 
         String unionSql =
                 POSTING_SELECT.replace("__WHERE__", postingWhere)
@@ -84,6 +87,7 @@ public class UnifiedPostingQueryRepository {
                         + " LIMIT :limit OFFSET :offset";
         Query pageQuery = entityManager.createNativeQuery(pageSql);
         bindParams(pageQuery, params);
+        bindParams(pageQuery, orderParams);
         pageQuery.setParameter("limit", pageable.getPageSize());
         pageQuery.setParameter("offset", (int) pageable.getOffset());
 
@@ -211,10 +215,29 @@ public class UnifiedPostingQueryRepository {
         return where.toString();
     }
 
-    private String buildOrderBy(Sort sort) {
+    /**
+     * status가 null 또는 RECRUITING이고 apply_deadline_at 오름차순(마감임박) 정렬이 요청된 경우에만 우선순위 보정을 앞세운다. 기존
+     * 봉사공고는 외부 공공데이터 API 동기화 지연으로 마감일이 지났는데도 status가 아직 RECRUITING으로 남아있을 수 있으므로(모집공고 쪽은 status 자체가
+     * apply_deadline_at 기준으로 계산되어 나오므로 해당 없음), 실제 신청 가능한 공고(RECRUITING이고 마감일이 없거나 아직 지나지 않음)를 먼저
+     * 내려보낸 뒤, 그 안에서는 마감일이 있는 공고를 마감일 없는 상시모집 공고보다 앞세워 D-day → D-1 → D-2 순서를 보장한다. "오늘" 판정은 DB 서버의
+     * 타임존(NOW())이 아니라 Java에서 Asia/Seoul 기준으로 계산해 파라미터로 바인딩한다(CI 등 DB 서버가 UTC일 때 자정 경계에서 하루 어긋나는 것을
+     * 방지).
+     */
+    private String buildOrderBy(PostingStatus status, Sort sort, Map<String, Object> orderParams) {
         StringBuilder orderBy = new StringBuilder("ORDER BY ");
-        boolean hasIdOrder = false;
         boolean any = false;
+
+        if (isApplyDeadlineAscendingRequested(sort)
+                && (status == null || status == PostingStatus.RECRUITING)) {
+            orderBy.append(
+                    "CASE WHEN status = 'RECRUITING' AND (apply_deadline_at IS NULL OR "
+                            + "DATE(apply_deadline_at) >= :todayForOrder) THEN 0 ELSE 1 END ASC, "
+                            + "CASE WHEN apply_deadline_at IS NULL THEN 1 ELSE 0 END ASC");
+            orderParams.put("todayForOrder", LocalDate.now(SEOUL_ZONE));
+            any = true;
+        }
+
+        boolean hasIdOrder = false;
         for (Sort.Order order : sort) {
             String column = SORT_COLUMNS.get(order.getProperty());
             if (column == null) {
@@ -237,6 +260,14 @@ public class UnifiedPostingQueryRepository {
             orderBy.append(", id DESC");
         }
         return orderBy.toString();
+    }
+
+    private boolean isApplyDeadlineAscendingRequested(Sort sort) {
+        return sort.stream()
+                .anyMatch(
+                        order ->
+                                order.getProperty().equals("applyDeadlineAt")
+                                        && order.isAscending());
     }
 
     private void bindParams(Query query, Map<String, Object> params) {
