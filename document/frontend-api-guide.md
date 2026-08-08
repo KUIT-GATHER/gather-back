@@ -38,6 +38,13 @@ Authorization: Bearer <accessToken>
 - `activityRegionId`는 시군구(`level === 2`) 단위 지역 1개입니다.
 - 이 값은 향후 공고/모임 검색 화면의 기본 지역 필터 초기값으로 사용합니다.
 
+## 1-2️⃣ 이메일 회원가입 자동 로그인과 프로필 이미지
+
+- `POST /api/v1/auth/signup` 성공 시 기존 회원 정보와 함께 `accessToken`, `tokenType: "Bearer"`가 응답 body에 내려옵니다.
+- Refresh Token은 로그인과 동일하게 `HttpOnly` 쿠키로만 발급됩니다. 회원가입 요청도 `withCredentials: true` 또는 `credentials: "include"`로 호출해야 쿠키가 저장됩니다.
+- Access Token은 기존 로그인과 동일한 방식으로 관리하고, 프로필 이미지를 선택한 경우 `POST /api/v1/users/me/profile-image/presigned-url` → S3 PUT → `PATCH /api/v1/users/me/profile-image` 순서로 호출합니다.
+- 프로필 이미지는 선택사항입니다. 이미지 처리에 실패해도 회원가입과 로그인 상태는 유지되며 기본 이미지를 사용하면 됩니다.
+
 ## 2️⃣ 401 응답 처리 — `error.code`로 분기
 
 401 응답은 공통 에러 포맷 그대로입니다.
@@ -63,7 +70,7 @@ Authorization: Bearer <accessToken>
 
 - API 명세는 서버의 `/swagger-ui.html`에서 확인할 수 있고, 테스트 계정은 회원가입 API로 직접 생성하면 됩니다
 - Access Token 형식이 랜덤 문자열에서 JWT(`eyJ...`)로 바뀌어 길이가 길어졌습니다 — 토큰을 문자열 그대로 저장/전달한다면 코드 수정은 불필요합니다
-- `/login`, `/reissue`, `/logout` 요청은 모두 credentials 옵션이 필요합니다
+- `/signup`, `/login`, `/reissue`, `/logout` 요청은 모두 credentials 옵션이 필요합니다
 - 개발 중 30분 만료가 불편하면 백엔드에 요청하세요 — 서버 설정으로 늘릴 수 있습니다
 - JWT payload(`sub`=userId, `role`)는 디코딩해 볼 수 있지만 **표시 용도로만** 사용하고, 권한 판단의 근거로 신뢰하지 마세요
 

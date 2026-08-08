@@ -37,10 +37,11 @@
 ## 2. 회원가입 전체 흐름
 
 ```text
-이메일 인증 발송 → 인증 코드 확인 → (전화번호 중복 확인) → 회원가입(201) → 로그인 → 토큰 발급
+이메일 인증 발송 → 인증 코드 확인 → (전화번호 중복 확인) → 회원가입(201) + 자동 로그인
 ```
 
-- **회원가입 성공 시 토큰을 발급하지 않습니다.** 가입 완료 후 반드시 로그인 화면으로 보내주세요.
+- 회원가입 성공 시 Access Token은 응답 body로, Refresh Token은 HttpOnly 쿠키로 발급됩니다. 별도 로그인 호출은 필요하지 않습니다.
+- 회원가입 요청도 기존 로그인과 동일하게 `withCredentials: true` 또는 `credentials: "include"`로 호출해야 Refresh Token 쿠키가 저장됩니다.
 - 회원가입 성공은 `200`이 아니라 **`201 Created`** 입니다.
 
 ## 3. 엔드포인트 별 주의사항
@@ -99,6 +100,8 @@
 | 409 | `DUPLICATE_EMAIL` / `DUPLICATE_PHONE_NUMBER` / `DUPLICATE_NICKNAME` | 각 필드 |
 
 - 사전 중복확인을 통과했어도 가입 시점에 `409`가 다시 날 수 있습니다(그 사이 다른 가입). **409 재처리 로직 필수.**
+- 성공 응답은 기존 회원 정보와 `{ accessToken, tokenType: "Bearer" }`를 함께 반환하고, Refresh Token은 body가 아닌 `Set-Cookie`로만 전달합니다.
+- 응답의 Access Token은 기존 로그인과 동일한 방식으로 관리합니다. 프로필 이미지가 선택된 경우 기존 `/api/v1/users/me/profile-image/**` 플로우를 이어서 호출하며, 이미지 처리 실패는 이미 완료된 회원가입을 취소하지 않습니다.
 
 ### 3-5. 로그인 — `POST /api/v1/auth/login`
 
