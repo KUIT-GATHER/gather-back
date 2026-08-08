@@ -12,6 +12,7 @@ import com.gather.gather.domain.auth.dto.SignupResponse;
 import com.gather.gather.domain.auth.dto.TokenResponse;
 import com.gather.gather.domain.auth.service.AuthService;
 import com.gather.gather.domain.auth.service.RefreshTokenCookieProvider;
+import com.gather.gather.domain.auth.service.SignupResult;
 import com.gather.gather.domain.auth.service.TokenIssueResult;
 import com.gather.gather.global.common.ApiResponse;
 import com.gather.gather.global.exception.BusinessException;
@@ -34,7 +35,6 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.util.WebUtils;
 
@@ -266,11 +266,22 @@ public class AuthController {
         return ApiResponse.success(authService.checkPhoneNumberAvailability(request));
     }
 
-    @Operation(summary = "회원가입", description = "회원가입 성공 시 토큰은 발급하지 않습니다.")
+    @Operation(
+            summary = "회원가입",
+            description = "회원가입 성공 시 Access Token은 응답 본문으로, Refresh Token은 HttpOnly 쿠키로 발급합니다.")
     @ApiResponses({
         @io.swagger.v3.oas.annotations.responses.ApiResponse(
                 responseCode = "201",
-                description = "회원가입 성공",
+                description = "회원가입 및 자동 로그인 성공",
+                headers =
+                        @Header(
+                                name = "Set-Cookie",
+                                description = "HttpOnly Refresh Token 쿠키",
+                                schema =
+                                        @Schema(
+                                                type = "string",
+                                                example =
+                                                        "gather_refresh_token=refresh-token-value; Path=/api/v1/auth; Max-Age=1209600; HttpOnly; SameSite=Lax")),
                 content =
                         @Content(
                                 mediaType = JSON,
@@ -284,7 +295,9 @@ public class AuthController {
                                                             "userId": 1,
                                                             "email": "test@example.com",
                                                             "name": "홍길동",
-                                                            "nickname": "길동"
+                                                            "nickname": "길동",
+                                                            "accessToken": "access-token-value",
+                                                            "tokenType": "Bearer"
                                                           },
                                                           "error": null
                                                         }
@@ -354,9 +367,15 @@ public class AuthController {
                                 }))
     })
     @PostMapping("/signup")
-    @ResponseStatus(HttpStatus.CREATED)
-    public ApiResponse<SignupResponse> signup(@RequestBody @Valid SignupRequest request) {
-        return ApiResponse.success(authService.signup(request));
+    public ResponseEntity<ApiResponse<SignupResponse>> signup(
+            @RequestBody @Valid SignupRequest request) {
+        SignupResult result = authService.signup(request);
+
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .header(
+                        HttpHeaders.SET_COOKIE,
+                        refreshTokenCookieProvider.create(result.refreshToken()).toString())
+                .body(ApiResponse.success(result.response()));
     }
 
     @Operation(

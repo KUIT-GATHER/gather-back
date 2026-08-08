@@ -97,6 +97,17 @@ gather:
 volunteer-api:
   base-url: https://apis.data.go.kr/1741000/volunteerPartcptnService
 
+# robots.txt/이용약관 미확인 상태 — scheduler-enabled는 확인 전까지 false로 유지할 것.
+vms:
+  crawl:
+    base-url: https://www.vms.or.kr
+    user-agent: "KUIT-Gather-Bot/1.0 (+mailto:hahakang77@gmail.com)"
+    max-pages: ${VMS_CRAWL_MAX_PAGES:5}
+    request-delay-ms: ${VMS_CRAWL_REQUEST_DELAY_MS:1500}
+    act-days-ahead: ${VMS_CRAWL_ACT_DAYS_AHEAD:30}
+    max-detail-lookups-per-run: ${VMS_CRAWL_MAX_DETAIL_LOOKUPS_PER_RUN:100}
+    scheduler-enabled: ${VMS_CRAWL_SCHEDULER_ENABLED:false}
+
 # 비밀값(rest-api-key/client-secret)은 여기 두지 않는다.
 # 로컬은 application-secret.yml, 운영은 /etc/gather/gather.env 환경변수로 주입한다.
 # redirect-uris는 카카오 콘솔 등록값과 문자열까지 정확히 같아야 한다(불일치 시 KOE006).

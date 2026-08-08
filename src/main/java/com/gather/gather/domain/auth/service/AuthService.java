@@ -168,7 +168,7 @@ public class AuthService {
     }
 
     @Transactional
-    public SignupResponse signup(SignupRequest request) {
+    public SignupResult signup(SignupRequest request) {
         validateSignupRequest(request);
 
         String email = normalizeEmail(request.email());
@@ -201,12 +201,17 @@ public class AuthService {
                         activityRegion,
                         request.interestCategories());
 
+        User savedUser;
         try {
-            return SignupResponse.from(userRepository.saveAndFlush(user));
+            savedUser = userRepository.saveAndFlush(user);
         } catch (DataIntegrityViolationException exception) {
             throw signupValidator.resolveDuplicateException(
                     exception, email, phoneNumber, nickname);
         }
+
+        TokenIssueResult tokens = tokenIssuer.issue(savedUser);
+        return new SignupResult(
+                SignupResponse.bearer(savedUser, tokens.accessToken()), tokens.refreshToken());
     }
 
     public TokenIssueResult login(LoginRequest request) {
