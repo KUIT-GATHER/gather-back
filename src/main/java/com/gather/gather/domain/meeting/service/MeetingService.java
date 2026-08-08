@@ -83,6 +83,7 @@ public class MeetingService {
     private final MeetingRecruitParticipationRepository meetingRecruitParticipationRepository;
     private final MeetingSearchLogService meetingSearchLogService;
     private final ApplicationEventPublisher eventPublisher;
+    private final MeetingThumbnailResolver meetingThumbnailResolver;
 
     @Transactional
     public MeetingResponse createMeeting(MeetingCreateRequest request) {
@@ -169,6 +170,9 @@ public class MeetingService {
                         pageable);
         Map<Long, String> regionNames =
                 regionNameResolver.resolve(regionIdsOf(meetings.getContent()));
+        Map<Long, String> thumbnails =
+                meetingThumbnailResolver.resolve(
+                        meetings.getContent().stream().map(Meeting::getId).toList());
 
         Page<MeetingResponse> responses =
                 meetings.map(
@@ -176,7 +180,8 @@ public class MeetingService {
                                 MeetingResponse.from(
                                         meeting,
                                         resolveDisplayStatus(meeting),
-                                        regionNames.get(meeting.getRegionId())));
+                                        regionNames.get(meeting.getRegionId()),
+                                        thumbnails.get(meeting.getId())));
 
         logSearchKeywordSafely(keyword);
         return PageResponse.from(responses);
@@ -431,6 +436,9 @@ public class MeetingService {
         Map<Long, String> regionNames =
                 regionNameResolver.resolve(
                         members.stream().map(member -> member.getMeeting().getRegionId()).toList());
+        Map<Long, String> thumbnails =
+                meetingThumbnailResolver.resolve(
+                        members.stream().map(member -> member.getMeeting().getId()).toList());
 
         return members.stream()
                 .map(
@@ -440,7 +448,8 @@ public class MeetingService {
                                         resolveDisplayStatus(member.getMeeting()),
                                         regionNames.get(member.getMeeting().getRegionId()),
                                         member.getRole(), // ← HOST/MEMBER
-                                        member.getRecognizedMinutes()))
+                                        member.getRecognizedMinutes(),
+                                        thumbnails.get(member.getMeeting().getId())))
                 .toList();
     }
 

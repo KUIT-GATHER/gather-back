@@ -50,4 +50,7 @@ public record RecruitCreateRequest(
                 Integer recognizedMinutes,
         @Schema(description = "신청 마감 일시") @NotNull(message = "신청 마감 일시는 필수입니다.")
                 LocalDateTime applyDeadlineAt,
-        @Schema(description = "외부 공개 여부") boolean external) {}
+        @Schema(description = "외부 공개 여부") boolean external,
+        @Schema(description = "참여 조건(선택)", example = "성인 및 청소년 단체 신청 가능")
+                @Size(max = 255, message = "참여 조건은 255자 이내여야 합니다.")
+                String participationCondition) {}

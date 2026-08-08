@@ -6,9 +6,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.gather.gather.domain.auth.entity.User;
-import com.gather.gather.domain.meeting.entity.MeetingImage;
-import com.gather.gather.domain.meeting.repository.MeetingImageRepository;
-import com.gather.gather.domain.meeting.service.MeetingImageUrlResolver;
+import com.gather.gather.domain.meeting.service.MeetingThumbnailResolver;
 import com.gather.gather.domain.notification.entity.Notification;
 import com.gather.gather.domain.notification.enums.NotificationTargetType;
 import com.gather.gather.domain.notification.enums.NotificationType;
@@ -29,12 +27,9 @@ class NotificationThumbnailResolverTest {
     private static final Long MEETING_ID = 5L;
     private static final Long MEETING_NOTIFICATION_ID = 10L;
     private static final Long POST_NOTIFICATION_ID = 11L;
-    private static final String OBJECT_KEY = "meetings/5/representative.jpg";
     private static final String THUMBNAIL_URL = "https://example.com/meetings/5/representative.jpg";
 
-    @Mock private MeetingImageRepository meetingImageRepository;
-
-    @Mock private MeetingImageUrlResolver meetingImageUrlResolver;
+    @Mock private MeetingThumbnailResolver meetingThumbnailResolver;
 
     @Mock private User user;
 
@@ -61,12 +56,8 @@ class NotificationThumbnailResolverTest {
         ReflectionTestUtils.setField(meetingNotification, "id", MEETING_NOTIFICATION_ID);
         ReflectionTestUtils.setField(postNotification, "id", POST_NOTIFICATION_ID);
 
-        MeetingImage meetingImage = MeetingImage.create(MEETING_ID, OBJECT_KEY, 0);
-
-        when(meetingImageRepository.findRepresentativeImagesByMeetingIds(anyCollection()))
-                .thenReturn(List.of(meetingImage));
-
-        when(meetingImageUrlResolver.resolve(OBJECT_KEY)).thenReturn(THUMBNAIL_URL);
+        when(meetingThumbnailResolver.resolve(anyCollection()))
+                .thenReturn(Map.of(MEETING_ID, THUMBNAIL_URL));
 
         Map<Long, String> result =
                 notificationThumbnailResolver.resolveByNotificationId(
@@ -95,7 +86,7 @@ class NotificationThumbnailResolverTest {
 
         assertThat(result).isEmpty();
 
-        verifyNoInteractions(meetingImageRepository, meetingImageUrlResolver);
+        verifyNoInteractions(meetingThumbnailResolver);
     }
 
     @Test
@@ -111,14 +102,11 @@ class NotificationThumbnailResolverTest {
 
         ReflectionTestUtils.setField(notification, "id", MEETING_NOTIFICATION_ID);
 
-        when(meetingImageRepository.findRepresentativeImagesByMeetingIds(anyCollection()))
-                .thenReturn(List.of());
+        when(meetingThumbnailResolver.resolve(anyCollection())).thenReturn(Map.of());
 
         Map<Long, String> result =
                 notificationThumbnailResolver.resolveByNotificationId(List.of(notification));
 
         assertThat(result).isEmpty();
-
-        verifyNoInteractions(meetingImageUrlResolver);
     }
 }

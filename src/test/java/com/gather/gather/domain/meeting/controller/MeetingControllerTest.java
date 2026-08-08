@@ -102,6 +102,7 @@ class MeetingControllerTest {
                         LocalDateTime.of(2026, 7, 31, 23, 59, 59),
                         LocalDateTime.of(2026, 8, 1, 9, 0, 0),
                         null,
+                        null,
                         null);
         when(meetingRecommendationService.getRecommendedMeetings()).thenReturn(List.of(response));
 
