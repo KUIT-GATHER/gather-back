@@ -45,6 +45,8 @@ class PostingMeetingControllerTest {
                         Set.of(PostingCategory.ENVIRONMENT),
                         12,
                         20,
+                        3L,
+                        "강남구",
                         MeetingStatus.RECRUITING,
                         true,
                         false);
@@ -63,6 +65,8 @@ class PostingMeetingControllerTest {
                 .andExpect(jsonPath("$.data.content[0].categories[0]").value("ENVIRONMENT"))
                 .andExpect(jsonPath("$.data.content[0].currentMemberCount").value(12))
                 .andExpect(jsonPath("$.data.content[0].maxMember").value(20))
+                .andExpect(jsonPath("$.data.content[0].regionId").value(3))
+                .andExpect(jsonPath("$.data.content[0].regionName").value("강남구"))
                 .andExpect(jsonPath("$.data.content[0].status").value("RECRUITING"))
                 .andExpect(jsonPath("$.data.content[0].member").value(true))
                 .andExpect(jsonPath("$.data.content[0].host").value(false))

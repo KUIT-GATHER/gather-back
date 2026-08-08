@@ -83,6 +83,10 @@ class MeetingServiceTest {
                 .thenReturn(Set.of(PostingCategory.ENVIRONMENT));
         org.mockito.Mockito.lenient().when(meeting.getCurrentMemberCount()).thenReturn(12);
         org.mockito.Mockito.lenient().when(meeting.getMaxMember()).thenReturn(20);
+        org.mockito.Mockito.lenient().when(meeting.getRegionId()).thenReturn(3L);
+        org.mockito.Mockito.lenient()
+                .when(regionNameResolver.resolve(anyList()))
+                .thenReturn(Map.of(3L, "강남구"));
         org.mockito.Mockito.lenient()
                 .when(meeting.getStatus())
                 .thenReturn(MeetingStatus.RECRUITING);
@@ -115,6 +119,8 @@ class MeetingServiceTest {
 
         assertThat(response.member()).isFalse();
         assertThat(response.host()).isFalse();
+        assertThat(response.regionId()).isEqualTo(3L);
+        assertThat(response.regionName()).isEqualTo("강남구");
         verify(meetingMemberRepository, never())
                 .findAllByUserIdAndStatusAndMeetingIdInFetchMeeting(
                         eq(1L), eq(MeetingMemberStatus.APPROVED), anyList());
