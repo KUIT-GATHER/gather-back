@@ -19,6 +19,7 @@ import com.gather.gather.domain.auth.dto.SignupRequest;
 import com.gather.gather.domain.auth.dto.SignupResponse;
 import com.gather.gather.domain.auth.service.AuthService;
 import com.gather.gather.domain.auth.service.RefreshTokenCookieProvider;
+import com.gather.gather.domain.auth.service.SignupResult;
 import com.gather.gather.domain.auth.service.TokenIssueResult;
 import com.gather.gather.global.exception.BusinessException;
 import com.gather.gather.global.exception.ErrorCode;
@@ -73,7 +74,8 @@ class AuthControllerTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.data").doesNotExist())
-                .andExpect(jsonPath("$.error.code").value("VALIDATION_ERROR"));
+                .andExpect(jsonPath("$.error.code").value("VALIDATION_ERROR"))
+                .andExpect(header().doesNotExist(HttpHeaders.SET_COOKIE));
 
         verifyNoInteractions(authService);
     }
@@ -114,7 +116,18 @@ class AuthControllerTest {
     @DisplayName("회원가입에서 전화번호가 20자이면 검증을 통과한다")
     void signup_withMaxLengthPhoneNumber_returnsCreated() throws Exception {
         when(authService.signup(any(SignupRequest.class)))
-                .thenReturn(new SignupResponse(1L, "test@example.com", "홍길동", "길동"));
+                .thenReturn(
+                        new SignupResult(
+                                new SignupResponse(
+                                        1L,
+                                        "test@example.com",
+                                        "홍길동",
+                                        "길동",
+                                        "access-token",
+                                        "Bearer"),
+                                "refresh-token"));
+        when(refreshTokenCookieProvider.create("refresh-token"))
+                .thenReturn(refreshCookie("refresh-token"));
 
         mockMvc.perform(
                         post("/api/v1/auth/signup")
@@ -139,7 +152,16 @@ class AuthControllerTest {
                                         }
                                         """))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.success").value(true));
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.error").doesNotExist())
+                .andExpect(jsonPath("$.data.userId").value(1))
+                .andExpect(jsonPath("$.data.email").value("test@example.com"))
+                .andExpect(jsonPath("$.data.name").value("홍길동"))
+                .andExpect(jsonPath("$.data.nickname").value("길동"))
+                .andExpect(jsonPath("$.data.accessToken").value("access-token"))
+                .andExpect(jsonPath("$.data.tokenType").value("Bearer"))
+                .andExpect(jsonPath("$.data.refreshToken").doesNotExist())
+                .andExpect(header().string(HttpHeaders.SET_COOKIE, refreshCookieMatcher()));
 
         verify(authService).signup(any(SignupRequest.class));
     }
