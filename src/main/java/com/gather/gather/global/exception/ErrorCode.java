@@ -134,6 +134,8 @@ public enum ErrorCode {
     // ── 모집공고(RECRUIT) ──
     POST_RECRUIT_NOT_ALLOWED(HttpStatus.BAD_REQUEST, "모집공고는 전용 API로 작성해주세요."),
     RECRUIT_HOST_ONLY(HttpStatus.FORBIDDEN, "모집공고는 모임장만 작성할 수 있습니다."),
+    RECRUIT_POSTING_BASED_NOT_ALLOWED(
+            HttpStatus.FORBIDDEN, "공고 기반 모임은 자체 모집공고를 작성할 수 없습니다."),
     RECRUIT_NOT_FOUND(HttpStatus.NOT_FOUND, "모집공고를 찾을 수 없습니다."),
     RECRUIT_RECOGNIZED_MINUTES_REQUIRED(HttpStatus.BAD_REQUEST, "봉사시간 인정 시 인정 시간을 입력해야 합니다."),
     RECRUIT_APPLICATION_CLOSED(HttpStatus.CONFLICT, "신청 기간이 종료되어 변경할 수 없습니다."),
