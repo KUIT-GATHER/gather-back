@@ -191,7 +191,8 @@ class MeetingRecommendationServiceTest {
     }
 
     @Test
-    @DisplayName("getRecommendedMeetings populates thumbnailUrl from the meeting's representative image")
+    @DisplayName(
+            "getRecommendedMeetings populates thumbnailUrl from the meeting's representative image")
     void getRecommendedMeetings_populatesThumbnailUrlFromRepresentativeImage() {
         Meeting m1 = meeting(1L, PostingCategory.ENVIRONMENT, now.plusDays(1));
 
@@ -214,7 +215,8 @@ class MeetingRecommendationServiceTest {
         try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
             securityUtil.when(SecurityUtil::getCurrentUserIdOrNull).thenReturn(null);
 
-            List<MeetingResponse> recommended = meetingRecommendationService.getRecommendedMeetings();
+            List<MeetingResponse> recommended =
+                    meetingRecommendationService.getRecommendedMeetings();
 
             assertThat(recommended.get(0).thumbnailUrl())
                     .isEqualTo("https://cdn.example.com/meetings/1/photo.jpg");
@@ -222,7 +224,8 @@ class MeetingRecommendationServiceTest {
     }
 
     @Test
-    @DisplayName("getRecommendedMeetings sets thumbnailUrl to null when the meeting has no registered image")
+    @DisplayName(
+            "getRecommendedMeetings sets thumbnailUrl to null when the meeting has no registered image")
     void getRecommendedMeetings_thumbnailUrlIsNull_whenNoImageRegistered() {
         Meeting m1 = meeting(1L, PostingCategory.ENVIRONMENT, now.plusDays(1));
 
@@ -243,7 +246,8 @@ class MeetingRecommendationServiceTest {
         try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
             securityUtil.when(SecurityUtil::getCurrentUserIdOrNull).thenReturn(null);
 
-            List<MeetingResponse> recommended = meetingRecommendationService.getRecommendedMeetings();
+            List<MeetingResponse> recommended =
+                    meetingRecommendationService.getRecommendedMeetings();
 
             assertThat(recommended.get(0).thumbnailUrl()).isNull();
         }

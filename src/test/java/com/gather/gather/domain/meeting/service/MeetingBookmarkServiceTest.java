@@ -224,7 +224,8 @@ class MeetingBookmarkServiceTest {
     }
 
     @Test
-    @DisplayName("getBookmarkedMeetings populates thumbnailUrl from the meeting's representative image")
+    @DisplayName(
+            "getBookmarkedMeetings populates thumbnailUrl from the meeting's representative image")
     void getBookmarkedMeetings_populatesThumbnailUrlFromRepresentativeImage() {
         when(meeting.getId()).thenReturn(MEETING_ID);
         when(meeting.getStatus()).thenReturn(MeetingStatus.RECRUITING);
@@ -236,11 +237,18 @@ class MeetingBookmarkServiceTest {
         try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
             securityUtil.when(SecurityUtil::getCurrentUserId).thenReturn(USER_ID);
             when(meetingBookmarkRepository.findBookmarkedMeetings(
-                            eq(USER_ID), any(), any(), eq(false), eq(List.of(-1L)), isNull(),
-                            isNull(), any()))
+                            eq(USER_ID),
+                            any(),
+                            any(),
+                            eq(false),
+                            eq(List.of(-1L)),
+                            isNull(),
+                            isNull(),
+                            any()))
                     .thenReturn(new PageImpl<>(List.of(meeting), PageRequest.of(0, 20), 1));
             when(meetingThumbnailResolver.resolve(List.of(MEETING_ID)))
-                    .thenReturn(Map.of(MEETING_ID, "https://cdn.example.com/meetings/10/photo.jpg"));
+                    .thenReturn(
+                            Map.of(MEETING_ID, "https://cdn.example.com/meetings/10/photo.jpg"));
 
             PageResponse<MeetingResponse> response =
                     meetingBookmarkService.getBookmarkedMeetings(
@@ -252,7 +260,8 @@ class MeetingBookmarkServiceTest {
     }
 
     @Test
-    @DisplayName("getBookmarkedMeetings sets thumbnailUrl to null when the meeting has no registered image")
+    @DisplayName(
+            "getBookmarkedMeetings sets thumbnailUrl to null when the meeting has no registered image")
     void getBookmarkedMeetings_thumbnailUrlIsNull_whenNoImageRegistered() {
         when(meeting.getId()).thenReturn(MEETING_ID);
         when(meeting.getStatus()).thenReturn(MeetingStatus.RECRUITING);
@@ -264,8 +273,14 @@ class MeetingBookmarkServiceTest {
         try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
             securityUtil.when(SecurityUtil::getCurrentUserId).thenReturn(USER_ID);
             when(meetingBookmarkRepository.findBookmarkedMeetings(
-                            eq(USER_ID), any(), any(), eq(false), eq(List.of(-1L)), isNull(),
-                            isNull(), any()))
+                            eq(USER_ID),
+                            any(),
+                            any(),
+                            eq(false),
+                            eq(List.of(-1L)),
+                            isNull(),
+                            isNull(),
+                            any()))
                     .thenReturn(new PageImpl<>(List.of(meeting), PageRequest.of(0, 20), 1));
 
             PageResponse<MeetingResponse> response =

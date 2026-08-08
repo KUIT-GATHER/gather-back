@@ -61,6 +61,7 @@ class MeetingThumbnailResolverTest {
         Map<Long, String> result = meetingThumbnailResolver.resolve(List.of());
 
         assertThat(result).isEmpty();
-        verify(meetingImageRepository, never()).findRepresentativeImagesByMeetingIds(anyCollection());
+        verify(meetingImageRepository, never())
+                .findRepresentativeImagesByMeetingIds(anyCollection());
     }
 }

@@ -12,10 +12,9 @@ import org.springframework.stereotype.Component;
 /**
  * 모임별 대표 이미지(sortOrder가 가장 앞선 1장) URL을 meetingId 기준으로 배치 조회한다.
  *
- * <p>모임마다 {@link MeetingImageRepository}를 개별 호출하지 않도록 meetingId를 모아 한 번에 조회하며,
- * 모임 목록 응답({@code MeetingService}, {@code MeetingBookmarkService},
- * {@code MeetingRecommendationService})과 알림 대표 이미지 조회({@code NotificationThumbnailResolver})가
- * 각자 구현하던 동일한 배치 조회 로직을 공용 컴포넌트로 추출한 것이다.
+ * <p>모임마다 {@link MeetingImageRepository}를 개별 호출하지 않도록 meetingId를 모아 한 번에 조회하며, 모임 목록 응답({@code
+ * MeetingService}, {@code MeetingBookmarkService}, {@code MeetingRecommendationService})과 알림 대표 이미지
+ * 조회({@code NotificationThumbnailResolver})가 각자 구현하던 동일한 배치 조회 로직을 공용 컴포넌트로 추출한 것이다.
  */
 @Component
 @RequiredArgsConstructor
