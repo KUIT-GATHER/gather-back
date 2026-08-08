@@ -9,7 +9,6 @@ import com.gather.gather.global.exception.ErrorCode;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
-import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import lombok.RequiredArgsConstructor;
@@ -27,8 +26,8 @@ public class SignupValidator {
 
     private static final Pattern KOREAN_OR_ENGLISH_PATTERN =
             Pattern.compile("^(?:[가-힣]{2,10}|[A-Za-z]{2,20})$");
-    // 활동 지역은 시도(level 1) 또는 시군구(level 2) 단위로 선택할 수 있다. 읍/면/동(level 4)은 제외.
-    private static final Set<Integer> ALLOWED_ACTIVITY_REGION_LEVELS = Set.of(1, 2);
+    // 활동 지역은 시군구 단위만 선택할 수 있다. Region.level 2 = 시군구.
+    private static final int ACTIVITY_REGION_LEVEL = 2;
     private static final int MIN_INTEREST_CATEGORY_COUNT = 1;
 
     // MySQL unique 제약 위반 메시지 예: "Duplicate entry 'test@example.com' for key 'users.UK_xxx'"
@@ -93,7 +92,7 @@ public class SignupValidator {
                 regionRepository
                         .findById(activityRegionId)
                         .orElseThrow(() -> new BusinessException(ErrorCode.REGION_NOT_FOUND));
-        if (!ALLOWED_ACTIVITY_REGION_LEVELS.contains(region.getLevel())) {
+        if (!Objects.equals(region.getLevel(), ACTIVITY_REGION_LEVEL)) {
             throw new BusinessException(ErrorCode.REGION_NOT_FOUND);
         }
         return region;
