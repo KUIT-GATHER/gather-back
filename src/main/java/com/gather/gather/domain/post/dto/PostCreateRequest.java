@@ -1,6 +1,7 @@
 package com.gather.gather.domain.post.dto;
 
 import com.gather.gather.domain.post.enums.PostType;
+import com.gather.gather.domain.post.enums.ReviewSourceType;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -17,4 +18,7 @@ public record PostCreateRequest(
         @Positive(message = "모집 정원은 1 이상이어야 합니다.") Integer recruitCapacity,
         @Schema(description = "presigned 업로드로 받은 이미지 objectKey 목록(선택, 최대 3장, 노출 순서)")
                 @Size(max = 3, message = "이미지는 최대 3장까지 첨부할 수 있습니다.")
-                List<String> imageObjectKeys) {}
+                List<String> imageObjectKeys,
+        @Schema(description = "후기(REVIEW)일 때만 필수 - 근거 활동 출처") ReviewSourceType reviewSourceType,
+        @Schema(description = "후기(REVIEW)일 때만 필수 - 근거 활동 ID(postingId 또는 모집공고 postId)")
+                Long reviewSourceId) {}

@@ -1,8 +1,14 @@
 package com.gather.gather.domain.posting.service;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.gather.gather.domain.meeting.entity.MeetingImage;
+import com.gather.gather.domain.meeting.repository.MeetingImageRepository;
+import com.gather.gather.domain.meeting.service.MeetingImageUrlResolver;
+import com.gather.gather.domain.posting.dto.PostingListItem;
 import com.gather.gather.domain.posting.dto.PostingLocationResponse;
 import com.gather.gather.domain.posting.dto.PostingResponse;
-import com.gather.gather.domain.posting.dto.PostingSummaryResponse;
+import com.gather.gather.domain.posting.dto.PostingSourceType;
 import com.gather.gather.domain.posting.entity.Posting;
 import com.gather.gather.domain.posting.entity.PostingCategory;
 import com.gather.gather.domain.posting.entity.PostingParticipation;
@@ -12,6 +18,9 @@ import com.gather.gather.domain.posting.repository.BookmarkRepository;
 import com.gather.gather.domain.posting.repository.PostingLocationRepository;
 import com.gather.gather.domain.posting.repository.PostingParticipationRepository;
 import com.gather.gather.domain.posting.repository.PostingRepository;
+import com.gather.gather.domain.posting.repository.UnifiedPostingQueryRepository;
+import com.gather.gather.domain.posting.repository.UnifiedPostingQueryRepository.SearchResult;
+import com.gather.gather.domain.posting.repository.UnifiedPostingRow;
 import com.gather.gather.domain.region.entity.Region;
 import com.gather.gather.domain.region.repository.RegionRepository;
 import com.gather.gather.global.common.PageResponse;
@@ -20,12 +29,15 @@ import com.gather.gather.global.exception.ErrorCode;
 import com.gather.gather.global.util.SecurityUtil;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
@@ -36,25 +48,6 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 public class PostingService {
 
-    /**
-     * {@link PostingRepository#search}가 Criteria API({@code root.get(property)})로 정렬을 적용하기 때문에,
-     * 존재하지 않는 프로퍼티로 정렬을 시도하면 500 INTERNAL_SERVER_ERROR로 이어진다(Hibernate가 속성을 못 찾아 던지는 예외를
-     * GlobalExceptionHandler의 catch-all이 받음). 클라이언트 입력값 문제이므로 쿼리 실행 전에 검증해 400으로 응답한다.
-     */
-    private static final Set<String> SORTABLE_PROPERTIES =
-            Set.of(
-                    "id",
-                    "title",
-                    "status",
-                    "actStartDate",
-                    "actEndDate",
-                    "noticeStartDate",
-                    "noticeEndDate",
-                    "recruitCount",
-                    "applicantCount",
-                    "createdAt",
-                    "updatedAt");
-
     private final PostingRepository postingRepository;
     private final PostingLocationRepository postingLocationRepository;
     private final RegionRepository regionRepository;
@@ -62,9 +55,18 @@ public class PostingService {
     private final RegionNameResolver regionNameResolver;
     private final BookmarkRepository bookmarkRepository;
     private final PostingParticipationRepository postingParticipationRepository;
+    private final UnifiedPostingQueryRepository unifiedPostingQueryRepository;
+    private final MeetingImageRepository meetingImageRepository;
+    private final MeetingImageUrlResolver meetingImageUrlResolver;
+    private final ObjectMapper objectMapper;
 
+    /**
+     * 앱 전체 봉사공고 목록(#9). 기존 봉사공고와 external=true인 모임 모집공고를 하나의 페이지네이션·정렬 안에서 함께 반환한다.
+     *
+     * <p>noticeStartDate/noticeEndDate 필터는 기존 봉사공고에만 적용된다(모집공고에는 대응 개념이 없어 항상 포함).
+     */
     @Transactional(readOnly = true)
-    public PageResponse<PostingSummaryResponse> getPostings(
+    public PageResponse<PostingListItem> getPostings(
             Pageable pageable,
             Long regionId,
             Long regionGroupId,
@@ -76,8 +78,8 @@ public class PostingService {
         validateSort(pageable.getSort());
         List<Long> regionIds = resolveRegionIds(regionId, regionGroupId);
 
-        Page<Posting> postings =
-                postingRepository.search(
+        SearchResult result =
+                unifiedPostingQueryRepository.search(
                         status,
                         regionIds,
                         noticeStartDate,
@@ -88,15 +90,14 @@ public class PostingService {
 
         logSearchKeywordSafely(keyword);
 
-        Map<Long, String> regionNames = regionNameResolver.resolve(postings);
-
-        Page<PostingSummaryResponse> responses =
-                postings.map(
-                        posting ->
-                                PostingSummaryResponse.from(
-                                        posting, regionNames.get(posting.getRegionId())));
-
-        return PageResponse.from(responses);
+        List<PostingListItem> items = toListItems(result.rows());
+        long totalElements = result.totalElements();
+        int totalPages =
+                pageable.getPageSize() == 0
+                        ? 0
+                        : (int) Math.ceil((double) totalElements / pageable.getPageSize());
+        return new PageResponse<>(
+                items, totalElements, totalPages, pageable.getPageNumber(), pageable.getPageSize());
     }
 
     @Transactional(readOnly = true)
@@ -157,7 +158,7 @@ public class PostingService {
 
     private void validateSort(Sort sort) {
         for (Sort.Order order : sort) {
-            if (!SORTABLE_PROPERTIES.contains(order.getProperty())) {
+            if (!unifiedPostingQueryRepository.isSortable(order.getProperty())) {
                 throw new BusinessException(ErrorCode.VALIDATION_ERROR);
             }
         }
@@ -184,5 +185,90 @@ public class PostingService {
                 .findAllByPostingIdOrderByLocationSeq(posting.getId())
                 .forEach(location -> locations.add(PostingLocationResponse.from(location)));
         return locations;
+    }
+
+    private List<PostingListItem> toListItems(List<UnifiedPostingRow> rows) {
+        if (rows.isEmpty()) {
+            return List.of();
+        }
+        Set<Long> regionIds = new HashSet<>();
+        Set<Long> meetingIds = new HashSet<>();
+        for (UnifiedPostingRow row : rows) {
+            if (row.regionId() != null) {
+                regionIds.add(row.regionId());
+            }
+            if (row.meetingId() != null) {
+                meetingIds.add(row.meetingId());
+            }
+        }
+        Map<Long, String> regionNames = regionNameResolver.resolve(regionIds);
+        Map<Long, String> thumbnails = resolveThumbnails(meetingIds);
+
+        return rows.stream()
+                .map(
+                        row ->
+                                toListItem(
+                                        row,
+                                        regionNames.get(row.regionId()),
+                                        row.meetingId() == null
+                                                ? null
+                                                : thumbnails.get(row.meetingId())))
+                .toList();
+    }
+
+    /**
+     * 모임별 대표 이미지(첫 순번) URL을 배치 조회한다.
+     *
+     * <p>{@code Map.of()}는 {@code get(null)} 호출 시 예외를 던지므로(불변 맵의 null-key 거부 동작), 일반 봉사공고(POSTING,
+     * meetingId 항상 null)만 있는 페이지에서 호출부가 {@code .get(null)}을 하더라도 안전하도록 일반 빈 맵을 반환한다.
+     */
+    private Map<Long, String> resolveThumbnails(Set<Long> meetingIds) {
+        if (meetingIds.isEmpty()) {
+            return new HashMap<>();
+        }
+        return meetingImageRepository.findRepresentativeImagesByMeetingIds(meetingIds).stream()
+                .collect(
+                        Collectors.toMap(
+                                MeetingImage::getMeetingId,
+                                image -> meetingImageUrlResolver.resolve(image.getObjectKey())));
+    }
+
+    private PostingListItem toListItem(
+            UnifiedPostingRow row, String regionName, String thumbnailUrl) {
+        PostingSourceType sourceType = PostingSourceType.valueOf(row.sourceType());
+        return new PostingListItem(
+                sourceType,
+                row.id(),
+                row.meetingId(),
+                row.title(),
+                row.organizationName(),
+                sourceType == PostingSourceType.MEETING_RECRUIT ? thumbnailUrl : null,
+                row.regionId(),
+                regionName,
+                row.place(),
+                row.activityStartAt(),
+                row.activityEndAt(),
+                row.applyDeadlineAt(),
+                row.maxParticipants(),
+                row.appliedCount(),
+                parseCategories(row.categoriesJson()),
+                row.status());
+    }
+
+    private List<PostingCategory> parseCategories(String categoriesJson) {
+        if (categoriesJson == null || categoriesJson.isBlank()) {
+            return Collections.emptyList();
+        }
+        try {
+            List<String> names =
+                    objectMapper.readValue(categoriesJson, new TypeReference<List<String>>() {});
+            return names.stream()
+                    .filter(java.util.Objects::nonNull)
+                    .map(PostingCategory::valueOf)
+                    .toList();
+        } catch (Exception e) {
+            log.warn("모집공고 카테고리 JSON 파싱 실패: {}", categoriesJson, e);
+            return Collections.emptyList();
+        }
     }
 }

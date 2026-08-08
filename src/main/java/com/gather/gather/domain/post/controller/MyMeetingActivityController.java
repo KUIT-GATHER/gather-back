@@ -2,12 +2,14 @@ package com.gather.gather.domain.post.controller;
 
 import com.gather.gather.domain.post.dto.MyMeetingActivitySummaryResponse;
 import com.gather.gather.domain.post.dto.PostSummaryResponse;
+import com.gather.gather.domain.post.dto.ReviewableActivityResponse;
 import com.gather.gather.domain.post.service.MyMeetingActivityService;
 import com.gather.gather.domain.recruit.dto.MyAppliedRecruitResponse;
 import com.gather.gather.global.common.ApiResponse;
 import com.gather.gather.global.common.PageResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
@@ -76,5 +78,16 @@ public class MyMeetingActivityController {
             @PathVariable Long meetingId, @PageableDefault(size = 20) Pageable pageable) {
         return ApiResponse.success(
                 myMeetingActivityService.getMyAppliedRecruits(meetingId, pageable));
+    }
+
+    @Operation(
+            summary = "후기 작성 가능 활동 조회",
+            description =
+                    "이 모임과 관련해 내가 완료한 활동(연결 공고 참여 완료, 모집공고 참석 완료) 중 아직 활성 후기를 쓰지 않은 것만 반환합니다."
+                            + " 가입자 전용입니다.")
+    @GetMapping("/reviewable-activities")
+    public ApiResponse<List<ReviewableActivityResponse>> getReviewableActivities(
+            @PathVariable Long meetingId) {
+        return ApiResponse.success(myMeetingActivityService.getReviewableActivities(meetingId));
     }
 }

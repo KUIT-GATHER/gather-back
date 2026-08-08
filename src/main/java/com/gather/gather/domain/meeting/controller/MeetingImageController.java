@@ -5,11 +5,13 @@ import com.gather.gather.domain.meeting.dto.MeetingImagePresignedUrlRequest;
 import com.gather.gather.domain.meeting.dto.MeetingImagePresignedUrlResponse;
 import com.gather.gather.domain.meeting.dto.MeetingImageUpdateRequest;
 import com.gather.gather.domain.meeting.dto.MeetingImageUpdateResponse;
+import com.gather.gather.domain.meeting.dto.MeetingManageImageResponse;
 import com.gather.gather.domain.meeting.service.MeetingImageService;
 import com.gather.gather.global.common.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -56,5 +58,14 @@ public class MeetingImageController {
     @GetMapping
     public ApiResponse<MeetingImageListResponse> getImages(@PathVariable Long meetingId) {
         return ApiResponse.success(meetingImageService.getImages(meetingId));
+    }
+
+    @Operation(
+            summary = "모임 이미지 관리 정보 조회",
+            description = "이미지 수정 화면에서 기존 이미지를 유지·재정렬할 때 필요한 objectKey를 포함해 반환합니다(모임장 전용).")
+    @GetMapping("/manage")
+    public ApiResponse<List<MeetingManageImageResponse>> getManageImages(
+            @PathVariable Long meetingId) {
+        return ApiResponse.success(meetingImageService.getManageImages(meetingId));
     }
 }

@@ -110,6 +110,11 @@ public class MeetingMember {
         this.status = MeetingMemberStatus.LEFT;
     }
 
+    /** 팀장이 멤버를 내보낸다(사용자 본인 탈퇴 leave()와 구분). */
+    public void remove() {
+        this.status = MeetingMemberStatus.REMOVED;
+    }
+
     public void submitRecognizedMinutes(Integer recognizedMinutes) {
         this.recognizedMinutes = recognizedMinutes;
     }

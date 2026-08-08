@@ -59,6 +59,7 @@ class PostServiceTest {
     @Mock private PostLikeRepository postLikeRepository;
     @Mock private PostImageService postImageService;
     @Mock private PostSummaryAssembler summaryAssembler;
+    @Mock private PostReviewSourceService postReviewSourceService;
 
     private PostService postService;
     private Meeting meeting;
@@ -74,7 +75,8 @@ class PostServiceTest {
                         meetingRepository,
                         meetingMemberRepository,
                         userRepository,
-                        eventPublisher);
+                        eventPublisher,
+                        postReviewSourceService);
         meeting = mock(Meeting.class);
     }
 
@@ -104,7 +106,8 @@ class PostServiceTest {
                             });
 
             postService.createPost(
-                    MEETING_ID, new PostCreateRequest("후기 제목", "내용", PostType.REVIEW, null, null));
+                    MEETING_ID,
+                    new PostCreateRequest("후기 제목", "내용", PostType.REVIEW, null, null, null, null));
 
             InOrder eventOrder = inOrder(eventPublisher);
             eventOrder
@@ -141,7 +144,8 @@ class PostServiceTest {
             when(postRepository.save(any(Post.class))).thenAnswer(returnsFirstArg());
 
             postService.createPost(
-                    MEETING_ID, new PostCreateRequest("자유 게시글", "내용", PostType.FREE, null, null));
+                    MEETING_ID,
+                    new PostCreateRequest("자유 게시글", "내용", PostType.FREE, null, null, null, null));
 
             verify(eventPublisher, never()).publishEvent(any(BadgeAwardRequestedEvent.class));
         }
@@ -175,7 +179,8 @@ class PostServiceTest {
                             });
 
             postService.createPost(
-                    MEETING_ID, new PostCreateRequest("자유 게시글", "내용", PostType.FREE, null, null));
+                    MEETING_ID,
+                    new PostCreateRequest("자유 게시글", "내용", PostType.FREE, null, null, null, null));
 
             ArgumentCaptor<Object> eventCaptor = ArgumentCaptor.forClass(Object.class);
             verify(eventPublisher).publishEvent(eventCaptor.capture());
@@ -215,7 +220,8 @@ class PostServiceTest {
                             });
 
             postService.createPost(
-                    MEETING_ID, new PostCreateRequest("공지", "내용", PostType.NOTICE, null, null));
+                    MEETING_ID,
+                    new PostCreateRequest("공지", "내용", PostType.NOTICE, null, null, null, null));
 
             verify(eventPublisher)
                     .publishEvent(
@@ -245,7 +251,13 @@ class PostServiceTest {
                                     postService.createPost(
                                             MEETING_ID,
                                             new PostCreateRequest(
-                                                    "공지", "내용", PostType.NOTICE, null, null)))
+                                                    "공지",
+                                                    "내용",
+                                                    PostType.NOTICE,
+                                                    null,
+                                                    null,
+                                                    null,
+                                                    null)))
                     .isInstanceOf(BusinessException.class)
                     .hasFieldOrPropertyWithValue("errorCode", ErrorCode.NOTICE_HOST_ONLY);
             verify(eventPublisher, never()).publishEvent(any());
@@ -270,7 +282,13 @@ class PostServiceTest {
                                     postService.createPost(
                                             MEETING_ID,
                                             new PostCreateRequest(
-                                                    "제목", "내용", PostType.FREE, null, null)))
+                                                    "제목",
+                                                    "내용",
+                                                    PostType.FREE,
+                                                    null,
+                                                    null,
+                                                    null,
+                                                    null)))
                     .isInstanceOf(BusinessException.class)
                     .hasFieldOrPropertyWithValue("errorCode", ErrorCode.MEETING_MEMBER_REQUIRED);
         }
@@ -289,7 +307,13 @@ class PostServiceTest {
                                     postService.createPost(
                                             MEETING_ID,
                                             new PostCreateRequest(
-                                                    "제목", "내용", PostType.FREE, null, null)))
+                                                    "제목",
+                                                    "내용",
+                                                    PostType.FREE,
+                                                    null,
+                                                    null,
+                                                    null,
+                                                    null)))
                     .isInstanceOf(BusinessException.class)
                     .hasFieldOrPropertyWithValue("errorCode", ErrorCode.MEETING_NOT_FOUND);
         }

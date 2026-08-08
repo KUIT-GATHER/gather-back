@@ -14,6 +14,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.gather.gather.domain.meeting.dto.MeetingCreateRequest;
 import com.gather.gather.domain.meeting.dto.MeetingResponse;
 import com.gather.gather.domain.meeting.enums.MeetingStatus;
+import com.gather.gather.domain.meeting.service.MeetingJoinRequestManagementService;
 import com.gather.gather.domain.meeting.service.MeetingKeywordRecommendationService;
 import com.gather.gather.domain.meeting.service.MeetingRecommendationService;
 import com.gather.gather.domain.meeting.service.MeetingService;
@@ -38,6 +39,8 @@ class MeetingControllerTest {
     @Autowired private MockMvc mockMvc;
 
     @MockitoBean private MeetingService meetingService;
+
+    @MockitoBean private MeetingJoinRequestManagementService meetingJoinRequestManagementService;
 
     @MockitoBean private MeetingKeywordRecommendationService meetingKeywordRecommendationService;
 

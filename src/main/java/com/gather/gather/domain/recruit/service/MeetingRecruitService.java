@@ -15,19 +15,24 @@ import com.gather.gather.domain.post.enums.PostType;
 import com.gather.gather.domain.post.repository.PostRepository;
 import com.gather.gather.domain.recruit.dto.RecruitCreateRequest;
 import com.gather.gather.domain.recruit.dto.RecruitDetailResponse;
+import com.gather.gather.domain.recruit.dto.RecruitParticipationAction;
 import com.gather.gather.domain.recruit.dto.RecruitParticipationResponse;
 import com.gather.gather.domain.recruit.dto.RecruitUpdateRequest;
 import com.gather.gather.domain.recruit.entity.MeetingRecruit;
 import com.gather.gather.domain.recruit.entity.MeetingRecruitParticipation;
 import com.gather.gather.domain.recruit.entity.MeetingRecruitParticipationStatus;
+import com.gather.gather.domain.recruit.entity.RecruitApplicantType;
+import com.gather.gather.domain.recruit.entity.RecruitConfirmationStatus;
 import com.gather.gather.domain.recruit.repository.MeetingRecruitParticipationRepository;
 import com.gather.gather.domain.recruit.repository.MeetingRecruitRepository;
+import com.gather.gather.domain.region.repository.RegionRepository;
 import com.gather.gather.global.exception.BusinessException;
 import com.gather.gather.global.exception.ErrorCode;
 import com.gather.gather.global.util.SecurityUtil;
-import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.EnumSet;
 import java.util.Optional;
+import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
@@ -39,9 +44,10 @@ import org.springframework.transaction.annotation.Transactional;
  * <p>권한 정책
  *
  * <ul>
- *   <li>작성: 모임장(HOST)만
- *   <li>상세 열람: 가입자만(RECRUIT은 미가입자 비노출)
- *   <li>참여신청/취소: 가입자만, 신청 마감일 이전에만, 정원 내에서만
+ *   <li>작성·수정: 모임장(HOST)만
+ *   <li>상세 열람: {@code external=false}면 승인된 모임원만, {@code external=true}면 비로그인 포함 누구나
+ *   <li>참여신청/취소: {@code external=false}면 승인된 모임원만, {@code external=true}면 로그인한 사용자 누구나. 신청 마감 전이고
+ *       아직 확정(CONFIRMED)되지 않은 동안만 가능
  * </ul>
  */
 @Service
@@ -50,10 +56,20 @@ import org.springframework.transaction.annotation.Transactional;
 public class MeetingRecruitService {
 
     private static final String POSTING_CREATED_MESSAGE = "[%s]에 새 봉사공고가 등록되었어요.";
+
+    /** 현재 신청 인원(정원 계산용)에 포함되는 상태 - 취소·반려된 신청은 제외한다. */
+    private static final Set<MeetingRecruitParticipationStatus> ACTIVE_STATUSES =
+            EnumSet.of(
+                    MeetingRecruitParticipationStatus.APPLIED,
+                    MeetingRecruitParticipationStatus.CONFIRMED,
+                    MeetingRecruitParticipationStatus.COMPLETED,
+                    MeetingRecruitParticipationStatus.REVIEWED);
+
     private final PostRepository postRepository;
     private final MeetingRepository meetingRepository;
     private final MeetingMemberRepository meetingMemberRepository;
     private final UserRepository userRepository;
+    private final RegionRepository regionRepository;
     private final MeetingRecruitRepository meetingRecruitRepository;
     private final MeetingRecruitParticipationRepository participationRepository;
     private final ApplicationEventPublisher eventPublisher;
@@ -62,13 +78,11 @@ public class MeetingRecruitService {
     public RecruitDetailResponse createRecruit(Long meetingId, RecruitCreateRequest request) {
         Long userId = SecurityUtil.getCurrentUserId();
         Meeting meeting = getMeeting(meetingId);
-        MeetingMember membership = getApprovedMembership(meetingId, userId);
-        if (membership.getRole() != MeetingMemberRole.HOST) {
-            throw new BusinessException(ErrorCode.RECRUIT_HOST_ONLY);
-        }
-        if (request.timeRecognized() && request.recognizedMinutes() == null) {
-            throw new BusinessException(ErrorCode.RECRUIT_RECOGNIZED_MINUTES_REQUIRED);
-        }
+        requireHost(meetingId, userId);
+        validateSchedule(
+                request.activityStartAt(), request.activityEndAt(), request.applyDeadlineAt());
+        Integer recognizedMinutes =
+                resolveRecognizedMinutes(request.timeRecognized(), request.recognizedMinutes());
 
         User author = getUser(userId);
         Post post =
@@ -85,20 +99,18 @@ public class MeetingRecruitService {
                 meetingRecruitRepository.save(
                         MeetingRecruit.create(
                                 post.getId(),
+                                request.regionId(),
                                 request.place(),
-                                request.actDate(),
-                                request.actStartTime(),
-                                request.actEndTime(),
+                                request.activityStartAt(),
+                                request.activityEndAt(),
                                 request.maxParticipants(),
                                 request.timeRecognized(),
-                                request.recognizedMinutes(),
-                                request.applyDeadline(),
-                                request.isExternal(),
+                                recognizedMinutes,
+                                request.applyDeadlineAt(),
+                                request.external(),
                                 request.categories()));
 
         String message = POSTING_CREATED_MESSAGE.formatted(meeting.getName());
-
-        // 일반 게시글과 동일하게 등록 알림을 발행한다(모임원에게 새 모집공고 알림).
         eventPublisher.publishEvent(
                 new MeetingPostNotificationRequestedEvent(
                         meeting.getId(),
@@ -107,192 +119,264 @@ public class MeetingRecruitService {
                         NotificationType.MEETING_POSTING_CREATED,
                         message));
 
-        return toDetail(post, recruit, author, 0, false, true, true);
+        return toDetail(post, recruit, meeting, author, 0, null, true, true, true);
     }
 
     @Transactional
     public RecruitDetailResponse updateRecruit(
             Long meetingId, Long postId, RecruitUpdateRequest request) {
         Long userId = SecurityUtil.getCurrentUserId();
-        getMeeting(meetingId);
+        Meeting meeting = getMeeting(meetingId);
         Post post = getRecruitPost(meetingId, postId);
         if (!post.isAuthor(userId)) {
             throw new BusinessException(ErrorCode.POST_FORBIDDEN);
         }
-        if (request.timeRecognized() && request.recognizedMinutes() == null) {
-            throw new BusinessException(ErrorCode.RECRUIT_RECOGNIZED_MINUTES_REQUIRED);
-        }
+        validateSchedule(
+                request.activityStartAt(), request.activityEndAt(), request.applyDeadlineAt());
+        Integer recognizedMinutes =
+                resolveRecognizedMinutes(request.timeRecognized(), request.recognizedMinutes());
 
         MeetingRecruit recruit = getRecruitDetail(postId);
-        int appliedCount = (int) participationRepository.countByPostId(postId);
-        // 이미 신청한 인원보다 정원을 적게 줄일 수는 없다.
+        long appliedCount =
+                participationRepository.countByPostIdAndStatusIn(postId, ACTIVE_STATUSES);
         if (request.maxParticipants() < appliedCount) {
             throw new BusinessException(ErrorCode.RECRUIT_MAX_BELOW_APPLIED);
         }
 
         post.update(request.title(), request.content());
         recruit.update(
+                request.regionId(),
                 request.place(),
-                request.actDate(),
-                request.actStartTime(),
-                request.actEndTime(),
+                request.activityStartAt(),
+                request.activityEndAt(),
                 request.maxParticipants(),
                 request.timeRecognized(),
-                request.recognizedMinutes(),
-                request.applyDeadline(),
-                request.isExternal(),
+                recognizedMinutes,
+                request.applyDeadlineAt(),
+                request.external(),
                 request.categories());
 
-        boolean applied = participationRepository.existsByPostIdAndUserId(postId, userId);
+        MeetingRecruitParticipationStatus status =
+                participationRepository
+                        .findByPostIdAndUserId(postId, userId)
+                        .map(MeetingRecruitParticipation::getStatus)
+                        .orElse(null);
         // 수정은 작성자 본인만 도달하므로 canEdit/canDelete 모두 true.
-        return toDetail(post, recruit, post.getUser(), appliedCount, applied, true, true);
-    }
-
-    public RecruitDetailResponse getRecruit(Long meetingId, Long postId) {
-        Long userId = SecurityUtil.getCurrentUserId();
-        getMeeting(meetingId);
-        if (!isApprovedMember(meetingId, userId)) {
-            throw new BusinessException(ErrorCode.POST_ACCESS_DENIED);
-        }
-
-        Post post = getRecruitPost(meetingId, postId);
-        MeetingRecruit recruit = getRecruitDetail(postId);
-
-        int appliedCount = (int) participationRepository.countByPostId(postId);
-        boolean applied = participationRepository.existsByPostIdAndUserId(postId, userId);
-        boolean host = isHost(meetingId, userId);
         return toDetail(
                 post,
                 recruit,
+                meeting,
                 post.getUser(),
-                appliedCount,
-                applied,
-                post.isAuthor(userId),
-                post.isAuthor(userId) || host);
+                (int) appliedCount,
+                status,
+                true,
+                true,
+                true);
+    }
+
+    public RecruitDetailResponse getRecruit(Long meetingId, Long postId) {
+        Long userId = SecurityUtil.getCurrentUserIdOrNull();
+        Meeting meeting = getMeeting(meetingId);
+        Post post = getRecruitPost(meetingId, postId);
+        MeetingRecruit recruit = getRecruitDetail(postId);
+
+        boolean member = userId != null && isApprovedMember(meetingId, userId);
+        if (!recruit.isExternal() && !member) {
+            throw new BusinessException(ErrorCode.POST_ACCESS_DENIED);
+        }
+
+        long appliedCount =
+                participationRepository.countByPostIdAndStatusIn(postId, ACTIVE_STATUSES);
+        MeetingRecruitParticipationStatus status =
+                userId == null
+                        ? null
+                        : participationRepository
+                                .findByPostIdAndUserId(postId, userId)
+                                .map(MeetingRecruitParticipation::getStatus)
+                                .orElse(null);
+        boolean author = userId != null && post.isAuthor(userId);
+        boolean host = userId != null && isHost(meetingId, userId);
+        return toDetail(
+                post,
+                recruit,
+                meeting,
+                post.getUser(),
+                (int) appliedCount,
+                status,
+                member,
+                author,
+                author || host);
     }
 
     @Transactional
     public RecruitParticipationResponse toggleParticipation(Long meetingId, Long postId) {
         Long userId = SecurityUtil.getCurrentUserId();
         getMeeting(meetingId);
-        if (!isApprovedMember(meetingId, userId)) {
+        Post post = getRecruitPost(meetingId, postId);
+        MeetingRecruit recruit = getRecruitDetail(postId);
+
+        boolean member = isApprovedMember(meetingId, userId);
+        if (!recruit.isExternal() && !member) {
             throw new BusinessException(ErrorCode.MEETING_MEMBER_REQUIRED);
         }
+        RecruitApplicantType applicantType =
+                member ? RecruitApplicantType.MEMBER : RecruitApplicantType.EXTERNAL;
+        LocalDateTime now = LocalDateTime.now();
 
-        getRecruitPost(meetingId, postId);
-        MeetingRecruit recruit = getRecruitDetail(postId);
-
-        // 신청기간이 끝나면 신청·취소 모두 불가(피그마: 종료 후 버튼 상태 변경 불가).
-        if (!recruit.isApplicationOpen(LocalDate.now())) {
-            throw new BusinessException(ErrorCode.RECRUIT_APPLICATION_CLOSED);
-        }
-
-        long currentCount = participationRepository.countByPostId(postId);
-        Optional<MeetingRecruitParticipation> existing =
+        Optional<MeetingRecruitParticipation> existingOpt =
                 participationRepository.findByPostIdAndUserId(postId, userId);
 
-        if (existing.isPresent()) {
-            participationRepository.delete(existing.get());
+        if (existingOpt.isEmpty()) {
+            requireOpen(recruit, now);
+            requireCapacity(postId, recruit);
+            MeetingRecruitParticipation saved =
+                    participationRepository.save(
+                            MeetingRecruitParticipation.apply(postId, userId, applicantType));
+            long count = participationRepository.countByPostIdAndStatusIn(postId, ACTIVE_STATUSES);
             return new RecruitParticipationResponse(
-                    false, (int) (currentCount - 1), recruit.getMaxParticipants());
+                    saved.getId(),
+                    MeetingRecruitParticipationStatus.APPLIED,
+                    RecruitParticipationAction.CANCEL,
+                    (int) count);
         }
 
-        if (currentCount >= recruit.getMaxParticipants()) {
+        MeetingRecruitParticipation participation = existingOpt.get();
+        return switch (participation.getStatus()) {
+            case APPLIED -> {
+                requireOpen(recruit, now);
+                participation.cancel();
+                long count =
+                        participationRepository.countByPostIdAndStatusIn(postId, ACTIVE_STATUSES);
+                boolean open = isOpen(recruit, now);
+                yield new RecruitParticipationResponse(
+                        participation.getId(),
+                        MeetingRecruitParticipationStatus.CANCELLED,
+                        open ? RecruitParticipationAction.APPLY : RecruitParticipationAction.NONE,
+                        (int) count);
+            }
+            case CANCELLED -> {
+                requireOpen(recruit, now);
+                requireCapacity(postId, recruit);
+                participation.reapply(applicantType);
+                long count =
+                        participationRepository.countByPostIdAndStatusIn(postId, ACTIVE_STATUSES);
+                yield new RecruitParticipationResponse(
+                        participation.getId(),
+                        MeetingRecruitParticipationStatus.APPLIED,
+                        RecruitParticipationAction.CANCEL,
+                        (int) count);
+            }
+            case REJECTED -> throw new BusinessException(ErrorCode.RECRUIT_REAPPLY_NOT_ALLOWED);
+            case CONFIRMED, COMPLETED, REVIEWED ->
+                    throw new BusinessException(ErrorCode.RECRUIT_CONFIRMED_LOCKED);
+        };
+    }
+
+    private void requireOpen(MeetingRecruit recruit, LocalDateTime now) {
+        if (recruit.getConfirmationStatus() == RecruitConfirmationStatus.CONFIRMED) {
+            throw new BusinessException(ErrorCode.RECRUIT_CONFIRMED_LOCKED);
+        }
+        if (!recruit.isApplicationOpen(now)) {
+            throw new BusinessException(ErrorCode.RECRUIT_APPLICATION_CLOSED);
+        }
+    }
+
+    private boolean isOpen(MeetingRecruit recruit, LocalDateTime now) {
+        return recruit.getConfirmationStatus() == RecruitConfirmationStatus.UNCONFIRMED
+                && recruit.isApplicationOpen(now);
+    }
+
+    private void requireCapacity(Long postId, MeetingRecruit recruit) {
+        long activeCount =
+                participationRepository.countByPostIdAndStatusIn(postId, ACTIVE_STATUSES);
+        if (activeCount >= recruit.getMaxParticipants()) {
             throw new BusinessException(ErrorCode.RECRUIT_CAPACITY_EXCEEDED);
         }
-        participationRepository.save(MeetingRecruitParticipation.apply(postId, userId));
-        return new RecruitParticipationResponse(
-                true, (int) (currentCount + 1), recruit.getMaxParticipants());
     }
 
-    /** 팀장이 신청(APPLIED) 참여를 확정(CONFIRMED)한다. */
-    @Transactional
-    public void confirmParticipation(Long meetingId, Long postId, Long participationId) {
-        Long userId = SecurityUtil.getCurrentUserId();
-        getMeeting(meetingId);
-        MeetingMember membership = getApprovedMembership(meetingId, userId);
-        if (membership.getRole() != MeetingMemberRole.HOST) {
-            throw new BusinessException(ErrorCode.RECRUIT_HOST_ONLY);
+    private RecruitParticipationAction resolveAction(
+            MeetingRecruitParticipationStatus status,
+            MeetingRecruit recruit,
+            boolean eligible,
+            LocalDateTime now) {
+        boolean open = eligible && isOpen(recruit, now);
+        if (status == null) {
+            return open ? RecruitParticipationAction.APPLY : RecruitParticipationAction.NONE;
         }
-        getRecruitPost(meetingId, postId);
-
-        MeetingRecruitParticipation participation = getParticipationInPost(postId, participationId);
-        if (participation.getStatus() != MeetingRecruitParticipationStatus.APPLIED) {
-            throw new BusinessException(ErrorCode.RECRUIT_PARTICIPATION_CONFIRM_NOT_ALLOWED);
-        }
-        participation.confirm();
+        return switch (status) {
+            case APPLIED ->
+                    open ? RecruitParticipationAction.CANCEL : RecruitParticipationAction.NONE;
+            case CANCELLED ->
+                    open ? RecruitParticipationAction.APPLY : RecruitParticipationAction.NONE;
+            case REJECTED, CONFIRMED, COMPLETED, REVIEWED -> RecruitParticipationAction.NONE;
+        };
     }
 
-    /**
-     * 활동 종료 후 팀장이 확정(CONFIRMED) 참가자의 참석 여부를 처리한다. 참석 처리된 참가자만 봉사완료(COMPLETED)로 전환된다(정책: CONFIRMED →
-     * 활동 종료 → 팀장이 PRESENT 처리 → 해당 참가자만 COMPLETED).
-     */
-    @Transactional
-    public void markParticipantPresent(Long meetingId, Long postId, Long participationId) {
-        Long userId = SecurityUtil.getCurrentUserId();
-        getMeeting(meetingId);
-        MeetingMember membership = getApprovedMembership(meetingId, userId);
-        if (membership.getRole() != MeetingMemberRole.HOST) {
-            throw new BusinessException(ErrorCode.RECRUIT_HOST_ONLY);
+    private void validateSchedule(
+            LocalDateTime activityStartAt,
+            LocalDateTime activityEndAt,
+            LocalDateTime applyDeadlineAt) {
+        if (!activityStartAt.isBefore(activityEndAt)) {
+            throw new BusinessException(ErrorCode.RECRUIT_INVALID_SCHEDULE);
         }
-        getRecruitPost(meetingId, postId);
-        MeetingRecruit recruit = getRecruitDetail(postId);
-        if (!recruit.isActivityEnded(LocalDateTime.now())) {
-            throw new BusinessException(ErrorCode.RECRUIT_ACTIVITY_NOT_ENDED);
+        if (applyDeadlineAt.isAfter(activityStartAt)) {
+            throw new BusinessException(ErrorCode.RECRUIT_INVALID_DEADLINE);
         }
-
-        MeetingRecruitParticipation participation = getParticipationInPost(postId, participationId);
-        if (participation.getStatus() != MeetingRecruitParticipationStatus.CONFIRMED) {
-            throw new BusinessException(ErrorCode.RECRUIT_PRESENT_NOT_ALLOWED);
-        }
-        participation.complete();
     }
 
-    private MeetingRecruitParticipation getParticipationInPost(Long postId, Long participationId) {
-        MeetingRecruitParticipation participation =
-                participationRepository
-                        .findById(participationId)
-                        .orElseThrow(
-                                () ->
-                                        new BusinessException(
-                                                ErrorCode.RECRUIT_PARTICIPATION_NOT_FOUND));
-        if (!participation.getPostId().equals(postId)) {
-            throw new BusinessException(ErrorCode.RECRUIT_PARTICIPATION_NOT_FOUND);
+    private Integer resolveRecognizedMinutes(boolean timeRecognized, Integer recognizedMinutes) {
+        if (timeRecognized && recognizedMinutes == null) {
+            throw new BusinessException(ErrorCode.RECRUIT_RECOGNIZED_MINUTES_REQUIRED);
         }
-        return participation;
+        return timeRecognized ? recognizedMinutes : null;
     }
 
     private RecruitDetailResponse toDetail(
             Post post,
             MeetingRecruit recruit,
+            Meeting meeting,
             User author,
             int appliedCount,
-            boolean applied,
+            MeetingRecruitParticipationStatus participationStatus,
+            boolean eligible,
             boolean canEdit,
             boolean canDelete) {
+        LocalDateTime now = LocalDateTime.now();
+        String regionName =
+                recruit.getRegionId() == null
+                        ? null
+                        : regionRepository
+                                .findById(recruit.getRegionId())
+                                .map(r -> r.getName())
+                                .orElse(null);
         return new RecruitDetailResponse(
                 post.getId(),
-                post.getMeeting().getId(),
+                meeting.getId(),
+                meeting.getName(),
                 post.getTitle(),
                 post.getContent(),
                 author.getId(),
                 author.getNickname(),
+                recruit.getRegionId(),
+                regionName,
                 recruit.getPlace(),
-                recruit.getActDate(),
-                recruit.getActStartTime(),
-                recruit.getActEndTime(),
+                recruit.getActivityStartAt(),
+                recruit.getActivityEndAt(),
+                recruit.getApplyDeadlineAt(),
                 recruit.getMaxParticipants(),
+                appliedCount,
                 recruit.getCategories(),
                 recruit.isTimeRecognized(),
                 recruit.getRecognizedMinutes(),
-                recruit.getApplyDeadline(),
                 recruit.isExternal(),
                 post.getLikeCount(),
                 post.getCommentCount(),
-                appliedCount,
-                applied,
-                recruit.isApplicationOpen(LocalDate.now()),
+                isOpen(recruit, now),
                 appliedCount >= recruit.getMaxParticipants(),
+                recruit.getConfirmationStatus(),
+                recruit.getConfirmedAt(),
+                participationStatus,
+                resolveAction(participationStatus, recruit, eligible, now),
                 canEdit,
                 canDelete,
                 post.getCreatedAt(),
@@ -334,11 +418,16 @@ public class MeetingRecruitService {
                 meetingId, userId, MeetingMemberStatus.APPROVED);
     }
 
-    private MeetingMember getApprovedMembership(Long meetingId, Long userId) {
-        return meetingMemberRepository
-                .findByMeeting_IdAndUser_IdAndStatus(
-                        meetingId, userId, MeetingMemberStatus.APPROVED)
-                .orElseThrow(() -> new BusinessException(ErrorCode.MEETING_MEMBER_REQUIRED));
+    private void requireHost(Long meetingId, Long userId) {
+        MeetingMember membership =
+                meetingMemberRepository
+                        .findByMeeting_IdAndUser_IdAndStatus(
+                                meetingId, userId, MeetingMemberStatus.APPROVED)
+                        .orElseThrow(
+                                () -> new BusinessException(ErrorCode.MEETING_MEMBER_REQUIRED));
+        if (membership.getRole() != MeetingMemberRole.HOST) {
+            throw new BusinessException(ErrorCode.RECRUIT_HOST_ONLY);
+        }
     }
 
     private boolean isHost(Long meetingId, Long userId) {
