@@ -6,6 +6,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -17,6 +18,7 @@ import org.springframework.transaction.annotation.Transactional;
  * 검사해 짧은 이름이 우연히 부분열로 겹치는 오매칭을 방지).
  */
 @Component
+@Slf4j
 @RequiredArgsConstructor
 public class VmsRegionResolver {
 
@@ -46,7 +48,11 @@ public class VmsRegionResolver {
             return sigungu != null ? sigungu.getId() : sido.getId();
         }
 
-        return resolveViaRenameAlias(sidoCandidates, vmsAreaText);
+        Long resolvedViaAlias = resolveViaRenameAlias(sidoCandidates, vmsAreaText);
+        if (resolvedViaAlias == null) {
+            log.warn("VMS 지역 매칭 실패. vmsAreaText={}", vmsAreaText);
+        }
+        return resolvedViaAlias;
     }
 
     private Long resolveViaRenameAlias(List<Region> sidoCandidates, String vmsAreaText) {
