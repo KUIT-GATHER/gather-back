@@ -114,13 +114,46 @@ class UnifiedPostingQueryRepositoryTest {
                 .containsExactly(closedFar.getId(), closedNear.getId());
     }
 
+    @Test
+    void search_ordersByAppliedCountDescending_whenSortIsAppliedCount() {
+        Posting fewApplicants = save(PostingStatus.RECRUITING, TODAY.plusDays(1), 1);
+        Posting mostApplicants = save(PostingStatus.RECRUITING, TODAY.plusDays(1), 10);
+        Posting noApplicants = save(PostingStatus.RECRUITING, TODAY.plusDays(1), 0);
+        Pageable appliedCountDescending =
+                PageRequest.of(
+                        0,
+                        20,
+                        Sort.by(Sort.Direction.DESC, "appliedCount")
+                                .and(Sort.by(Sort.Direction.DESC, "id")));
+
+        SearchResult result =
+                unifiedPostingQueryRepository.search(
+                        PostingStatus.RECRUITING,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        appliedCountDescending);
+
+        assertThat(result.rows())
+                .extracting(UnifiedPostingRow::id)
+                .containsExactly(
+                        mostApplicants.getId(), fewApplicants.getId(), noApplicants.getId());
+    }
+
     private Posting save(PostingStatus status, LocalDate noticeEnd) {
+        return save(status, noticeEnd, null);
+    }
+
+    private Posting save(PostingStatus status, LocalDate noticeEnd, Integer applicantCount) {
         return postingRepository.save(
                 Posting.builder()
                         .title("테스트 공고")
                         .status(status)
                         .activityDate(LocalDate.of(2026, 7, 15))
                         .noticeEndDate(noticeEnd)
+                        .applicantCount(applicantCount)
                         .category(PostingCategory.ENVIRONMENT)
                         .source(PostingSource.API_1365)
                         .build());

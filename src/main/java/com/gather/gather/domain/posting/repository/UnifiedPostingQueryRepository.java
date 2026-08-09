@@ -36,7 +36,8 @@ public class UnifiedPostingQueryRepository {
                     "id", "id",
                     "createdAt", "created_at",
                     "activityStartAt", "activity_start_at",
-                    "applyDeadlineAt", "apply_deadline_at");
+                    "applyDeadlineAt", "apply_deadline_at",
+                    "appliedCount", "applied_count");
 
     private static final List<String> ACTIVE_PARTICIPATION_STATUSES =
             List.of("APPLIED", "CONFIRMED", "COMPLETED", "REVIEWED");
