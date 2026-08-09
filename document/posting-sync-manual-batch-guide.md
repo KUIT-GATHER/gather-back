@@ -64,15 +64,20 @@ ssh <EC2_USER>@<EC2_HOST>
 # 현재 env 파일 백업 (실수 대비, 항상 먼저)
 sudo cp /etc/gather/gather.env /etc/gather/gather.env.bak.$(date +%Y%m%d-%H%M%S)
 
-# 현재 설정 확인 (기존에 뭐가 들어있는지 먼저 보세요)
-# ⚠️ gather.env에는 JWT secret, DB 비밀번호, API 키 등 민감정보가 모두 들어있습니다.
-# cat으로 전체를 열람하지 말고, 필요한 키만 grep으로 확인하세요.
-sudo grep -E '^(VOLUNTEER_API_SERVICE_KEY|POSTING_SYNC_MANUAL_ENDPOINT_ENABLED)=' /etc/gather/gather.env
+# 현재 설정의 존재 여부만 확인합니다. 값은 stdout에 출력하지 않습니다.
+for key in VOLUNTEER_API_SERVICE_KEY POSTING_SYNC_MANUAL_ENDPOINT_ENABLED
+do
+  if sudo grep -qE "^${key}=.+$" /etc/gather/gather.env; then
+    echo "${key}: PRESENT"
+  else
+    echo "${key}: MISSING"
+  fi
+done
 ```
 
-> **터미널 출력 공유 금지**: 위 명령 결과(특히 실수로 `cat` 전체를 열람한 경우)는 스크린샷,
-> 채팅, 로그 등 어디에도 공유하지 마세요. JWT secret이나 DB 비밀번호가 노출되면 즉시
-> 팀에 알리고 값을 교체해야 합니다.
+> **터미널 출력 공유 금지**: `cat`이나 값이 출력되는 `grep`으로 `gather.env`를 열람하지
+> 마세요. 실제 값이 노출되면 screenshot, 채팅, 로그 등에 공유하지 말고 즉시 팀에 알려
+> 필요한 secret을 교체해야 합니다.
 
 ---
 
@@ -224,6 +229,7 @@ curl --fail http://localhost:8080/health
 
 ## 참고 코드 위치
 
+- 운영 배포 구조와 환경변수 계약: `document/deployment-runbook.md`
 - 스케줄러: `src/main/java/com/gather/gather/domain/posting/scheduler/PostingSyncScheduler.java`
 - 수동 트리거 컨트롤러: `src/main/java/com/gather/gather/domain/posting/controller/PostingSyncController.java`
 - 동기화 로직 / 페이지 크기·상세조회 상한: `src/main/java/com/gather/gather/domain/posting/service/PostingSyncService.java`

@@ -73,11 +73,15 @@ docker run -d --name gather-mysql -e MYSQL_ROOT_PASSWORD=원하는비밀번호 -
 `src/main/resources/application-local.yml`이 없다면 `.example`을 복사해서 만들고,
 자기 DB의 주소/계정/비밀번호가 연결되도록 하세요. (이 파일도 gitignore라 각자 달라도 됩니다)
 
-### D. 공통 — 새 DB라면 최초 1회는 서버부터 실행
+### D. 공통 — 새 DB라면 Flyway migration 확인
 
-새로 만든 DB에는 테이블이 없어서 테스트가 실패합니다.
-**`GatherApplication`을 한 번 실행하면 테이블이 자동 생성**되고(ddl-auto: update),
-그다음부터 테스트가 정상적으로 돌아갑니다.
+새로 만든 DB에는 애플리케이션 시작 시 Flyway가 `src/main/resources/db/migration`의 migration을
+버전 순서대로 적용합니다. 그 뒤 Hibernate의 `ddl-auto: validate`가 Entity mapping과 실제
+schema가 일치하는지 검증합니다.
+
+Hibernate가 table을 자동 생성하거나 기존 schema를 임의로 변경하지 않습니다. 애플리케이션이
+기동하지 않으면 `Flyway` 오류와 `flyway_schema_history` 상태를 먼저 확인하고, migration 파일이나
+운영 DB schema를 임의로 수정하지 말고 팀에 공유하세요.
 
 > 테스트가 무더기로 실패하면서 에러에 `Dialect`, `DataSource`가 보이면
 > 대부분 MySQL이 안 켜져 있는 상황입니다. 코드 문제 아닙니다.
@@ -166,7 +170,7 @@ PR마다 GitHub Actions가 **포맷 검사(Spotless) + 전체 테스트**를 자
 |---|---|---|
 | 서버 부팅 실패 (JwtProperties 에러) | `jwt.secret` 없음/형식 오류 | 1번 참고 — `application-secret.yml` 확인 |
 | 테스트 무더기 실패 (Dialect/DataSource 에러) | 로컬 MySQL 안 떠 있음 | 2번 참고 — MySQL 시작 |
-| 테이블 없다는 에러 (validate 실패) | 새 DB에 테이블 미생성 | 2-D 참고 — 서버 한 번 실행 |
+| Flyway 또는 schema validate 실패 | migration 실패 또는 Entity/schema 불일치 | 2-D 참고 — Flyway 로그와 `flyway_schema_history` 확인 |
 | CI에서 spotlessCheck 실패 | 포맷 위반 | `./gradlew spotlessApply` 후 커밋 |
 | API가 전부 401 | 토큰 없음/만료 | Swagger Authorize 또는 헤더 확인 |
 
@@ -175,4 +179,5 @@ PR마다 GitHub Actions가 **포맷 검사(Spotless) + 전체 테스트**를 자
 ## 📄 참고
 
 - 프론트엔드 API 연동 가이드(Bearer 헤더, 401 분기, 토큰 재발급): `document/frontend-api-guide.md`
+- 운영 배포 구조와 기본 장애 대응: `document/deployment-runbook.md`
 - 배포는 배포 담당자가 진행합니다. 팀원은 develop 머지까지만 신경 쓰면 됩니다.
