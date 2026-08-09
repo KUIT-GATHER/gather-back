@@ -162,17 +162,6 @@ final class AuthSwaggerExamples {
               }
             }
             """;
-    static final String INVALID_ACTIVITY_REGION_EXAMPLE =
-            """
-            {
-              "success": false,
-              "data": null,
-              "error": {
-                "code": "INVALID_ACTIVITY_REGION",
-                "message": "활동 지역은 시군구 단위로 1개 선택해야 합니다."
-              }
-            }
-            """;
     static final String INVALID_INTEREST_CATEGORY_COUNT_EXAMPLE =
             """
             {
@@ -217,6 +206,17 @@ final class AuthSwaggerExamples {
               }
             }
             """;
+    static final String WITHDRAWAL_PENDING_USER_EXAMPLE =
+            """
+            {
+              "success": false,
+              "data": null,
+              "error": {
+                "code": "WITHDRAWAL_PENDING_USER",
+                "message": "탈퇴 처리 중인 계정입니다."
+              }
+            }
+            """;
     static final String WITHDRAWN_USER_EXAMPLE =
             """
             {
@@ -225,6 +225,17 @@ final class AuthSwaggerExamples {
               "error": {
                 "code": "WITHDRAWN_USER",
                 "message": "탈퇴한 계정입니다."
+              }
+            }
+            """;
+    static final String ACCOUNT_REJOIN_BLOCKED_EXAMPLE =
+            """
+            {
+              "success": false,
+              "data": null,
+              "error": {
+                "code": "ACCOUNT_REJOIN_BLOCKED",
+                "message": "탈퇴 후 7일 동안 재가입할 수 없습니다."
               }
             }
             """;
