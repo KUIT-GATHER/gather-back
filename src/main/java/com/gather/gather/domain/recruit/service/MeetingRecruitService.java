@@ -44,7 +44,7 @@ import org.springframework.transaction.annotation.Transactional;
  * <p>권한 정책
  *
  * <ul>
- *   <li>작성·수정: 모임장(HOST)만
+ *   <li>작성·수정: 모임장(HOST)만. 단, 공고 기반 모임(volunteerPostingId != null)은 작성 불가(자유 모임의 팀장만 작성 가능)
  *   <li>상세 열람: {@code external=false}면 승인된 모임원만, {@code external=true}면 비로그인 포함 누구나
  *   <li>참여신청/취소: {@code external=false}면 승인된 모임원만, {@code external=true}면 로그인한 사용자 누구나. 신청 마감 전이고
  *       아직 확정(CONFIRMED)되지 않은 동안만 가능
@@ -79,6 +79,11 @@ public class MeetingRecruitService {
         Long userId = SecurityUtil.getCurrentUserId();
         Meeting meeting = getMeeting(meetingId);
         requireHost(meetingId, userId);
+        // RECRUIT 게시글은 자유 모임의 팀장만 작성할 수 있다. 공고 기반 모임(volunteerPostingId != null)은
+        // 이미 원본 봉사공고가 있으므로 자체 모집공고를 별도로 만들 수 없다(프론트 UI 차단과 별개로 서버에서도 보장).
+        if (meeting.isPostingBased()) {
+            throw new BusinessException(ErrorCode.RECRUIT_POSTING_BASED_NOT_ALLOWED);
+        }
         validateSchedule(
                 request.activityStartAt(), request.activityEndAt(), request.applyDeadlineAt());
         Integer recognizedMinutes =
@@ -108,7 +113,8 @@ public class MeetingRecruitService {
                                 recognizedMinutes,
                                 request.applyDeadlineAt(),
                                 request.external(),
-                                request.categories()));
+                                request.categories(),
+                                request.participationCondition()));
 
         String message = POSTING_CREATED_MESSAGE.formatted(meeting.getName());
         eventPublisher.publishEvent(
@@ -154,7 +160,8 @@ public class MeetingRecruitService {
                 recognizedMinutes,
                 request.applyDeadlineAt(),
                 request.external(),
-                request.categories());
+                request.categories(),
+                request.participationCondition());
 
         MeetingRecruitParticipationStatus status =
                 participationRepository
@@ -369,6 +376,7 @@ public class MeetingRecruitService {
                 recruit.isTimeRecognized(),
                 recruit.getRecognizedMinutes(),
                 recruit.isExternal(),
+                recruit.getParticipationCondition(),
                 post.getLikeCount(),
                 post.getCommentCount(),
                 isOpen(recruit, now),
