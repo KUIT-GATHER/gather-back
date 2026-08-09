@@ -53,8 +53,13 @@ dependencies {
 	testAnnotationProcessor 'org.projectlombok:lombok'
 }
 
-tasks.named('test') {
+tasks.withType(Test).configureEach {
 	useJUnitPlatform()
+	systemProperty 'user.timezone', 'UTC'
+}
+
+tasks.named('bootRun') {
+	systemProperty 'user.timezone', 'UTC'
 }
 
 // 로컬 시크릿 파일이 빌드 산출물(jar)에 패키징되는 것을 방지. 운영은 JWT_SECRET 환경변수로 주입됨.
