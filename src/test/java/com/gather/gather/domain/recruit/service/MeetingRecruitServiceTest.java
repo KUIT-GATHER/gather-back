@@ -112,6 +112,7 @@ class MeetingRecruitServiceTest {
         assertThat(response.participationStatus()).isNull();
         assertThat(response.participationAction()).isEqualTo(RecruitParticipationAction.APPLY);
         assertThat(response.canEdit()).isTrue();
+        assertThat(response.participationCondition()).isEqualTo("성인 및 청소년 단체 신청 가능");
 
         verify(meetingRecruitRepository).save(any(MeetingRecruit.class));
         verify(eventPublisher)
@@ -141,6 +142,30 @@ class MeetingRecruitServiceTest {
                                         MEETING_ID, createRequest(30, false, null)))
                 .isInstanceOf(BusinessException.class)
                 .hasFieldOrPropertyWithValue("errorCode", ErrorCode.RECRUIT_HOST_ONLY);
+
+        verify(postRepository, never()).save(any());
+        verify(eventPublisher, never()).publishEvent(Mockito.any(Object.class));
+    }
+
+    @Test
+    @DisplayName("공고 기반 모임의 팀장은 자체 모집공고를 작성할 수 없다")
+    void createRecruit_rejectsPostingBasedMeeting() {
+        Meeting meeting = meeting();
+        Mockito.lenient().when(meeting.isPostingBased()).thenReturn(true);
+        MeetingMember host = member(MeetingMemberRole.HOST);
+        when(meetingRepository.findByIdAndDeletedAtIsNull(MEETING_ID))
+                .thenReturn(Optional.of(meeting));
+        when(meetingMemberRepository.findByMeeting_IdAndUser_IdAndStatus(
+                        MEETING_ID, USER_ID, MeetingMemberStatus.APPROVED))
+                .thenReturn(Optional.of(host));
+
+        assertThatThrownBy(
+                        () ->
+                                meetingRecruitService.createRecruit(
+                                        MEETING_ID, createRequest(30, false, null)))
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue(
+                        "errorCode", ErrorCode.RECRUIT_POSTING_BASED_NOT_ALLOWED);
 
         verify(postRepository, never()).save(any());
         verify(eventPublisher, never()).publishEvent(Mockito.any(Object.class));
@@ -272,6 +297,7 @@ class MeetingRecruitServiceTest {
 
         assertThat(response.maxParticipants()).isEqualTo(40);
         assertThat(response.appliedCount()).isEqualTo(2);
+        assertThat(response.participationCondition()).isEqualTo("성인 및 청소년 단체 신청 가능(수정)");
         verify(post).update("6월 정기 활동 팀원 모집(수정)", "소개 수정");
         verify(eventPublisher, never()).publishEvent(Mockito.any(Object.class));
     }
@@ -336,6 +362,7 @@ class MeetingRecruitServiceTest {
         Meeting meeting = Mockito.mock(Meeting.class);
         Mockito.lenient().when(meeting.getId()).thenReturn(MEETING_ID);
         Mockito.lenient().when(meeting.getName()).thenReturn("한강공원 플로깅");
+        Mockito.lenient().when(meeting.isPostingBased()).thenReturn(false);
         return meeting;
     }
 
@@ -391,7 +418,8 @@ class MeetingRecruitServiceTest {
                 timeRecognized,
                 recognizedMinutes,
                 LocalDateTime.now().plusDays(3),
-                false);
+                false,
+                "성인 및 청소년 단체 신청 가능");
     }
 
     private RecruitUpdateRequest updateRequest(int maxParticipants) {
@@ -408,7 +436,8 @@ class MeetingRecruitServiceTest {
                 false,
                 null,
                 LocalDateTime.now().plusDays(3),
-                false);
+                false,
+                "성인 및 청소년 단체 신청 가능(수정)");
     }
 
     /** 신청 마감 전(신청 가능)인 모집공고. */
@@ -425,7 +454,8 @@ class MeetingRecruitServiceTest {
                 null,
                 LocalDateTime.now().plusDays(3),
                 false,
-                Set.of(PostingCategory.ENVIRONMENT));
+                Set.of(PostingCategory.ENVIRONMENT),
+                "성인 및 청소년 단체 신청 가능");
     }
 
     /** 신청 마감이 지난 모집공고. */
@@ -442,6 +472,7 @@ class MeetingRecruitServiceTest {
                 null,
                 LocalDateTime.now().minusDays(1),
                 false,
-                Set.of(PostingCategory.ENVIRONMENT));
+                Set.of(PostingCategory.ENVIRONMENT),
+                "성인 및 청소년 단체 신청 가능");
     }
 }

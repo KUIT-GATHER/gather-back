@@ -11,6 +11,7 @@ import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -76,11 +77,13 @@ class AuthServiceTest {
     @Mock private AccountIdentityGuardService accountIdentityGuardService;
 
     private AuthService authService;
+    private TokenIssuer tokenIssuer;
 
     @BeforeEach
     void setUp() {
         // SignupValidator·TokenIssuer·LoginPolicy는 mock이 아니라 실물을 쓴다. 검증·토큰 발급 로직이 AuthService에서
         // 분리됐을 뿐 동작은 그대로여야 하므로, mock으로 대체하면 이 테스트들의 검출력이 사라진다.
+        tokenIssuer = spy(new TokenIssuer(tokenProvider, refreshTokenRepository));
         authService =
                 new AuthService(
                         userRepository,
@@ -89,7 +92,7 @@ class AuthServiceTest {
                         passwordEncoder,
                         emailSender,
                         tokenProvider,
-                        new TokenIssuer(tokenProvider, refreshTokenRepository),
+                        tokenIssuer,
                         lockedTokenIssuanceService,
                         new SignupValidator(
                                 userRepository, regionRepository, new PhoneNumberNormalizer()),
@@ -100,6 +103,12 @@ class AuthServiceTest {
         lenient()
                 .when(accountIdentityGuardService.lockPhone(anyString(), any(LocalDateTime.class)))
                 .thenReturn(PHONE_IDENTIFIER);
+        lenient().when(tokenProvider.createAccessToken(any(User.class))).thenReturn("access-token");
+        lenient().when(tokenProvider.generateToken()).thenReturn("refresh-token");
+        lenient().when(tokenProvider.hashToken("refresh-token")).thenReturn("refresh-token-hash");
+        lenient()
+                .when(tokenProvider.refreshTokenExpiresAt())
+                .thenReturn(LocalDateTime.now().plusDays(14));
     }
 
     @Test
@@ -388,6 +397,76 @@ class AuthServiceTest {
     }
 
     @Test
+    @DisplayName("User 저장의 이메일 unique 충돌은 DUPLICATE_EMAIL로 변환하고 토큰을 발급하지 않는다")
+    void signup_whenUserEmailUniqueConstraintFails_throwsDuplicateEmailWithoutTokenIssue() {
+        Region activityRegion = Region.create("강남구", 2, "11680", null);
+        prepareVerifiedEmail();
+        when(regionRepository.findById(123L)).thenReturn(Optional.of(activityRegion));
+        when(passwordEncoder.encode("password123!")).thenReturn("encoded-password");
+        when(userRepository.saveAndFlush(any(User.class)))
+                .thenThrow(
+                        new DataIntegrityViolationException(
+                                "duplicate email",
+                                new IllegalStateException(
+                                        "Duplicate entry 'test@example.com' for key 'users.email'")));
+
+        assertErrorCode(() -> authService.signup(signupRequest(123L)), ErrorCode.DUPLICATE_EMAIL);
+
+        verify(tokenIssuer, never()).issue(any(User.class));
+        verify(refreshTokenRepository, never()).save(any(RefreshToken.class));
+    }
+
+    @Test
+    @DisplayName("회원가입은 저장된 User로 토큰을 발급하고 기존 회원 정보와 Access Token을 반환한다")
+    void signup_withValidRequest_returnsSignupResultAndPersistsRefreshToken() {
+        Region activityRegion = Region.create("강남구", 2, "11680", null);
+        prepareVerifiedEmail();
+        when(regionRepository.findById(123L)).thenReturn(Optional.of(activityRegion));
+        when(passwordEncoder.encode("password123!")).thenReturn("encoded-password");
+        when(userRepository.saveAndFlush(any(User.class)))
+                .thenAnswer(
+                        invocation -> {
+                            User savedUser = invocation.getArgument(0);
+                            ReflectionTestUtils.setField(savedUser, "id", 1L);
+                            return savedUser;
+                        });
+
+        SignupResult result = authService.signup(signupRequest(123L));
+
+        assertThat(result.response().userId()).isEqualTo(1L);
+        assertThat(result.response().email()).isEqualTo("test@example.com");
+        assertThat(result.response().name()).isEqualTo("홍길동");
+        assertThat(result.response().nickname()).isEqualTo("길동");
+        assertThat(result.response().accessToken()).isEqualTo("access-token");
+        assertThat(result.response().tokenType()).isEqualTo("Bearer");
+        assertThat(result.refreshToken()).isEqualTo("refresh-token");
+
+        ArgumentCaptor<User> userCaptor = ArgumentCaptor.forClass(User.class);
+        verify(userRepository).saveAndFlush(userCaptor.capture());
+        verify(tokenIssuer).issue(userCaptor.getValue());
+
+        ArgumentCaptor<RefreshToken> refreshTokenCaptor =
+                ArgumentCaptor.forClass(RefreshToken.class);
+        verify(refreshTokenRepository).save(refreshTokenCaptor.capture());
+        assertThat(refreshTokenCaptor.getValue().getTokenHash()).isEqualTo("refresh-token-hash");
+        assertThat(refreshTokenCaptor.getValue().getUser()).isSameAs(userCaptor.getValue());
+    }
+
+    @Test
+    @DisplayName("Refresh Token 저장 오류는 회원 중복 오류로 변환하지 않는다")
+    void signup_whenRefreshTokenSaveFails_rethrowsOriginalException() {
+        prepareSuccessfulSignup();
+        DataIntegrityViolationException tokenException =
+                new DataIntegrityViolationException("forced refresh token failure");
+        when(refreshTokenRepository.save(any(RefreshToken.class))).thenThrow(tokenException);
+
+        assertThatThrownBy(() -> authService.signup(signupRequest(123L))).isSameAs(tokenException);
+
+        verify(userRepository).saveAndFlush(any(User.class));
+        verify(tokenIssuer).issue(any(User.class));
+    }
+
+    @Test
     @DisplayName("회원가입은 level=2 시군구 활동 지역 1개를 User에 저장한다")
     void signup_withLevel2ActivityRegion_savesUserActivityRegion() {
         Region activityRegion = Region.create("강남구", 2, "11680", null);
@@ -460,11 +539,28 @@ class AuthServiceTest {
     }
 
     @Test
-    @DisplayName("회원가입에서 level=1 시도를 활동 지역으로 선택하면 실패한다")
-    void signup_withLevel1ActivityRegion_throwsRegionNotFound() {
+    @DisplayName("회원가입은 level=1 시도 활동 지역 1개를 User에 저장한다")
+    void signup_withLevel1ActivityRegion_savesUserActivityRegion() {
+        Region activityRegion = Region.create("서울", 1, "11", null);
+        prepareVerifiedEmail();
+        when(regionRepository.findById(1L)).thenReturn(Optional.of(activityRegion));
+        when(passwordEncoder.encode("password123!")).thenReturn("encoded-password");
+        when(userRepository.saveAndFlush(any(User.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        authService.signup(signupRequest(1L));
+
+        ArgumentCaptor<User> captor = ArgumentCaptor.forClass(User.class);
+        verify(userRepository).saveAndFlush(captor.capture());
+        assertThat(captor.getValue().getActivityRegion()).isSameAs(activityRegion);
+    }
+
+    @Test
+    @DisplayName("회원가입에서 level=4 읍/면/동을 활동 지역으로 선택하면 실패한다")
+    void signup_withLevel4ActivityRegion_throwsRegionNotFound() {
         prepareVerifiedEmail();
         when(regionRepository.findById(1L))
-                .thenReturn(Optional.of(Region.create("서울", 1, "11", null)));
+                .thenReturn(Optional.of(Region.create("역삼동", 4, "1168010100", null)));
 
         assertThatThrownBy(() -> authService.signup(signupRequest(1L)))
                 .isInstanceOfSatisfying(

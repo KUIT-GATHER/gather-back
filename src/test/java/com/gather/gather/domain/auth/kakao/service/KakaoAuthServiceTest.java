@@ -504,13 +504,33 @@ class KakaoAuthServiceTest {
     }
 
     @Test
-    @DisplayName("시군구(level 2)가 아닌 활동 지역이면 실패한다")
-    void signup_whenActivityRegionIsNotSigungu_throwsRegionNotFound() {
+    @DisplayName("시도(level 1) 활동 지역을 선택해도 가입에 성공한다")
+    void signup_whenActivityRegionIsSido_succeeds() {
+        Region activityRegion = Region.create("서울특별시", 1, "11", null);
+        stubValidSignupToken();
+        when(userRepository.existsByPhoneNumber("01012345678")).thenReturn(false);
+        when(userRepository.existsByNickname("길동")).thenReturn(false);
+        when(regionRepository.findById(ACTIVITY_REGION_ID)).thenReturn(Optional.of(activityRegion));
+        when(signupTransactionService.createAccount(
+                        any(User.class), eq(SIGNUP_TOKEN), eq("01012345678"), eq("길동")))
+                .thenReturn(new TokenIssueResult("access-token", "refresh-token"));
+
+        kakaoAuthService.signup(SIGNUP_TOKEN, signupRequest());
+
+        ArgumentCaptor<User> userCaptor = ArgumentCaptor.forClass(User.class);
+        verify(signupTransactionService)
+                .createAccount(userCaptor.capture(), eq(SIGNUP_TOKEN), eq("01012345678"), eq("길동"));
+        assertThat(userCaptor.getValue().getActivityRegion()).isSameAs(activityRegion);
+    }
+
+    @Test
+    @DisplayName("읍/면/동(level 4) 활동 지역이면 실패한다")
+    void signup_whenActivityRegionIsEupmyeondong_throwsRegionNotFound() {
         stubValidSignupToken();
         when(userRepository.existsByPhoneNumber("01012345678")).thenReturn(false);
         when(userRepository.existsByNickname("길동")).thenReturn(false);
         when(regionRepository.findById(ACTIVITY_REGION_ID))
-                .thenReturn(Optional.of(Region.create("서울특별시", 1, "11", null)));
+                .thenReturn(Optional.of(Region.create("역삼동", 4, "1168010100", null)));
 
         assertErrorCode(
                 () -> kakaoAuthService.signup(SIGNUP_TOKEN, signupRequest()),
