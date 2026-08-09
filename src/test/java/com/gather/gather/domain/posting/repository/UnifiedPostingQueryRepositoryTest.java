@@ -2,13 +2,27 @@ package com.gather.gather.domain.posting.repository;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.gather.gather.domain.auth.entity.Gender;
+import com.gather.gather.domain.auth.entity.User;
+import com.gather.gather.domain.auth.repository.UserRepository;
+import com.gather.gather.domain.meeting.entity.Meeting;
+import com.gather.gather.domain.meeting.repository.MeetingRepository;
+import com.gather.gather.domain.post.entity.Post;
+import com.gather.gather.domain.post.enums.PostType;
+import com.gather.gather.domain.post.repository.PostRepository;
 import com.gather.gather.domain.posting.entity.Posting;
 import com.gather.gather.domain.posting.entity.PostingCategory;
 import com.gather.gather.domain.posting.entity.PostingSource;
 import com.gather.gather.domain.posting.entity.PostingStatus;
 import com.gather.gather.domain.posting.repository.UnifiedPostingQueryRepository.SearchResult;
+import com.gather.gather.domain.recruit.entity.MeetingRecruit;
+import com.gather.gather.domain.recruit.repository.MeetingRecruitRepository;
+import com.gather.gather.domain.region.entity.Region;
+import com.gather.gather.domain.region.repository.RegionRepository;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -28,6 +42,11 @@ class UnifiedPostingQueryRepositoryTest {
 
     @Autowired private UnifiedPostingQueryRepository unifiedPostingQueryRepository;
     @Autowired private PostingRepository postingRepository;
+    @Autowired private PostRepository postRepository;
+    @Autowired private MeetingRepository meetingRepository;
+    @Autowired private MeetingRecruitRepository meetingRecruitRepository;
+    @Autowired private UserRepository userRepository;
+    @Autowired private RegionRepository regionRepository;
 
     /**
      * UnifiedPostingQueryRepository가 마감 여부 판정에 Asia/Seoul 기준 오늘 날짜를 쓰므로, 테스트의 "오늘" 기준도 동일한 시간대로 맞춰야
@@ -98,10 +117,16 @@ class UnifiedPostingQueryRepositoryTest {
                 .containsExactly(dueToday.getId(), staleYesterday.getId());
     }
 
+    /**
+     * status=CLOSED일 때는 stale-RECRUITING 우선순위 보정(버킷 CASE)이 붙지 않아 순수 apply_deadline_at 오름차순만 적용되지만,
+     * 마감일 없는 공고를 뒤로 미루는 보정은 status와 무관하게 항상 붙는다(#163 리뷰 M3/M4 — closedNoDeadline이 없으면 이 테스트는
+     * buildOrderBy의 보정을 되돌리거나 status 가드를 지워도 통과하는 무판별 테스트였다).
+     */
     @Test
-    void search_doesNotApplyPriority_whenStatusFilterIsClosed() {
+    void search_appliesNullDeadlinePriorityButNotStaleBucketPriority_whenStatusFilterIsClosed() {
         Posting closedNear = save(PostingStatus.CLOSED, TODAY.minusDays(1));
         Posting closedFar = save(PostingStatus.CLOSED, TODAY.minusDays(5));
+        Posting closedNoDeadline = save(PostingStatus.CLOSED, null);
         Pageable applyDeadlineAscending =
                 PageRequest.of(0, 20, Sort.by(Sort.Direction.ASC, "applyDeadlineAt"));
 
@@ -111,7 +136,7 @@ class UnifiedPostingQueryRepositoryTest {
 
         assertThat(result.rows())
                 .extracting(UnifiedPostingRow::id)
-                .containsExactly(closedFar.getId(), closedNear.getId());
+                .containsExactly(closedFar.getId(), closedNear.getId(), closedNoDeadline.getId());
     }
 
     @Test
@@ -142,6 +167,35 @@ class UnifiedPostingQueryRepositoryTest {
                         mostApplicants.getId(), fewApplicants.getId(), noApplicants.getId());
     }
 
+    /**
+     * MEETING_RECRUIT UNION 분기를 실 DB로 검증하는 유일한 테스트(#163 리뷰 M2 — 이전에는 volunteer_posting 픽스처만 있어 이
+     * 분기가 리포 전체에서 0건 커버됐다). 모집공고(external=true)를 실제로 insert해 신청 가능한 모집공고가 봉사공고와 함께
+     * apply_deadline_at 오름차순으로 올바르게 정렬되는지 확인한다.
+     */
+    @Test
+    void
+            search_ordersMeetingRecruitRowsAlongsidePostingRows_whenSortingByApplyDeadlineAtAscending() {
+        Post nearRecruit = saveRecruit(TODAY.atStartOfDay().plusDays(1));
+        Post farRecruit = saveRecruit(TODAY.atStartOfDay().plusDays(5));
+        Posting openPosting = save(PostingStatus.RECRUITING, TODAY.plusDays(10));
+        Pageable applyDeadlineAscending =
+                PageRequest.of(0, 20, Sort.by(Sort.Direction.ASC, "applyDeadlineAt"));
+
+        SearchResult result =
+                unifiedPostingQueryRepository.search(
+                        PostingStatus.RECRUITING,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        applyDeadlineAscending);
+
+        assertThat(result.rows())
+                .extracting(UnifiedPostingRow::id)
+                .containsExactly(nearRecruit.getId(), farRecruit.getId(), openPosting.getId());
+    }
+
     private Posting save(PostingStatus status, LocalDate noticeEnd) {
         return save(status, noticeEnd, null);
     }
@@ -157,5 +211,66 @@ class UnifiedPostingQueryRepositoryTest {
                         .category(PostingCategory.ENVIRONMENT)
                         .source(PostingSource.API_1365)
                         .build());
+    }
+
+    /** 신청 가능한(external=true, 미확정, 정원 미달) 모집공고 1건을 실제로 insert하고 연결된 게시글({@code post})을 반환한다. */
+    private Post saveRecruit(LocalDateTime applyDeadlineAt) {
+        Region region =
+                regionRepository.save(
+                        Region.create(
+                                "모집공고 테스트구", 2, "996" + (System.nanoTime() % 10_000_000L), null));
+        User host = userRepository.save(user(region));
+        Meeting meeting =
+                meetingRepository.save(
+                        Meeting.create(
+                                "모집공고 테스트 모임",
+                                "통합 목록 정렬 테스트",
+                                10,
+                                applyDeadlineAt.plusDays(1),
+                                null,
+                                Set.of(PostingCategory.ENVIRONMENT),
+                                region.getId(),
+                                host,
+                                null,
+                                null,
+                                null,
+                                null));
+        Post post =
+                postRepository.save(
+                        Post.create(meeting, host, "모집공고 테스트 게시글", "내용", PostType.RECRUIT, 10));
+        meetingRecruitRepository.save(
+                MeetingRecruit.create(
+                        post.getId(),
+                        region.getId(),
+                        "테스트 장소",
+                        applyDeadlineAt.plusDays(2),
+                        applyDeadlineAt.plusDays(2).plusHours(3),
+                        10,
+                        false,
+                        null,
+                        applyDeadlineAt,
+                        true,
+                        Set.of(PostingCategory.ENVIRONMENT),
+                        null));
+        return post;
+    }
+
+    private User user(Region region) {
+        String suffix = String.valueOf(System.nanoTime());
+        String uniqueSuffix = suffix.substring(Math.max(0, suffix.length() - 8));
+        return User.create(
+                "repo-user",
+                LocalDate.of(1995, 1, 1),
+                Gender.MALE,
+                "010" + uniqueSuffix,
+                null,
+                null,
+                "repo-" + uniqueSuffix,
+                null,
+                true,
+                true,
+                false,
+                region,
+                java.util.List.of());
     }
 }
