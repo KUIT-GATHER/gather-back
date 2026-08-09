@@ -6,11 +6,13 @@ import org.springframework.stereotype.Component;
 
 @Slf4j
 @Component
-@ConditionalOnProperty(name = "gather.email.mode", havingValue = "log", matchIfMissing = true)
+@ConditionalOnProperty(name = "gather.email.mode", havingValue = "log")
 public class LoggingEmailSender implements EmailSender {
 
     @Override
     public void sendVerificationCode(String email, String code) {
-        log.info("Email verification code for {}: {}", email, code);
+        log.info(
+                "Email verification delivery skipped in log mode: email={}",
+                EmailMasker.mask(email));
     }
 }

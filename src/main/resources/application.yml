@@ -43,7 +43,7 @@ spring:
           timeout: 5000
           writetimeout: 5000
 
-# 이메일 발송 방식. log = 서버 로그로만 인증코드 출력(기본), smtp = 실제 발송.
+# 이메일 발송 방식. log = 실제 발송 없이 마스킹된 수신자만 기록(개발 기본), smtp = 실제 발송.
 # smtp 모드는 spring.mail.username/password 필요 (로컬: application-secret.yml, 운영: 환경변수).
 gather:
   scheduling:
@@ -88,7 +88,7 @@ gather:
       - http://localhost:5173
       - https://dev.gathernow.kr
   email:
-    mode: log
+    mode: ${GATHER_EMAIL_MODE:log}
   recommendation:
     category-weight: ${GATHER_RECOMMENDATION_CATEGORY_WEIGHT:0.7}
     deadline-weight: ${GATHER_RECOMMENDATION_DEADLINE_WEIGHT:0.3}
