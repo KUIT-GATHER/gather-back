@@ -3,6 +3,7 @@ package com.gather.gather.domain.auth.kakao.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -22,6 +23,7 @@ import com.gather.gather.domain.auth.repository.SocialAccountRepository;
 import com.gather.gather.domain.auth.repository.UserRepository;
 import com.gather.gather.domain.auth.service.AccountIdentityGuardService;
 import com.gather.gather.domain.auth.service.AccountRejoinBlockService;
+import com.gather.gather.domain.auth.service.PhoneVerificationRequirementService;
 import com.gather.gather.domain.auth.service.RejoinBlockIdentifier;
 import com.gather.gather.domain.auth.service.SignupValidator;
 import com.gather.gather.domain.auth.service.SocialAccountConstraintResolver;
@@ -38,6 +40,7 @@ import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -53,6 +56,8 @@ class KakaoSignupTransactionServiceTest {
     private static final String PROVIDER_USER_ID = "123456789";
     private static final String PROVIDER_USER_KEY = "a".repeat(64);
     private static final String SIGNUP_TOKEN = "A".repeat(43);
+    private static final UUID PHONE_VERIFICATION_ID =
+            UUID.fromString("5c5d5db1-4187-43d0-8580-672307994878");
     private static final String TOKEN_HASH = "b".repeat(64);
     private static final LocalDateTime NOW = LocalDateTime.of(2026, 7, 30, 12, 0);
     private static final Clock CLOCK = Clock.fixed(NOW.toInstant(ZoneOffset.UTC), ZoneOffset.UTC);
@@ -73,6 +78,7 @@ class KakaoSignupTransactionServiceTest {
     @Mock private SocialAccountProviderIdCipher providerIdCipher;
     @Mock private AccountRejoinBlockService accountRejoinBlockService;
     @Mock private AccountIdentityGuardService accountIdentityGuardService;
+    @Mock private PhoneVerificationRequirementService phoneVerificationRequirementService;
 
     private KakaoSignupTransactionService service;
     private SocialSignupSession target;
@@ -92,6 +98,7 @@ class KakaoSignupTransactionServiceTest {
                         new SocialAccountConstraintResolver(),
                         accountRejoinBlockService,
                         accountIdentityGuardService,
+                        phoneVerificationRequirementService,
                         CLOCK);
         target = session(TOKEN_HASH);
         sibling = session("c".repeat(64));
@@ -109,6 +116,26 @@ class KakaoSignupTransactionServiceTest {
     }
 
     @Test
+    @DisplayName("카카오 가입도 요청 전화번호의 유효한 휴대폰 인증을 트랜잭션에서 재확인한다")
+    void createAccount_withoutPhoneVerification_doesNotPersistAnything() {
+        doThrow(new BusinessException(ErrorCode.PHONE_VERIFICATION_REQUIRED))
+                .when(phoneVerificationRequirementService)
+                .consumeForSignup(PHONE_VERIFICATION_ID, "01012345678");
+
+        assertErrorCode(
+                () ->
+                        service.createAccount(
+                                socialUser(),
+                                SIGNUP_TOKEN,
+                                PHONE_VERIFICATION_ID,
+                                "01012345678",
+                                "길동"),
+                ErrorCode.PHONE_VERIFICATION_REQUIRED);
+
+        verifyNoInteractions(userRepository, socialAccountRepository, tokenIssuer);
+    }
+
+    @Test
     @DisplayName("가입 트랜잭션은 snapshot identity로 SocialAccount를 만들고 세션 전이를 완료한다")
     void createAccount_savesIdentityAndTransitionsSessions() {
         User user = socialUser();
@@ -117,7 +144,9 @@ class KakaoSignupTransactionServiceTest {
         when(tokenIssuer.issue(user))
                 .thenReturn(new TokenIssueResult("access-token", "refresh-token"));
 
-        TokenIssueResult result = service.createAccount(user, SIGNUP_TOKEN, "01012345678", "길동");
+        TokenIssueResult result =
+                service.createAccount(
+                        user, SIGNUP_TOKEN, PHONE_VERIFICATION_ID, "01012345678", "길동");
 
         ArgumentCaptor<SocialAccount> captor = ArgumentCaptor.forClass(SocialAccount.class);
         verify(socialAccountRepository).saveAndFlush(captor.capture());
@@ -135,6 +164,8 @@ class KakaoSignupTransactionServiceTest {
         assertThat(sibling.getStatus()).isEqualTo(SocialSignupSessionStatus.CANCELLED);
         assertThat(sibling.getCancelledAt()).isEqualTo(NOW);
         assertThat(result.accessToken()).isEqualTo("access-token");
+        verify(phoneVerificationRequirementService)
+                .consumeForSignup(PHONE_VERIFICATION_ID, "01012345678");
     }
 
     @Test
@@ -146,7 +177,11 @@ class KakaoSignupTransactionServiceTest {
         assertThatThrownBy(
                         () ->
                                 service.createAccount(
-                                        socialUser(), SIGNUP_TOKEN, "01012345678", "길동"))
+                                        socialUser(),
+                                        SIGNUP_TOKEN,
+                                        PHONE_VERIFICATION_ID,
+                                        "01012345678",
+                                        "길동"))
                 .isSameAs(invalid);
         verifyNoInteractions(userRepository, socialAccountRepository, tokenIssuer);
     }
@@ -158,7 +193,13 @@ class KakaoSignupTransactionServiceTest {
                 .thenReturn(Optional.of(linkedSocialAccount()));
 
         assertErrorCode(
-                () -> service.createAccount(socialUser(), SIGNUP_TOKEN, "01012345678", "길동"),
+                () ->
+                        service.createAccount(
+                                socialUser(),
+                                SIGNUP_TOKEN,
+                                PHONE_VERIFICATION_ID,
+                                "01012345678",
+                                "길동"),
                 ErrorCode.ALREADY_REGISTERED);
         verifyNoInteractions(userRepository, socialAccountRepository, tokenIssuer);
     }
@@ -172,13 +213,25 @@ class KakaoSignupTransactionServiceTest {
                 .thenReturn(Optional.of(account));
 
         assertErrorCode(
-                () -> service.createAccount(socialUser(), SIGNUP_TOKEN, "01012345678", "길동"),
+                () ->
+                        service.createAccount(
+                                socialUser(),
+                                SIGNUP_TOKEN,
+                                PHONE_VERIFICATION_ID,
+                                "01012345678",
+                                "길동"),
                 ErrorCode.SOCIAL_ACCOUNT_NOT_LINKED);
         verifyNoInteractions(userRepository, socialAccountRepository, tokenIssuer);
 
         account.markUnlinked(NOW.minusMinutes(1));
         assertErrorCode(
-                () -> service.createAccount(socialUser(), SIGNUP_TOKEN, "01012345678", "길동"),
+                () ->
+                        service.createAccount(
+                                socialUser(),
+                                SIGNUP_TOKEN,
+                                PHONE_VERIFICATION_ID,
+                                "01012345678",
+                                "길동"),
                 ErrorCode.SOCIAL_ACCOUNT_NOT_LINKED);
         verifyNoInteractions(userRepository, socialAccountRepository, tokenIssuer);
     }
@@ -219,7 +272,14 @@ class KakaoSignupTransactionServiceTest {
                         "Duplicate entry for key 'social_account.uk_social_account_user_provider'");
         when(socialAccountRepository.saveAndFlush(any(SocialAccount.class))).thenThrow(exception);
 
-        assertThatThrownBy(() -> service.createAccount(user, SIGNUP_TOKEN, "01012345678", "길동"))
+        assertThatThrownBy(
+                        () ->
+                                service.createAccount(
+                                        user,
+                                        SIGNUP_TOKEN,
+                                        PHONE_VERIFICATION_ID,
+                                        "01012345678",
+                                        "길동"))
                 .isSameAs(exception);
         assertThat(target.getStatus()).isEqualTo(SocialSignupSessionStatus.PENDING);
         assertThat(sibling.getStatus()).isEqualTo(SocialSignupSessionStatus.PENDING);
@@ -235,7 +295,13 @@ class KakaoSignupTransactionServiceTest {
 
         return (KakaoSignupIdentityConflictException)
                 org.assertj.core.api.Assertions.catchThrowable(
-                        () -> service.createAccount(user, SIGNUP_TOKEN, "01012345678", "길동"));
+                        () ->
+                                service.createAccount(
+                                        user,
+                                        SIGNUP_TOKEN,
+                                        PHONE_VERIFICATION_ID,
+                                        "01012345678",
+                                        "길동"));
     }
 
     private DataIntegrityViolationException providerConflict(String constraintName) {

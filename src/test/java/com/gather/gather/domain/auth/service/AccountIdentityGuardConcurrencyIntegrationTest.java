@@ -25,6 +25,7 @@ import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
@@ -41,6 +42,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.context.annotation.Primary;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
@@ -52,6 +54,8 @@ class AccountIdentityGuardConcurrencyIntegrationTest {
     private static final LocalDateTime NOW = LocalDateTime.ofInstant(FIXED_INSTANT, ZoneOffset.UTC);
     private static final String PHONE = "01087654321";
     private static final String SIGNUP_EMAIL = "guard-signup@example.com";
+    private static final UUID PHONE_VERIFICATION_ID =
+            UUID.fromString("5c5d5db1-4187-43d0-8580-672307994878");
 
     @Autowired private AuthService authService;
     @Autowired private AccountTerminationService terminationService;
@@ -64,6 +68,7 @@ class AccountIdentityGuardConcurrencyIntegrationTest {
     @Autowired private PlatformTransactionManager transactionManager;
     @Autowired private JdbcTemplate jdbcTemplate;
     @Autowired private GuardLockCoordinator coordinator;
+    @MockitoBean private PhoneVerificationRequirementService phoneVerificationRequirementService;
 
     private Fixture fixture;
 
@@ -207,6 +212,7 @@ class AccountIdentityGuardConcurrencyIntegrationTest {
                 LocalDate.of(2001, 1, 1),
                 Gender.FEMALE,
                 PHONE,
+                PHONE_VERIFICATION_ID,
                 SIGNUP_EMAIL,
                 "password1",
                 "password1",

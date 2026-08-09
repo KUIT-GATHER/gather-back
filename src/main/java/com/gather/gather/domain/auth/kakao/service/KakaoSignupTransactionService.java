@@ -7,6 +7,7 @@ import com.gather.gather.domain.auth.repository.SocialAccountRepository;
 import com.gather.gather.domain.auth.repository.UserRepository;
 import com.gather.gather.domain.auth.service.AccountIdentityGuardService;
 import com.gather.gather.domain.auth.service.AccountRejoinBlockService;
+import com.gather.gather.domain.auth.service.PhoneVerificationRequirementService;
 import com.gather.gather.domain.auth.service.RejoinBlockIdentifier;
 import com.gather.gather.domain.auth.service.SignupValidator;
 import com.gather.gather.domain.auth.service.SocialAccountConstraint;
@@ -19,6 +20,7 @@ import com.gather.gather.global.exception.BusinessException;
 import com.gather.gather.global.exception.ErrorCode;
 import java.time.Clock;
 import java.time.LocalDateTime;
+import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -40,6 +42,7 @@ public class KakaoSignupTransactionService {
     private final SocialAccountConstraintResolver constraintResolver;
     private final AccountRejoinBlockService accountRejoinBlockService;
     private final AccountIdentityGuardService accountIdentityGuardService;
+    private final PhoneVerificationRequirementService phoneVerificationRequirementService;
     private final Clock clock;
 
     /**
@@ -48,14 +51,21 @@ public class KakaoSignupTransactionService {
      */
     @Transactional
     public TokenIssueResult createAccount(
-            User user, String signupToken, String phoneNumber, String nickname) {
+            User user,
+            String signupToken,
+            UUID phoneVerificationId,
+            String phoneNumber,
+            String nickname) {
         LocalDateTime now = LocalDateTime.now(clock);
+        // 일반 가입과 PHONE guard 잠금 순서를 통일해, 서로 다른 카카오 가입 세션의 gap lock이
+        // 같은 전화번호 경쟁에서 순환 대기를 만들지 않게 한다.
+        RejoinBlockIdentifier phoneIdentifier =
+                accountIdentityGuardService.lockPhone(phoneNumber, now);
         LockedSocialSignupSession lockedSession =
                 signupSessionService.lockForSignup(signupToken, now);
         SocialSignupIdentitySnapshot identity = lockedSession.identity();
-        RejoinBlockIdentifier phoneIdentifier =
-                accountIdentityGuardService.lockPhone(phoneNumber, now);
         validateRejoinAllowed(phoneIdentifier, identity, now);
+        phoneVerificationRequirementService.consumeForSignup(phoneVerificationId, phoneNumber);
         socialAccountIdentityService
                 .findByProviderAndKey(identity.provider(), identity.identifier())
                 .ifPresent(this::rejectExistingSocialAccount);

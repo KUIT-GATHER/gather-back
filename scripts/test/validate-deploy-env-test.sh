@@ -23,6 +23,7 @@ AES_33=$(head -c 33 /dev/zero | base64 | tr -d '\n')
 INVALID_HMAC="invalid-hmac-sensitive-marker"
 INVALID_AES="invalid-aes-sensitive-marker"
 ADMIN_KEY="admin-sensitive-marker"
+OCTOMO_API_KEY="octomo-sensitive-marker"
 
 cleanup() {
   chmod 600 "$TEMP_DIR/unreadable.env" 2>/dev/null || true
@@ -40,6 +41,7 @@ write_fixture() {
   local admin_enabled="${6-false}"
   local worker_enabled="${7-false}"
   local admin_key="${8-__OMIT__}"
+  local octomo_api_key="${9-$OCTOMO_API_KEY}"
 
   : > "$target"
   if [ "$hmac_secret" != "__OMIT__" ]; then
@@ -62,6 +64,9 @@ write_fixture() {
   fi
   if [ "$worker_enabled" != "__OMIT__" ]; then
     printf 'KAKAO_UNLINK_WORKER_ENABLED=%s\n' "$worker_enabled" >> "$target"
+  fi
+  if [ "$octomo_api_key" != "__OMIT__" ]; then
+    printf 'OCTOMO_API_KEY=%s\n' "$octomo_api_key" >> "$target"
   fi
 }
 
@@ -232,6 +237,13 @@ write_fixture "$FIXTURE" "$HMAC_32" 1 "$AES_32" 1 __OMIT__ false
 run_failure_case "missing Admin boolean" file "$FIXTURE"
 write_fixture "$FIXTURE" "$HMAC_32" 1 "$AES_32" 1 false __OMIT__
 run_failure_case "missing worker boolean" file "$FIXTURE"
+write_fixture "$FIXTURE" "$HMAC_32" 1 "$AES_32" 1 false false __OMIT__ __OMIT__
+run_failure_case "missing OCTOMO API key" file "$FIXTURE"
+write_fixture "$FIXTURE" "$HMAC_32" 1 "$AES_32" 1 false false __OMIT__ ""
+run_failure_case "empty OCTOMO API key" file "$FIXTURE"
+write_fixture "$FIXTURE" "$HMAC_32" 1 "$AES_32" 1 false false __OMIT__ " $OCTOMO_API_KEY"
+run_failure_case "OCTOMO API key has surrounding whitespace" file "$FIXTURE"
+assert_output_does_not_contain "OCTOMO API key is not exposed" "$LAST_OUTPUT" "$OCTOMO_API_KEY"
 
 write_fixture "$FIXTURE" "$INVALID_HMAC"
 run_failure_case "invalid HMAC Base64" file "$FIXTURE"
@@ -276,6 +288,9 @@ run_failure_case "duplicate tracked key with different value" file "$FIXTURE"
 write_fixture "$FIXTURE"
 printf 'KAKAO_ADMIN_ENABLED=false\n' >> "$FIXTURE"
 run_failure_case "duplicate tracked key with same value" file "$FIXTURE"
+write_fixture "$FIXTURE"
+printf 'OCTOMO_API_KEY=duplicate-octomo-key\n' >> "$FIXTURE"
+run_failure_case "duplicate OCTOMO API key" file "$FIXTURE"
 
 write_fixture "$FIXTURE" "$HMAC_32" 1 "$AES_32" 1 __OMIT__ false
 printf 'export KAKAO_ADMIN_ENABLED=false\n' >> "$FIXTURE"

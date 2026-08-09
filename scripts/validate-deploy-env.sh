@@ -14,6 +14,7 @@ AES_KEY_VERSION=""
 KAKAO_ADMIN_ENABLED_VALUE=""
 KAKAO_ADMIN_KEY_VALUE=""
 KAKAO_UNLINK_WORKER_ENABLED_VALUE=""
+OCTOMO_API_KEY_VALUE=""
 
 HMAC_SECRET_SEEN=false
 HMAC_KEY_VERSION_SEEN=false
@@ -22,6 +23,7 @@ AES_KEY_VERSION_SEEN=false
 KAKAO_ADMIN_ENABLED_SEEN=false
 KAKAO_ADMIN_KEY_SEEN=false
 KAKAO_UNLINK_WORKER_ENABLED_SEEN=false
+OCTOMO_API_KEY_SEEN=false
 
 fail() {
   printf 'ERROR: %s\n' "$1" >&2
@@ -109,6 +111,13 @@ record_tracked_value() {
       KAKAO_UNLINK_WORKER_ENABLED_SEEN=true
       KAKAO_UNLINK_WORKER_ENABLED_VALUE="$value"
       ;;
+    OCTOMO_API_KEY)
+      if [ "$OCTOMO_API_KEY_SEEN" = true ]; then
+        fail "duplicate tracked key: $variable_name"
+      fi
+      OCTOMO_API_KEY_SEEN=true
+      OCTOMO_API_KEY_VALUE="$value"
+      ;;
   esac
 }
 
@@ -140,7 +149,8 @@ parse_stream() {
         GATHER_AUTH_SOCIAL_ACCOUNT_ENCRYPTION_KEY_VERSION | \
         KAKAO_ADMIN_ENABLED | \
         KAKAO_ADMIN_KEY | \
-        KAKAO_UNLINK_WORKER_ENABLED)
+        KAKAO_UNLINK_WORKER_ENABLED | \
+        OCTOMO_API_KEY)
         record_tracked_value "$variable_name" "$value"
         ;;
     esac
@@ -266,6 +276,7 @@ main() {
   require_variable "$AES_KEY_VERSION_SEEN" "$AES_KEY_VERSION" "GATHER_AUTH_SOCIAL_ACCOUNT_ENCRYPTION_KEY_VERSION"
   require_variable "$KAKAO_ADMIN_ENABLED_SEEN" "$KAKAO_ADMIN_ENABLED_VALUE" "KAKAO_ADMIN_ENABLED"
   require_variable "$KAKAO_UNLINK_WORKER_ENABLED_SEEN" "$KAKAO_UNLINK_WORKER_ENABLED_VALUE" "KAKAO_UNLINK_WORKER_ENABLED"
+  require_variable "$OCTOMO_API_KEY_SEEN" "$OCTOMO_API_KEY_VALUE" "OCTOMO_API_KEY"
 
   validate_boolean "$KAKAO_ADMIN_ENABLED_VALUE" "KAKAO_ADMIN_ENABLED"
   validate_boolean "$KAKAO_UNLINK_WORKER_ENABLED_VALUE" "KAKAO_UNLINK_WORKER_ENABLED"

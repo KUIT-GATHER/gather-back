@@ -20,6 +20,13 @@ public enum ErrorCode {
             HttpStatus.TOO_MANY_REQUESTS, "하루 이메일 인증 발송 횟수를 초과했습니다. 내일 다시 시도해주세요."),
     EMAIL_VERIFICATION_ATTEMPTS_EXCEEDED(
             HttpStatus.TOO_MANY_REQUESTS, "인증 코드 입력 가능 횟수를 초과했습니다. 코드를 다시 발송해주세요."),
+    PHONE_VERIFICATION_NOT_FOUND(HttpStatus.NOT_FOUND, "휴대폰 인증 요청을 찾을 수 없습니다."),
+    PHONE_VERIFICATION_EXPIRED(HttpStatus.BAD_REQUEST, "휴대폰 인증 요청이 만료되었습니다."),
+    PHONE_VERIFICATION_REQUIRED(HttpStatus.BAD_REQUEST, "휴대폰 인증이 필요합니다."),
+    PHONE_VERIFICATION_PROVIDER_UNAVAILABLE(
+            HttpStatus.SERVICE_UNAVAILABLE, "휴대폰 인증 서비스를 일시적으로 사용할 수 없습니다."),
+    PHONE_VERIFICATION_RATE_LIMITED(
+            HttpStatus.TOO_MANY_REQUESTS, "휴대폰 인증 요청이 많습니다. 잠시 후 다시 시도해주세요."),
     PASSWORD_MISMATCH(HttpStatus.BAD_REQUEST, "비밀번호가 일치하지 않습니다."),
     EMAIL_NOT_VERIFIED(HttpStatus.BAD_REQUEST, "이메일 인증이 완료되지 않았습니다."),
     REQUIRED_TERMS_NOT_AGREED(HttpStatus.BAD_REQUEST, "필수 약관 동의가 필요합니다."),

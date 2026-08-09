@@ -21,6 +21,7 @@ import com.gather.gather.domain.user.service.ProfileImageService;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -39,6 +40,8 @@ class EmailSignupIntegrationTest {
 
     private static final String EMAIL = "email-signup-integration@example.com";
     private static final String PHONE_NUMBER = "01095550001";
+    private static final UUID PHONE_VERIFICATION_ID =
+            UUID.fromString("5c5d5db1-4187-43d0-8580-672307994878");
 
     @Autowired private AuthService authService;
     @Autowired private UserRepository userRepository;
@@ -48,6 +51,7 @@ class EmailSignupIntegrationTest {
     @Autowired private TokenProvider tokenProvider;
     @Autowired private MockMvc mockMvc;
     @MockitoBean private ProfileImageService profileImageService;
+    @MockitoBean private PhoneVerificationRequirementService phoneVerificationRequirementService;
 
     private Region activityRegion;
 
@@ -94,6 +98,7 @@ class EmailSignupIntegrationTest {
                 LocalDate.of(2001, 1, 1),
                 Gender.FEMALE,
                 PHONE_NUMBER,
+                PHONE_VERIFICATION_ID,
                 EMAIL,
                 "password1",
                 "password1",

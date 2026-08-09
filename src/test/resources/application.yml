@@ -21,6 +21,11 @@ spring:
 volunteer-api:
   base-url: https://apis.data.go.kr/1741000/volunteerPartcptnService
 
+octomo:
+  api-key: test-octomo-api-key
+  base-url: https://api.octoverse.kr
+  receiver-number: 16663538
+
 
 notification:
   volunteer-schedule:

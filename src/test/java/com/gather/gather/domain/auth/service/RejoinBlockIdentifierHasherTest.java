@@ -38,8 +38,8 @@ class RejoinBlockIdentifierHasherTest {
     void hashPhoneAndKakao_useDifferentNamespaces() {
         RejoinBlockIdentifierHasher hasher = hasher("first-secret-value-with-at-least-32-bytes");
 
-        RejoinBlockIdentifier phone = hasher.hashPhone("1234567890");
-        RejoinBlockIdentifier kakao = hasher.hashKakao("1234567890");
+        RejoinBlockIdentifier phone = hasher.hashPhone("01012345678");
+        RejoinBlockIdentifier kakao = hasher.hashKakao("01012345678");
 
         assertThat(phone.type()).isEqualTo(AccountRejoinBlockIdentifierType.PHONE);
         assertThat(kakao.type()).isEqualTo(AccountRejoinBlockIdentifierType.KAKAO);
@@ -98,6 +98,6 @@ class RejoinBlockIdentifierHasherTest {
         String encodedSecret =
                 Base64.getEncoder().encodeToString(secret.getBytes(StandardCharsets.UTF_8));
         RejoinBlockHmacProperties properties = new RejoinBlockHmacProperties(encodedSecret, 1);
-        return new RejoinBlockIdentifierHasher(properties, new PhoneNumberNormalizer());
+        return new RejoinBlockIdentifierHasher(properties, new PhoneNumberPolicy());
     }
 }

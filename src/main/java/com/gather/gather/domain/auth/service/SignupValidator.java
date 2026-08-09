@@ -37,7 +37,7 @@ public class SignupValidator {
 
     private final UserRepository userRepository;
     private final RegionRepository regionRepository;
-    private final PhoneNumberNormalizer phoneNumberNormalizer;
+    private final PhoneNumberPolicy phoneNumberPolicy;
 
     public void validateName(String name) {
         validateKoreanOrEnglish(name);
@@ -100,7 +100,7 @@ public class SignupValidator {
     }
 
     public String normalizePhoneNumber(String phoneNumber) {
-        return phoneNumberNormalizer.normalize(phoneNumber);
+        return phoneNumberPolicy.normalize(phoneNumber);
     }
 
     public String normalizeNullableText(String text) {

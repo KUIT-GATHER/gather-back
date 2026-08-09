@@ -9,6 +9,7 @@ import jakarta.validation.constraints.PastOrPresent;
 import jakarta.validation.constraints.Size;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.UUID;
 
 /**
  * 카카오 추가정보 가입 요청.
@@ -31,6 +32,11 @@ public record KakaoSignupRequest(
                 @NotBlank
                 @Size(max = 20)
                 String phoneNumber,
+        @Schema(
+                        description = "회원가입에 사용할 휴대폰 인증 세션 ID",
+                        format = "uuid",
+                        requiredMode = Schema.RequiredMode.REQUIRED)
+                UUID phoneVerificationId,
         @Schema(description = "닉네임. 완성형 한글 2~10자 또는 영문 2~20자만 허용합니다.", example = "길동")
                 @NotBlank
                 @Size(min = 2, max = 20)
