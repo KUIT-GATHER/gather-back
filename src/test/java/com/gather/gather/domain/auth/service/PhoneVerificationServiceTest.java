@@ -43,6 +43,7 @@ class PhoneVerificationServiceTest {
                     Duration.ofSeconds(60), Duration.ofSeconds(3), 30, Duration.ofSeconds(10), 3);
 
     @Mock private PhoneVerificationRepository phoneVerificationRepository;
+    @Mock private AccountIdentityGuardService accountIdentityGuardService;
     @Mock private PhoneVerificationCodeGenerator codeGenerator;
     @Mock private PhoneVerificationTransactionService transactionService;
     @Mock private OctomoApiClient octomoApiClient;
@@ -55,6 +56,7 @@ class PhoneVerificationServiceTest {
                 new PhoneVerificationService(
                         phoneVerificationRepository,
                         new PhoneNumberPolicy(),
+                        accountIdentityGuardService,
                         codeGenerator,
                         transactionService,
                         octomoApiClient,
@@ -85,6 +87,11 @@ class PhoneVerificationServiceTest {
         assertThat(response.receiverNumber()).isEqualTo("16663538");
         assertThat(response.messageText()).isEqualTo(CODE);
         assertThat(response.expiresAt()).isEqualTo(NOW.plusMinutes(5).toInstant(ZoneOffset.UTC));
+        InOrder order = inOrder(accountIdentityGuardService, phoneVerificationRepository);
+        order.verify(accountIdentityGuardService).lockPhone("01012345678", NOW);
+        order.verify(phoneVerificationRepository)
+                .findTopByPhoneNumberOrderByCreatedAtDesc("01012345678");
+        order.verify(phoneVerificationRepository).save(saved);
     }
 
     @Test
@@ -104,6 +111,7 @@ class PhoneVerificationServiceTest {
                 () -> service.start(new PhoneVerificationStartRequest("01012345678")),
                 ErrorCode.PHONE_VERIFICATION_RATE_LIMITED);
 
+        verify(accountIdentityGuardService).lockPhone("01012345678", NOW);
         verifyNoInteractions(codeGenerator);
     }
 
@@ -114,7 +122,8 @@ class PhoneVerificationServiceTest {
                 () -> service.start(new PhoneVerificationStartRequest("0212345678")),
                 ErrorCode.VALIDATION_ERROR);
 
-        verifyNoInteractions(phoneVerificationRepository, codeGenerator);
+        verifyNoInteractions(
+                phoneVerificationRepository, accountIdentityGuardService, codeGenerator);
     }
 
     @Test

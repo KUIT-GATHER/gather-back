@@ -68,6 +68,14 @@ class PhoneVerificationTransactionServiceTest {
     }
 
     @Test
+    @DisplayName("존재하지 않는 인증 세션은 잠금 조회 결과로 판별한다")
+    void reserveConfirm_rejectsMissingVerificationFromLockQuery() {
+        assertErrorCode(
+                () -> service.reserveConfirm(VERIFICATION_ID),
+                ErrorCode.PHONE_VERIFICATION_NOT_FOUND);
+    }
+
+    @Test
     @DisplayName("confirm 재시도 쿨다운 중에는 공급자를 호출할 예약을 거부한다")
     void reserveConfirm_rejectsDuringCooldown() {
         PhoneVerification verification = activeVerification();
@@ -173,7 +181,6 @@ class PhoneVerificationTransactionServiceTest {
     }
 
     private void stubVerification(PhoneVerification verification) {
-        when(phoneVerificationRepository.existsByVerificationId(VERIFICATION_ID)).thenReturn(true);
         when(phoneVerificationRepository.findByVerificationIdForUpdate(VERIFICATION_ID))
                 .thenReturn(Optional.of(verification));
     }

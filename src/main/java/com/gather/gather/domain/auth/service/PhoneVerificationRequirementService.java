@@ -26,9 +26,6 @@ public class PhoneVerificationRequirementService {
         if (verificationId == null) {
             throw required();
         }
-        if (!phoneVerificationRepository.existsByVerificationId(verificationId.toString())) {
-            throw required();
-        }
         PhoneVerification verification =
                 phoneVerificationRepository
                         .findByVerificationIdForUpdate(verificationId.toString())

@@ -72,9 +72,6 @@ public class PhoneVerificationTransactionService {
     }
 
     private PhoneVerification lockVerification(String verificationId) {
-        if (!phoneVerificationRepository.existsByVerificationId(verificationId)) {
-            throw new BusinessException(ErrorCode.PHONE_VERIFICATION_NOT_FOUND);
-        }
         return phoneVerificationRepository
                 .findByVerificationIdForUpdate(verificationId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.PHONE_VERIFICATION_NOT_FOUND));

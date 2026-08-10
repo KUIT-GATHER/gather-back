@@ -79,9 +79,6 @@ class PhoneVerificationRequirementServiceTest {
     @Test
     @DisplayName("존재하지 않는 검증 ID는 동일한 인증 필요 오류로 거부한다")
     void consumeForSignup_rejectsMissingVerification() {
-        when(phoneVerificationRepository.existsByVerificationId(VERIFICATION_ID.toString()))
-                .thenReturn(false);
-
         assertRequired(() -> service.consumeForSignup(VERIFICATION_ID, "01012345678"));
     }
 
@@ -98,8 +95,6 @@ class PhoneVerificationRequirementServiceTest {
     }
 
     private void stubVerification(PhoneVerification verification) {
-        when(phoneVerificationRepository.existsByVerificationId(VERIFICATION_ID.toString()))
-                .thenReturn(true);
         when(phoneVerificationRepository.findByVerificationIdForUpdate(VERIFICATION_ID.toString()))
                 .thenReturn(Optional.of(verification));
     }

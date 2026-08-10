@@ -29,6 +29,7 @@ public class PhoneVerificationService {
 
     private final PhoneVerificationRepository phoneVerificationRepository;
     private final PhoneNumberPolicy phoneNumberPolicy;
+    private final AccountIdentityGuardService accountIdentityGuardService;
     private final PhoneVerificationCodeGenerator codeGenerator;
     private final PhoneVerificationTransactionService transactionService;
     private final OctomoApiClient octomoApiClient;
@@ -39,6 +40,7 @@ public class PhoneVerificationService {
     @Transactional
     public PhoneVerificationStartResponse start(PhoneVerificationStartRequest request) {
         String phoneNumber = phoneNumberPolicy.normalize(request.phoneNumber());
+        accountIdentityGuardService.lockPhone(phoneNumber, LocalDateTime.now(clock));
         LocalDateTime now = LocalDateTime.now(clock);
         phoneVerificationRepository
                 .findTopByPhoneNumberOrderByCreatedAtDesc(phoneNumber)

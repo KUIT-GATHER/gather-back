@@ -11,8 +11,6 @@ public interface PhoneVerificationRepository extends JpaRepository<PhoneVerifica
 
     Optional<PhoneVerification> findByVerificationId(String verificationId);
 
-    boolean existsByVerificationId(String verificationId);
-
     Optional<PhoneVerification> findTopByPhoneNumberOrderByCreatedAtDesc(String phoneNumber);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
