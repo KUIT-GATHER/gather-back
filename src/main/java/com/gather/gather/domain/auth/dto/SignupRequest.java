@@ -10,6 +10,7 @@ import jakarta.validation.constraints.PastOrPresent;
 import jakarta.validation.constraints.Size;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.UUID;
 
 @Schema(description = "회원가입 요청")
 public record SignupRequest(
@@ -26,6 +27,11 @@ public record SignupRequest(
                 @NotBlank
                 @Size(max = 20)
                 String phoneNumber,
+        @Schema(
+                        description = "회원가입에 사용할 휴대폰 인증 세션 ID",
+                        format = "uuid",
+                        requiredMode = Schema.RequiredMode.REQUIRED)
+                UUID phoneVerificationId,
         @Schema(description = "이메일. 서버에서 앞뒤 공백 제거 및 소문자화합니다.", example = "test@example.com")
                 @NotBlank
                 @Email

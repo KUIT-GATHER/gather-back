@@ -43,6 +43,7 @@ import java.time.ZoneOffset;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 import org.hibernate.exception.ConstraintViolationException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -62,6 +63,8 @@ import org.springframework.test.util.ReflectionTestUtils;
 @ExtendWith(MockitoExtension.class)
 class AuthServiceTest {
 
+    private static final UUID PHONE_VERIFICATION_ID =
+            UUID.fromString("5c5d5db1-4187-43d0-8580-672307994878");
     private static final RejoinBlockIdentifier PHONE_IDENTIFIER =
             new RejoinBlockIdentifier(AccountRejoinBlockIdentifierType.PHONE, "a".repeat(64), 1);
 
@@ -75,6 +78,7 @@ class AuthServiceTest {
     @Mock private LockedTokenIssuanceService lockedTokenIssuanceService;
     @Mock private AccountRejoinBlockService accountRejoinBlockService;
     @Mock private AccountIdentityGuardService accountIdentityGuardService;
+    @Mock private PhoneVerificationRequirementService phoneVerificationRequirementService;
 
     private AuthService authService;
     private TokenIssuer tokenIssuer;
@@ -95,10 +99,11 @@ class AuthServiceTest {
                         tokenIssuer,
                         lockedTokenIssuanceService,
                         new SignupValidator(
-                                userRepository, regionRepository, new PhoneNumberNormalizer()),
+                                userRepository, regionRepository, new PhoneNumberPolicy()),
                         new LoginPolicy(),
                         accountRejoinBlockService,
                         accountIdentityGuardService,
+                        phoneVerificationRequirementService,
                         Clock.fixed(Instant.parse("2026-07-31T05:25:56.123456Z"), ZoneOffset.UTC));
         lenient()
                 .when(accountIdentityGuardService.lockPhone(anyString(), any(LocalDateTime.class)))
@@ -397,6 +402,21 @@ class AuthServiceTest {
     }
 
     @Test
+    @DisplayName("회원가입은 요청 전화번호의 유효한 휴대폰 인증이 없으면 저장하지 않는다")
+    void signup_withoutPhoneVerification_throwsPhoneVerificationRequired() {
+        prepareVerifiedEmail();
+        doThrow(new BusinessException(ErrorCode.PHONE_VERIFICATION_REQUIRED))
+                .when(phoneVerificationRequirementService)
+                .consumeForSignup(PHONE_VERIFICATION_ID, "01012345678");
+
+        assertErrorCode(
+                () -> authService.signup(signupRequest(123L)),
+                ErrorCode.PHONE_VERIFICATION_REQUIRED);
+
+        verify(userRepository, never()).saveAndFlush(any(User.class));
+    }
+
+    @Test
     @DisplayName("User 저장의 이메일 unique 충돌은 DUPLICATE_EMAIL로 변환하고 토큰을 발급하지 않는다")
     void signup_whenUserEmailUniqueConstraintFails_throwsDuplicateEmailWithoutTokenIssue() {
         Region activityRegion = Region.create("강남구", 2, "11680", null);
@@ -414,6 +434,26 @@ class AuthServiceTest {
 
         verify(tokenIssuer, never()).issue(any(User.class));
         verify(refreshTokenRepository, never()).save(any(RefreshToken.class));
+    }
+
+    @Test
+    @DisplayName("가입 저장 시점의 전화번호 unique 경쟁은 DUPLICATE_PHONE_NUMBER로 변환한다")
+    void signup_whenUserPhoneUniqueConstraintFails_throwsDuplicatePhoneNumber() {
+        Region activityRegion = Region.create("강남구", 2, "11680", null);
+        prepareVerifiedEmail();
+        when(regionRepository.findById(123L)).thenReturn(Optional.of(activityRegion));
+        when(passwordEncoder.encode("password123!")).thenReturn("encoded-password");
+        when(userRepository.saveAndFlush(any(User.class)))
+                .thenThrow(
+                        new DataIntegrityViolationException(
+                                "duplicate phone",
+                                new IllegalStateException(
+                                        "Duplicate entry '01012345678' for key 'users.phone_number'")));
+
+        assertErrorCode(
+                () -> authService.signup(signupRequest(123L)), ErrorCode.DUPLICATE_PHONE_NUMBER);
+
+        verify(tokenIssuer, never()).issue(any(User.class));
     }
 
     @Test
@@ -440,6 +480,8 @@ class AuthServiceTest {
         assertThat(result.response().accessToken()).isEqualTo("access-token");
         assertThat(result.response().tokenType()).isEqualTo("Bearer");
         assertThat(result.refreshToken()).isEqualTo("refresh-token");
+        verify(phoneVerificationRequirementService)
+                .consumeForSignup(PHONE_VERIFICATION_ID, "01012345678");
 
         ArgumentCaptor<User> userCaptor = ArgumentCaptor.forClass(User.class);
         verify(userRepository).saveAndFlush(userCaptor.capture());
@@ -958,6 +1000,7 @@ class AuthServiceTest {
                 LocalDate.of(2000, 1, 1),
                 Gender.MALE,
                 "01012345678",
+                PHONE_VERIFICATION_ID,
                 "test@example.com",
                 "password123!",
                 "password123!",

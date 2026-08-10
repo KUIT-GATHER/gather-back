@@ -13,6 +13,7 @@ import com.gather.gather.domain.auth.repository.RefreshTokenRepository;
 import com.gather.gather.domain.auth.repository.SocialAccountRepository;
 import com.gather.gather.domain.auth.repository.SocialSignupSessionRepository;
 import com.gather.gather.domain.auth.repository.UserRepository;
+import com.gather.gather.domain.auth.service.PhoneVerificationRequirementService;
 import com.gather.gather.domain.auth.service.RejoinBlockIdentifier;
 import com.gather.gather.domain.auth.service.RejoinBlockIdentifierHasher;
 import com.gather.gather.domain.auth.service.SocialAccountProviderIdCipher;
@@ -25,6 +26,7 @@ import java.sql.SQLException;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
@@ -40,6 +42,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
@@ -47,6 +50,8 @@ import org.springframework.transaction.support.TransactionTemplate;
 class SocialSignupSessionConcurrencyIntegrationTest {
 
     private static final AtomicInteger SEQUENCE = new AtomicInteger(9200000);
+    private static final UUID PHONE_VERIFICATION_ID =
+            UUID.fromString("5c5d5db1-4187-43d0-8580-672307994878");
 
     @Autowired private KakaoSignupTransactionService signupTransactionService;
     @Autowired private SocialSignupSessionService signupSessionService;
@@ -60,6 +65,7 @@ class SocialSignupSessionConcurrencyIntegrationTest {
     @Autowired private PlatformTransactionManager transactionManager;
     @Autowired private JdbcTemplate jdbcTemplate;
     @PersistenceContext private EntityManager entityManager;
+    @MockitoBean private PhoneVerificationRequirementService phoneVerificationRequirementService;
 
     private ExecutorService executorService;
     private String providerUserId;
@@ -307,7 +313,11 @@ class SocialSignupSessionConcurrencyIntegrationTest {
                             jdbcTemplate.execute("SET SESSION innodb_lock_wait_timeout = 1");
                             try {
                                 signupTransactionService.createAccount(
-                                        user, token, user.getPhoneNumber(), user.getNickname());
+                                        user,
+                                        token,
+                                        PHONE_VERIFICATION_ID,
+                                        user.getPhoneNumber(),
+                                        user.getNickname());
                                 return AttemptResult.SUCCESS;
                             } catch (RuntimeException exception) {
                                 status.setRollbackOnly();
@@ -343,6 +353,7 @@ class SocialSignupSessionConcurrencyIntegrationTest {
                                             signupTransactionService.createAccount(
                                                     user,
                                                     targetToken,
+                                                    PHONE_VERIFICATION_ID,
                                                     user.getPhoneNumber(),
                                                     user.getNickname());
                                             return AttemptResult.SUCCESS;
@@ -369,7 +380,7 @@ class SocialSignupSessionConcurrencyIntegrationTest {
     private AttemptResult consume(String token, User user) {
         try {
             signupTransactionService.createAccount(
-                    user, token, user.getPhoneNumber(), user.getNickname());
+                    user, token, PHONE_VERIFICATION_ID, user.getPhoneNumber(), user.getNickname());
             return AttemptResult.SUCCESS;
         } catch (RuntimeException exception) {
             return AttemptResult.REJECTED;

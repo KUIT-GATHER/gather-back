@@ -43,6 +43,7 @@ class KakaoSecurityIntegrationTest {
               "birthDate": "2002-03-15",
               "gender": "MALE",
               "phoneNumber": "01012345678",
+              "phoneVerificationId": "5c5d5db1-4187-43d0-8580-672307994878",
               "nickname": "길동",
               "introduction": null,
               "activityRegionId": 123,

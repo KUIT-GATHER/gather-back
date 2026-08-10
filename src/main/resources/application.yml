@@ -76,6 +76,12 @@ gather:
       cleanup-scheduler-enabled: ${GATHER_AWS_S3_CLEANUP_SCHEDULER_ENABLED:true}
       meeting-object-prefix: ${GATHER_AWS_S3_MEETING_OBJECT_PREFIX:meetings}
   auth:
+    phone-verification:
+      start-cooldown: ${GATHER_PHONE_VERIFICATION_START_COOLDOWN:60s}
+      confirm-cooldown: ${GATHER_PHONE_VERIFICATION_CONFIRM_COOLDOWN:3s}
+      confirm-max-attempts: ${GATHER_PHONE_VERIFICATION_CONFIRM_MAX_ATTEMPTS:30}
+      qr-cooldown: ${GATHER_PHONE_VERIFICATION_QR_COOLDOWN:10s}
+      qr-max-attempts: ${GATHER_PHONE_VERIFICATION_QR_MAX_ATTEMPTS:3}
     refresh-cookie:
       name: gather_refresh_token
       secure: ${GATHER_REFRESH_COOKIE_SECURE:false}
@@ -107,6 +113,11 @@ vms:
     act-days-ahead: ${VMS_CRAWL_ACT_DAYS_AHEAD:30}
     max-detail-lookups-per-run: ${VMS_CRAWL_MAX_DETAIL_LOOKUPS_PER_RUN:100}
     scheduler-enabled: ${VMS_CRAWL_SCHEDULER_ENABLED:false}
+
+octomo:
+  api-key: ${OCTOMO_API_KEY:}
+  base-url: ${OCTOMO_BASE_URL:https://api.octoverse.kr}
+  receiver-number: ${OCTOMO_RECEIVER_NUMBER:16663538}
 
 # 비밀값(rest-api-key/client-secret)은 여기 두지 않는다.
 # 로컬은 application-secret.yml, 운영은 /etc/gather/gather.env 환경변수로 주입한다.

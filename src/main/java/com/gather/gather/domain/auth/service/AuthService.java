@@ -60,6 +60,7 @@ public class AuthService {
     private final LoginPolicy loginPolicy;
     private final AccountRejoinBlockService accountRejoinBlockService;
     private final AccountIdentityGuardService accountIdentityGuardService;
+    private final PhoneVerificationRequirementService phoneVerificationRequirementService;
     private final Clock clock;
     private final SecureRandom secureRandom = new SecureRandom();
 
@@ -181,6 +182,8 @@ public class AuthService {
                 accountIdentityGuardService.lockPhone(phoneNumber, now);
         validatePhoneRejoinAllowed(phoneIdentifier, now);
         validateEmailVerified(email);
+        phoneVerificationRequirementService.consumeForSignup(
+                request.phoneVerificationId(), phoneNumber);
         validateDuplicates(email, phoneNumber, nickname);
 
         Region activityRegion = signupValidator.findActivityRegion(request.activityRegionId());
