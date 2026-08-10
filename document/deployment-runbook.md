@@ -169,6 +169,7 @@ GitHub Actions가 사용하는 repository secret은 다음과 같다.
 - 재가입 제한 HMAC secret과 key version
 - social account 암호화 key와 key version
 - Kakao Admin 및 unlink worker 활성화 조합
+- OCTOMO API key
 - EC2 Instance Profile의 기대 역할 연결 여부
 
 DB, JWT, Kakao OAuth, SMTP와 Refresh Cookie 운영 계약은 아래 표에 포함되지만 현재 `develop`의 `validate-deploy-env.sh`가 모두 강제하는 것은 아니다. 이 값들은 Spring Boot 시작 또는 실제 기능 호출 시 실패할 수 있다.
@@ -236,8 +237,11 @@ AWS access key와 secret key는 환경파일에 두지 않는다. 애플리케�
 | 변수 | 용도 | 필수/조건부 | 현재 검증 위치 |
 | --- | --- | --- | --- |
 | `VOLUNTEER_API_SERVICE_KEY` | 1365 봉사공고 동기화 | 해당 기능 운영 시 필수 | 현재 deploy validator 미검증, API 호출 시 사용 |
+| `OCTOMO_API_KEY` | OCTOMO 휴대폰 점유 인증 | 필수 | deploy validator + OCTOMO API 호출 시 사용 |
 
-현재 `develop`에 없는 pending PR의 환경변수는 이 계약에 포함하지 않는다.
+`OCTOMO_BASE_URL`과 `OCTOMO_RECEIVER_NUMBER`는 애플리케이션 기본값이 있으므로 운영 환경파일의 필수 항목이 아니다. 공급자 계약이 변경되어 기본값을 덮어써야 할 때만 명시한다.
+
+현재 `develop`에 없는 다른 pending PR의 환경변수는 이 계약에 포함하지 않는다.
 
 ## 9. 기본 운영 확인
 
