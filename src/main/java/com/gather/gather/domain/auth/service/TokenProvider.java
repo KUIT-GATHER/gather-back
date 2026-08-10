@@ -13,6 +13,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
+import java.time.Clock;
 import java.time.LocalDateTime;
 import java.util.Base64;
 import java.util.Date;
@@ -31,12 +32,14 @@ public class TokenProvider {
     private final SecureRandom secureRandom = new SecureRandom();
     private final SecretKey accessTokenKey;
     private final long accessTokenValidityMillis;
+    private final Clock clock;
 
-    public TokenProvider(JwtProperties jwtProperties) {
+    public TokenProvider(JwtProperties jwtProperties, Clock clock) {
         this.accessTokenKey =
                 Keys.hmacShaKeyFor(Base64.getDecoder().decode(jwtProperties.secret()));
         this.accessTokenValidityMillis =
                 jwtProperties.accessTokenValidityMinutes() * MILLIS_PER_MINUTE;
+        this.clock = clock;
     }
 
     // --- Refresh Token 전용 (랜덤 문자열 발급 + 해시 저장) ---
@@ -57,7 +60,7 @@ public class TokenProvider {
     }
 
     public LocalDateTime refreshTokenExpiresAt() {
-        return LocalDateTime.now().plusDays(REFRESH_TOKEN_VALID_DAYS);
+        return LocalDateTime.now(clock).plusDays(REFRESH_TOKEN_VALID_DAYS);
     }
 
     // --- Access Token 전용 (HS256 서명 JWT) ---
