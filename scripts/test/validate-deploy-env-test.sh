@@ -24,6 +24,8 @@ INVALID_HMAC="invalid-hmac-sensitive-marker"
 INVALID_AES="invalid-aes-sensitive-marker"
 ADMIN_KEY="admin-sensitive-marker"
 OCTOMO_API_KEY="octomo-sensitive-marker"
+SMTP_USERNAME="smtp-test-user@example.com"
+SMTP_PASSWORD="smtp-test-password"
 
 cleanup() {
   chmod 600 "$TEMP_DIR/unreadable.env" 2>/dev/null || true
@@ -42,6 +44,10 @@ write_fixture() {
   local worker_enabled="${7-false}"
   local admin_key="${8-__OMIT__}"
   local octomo_api_key="${9-$OCTOMO_API_KEY}"
+  local email_mode="${10-smtp}"
+  local mail_username="${11-$SMTP_USERNAME}"
+  local mail_password="${12-$SMTP_PASSWORD}"
+  local refresh_cookie_secure="${13-true}"
 
   : > "$target"
   if [ "$hmac_secret" != "__OMIT__" ]; then
@@ -67,6 +73,18 @@ write_fixture() {
   fi
   if [ "$octomo_api_key" != "__OMIT__" ]; then
     printf 'OCTOMO_API_KEY=%s\n' "$octomo_api_key" >> "$target"
+  fi
+  if [ "$email_mode" != "__OMIT__" ]; then
+    printf 'GATHER_EMAIL_MODE=%s\n' "$email_mode" >> "$target"
+  fi
+  if [ "$mail_username" != "__OMIT__" ]; then
+    printf 'SPRING_MAIL_USERNAME=%s\n' "$mail_username" >> "$target"
+  fi
+  if [ "$mail_password" != "__OMIT__" ]; then
+    printf 'SPRING_MAIL_PASSWORD=%s\n' "$mail_password" >> "$target"
+  fi
+  if [ "$refresh_cookie_secure" != "__OMIT__" ]; then
+    printf 'GATHER_REFRESH_COOKIE_SECURE=%s\n' "$refresh_cookie_secure" >> "$target"
   fi
 }
 
@@ -244,6 +262,29 @@ run_failure_case "empty OCTOMO API key" file "$FIXTURE"
 write_fixture "$FIXTURE" "$HMAC_32" 1 "$AES_32" 1 false false __OMIT__ " $OCTOMO_API_KEY"
 run_failure_case "OCTOMO API key has surrounding whitespace" file "$FIXTURE"
 assert_output_does_not_contain "OCTOMO API key is not exposed" "$LAST_OUTPUT" "$OCTOMO_API_KEY"
+
+write_fixture "$FIXTURE" "$HMAC_32" 1 "$AES_32" 1 false false __OMIT__ "$OCTOMO_API_KEY" __OMIT__
+run_failure_case "missing email mode" file "$FIXTURE"
+write_fixture "$FIXTURE" "$HMAC_32" 1 "$AES_32" 1 false false __OMIT__ "$OCTOMO_API_KEY" invalid
+run_failure_case "invalid email mode" file "$FIXTURE"
+write_fixture "$FIXTURE" "$HMAC_32" 1 "$AES_32" 1 false false __OMIT__ "$OCTOMO_API_KEY" log
+run_failure_case "log email mode in production" file "$FIXTURE"
+write_fixture "$FIXTURE" "$HMAC_32" 1 "$AES_32" 1 false false __OMIT__ "$OCTOMO_API_KEY" smtp __OMIT__
+run_failure_case "SMTP username is missing" file "$FIXTURE"
+write_fixture "$FIXTURE" "$HMAC_32" 1 "$AES_32" 1 false false __OMIT__ "$OCTOMO_API_KEY" smtp ""
+run_failure_case "SMTP username is empty" file "$FIXTURE"
+write_fixture "$FIXTURE" "$HMAC_32" 1 "$AES_32" 1 false false __OMIT__ "$OCTOMO_API_KEY" smtp "$SMTP_USERNAME" __OMIT__
+run_failure_case "SMTP password is missing" file "$FIXTURE"
+write_fixture "$FIXTURE" "$HMAC_32" 1 "$AES_32" 1 false false __OMIT__ "$OCTOMO_API_KEY" smtp "$SMTP_USERNAME" ""
+run_failure_case "SMTP password is empty" file "$FIXTURE"
+write_fixture "$FIXTURE" "$HMAC_32" 1 "$AES_32" 1 false false __OMIT__ "$OCTOMO_API_KEY" smtp "$SMTP_USERNAME" "$SMTP_PASSWORD" __OMIT__
+run_failure_case "refresh cookie secure is missing" file "$FIXTURE"
+write_fixture "$FIXTURE" "$HMAC_32" 1 "$AES_32" 1 false false __OMIT__ "$OCTOMO_API_KEY" smtp "$SMTP_USERNAME" "$SMTP_PASSWORD" false
+run_failure_case "refresh cookie secure is false" file "$FIXTURE"
+write_fixture "$FIXTURE" "$HMAC_32" 1 "$AES_32" 1 false false __OMIT__ "$OCTOMO_API_KEY" smtp "$SMTP_USERNAME" "$SMTP_PASSWORD" not-a-boolean
+run_failure_case "refresh cookie secure is invalid" file "$FIXTURE"
+write_fixture "$FIXTURE" "$HMAC_32" 1 "$AES_32" 1 false false __OMIT__ "$OCTOMO_API_KEY" smtp "$SMTP_USERNAME" "$SMTP_PASSWORD" true
+run_success_case "SMTP configuration with secure refresh cookie" file "$FIXTURE"
 
 write_fixture "$FIXTURE" "$INVALID_HMAC"
 run_failure_case "invalid HMAC Base64" file "$FIXTURE"

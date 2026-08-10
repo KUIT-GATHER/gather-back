@@ -15,6 +15,10 @@ KAKAO_ADMIN_ENABLED_VALUE=""
 KAKAO_ADMIN_KEY_VALUE=""
 KAKAO_UNLINK_WORKER_ENABLED_VALUE=""
 OCTOMO_API_KEY_VALUE=""
+EMAIL_MODE_VALUE=""
+MAIL_USERNAME_VALUE=""
+MAIL_PASSWORD_VALUE=""
+REFRESH_COOKIE_SECURE_VALUE=""
 
 HMAC_SECRET_SEEN=false
 HMAC_KEY_VERSION_SEEN=false
@@ -24,6 +28,10 @@ KAKAO_ADMIN_ENABLED_SEEN=false
 KAKAO_ADMIN_KEY_SEEN=false
 KAKAO_UNLINK_WORKER_ENABLED_SEEN=false
 OCTOMO_API_KEY_SEEN=false
+EMAIL_MODE_SEEN=false
+MAIL_USERNAME_SEEN=false
+MAIL_PASSWORD_SEEN=false
+REFRESH_COOKIE_SECURE_SEEN=false
 
 fail() {
   printf 'ERROR: %s\n' "$1" >&2
@@ -118,6 +126,34 @@ record_tracked_value() {
       OCTOMO_API_KEY_SEEN=true
       OCTOMO_API_KEY_VALUE="$value"
       ;;
+    GATHER_EMAIL_MODE)
+      if [ "$EMAIL_MODE_SEEN" = true ]; then
+        fail "duplicate tracked key: $variable_name"
+      fi
+      EMAIL_MODE_SEEN=true
+      EMAIL_MODE_VALUE="$value"
+      ;;
+    SPRING_MAIL_USERNAME)
+      if [ "$MAIL_USERNAME_SEEN" = true ]; then
+        fail "duplicate tracked key: $variable_name"
+      fi
+      MAIL_USERNAME_SEEN=true
+      MAIL_USERNAME_VALUE="$value"
+      ;;
+    SPRING_MAIL_PASSWORD)
+      if [ "$MAIL_PASSWORD_SEEN" = true ]; then
+        fail "duplicate tracked key: $variable_name"
+      fi
+      MAIL_PASSWORD_SEEN=true
+      MAIL_PASSWORD_VALUE="$value"
+      ;;
+    GATHER_REFRESH_COOKIE_SECURE)
+      if [ "$REFRESH_COOKIE_SECURE_SEEN" = true ]; then
+        fail "duplicate tracked key: $variable_name"
+      fi
+      REFRESH_COOKIE_SECURE_SEEN=true
+      REFRESH_COOKIE_SECURE_VALUE="$value"
+      ;;
   esac
 }
 
@@ -150,7 +186,11 @@ parse_stream() {
         KAKAO_ADMIN_ENABLED | \
         KAKAO_ADMIN_KEY | \
         KAKAO_UNLINK_WORKER_ENABLED | \
-        OCTOMO_API_KEY)
+        OCTOMO_API_KEY | \
+        GATHER_EMAIL_MODE | \
+        SPRING_MAIL_USERNAME | \
+        SPRING_MAIL_PASSWORD | \
+        GATHER_REFRESH_COOKIE_SECURE)
         record_tracked_value "$variable_name" "$value"
         ;;
     esac
@@ -266,6 +306,27 @@ validate_admin_worker_relationship() {
   fi
 }
 
+validate_email_configuration() {
+  case "$EMAIL_MODE_VALUE" in
+    log | smtp) ;;
+    *) fail "GATHER_EMAIL_MODE must be either log or smtp" ;;
+  esac
+
+  if [ "$EMAIL_MODE_VALUE" != smtp ]; then
+    fail "GATHER_EMAIL_MODE must be smtp for production deployment"
+  fi
+
+  require_variable "$MAIL_USERNAME_SEEN" "$MAIL_USERNAME_VALUE" "SPRING_MAIL_USERNAME"
+  require_variable "$MAIL_PASSWORD_SEEN" "$MAIL_PASSWORD_VALUE" "SPRING_MAIL_PASSWORD"
+}
+
+validate_refresh_cookie_security() {
+  validate_boolean "$REFRESH_COOKIE_SECURE_VALUE" "GATHER_REFRESH_COOKIE_SECURE"
+  if [ "$REFRESH_COOKIE_SECURE_VALUE" != true ]; then
+    fail "GATHER_REFRESH_COOKIE_SECURE must be true for production deployment"
+  fi
+}
+
 main() {
   validate_arguments "$@"
   parse_input "$1"
@@ -277,9 +338,13 @@ main() {
   require_variable "$KAKAO_ADMIN_ENABLED_SEEN" "$KAKAO_ADMIN_ENABLED_VALUE" "KAKAO_ADMIN_ENABLED"
   require_variable "$KAKAO_UNLINK_WORKER_ENABLED_SEEN" "$KAKAO_UNLINK_WORKER_ENABLED_VALUE" "KAKAO_UNLINK_WORKER_ENABLED"
   require_variable "$OCTOMO_API_KEY_SEEN" "$OCTOMO_API_KEY_VALUE" "OCTOMO_API_KEY"
+  require_variable "$EMAIL_MODE_SEEN" "$EMAIL_MODE_VALUE" "GATHER_EMAIL_MODE"
+  require_variable "$REFRESH_COOKIE_SECURE_SEEN" "$REFRESH_COOKIE_SECURE_VALUE" "GATHER_REFRESH_COOKIE_SECURE"
 
   validate_boolean "$KAKAO_ADMIN_ENABLED_VALUE" "KAKAO_ADMIN_ENABLED"
   validate_boolean "$KAKAO_UNLINK_WORKER_ENABLED_VALUE" "KAKAO_UNLINK_WORKER_ENABLED"
+  validate_email_configuration
+  validate_refresh_cookie_security
   validate_positive_integer "$HMAC_KEY_VERSION" "GATHER_AUTH_REJOIN_BLOCK_HMAC_KEY_VERSION"
   validate_positive_integer "$AES_KEY_VERSION" "GATHER_AUTH_SOCIAL_ACCOUNT_ENCRYPTION_KEY_VERSION"
 
