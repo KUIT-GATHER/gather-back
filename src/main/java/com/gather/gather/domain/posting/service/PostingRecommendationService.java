@@ -7,6 +7,7 @@ import com.gather.gather.domain.posting.entity.PostingParticipation;
 import com.gather.gather.domain.posting.entity.PostingStatus;
 import com.gather.gather.domain.posting.repository.PostingParticipationRepository;
 import com.gather.gather.domain.posting.repository.PostingRepository;
+import com.gather.gather.global.util.ActivityRegionResolver;
 import com.gather.gather.global.util.CategoryDeadlineScoreCalculator;
 import com.gather.gather.global.util.PreferredCategoryResolver;
 import com.gather.gather.global.util.SecurityUtil;
@@ -29,10 +30,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * 봉사공고 추천(회원가입 시 선택한 선호 카테고리 + 마감일 근접도 기준 상위 5개).
+ * 봉사공고 추천(회원가입 시 선택한 선호 카테고리 + 마감일 근접도 기준 상위 5개, 활동지역으로 완전 필터링).
  *
  * <p>목록 조회/상세 조회를 담당하는 {@link PostingService}와 분리해, 추천 전용 조회·채점·정렬만 담당한다. 비로그인이거나 선호 카테고리가 없는 사용자는
- * 카테고리 점수가 항상 0이 되어 자연히 마감임박순으로 정렬된다.
+ * 카테고리 점수가 항상 0이 되어 자연히 마감임박순으로 정렬된다. 활동지역은 카테고리·마감일과 달리 점수에 가중치를 주지 않고 후보 조회 단계에서 완전히 걸러낸다 — 활동지역을
+ * 설정하지 않은 회원·비로그인은 지역 필터 없이 전체 지역이 노출된다.
  */
 @Service
 @RequiredArgsConstructor
@@ -47,17 +49,19 @@ public class PostingRecommendationService {
     private final PostingRepository postingRepository;
     private final PostingParticipationRepository postingParticipationRepository;
     private final PreferredCategoryResolver preferredCategoryResolver;
+    private final ActivityRegionResolver activityRegionResolver;
     private final RegionNameResolver regionNameResolver;
     private final CategoryDeadlineScoreCalculator scoreCalculator;
 
     public List<PostingSummaryResponse> getRecommendedPostings() {
         Long userId = SecurityUtil.getCurrentUserIdOrNull();
         Set<PostingCategory> preferredCategories = preferredCategoryResolver.resolve(userId);
+        List<Long> regionFilter = activityRegionResolver.resolveFilterRegionIds(userId);
         Set<Long> excludedPostingIds = resolveAppliedPostingIds(userId);
 
         LocalDateTime now = LocalDateTime.now();
         List<ScoredPosting> scored =
-                scoreAllCandidates(preferredCategories, excludedPostingIds, now);
+                scoreAllCandidates(preferredCategories, regionFilter, excludedPostingIds, now);
 
         List<Posting> ranked =
                 scored.stream()
@@ -86,11 +90,15 @@ public class PostingRecommendationService {
      * 카테고리인 공고)가 통째로 누락될 수 있어, 후보가 소진될 때까지 전량을 순회한다. 신청 이력이 있는 공고와 비활성(isActive=false) 공고는 신청 시점에
      * 이미 막혀 있으므로 여기서 미리 제외한다.
      *
+     * <p>{@code regionFilter}는 사용자의 활동지역(상위 지역 선택 시 하위 지역 포함) 목록이다. 활동지역을 설정하지 않은 회원·비로그인은 {@code
+     * null}이 넘어와 지역 필터 없이 전체 지역을 대상으로 채점한다(가중치가 아닌 완전 필터링이므로 카테고리·마감일 점수와 달리 후보 조회 단계에서 걸러낸다).
+     *
      * <p>{@code status}는 외부 공공데이터 API 동기화 주기만큼 지연될 수 있어(마감일이 지났는데도 다음 동기화 전까지 RECRUITING으로 남아있을 수
      * 있음), 저장된 상태만으로 필터링하지 않고 {@code noticeEndDate}가 아직 지나지 않은 공고인지도 함께 확인한다.
      */
     private List<ScoredPosting> scoreAllCandidates(
             Set<PostingCategory> preferredCategories,
+            List<Long> regionFilter,
             Set<Long> excludedPostingIds,
             LocalDateTime now) {
         List<ScoredPosting> scored = new ArrayList<>();
@@ -101,7 +109,13 @@ public class PostingRecommendationService {
             Pageable pageable = PageRequest.of(pageNumber, PAGE_SIZE, sort);
             Page<Posting> candidates =
                     postingRepository.search(
-                            PostingStatus.RECRUITING, null, null, null, null, null, pageable);
+                            PostingStatus.RECRUITING,
+                            regionFilter,
+                            null,
+                            null,
+                            null,
+                            null,
+                            pageable);
             List<Posting> content = candidates.getContent();
             if (content.isEmpty()) {
                 break;
