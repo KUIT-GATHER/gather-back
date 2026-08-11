@@ -65,7 +65,25 @@ public class VmsPostingSyncService {
     private final PlatformTransactionManager transactionManager;
 
     public PostingSyncResult syncRecentPostings() {
-        List<VmsPostingListItem> items = fetchListItems();
+        return syncRecentPostings(null, null);
+    }
+
+    /**
+     * 테스트용 소규모 실행을 위해 이번 실행 한정으로 {@code maxPages}/{@code maxDetailLookupsPerRun}을 줄일 수 있다. 두 값 모두
+     * 설정값(vms.crawl.*)보다 크게는 줄 수 없다 — 관리자 수동 트리거라도 실수로 정중성 상한을 넘겨 대상 서버에 부하를 주지 않도록 하기
+     * 위함이다(clampToConfigured). {@code null}이면 설정값을 그대로 쓴다.
+     */
+    public PostingSyncResult syncRecentPostings(
+            Integer maxPagesOverride, Integer maxDetailLookupsOverride) {
+        int maxPages =
+                clampToConfigured(maxPagesOverride, vmsCrawlProperties.maxPages(), "maxPages");
+        int maxDetailLookups =
+                clampToConfigured(
+                        maxDetailLookupsOverride,
+                        vmsCrawlProperties.maxDetailLookupsPerRun(),
+                        "maxDetailLookups");
+
+        List<VmsPostingListItem> items = fetchListItems(maxPages);
         int inserted = 0;
         int updated = 0;
         int failed = 0;
@@ -79,7 +97,7 @@ public class VmsPostingSyncService {
                     updated++;
                     continue;
                 }
-                if (detailLookups >= vmsCrawlProperties.maxDetailLookupsPerRun()) {
+                if (detailLookups >= maxDetailLookups) {
                     skipped++;
                     continue;
                 }
@@ -105,12 +123,23 @@ public class VmsPostingSyncService {
         return result;
     }
 
-    private List<VmsPostingListItem> fetchListItems() {
+    /** override가 설정값보다 작으면 override를, 아니면(override가 null이거나 설정값 이상이면) 설정값을 반환한다. */
+    private int clampToConfigured(Integer override, int configured, String paramName) {
+        if (override == null) {
+            return configured;
+        }
+        if (override <= 0) {
+            throw new IllegalArgumentException(paramName + "는 1 이상이어야 합니다. value=" + override);
+        }
+        return Math.min(override, configured);
+    }
+
+    private List<VmsPostingListItem> fetchListItems(int maxPages) {
         LocalDate actFrom = LocalDate.now();
         LocalDate actTo = actFrom.plusDays(vmsCrawlProperties.actDaysAhead());
 
         List<VmsPostingListItem> result = new ArrayList<>();
-        for (int page = 1; page <= vmsCrawlProperties.maxPages(); page++) {
+        for (int page = 1; page <= maxPages; page++) {
             List<VmsPostingListItem> pageItems = vmsCrawlClient.fetchList(page, actFrom, actTo);
             if (pageItems.isEmpty()) {
                 break;
