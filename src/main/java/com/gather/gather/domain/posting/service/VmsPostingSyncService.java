@@ -39,7 +39,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 @RequiredArgsConstructor
 public class VmsPostingSyncService {
 
-    private static final String EXT_ID_PREFIX = "vms:";
+    static final String EXT_ID_PREFIX = "vms:";
 
     /**
      * VMS 활동분야(acttype) 8종 → PostingCategory 6종. 1365의 CATEGORY_MAPPING(V14 마이그레이션과 동기화 의무 있음)과는

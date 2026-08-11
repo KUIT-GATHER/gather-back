@@ -1,6 +1,7 @@
 package com.gather.gather.domain.posting.service;
 
 import com.gather.gather.domain.badge.event.VolunteerActivityCompletedEvent;
+import com.gather.gather.domain.posting.crawler.VmsCrawlProperties;
 import com.gather.gather.domain.posting.dto.PostingParticipationResponse;
 import com.gather.gather.domain.posting.entity.Posting;
 import com.gather.gather.domain.posting.entity.PostingParticipation;
@@ -37,6 +38,7 @@ public class PostingParticipationService {
     private final PostingParticipationRepository postingParticipationRepository;
     private final PostingRepository postingRepository;
     private final ApplicationEventPublisher eventPublisher;
+    private final VmsCrawlProperties vmsCrawlProperties;
 
     @Transactional
     public PostingParticipationResponse apply(Long postingId) {
@@ -76,9 +78,21 @@ public class PostingParticipationService {
         }
 
         return PostingParticipationResponse.of(
-                participation.getId(),
-                participation.getStatus(),
-                VOLUNTEER_1365_APPLICATION_URL_PREFIX + posting.getExtId());
+                participation.getId(), participation.getStatus(), buildApplicationUrl(posting));
+    }
+
+    private String buildApplicationUrl(Posting posting) {
+        return switch (posting.getSource()) {
+            case API_1365 -> VOLUNTEER_1365_APPLICATION_URL_PREFIX + posting.getExtId();
+            case VMS_CRAWL ->
+                    vmsCrawlProperties.baseUrl()
+                            + "/partspace/recruitView.do?seq="
+                            + vmsSeq(posting.getExtId());
+        };
+    }
+
+    private String vmsSeq(String extId) {
+        return extId.substring(VmsPostingSyncService.EXT_ID_PREFIX.length());
     }
 
     /** 개인 봉사 완료 판정: 활동종료일이 지난 뒤 본인이 직접 완료 처리한다(모임 봉사는 모임장이 별도로 완료 처리한다). */
