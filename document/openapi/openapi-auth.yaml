@@ -151,6 +151,7 @@ paths:
                   email: test@example.com
                   verified: true
                   verifiedAt: '2026-06-28T12:05:00'
+                  emailVerificationId: 98fa88ef-bbeb-4928-a202-7885197b3774
                 error: null
         '400':
           description: 요청 값 검증 실패 또는 인증 코드 오류
@@ -429,6 +430,7 @@ paths:
               phoneNumber: '01012345678'
               phoneVerificationId: 5c5d5db1-4187-43d0-8580-672307994878
               email: test@example.com
+              emailVerificationId: 98fa88ef-bbeb-4928-a202-7885197b3774
               password: password123!
               passwordConfirm: password123!
               nickname: 길동
@@ -486,14 +488,14 @@ paths:
                     error:
                       code: PASSWORD_MISMATCH
                       message: 비밀번호가 일치하지 않습니다.
-                emailNotVerified:
-                  summary: 이메일 인증 미완료
+                emailVerificationRequired:
+                  summary: 이메일 인증 없음·ID/이메일 불일치·인증 만료·이미 소비됨
                   value:
                     success: false
                     data: null
                     error:
-                      code: EMAIL_NOT_VERIFIED
-                      message: 이메일 인증이 완료되지 않았습니다.
+                      code: EMAIL_VERIFICATION_REQUIRED
+                      message: 이메일 인증이 필요합니다.
                 phoneVerificationRequired:
                   summary: 휴대폰 인증 없음·ID/전화번호 불일치·인증 만료·이미 소비됨
                   value:
@@ -1310,6 +1312,7 @@ components:
         - email
         - verified
         - verifiedAt
+        - emailVerificationId
       properties:
         email:
           type: string
@@ -1322,6 +1325,11 @@ components:
           type: string
           description: 이메일 인증 완료 시각
           example: '2026-06-28T12:05:00'
+        emailVerificationId:
+          type: string
+          format: uuid
+          description: 일반 이메일 회원가입에 사용할 인증 결과 ID
+          example: 98fa88ef-bbeb-4928-a202-7885197b3774
 
     EmailVerificationConfirmApiResponse:
       type: object
@@ -1509,6 +1517,7 @@ components:
         - phoneNumber
         - phoneVerificationId
         - email
+        - emailVerificationId
         - password
         - passwordConfirm
         - nickname
@@ -1548,6 +1557,11 @@ components:
           maxLength: 255
           description: 이메일. 이메일 인증 완료가 필요합니다. 서버에서 앞뒤 공백 제거 및 소문자화합니다.
           example: test@example.com
+        emailVerificationId:
+          type: string
+          format: uuid
+          description: 이 이메일을 VERIFIED로 만든 인증 결과 ID. 가입 성공 트랜잭션에서 한 번만 소비됩니다.
+          example: 98fa88ef-bbeb-4928-a202-7885197b3774
         password:
           type: string
           minLength: 6

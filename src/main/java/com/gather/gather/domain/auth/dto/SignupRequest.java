@@ -37,6 +37,11 @@ public record SignupRequest(
                 @Email
                 @Size(max = 255)
                 String email,
+        @Schema(
+                        description = "회원가입에 사용할 이메일 인증 결과 ID",
+                        format = "uuid",
+                        requiredMode = Schema.RequiredMode.REQUIRED)
+                UUID emailVerificationId,
         @Schema(description = "비밀번호. 6자 이상 12자 이하입니다.", example = "password123!")
                 @NotBlank
                 @Size(min = 6, max = 12)

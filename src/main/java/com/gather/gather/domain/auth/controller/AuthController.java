@@ -150,7 +150,8 @@ public class AuthController {
                                                           "data": {
                                                             "email": "test@example.com",
                                                             "verified": true,
-                                                            "verifiedAt": "2026-06-28T12:05:00"
+                                                            "verifiedAt": "2026-06-28T12:05:00",
+                                                            "emailVerificationId": "98fa88ef-bbeb-4928-a202-7885197b3774"
                                                           },
                                                           "error": null
                                                         }
@@ -316,8 +317,10 @@ public class AuthController {
                                             name = "PASSWORD_MISMATCH",
                                             value = AuthSwaggerExamples.PASSWORD_MISMATCH_EXAMPLE),
                                     @ExampleObject(
-                                            name = "EMAIL_NOT_VERIFIED",
-                                            value = AuthSwaggerExamples.EMAIL_NOT_VERIFIED_EXAMPLE),
+                                            name = "EMAIL_VERIFICATION_REQUIRED",
+                                            value =
+                                                    AuthSwaggerExamples
+                                                            .EMAIL_VERIFICATION_REQUIRED_EXAMPLE),
                                     @ExampleObject(
                                             name = "REQUIRED_TERMS_NOT_AGREED",
                                             value =

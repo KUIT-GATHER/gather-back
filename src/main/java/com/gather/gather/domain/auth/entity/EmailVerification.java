@@ -30,6 +30,9 @@ public class EmailVerification {
     @Column(nullable = false, unique = true, length = 255)
     private String email;
 
+    @Column(nullable = false, unique = true, length = 36)
+    private String verificationId;
+
     @Column(nullable = false, length = 10)
     private String code;
 
@@ -41,6 +44,8 @@ public class EmailVerification {
 
     private LocalDateTime verifiedAt;
 
+    private LocalDateTime consumedAt;
+
     @Column(nullable = false)
     private LocalDateTime createdAt;
 
@@ -50,29 +55,45 @@ public class EmailVerification {
     @Column(nullable = false)
     private int attemptCount;
 
-    private EmailVerification(String email, String code, LocalDateTime expiresAt) {
+    private EmailVerification(
+            String email,
+            String verificationId,
+            String code,
+            LocalDateTime expiresAt,
+            LocalDateTime createdAt) {
         this.email = email;
+        this.verificationId = verificationId;
         this.code = code;
         this.verified = false;
         this.expiresAt = expiresAt;
-        this.createdAt = LocalDateTime.now();
+        this.createdAt = createdAt;
         this.dailySendCount = 1;
     }
 
-    public static EmailVerification create(String email, String code, LocalDateTime expiresAt) {
-        return new EmailVerification(email, code, expiresAt);
+    public static EmailVerification create(
+            String email,
+            String verificationId,
+            String code,
+            LocalDateTime expiresAt,
+            LocalDateTime createdAt) {
+        return new EmailVerification(email, verificationId, code, expiresAt, createdAt);
     }
 
-    public void refresh(String code, LocalDateTime expiresAt) {
-        LocalDateTime now = LocalDateTime.now();
+    public void refresh(
+            String verificationId,
+            String code,
+            LocalDateTime expiresAt,
+            LocalDateTime refreshedAt) {
         // createdAt(직전 발송 시각)을 갱신하기 전에 당일 발송 횟수를 먼저 계산해야 한다.
-        this.dailySendCount = dailySendCountAsOf(now.toLocalDate()) + 1;
+        this.dailySendCount = dailySendCountAsOf(refreshedAt.toLocalDate()) + 1;
+        this.verificationId = verificationId;
         this.code = code;
         this.expiresAt = expiresAt;
         this.verified = false;
         this.verifiedAt = null;
+        this.consumedAt = null;
         this.attemptCount = 0;
-        this.createdAt = now;
+        this.createdAt = refreshedAt;
     }
 
     public boolean isExpired(LocalDateTime now) {
@@ -98,5 +119,20 @@ public class EmailVerification {
     public void verify(LocalDateTime verifiedAt) {
         this.verified = true;
         this.verifiedAt = verifiedAt;
+    }
+
+    public boolean isVerifiedResultExpired(LocalDateTime now, int validityMinutes) {
+        return verifiedAt == null || !verifiedAt.plusMinutes(validityMinutes).isAfter(now);
+    }
+
+    public boolean isConsumed() {
+        return consumedAt != null;
+    }
+
+    public void consume(LocalDateTime consumedAt) {
+        if (isConsumed()) {
+            return;
+        }
+        this.consumedAt = consumedAt;
     }
 }

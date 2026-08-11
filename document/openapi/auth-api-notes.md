@@ -50,7 +50,7 @@
 
 - 이미 가입된 이메일이면 `409 DUPLICATE_EMAIL` → 이 시점에 "이미 가입된 이메일" 안내 가능.
 - 인증 코드는 **6자리 숫자, 유효시간 10분** (`expiresAt`으로 만료 시각 내려줌 → 타이머 표시에 사용).
-- **재발송하면 이전 코드는 무효**가 되고 인증 상태도 초기화됩니다.
+- **재발송하면 이전 코드와 이전 인증 ID는 무효**가 되고 인증·소비 상태도 초기화됩니다. 이메일별 발송 횟수와 쿨다운은 그대로 유지됩니다.
 - ⚠️ 기본 `log` 모드는 실제 메일을 발송하지 않으며, 개인정보와 인증정보 보호를 위해 백엔드 서버 로그에도 인증 코드를 출력하지 않습니다. 따라서 이 모드에서는 인증 코드 확인 API까지의 전체 연동을 완료할 수 없습니다.
 - 로컬/개발에서 전체 이메일 인증 흐름을 검증하려면 `src/main/resources/application-secret.yml.example`을 참고해 팀에서 승인한 개발용 SMTP 계정과 `gather.email.mode: smtp`를 설정하세요. SMTP 자격 증명은 저장소에 커밋하지 마세요.
 
@@ -61,6 +61,7 @@
   - `400 EXPIRED_VERIFICATION_CODE`(만료)
   - `404 EMAIL_VERIFICATION_NOT_FOUND`(발송 이력 없음) — 각각 다른 안내 문구 권장.
 - 이메일은 서버에서 **trim + 소문자 정규화** 후 대조하므로, 발송 때와 확인 때 대소문자가 달라도 동일 이메일로 처리됩니다.
+- 성공 응답의 `emailVerificationId`를 최종 일반 회원가입 body에 전달해야 합니다. 인증 결과는 완료 후 30분 동안 한 번만 사용할 수 있습니다.
 
 ### 3-3. 휴대폰 문자 인증 — `POST /api/v1/auth/phone-verifications`
 
@@ -96,6 +97,7 @@
 | `phoneNumber` | 숫자만 권장(하이픈은 서버가 제거) |
 | `phoneVerificationId` | **필수 UUID**. 해당 `phoneNumber`를 VERIFIED로 만든 세션 ID |
 | `email` | **인증 완료된 이메일**이어야 함, 최대 255자 |
+| `emailVerificationId` | **필수 UUID**. 해당 `email`을 VERIFIED로 만든 인증 결과 ID |
 | `password` / `passwordConfirm` | 6~12자, 두 값 일치 필수 |
 | `nickname` | 완성형 한글 2~10자 또는 영문 2~20자. 혼합·공백·숫자·특수문자 불가 |
 | `introduction` | 최대 50자, **선택**(생략/빈문자열 가능 — 빈문자열은 null 처리됨) |
@@ -109,7 +111,7 @@
 | 상태 | code | 안내 위치 |
 |---|---|---|
 | 400 | `PASSWORD_MISMATCH` | 비밀번호 확인 필드 |
-| 400 | `EMAIL_NOT_VERIFIED` | 이메일 인증 단계로 유도 |
+| 400 | `EMAIL_VERIFICATION_REQUIRED` | 이메일 인증 단계로 유도(ID/이메일 불일치·30분 초과·이미 소비 포함) |
 | 400 | `PHONE_VERIFICATION_REQUIRED` | 휴대폰 인증 단계로 유도(ID/번호 불일치·30분 초과·이미 소비 포함) |
 | 400 | `REQUIRED_TERMS_NOT_AGREED` | 약관 동의 |
 | 400 | `INVALID_ACTIVITY_REGION` / `INVALID_INTEREST_CATEGORY_COUNT` | 지역/카테고리 선택 |
@@ -118,7 +120,7 @@
 | 409 | `DUPLICATE_EMAIL` / `DUPLICATE_PHONE_NUMBER` / `DUPLICATE_NICKNAME` | 각 필드 |
 
 - 사전 중복확인을 통과했어도 가입 시점에 `409`가 다시 날 수 있습니다(그 사이 다른 가입). **409 재처리 로직 필수.**
-- 가입 시 서버가 `phoneVerificationId`의 행을 잠그고 요청 전화번호 일치, 30분 이내 `VERIFIED`, 미소비 상태를 확인한 뒤 같은 트랜잭션에서 한 번만 소비합니다.
+- 가입 시 서버가 PHONE identity guard와 재가입 제한을 확인한 뒤 `emailVerificationId`, `phoneVerificationId` 순서로 행을 잠급니다. 각 요청 값과의 귀속, 30분 이내 `VERIFIED`, 미소비 상태를 확인하고 같은 트랜잭션에서 한 번만 소비합니다. 이후 저장이 실패하면 두 소비도 함께 rollback됩니다.
 - 성공 응답은 기존 회원 정보와 `{ accessToken, tokenType: "Bearer" }`를 함께 반환하고, Refresh Token은 body가 아닌 `Set-Cookie`로만 전달합니다.
 - 응답의 Access Token은 기존 로그인과 동일한 방식으로 관리합니다. 프로필 이미지가 선택된 경우 기존 `/api/v1/users/me/profile-image/**` 플로우를 이어서 호출하며, 이미지 처리 실패는 이미 완료된 회원가입을 취소하지 않습니다.
 
