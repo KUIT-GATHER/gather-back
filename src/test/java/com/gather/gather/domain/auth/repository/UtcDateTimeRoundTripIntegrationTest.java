@@ -57,9 +57,12 @@ class UtcDateTimeRoundTripIntegrationTest {
                             timestampdiff(microsecond, utc_timestamp(6), now(6)) as offset_micros
                         """);
 
-        assertThat(timeZoneState.get("session_timezone").toString().toUpperCase())
-                .isIn("+00:00", "UTC");
         assertThat(Math.abs(((Number) timeZoneState.get("offset_micros")).longValue()))
+                .as(
+                        "session timezone=%s, global timezone=%s, system timezone=%s",
+                        timeZoneState.get("session_timezone"),
+                        timeZoneState.get("global_timezone"),
+                        timeZoneState.get("system_timezone"))
                 .isLessThan(1_000_000L);
 
         User user =

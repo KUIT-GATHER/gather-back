@@ -60,6 +60,7 @@ public class AuthService {
     private final LoginPolicy loginPolicy;
     private final AccountRejoinBlockService accountRejoinBlockService;
     private final AccountIdentityGuardService accountIdentityGuardService;
+    private final PhoneVerificationRequirementService phoneVerificationRequirementService;
     private final Clock clock;
     private final SecureRandom secureRandom = new SecureRandom();
 
@@ -181,6 +182,8 @@ public class AuthService {
                 accountIdentityGuardService.lockPhone(phoneNumber, now);
         validatePhoneRejoinAllowed(phoneIdentifier, now);
         validateEmailVerified(email);
+        phoneVerificationRequirementService.consumeForSignup(
+                request.phoneVerificationId(), phoneNumber);
         validateDuplicates(email, phoneNumber, nickname);
 
         Region activityRegion = signupValidator.findActivityRegion(request.activityRegionId());
@@ -322,14 +325,6 @@ public class AuthService {
         return email.trim().toLowerCase(Locale.ROOT);
     }
 
-    private String maskEmail(String email) {
-        int at = email.indexOf('@');
-        if (at < 1) {
-            return "***";
-        }
-        return email.charAt(0) + "***" + email.substring(at);
-    }
-
     private boolean isEmailVerificationUniqueConflict(DataIntegrityViolationException exception) {
         String constraintName = findConstraintName(exception);
         if (constraintName != null) {
@@ -408,7 +403,7 @@ public class AuthService {
         try {
             emailSender.sendVerificationCode(email, code);
         } catch (RuntimeException exception) {
-            log.error("이메일 인증 코드 발송 실패: email={}", maskEmail(email), exception);
+            log.error("이메일 인증 코드 발송 실패: email={}", EmailMasker.mask(email), exception);
             compensateFailedEmailDelivery(email, compensation);
             throw new BusinessException(ErrorCode.EMAIL_SEND_FAILED, exception);
         }
@@ -437,10 +432,13 @@ public class AuthService {
                                 previous.attemptCount());
             }
             if (affectedRows == 0) {
-                log.warn("이메일 발송 실패 보상 생략: 이후 상태 변경 감지, email={}", maskEmail(email));
+                log.warn("이메일 발송 실패 보상 생략: 이후 상태 변경 감지, email={}", EmailMasker.mask(email));
             }
         } catch (RuntimeException compensationException) {
-            log.error("이메일 발송 실패 보상 중 DB 오류: email={}", maskEmail(email), compensationException);
+            log.error(
+                    "이메일 발송 실패 보상 중 DB 오류: email={}",
+                    EmailMasker.mask(email),
+                    compensationException);
         }
     }
 

@@ -120,7 +120,8 @@ public class KakaoAuthService {
                         request.interestCategories());
 
         try {
-            return signupTransactionService.createAccount(user, signupToken, phoneNumber, nickname);
+            return signupTransactionService.createAccount(
+                    user, signupToken, request.phoneVerificationId(), phoneNumber, nickname);
         } catch (KakaoSignupIdentityConflictException exception) {
             DataIntegrityViolationException integrityException = exception.integrityException();
             Optional<SocialAccount> conflictedAccount;

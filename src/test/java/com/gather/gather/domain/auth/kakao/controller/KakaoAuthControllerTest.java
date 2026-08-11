@@ -24,6 +24,8 @@ import com.gather.gather.global.exception.ErrorCode;
 import org.hamcrest.Matcher;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
@@ -224,6 +226,7 @@ class KakaoAuthControllerTest {
                                           "birthDate": "2002-03-15",
                                           "gender": "MALE",
                                           "phoneNumber": "01012345678",
+                                          "phoneVerificationId": "5c5d5db1-4187-43d0-8580-672307994878",
                                           "email": "test@example.com",
                                           "password": "password123!",
                                           "nickname": "길동",
@@ -252,6 +255,7 @@ class KakaoAuthControllerTest {
                                           "birthDate": "2002-03-15",
                                           "gender": "MALE",
                                           "phoneNumber": "01012345678",
+                                          "phoneVerificationId": "5c5d5db1-4187-43d0-8580-672307994878",
                                           "nickname": "길동",
                                           "introduction": null,
                                           "activityRegionId": 123,
@@ -268,6 +272,70 @@ class KakaoAuthControllerTest {
     }
 
     @Test
+    @DisplayName("카카오 가입의 휴대폰 인증 ID가 UUID가 아니면 서비스 호출 전에 400으로 막는다")
+    void signup_withInvalidPhoneVerificationId_returnsBadRequest() throws Exception {
+        mockMvc.perform(
+                        post("/api/v1/auth/kakao/signup")
+                                .header(SIGNUP_TOKEN_HEADER, "signup-token")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(
+                                        """
+                                        {
+                                          "name": "홍길동",
+                                          "birthDate": "2002-03-15",
+                                          "gender": "MALE",
+                                          "phoneNumber": "01012345678",
+                                          "phoneVerificationId": "not-a-uuid",
+                                          "nickname": "길동",
+                                          "activityRegionId": 123,
+                                          "interestCategories": ["WELFARE"],
+                                          "serviceTermsAgreed": true,
+                                          "privacyPolicyAgreed": true,
+                                          "marketingAgreed": false
+                                        }
+                                        """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("VALIDATION_ERROR"));
+
+        verifyNoInteractions(kakaoAuthService);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"", "  \"phoneVerificationId\": null,"})
+    @DisplayName("카카오 가입의 휴대폰 인증 ID가 누락되거나 null이면 PHONE_VERIFICATION_REQUIRED를 반환한다")
+    void signup_withoutPhoneVerificationId_returnsPhoneVerificationRequired(
+            String phoneVerificationField) throws Exception {
+        when(kakaoAuthService.signup(eq("signup-token"), any(KakaoSignupRequest.class)))
+                .thenThrow(new BusinessException(ErrorCode.PHONE_VERIFICATION_REQUIRED));
+
+        mockMvc.perform(
+                        post("/api/v1/auth/kakao/signup")
+                                .header(SIGNUP_TOKEN_HEADER, "signup-token")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(
+                                        """
+                                        {
+                                          "name": "홍길동",
+                                          "birthDate": "2002-03-15",
+                                          "gender": "MALE",
+                                          "phoneNumber": "01012345678",
+                                        %s
+                                          "nickname": "길동",
+                                          "activityRegionId": 123,
+                                          "interestCategories": ["WELFARE"],
+                                          "serviceTermsAgreed": true,
+                                          "privacyPolicyAgreed": true,
+                                          "marketingAgreed": false
+                                        }
+                                        """
+                                                .formatted(phoneVerificationField)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("PHONE_VERIFICATION_REQUIRED"));
+
+        verify(kakaoAuthService).signup(eq("signup-token"), any(KakaoSignupRequest.class));
+    }
+
+    @Test
     @DisplayName("전화번호가 20자를 넘으면 저장 전에 400으로 막는다")
     void signup_withTooLongPhoneNumber_returnsBadRequest() throws Exception {
         mockMvc.perform(
@@ -281,6 +349,7 @@ class KakaoAuthControllerTest {
                                           "birthDate": "2002-03-15",
                                           "gender": "MALE",
                                           "phoneNumber": "010123456789012345678",
+                                          "phoneVerificationId": "5c5d5db1-4187-43d0-8580-672307994878",
                                           "nickname": "길동",
                                           "introduction": null,
                                           "activityRegionId": 123,
@@ -315,6 +384,7 @@ class KakaoAuthControllerTest {
                                           "birthDate": "2002-03-15",
                                           "gender": "MALE",
                                           "phoneNumber": "01012345678901234567",
+                                          "phoneVerificationId": "5c5d5db1-4187-43d0-8580-672307994878",
                                           "nickname": "길동",
                                           "introduction": null,
                                           "activityRegionId": 123,
@@ -355,6 +425,7 @@ class KakaoAuthControllerTest {
                           "birthDate": "2002-03-15",
                           "gender": "MALE",
                           "phoneNumber": "01012345678",
+                          "phoneVerificationId": "5c5d5db1-4187-43d0-8580-672307994878",
                           "nickname": "길동",
                           "introduction": null,
                           "activityRegionId": 123,

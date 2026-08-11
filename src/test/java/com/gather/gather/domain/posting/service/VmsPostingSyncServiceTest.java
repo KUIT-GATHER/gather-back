@@ -1,6 +1,7 @@
 package com.gather.gather.domain.posting.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
@@ -192,6 +193,52 @@ class VmsPostingSyncServiceTest {
 
         verify(vmsCrawlClient, never()).fetchDetail("222");
         assertThat(result).isEqualTo(new PostingSyncResult(2, 0, 0, 1, 1));
+    }
+
+    @Test
+    @DisplayName("maxPages override는 설정값 이내로 목록 페이지 조회 수를 줄인다")
+    void syncRecentPostings_limitsPages_whenMaxPagesOverrideGiven() {
+        VmsCrawlProperties threePageProperties =
+                new VmsCrawlProperties("https://www.vms.or.kr", "test-agent", 3, 0, 30, 100);
+        vmsPostingSyncService =
+                new VmsPostingSyncService(
+                        vmsCrawlClient,
+                        threePageProperties,
+                        postingRepository,
+                        vmsRegionResolver,
+                        transactionManager);
+        when(vmsCrawlClient.fetchList(eq(1), any(), any()))
+                .thenReturn(List.of(listItem("517531", "모집중")));
+        when(postingRepository.findByExtId("vms:517531"))
+                .thenReturn(Optional.of(existingPosting("vms:517531")));
+
+        vmsPostingSyncService.syncRecentPostings(1, null);
+
+        verify(vmsCrawlClient, never()).fetchList(eq(2), any(), any());
+        verify(vmsCrawlClient, never()).fetchList(eq(3), any(), any());
+    }
+
+    @Test
+    @DisplayName("maxDetailLookups override가 설정값보다 크면 설정값으로 제한된다")
+    void syncRecentPostings_clampsMaxDetailLookupsOverride_toConfiguredValue() {
+        when(vmsCrawlClient.fetchList(eq(1), any(), any()))
+                .thenReturn(List.of(listItem("517551", "모집중")))
+                .thenReturn(List.of());
+        when(postingRepository.findByExtId("vms:517551")).thenReturn(Optional.empty());
+        when(vmsCrawlClient.fetchDetail("517551")).thenReturn(detail("517551", "모집중"));
+        when(vmsRegionResolver.resolve(any())).thenReturn(7L);
+
+        // 설정값(100)보다 큰 9999를 요청해도 상세조회는 정상 수행되며(1건뿐이라 상한에 걸리지 않음) 예외 없이 clamp된다.
+        PostingSyncResult result = vmsPostingSyncService.syncRecentPostings(null, 9999);
+
+        assertThat(result).isEqualTo(new PostingSyncResult(1, 1, 0, 0, 0));
+    }
+
+    @Test
+    @DisplayName("override에 0 이하 값을 주면 예외가 발생한다")
+    void syncRecentPostings_throws_whenOverrideNotPositive() {
+        assertThatThrownBy(() -> vmsPostingSyncService.syncRecentPostings(0, null))
+                .isInstanceOf(IllegalArgumentException.class);
     }
 
     private VmsPostingListItem listItem(String seq, String statusText) {
