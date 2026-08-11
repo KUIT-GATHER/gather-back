@@ -70,6 +70,11 @@ http://localhost:8080/health
 
 `deploy.sh`는 환경파일 일부를 배포 전에 검사하지만 애플리케이션 환경변수를 직접 `source`하지 않는다. 실제 환경변수 주입은 systemd의 `EnvironmentFile`이 담당한다.
 
+JVM 기본 timezone은 UTC가 운영 계약이다. `/etc/gather/gather.env`의 `JAVA_TOOL_OPTIONS=-Duser.timezone=UTC`가 `java` 프로세스에 적용되며, 애플리케이션은 Spring 기동 전에 JVM timezone을 검증한다. UTC와 동등하지 않은 timezone이면 기동을 중단한다.
+
+- 토큰 만료와 생성·수정 시각 같은 절대 시각은 UTC를 사용한다.
+- 마감일과 한국 기준 알림일 같은 지역 달력 날짜는 `Asia/Seoul`을 명시한다.
+
 ## 4. Nginx와 TLS
 
 현재 Nginx 계약은 다음과 같다.
@@ -170,9 +175,11 @@ GitHub Actions가 사용하는 repository secret은 다음과 같다.
 - social account 암호화 key와 key version
 - Kakao Admin 및 unlink worker 활성화 조합
 - OCTOMO API key
+- 이메일 모드가 `smtp`인지와 SMTP 사용자·비밀번호 존재 여부
+- Refresh Cookie의 Secure 값이 `true`인지
 - EC2 Instance Profile의 기대 역할 연결 여부
 
-DB, JWT, Kakao OAuth, SMTP와 Refresh Cookie 운영 계약은 아래 표에 포함되지만 현재 `develop`의 `validate-deploy-env.sh`가 모두 강제하는 것은 아니다. 이 값들은 Spring Boot 시작 또는 실제 기능 호출 시 실패할 수 있다.
+DB, JWT, Kakao OAuth와 JVM UTC 운영 계약은 아래 표에 포함되지만 현재 `develop`의 `validate-deploy-env.sh`가 모두 강제하는 것은 아니다. 이 값들은 JVM 또는 Spring Boot 시작 시 실패할 수 있다.
 
 ## 8. 운영 환경변수 계약
 
@@ -188,6 +195,14 @@ DB, JWT, Kakao OAuth, SMTP와 Refresh Cookie 운영 계약은 아래 표에 포�
 
 운영 JAR는 Git에서 제외된 `application-local.yml`에 의존하지 않는다. `DB_URL`, `DB_USERNAME`, `DB_PASSWORD`는 현재 production JAR의 datasource 계약이 아니다.
 
+### JVM timezone
+
+| 변수 | 용도 | 필수/조건부 | 현재 검증 위치 |
+| --- | --- | --- | --- |
+| `JAVA_TOOL_OPTIONS` | JVM 기본 timezone을 UTC로 고정 | 운영에서 `-Duser.timezone=UTC` 필수 | 애플리케이션 기동 전 검증 |
+
+`JAVA_TOOL_OPTIONS`는 Spring Boot 환경변수가 아니라 JVM launcher가 읽는 값이다. 현재 deploy validator는 이 값을 검사하지 않는다. 다만 이 옵션이 적용되지 않아 JVM 기본 timezone이 UTC와 동등하지 않거나 다른 timezone을 지정하면 애플리케이션이 기동하지 않는다.
+
 ### Auth와 cookie
 
 | 변수 | 용도 | 필수/조건부 | 현재 검증 위치 |
@@ -197,7 +212,7 @@ DB, JWT, Kakao OAuth, SMTP와 Refresh Cookie 운영 계약은 아래 표에 포�
 | `GATHER_AUTH_REJOIN_BLOCK_HMAC_KEY_VERSION` | HMAC key version | 필수 | deploy validator + 애플리케이션 기동 |
 | `GATHER_AUTH_SOCIAL_ACCOUNT_ENCRYPTION_KEY` | social account AES-256-GCM key | 필수 | deploy validator + 애플리케이션 기동 |
 | `GATHER_AUTH_SOCIAL_ACCOUNT_ENCRYPTION_KEY_VERSION` | 암호화 key version | 필수 | deploy validator + 애플리케이션 기동 |
-| `GATHER_REFRESH_COOKIE_SECURE` | HTTPS 전용 Refresh Cookie | 운영에서 `true` 필수 | 현재 deploy validator 미검증 |
+| `GATHER_REFRESH_COOKIE_SECURE` | HTTPS 전용 Refresh Cookie | 운영에서 `true` 필수 | deploy validator + 애플리케이션 binding |
 | `GATHER_REFRESH_COOKIE_SAME_SITE` | Refresh Cookie SameSite | 선택, 기본 `Lax` | 애플리케이션 binding |
 
 ### Kakao
@@ -216,11 +231,11 @@ DB, JWT, Kakao OAuth, SMTP와 Refresh Cookie 운영 계약은 아래 표에 포�
 
 | 변수 | 용도 | 필수/조건부 | 현재 검증 위치 |
 | --- | --- | --- | --- |
-| `GATHER_EMAIL_MODE` | 이메일 sender 선택 | 운영에서 `smtp` 필수 | 현재 deploy validator 미검증 |
-| `SPRING_MAIL_USERNAME` | SMTP 사용자 | `smtp`일 때 필수 | 메일 발송 시 사용 |
-| `SPRING_MAIL_PASSWORD` | SMTP app password | `smtp`일 때 필수 | 메일 발송 시 사용 |
+| `GATHER_EMAIL_MODE` | 이메일 sender 선택 | 운영에서 `smtp` 필수 | deploy validator + 애플리케이션 binding |
+| `SPRING_MAIL_USERNAME` | SMTP 사용자 | 운영에서 필수 | deploy validator + 메일 발송 시 사용 |
+| `SPRING_MAIL_PASSWORD` | SMTP app password | 운영에서 필수 | deploy validator + 메일 발송 시 사용 |
 
-현재 `develop`의 기본 이메일 모드는 `log`다. 운영에서는 인증코드를 실제로 발송하기 위해 `smtp`를 명시해야 한다.
+현재 `develop`의 기본 이메일 모드는 `log`지만 deploy validator는 운영 배포에서 `smtp`만 허용한다. SMTP 사용자나 비밀번호가 누락되면 JAR 교체 전에 배포를 중단한다.
 
 ### S3
 
@@ -241,7 +256,7 @@ AWS access key와 secret key는 환경파일에 두지 않는다. 애플리케�
 
 `OCTOMO_BASE_URL`과 `OCTOMO_RECEIVER_NUMBER`는 애플리케이션 기본값이 있으므로 운영 환경파일의 필수 항목이 아니다. 공급자 계약이 변경되어 기본값을 덮어써야 할 때만 명시한다.
 
-현재 `develop`에 없는 다른 pending PR의 환경변수는 이 계약에 포함하지 않는다.
+현재 `develop`에 없는 변경의 환경변수는 이 계약에 포함하지 않는다.
 
 ## 9. 기본 운영 확인
 
