@@ -13,6 +13,9 @@ public interface PostingRepository extends JpaRepository<Posting, Long>, Posting
 
     Optional<Posting> findByExtId(String extId);
 
+    /** 소스(1365/VMS)와 무관하게 title+activityDate가 완전히 같은 공고가 이미 있는지 확인한다(교차 소스 중복 저장 방지). */
+    boolean existsByTitleAndActivityDate(String title, LocalDate activityDate);
+
     /**
      * 활동 종료일이 지난 공고를 일괄 비활성화한다. actEndDate가 있으면 그 값을, 없으면(개별활동일만 있는 공고) activityDate를 종료일로 취급한다.
      */
