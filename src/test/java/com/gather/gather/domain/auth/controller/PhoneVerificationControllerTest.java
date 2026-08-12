@@ -30,6 +30,11 @@ import org.springframework.test.web.servlet.MockMvc;
 class PhoneVerificationControllerTest {
 
     private static final String VERIFICATION_ID = "5c5d5db1-4187-43d0-8580-672307994878";
+    private static final String MESSAGE_TEXT =
+            "[Gather]\n"
+                    + "전화번호 인증을 위한 문자입니다.\n"
+                    + "본 문자를 전송하시면 전화번호 인증이 자동으로 완료됩니다.\n\n"
+                    + "인증코드: [GATHER-7F2K9Q8M4P]";
 
     @Autowired private MockMvc mockMvc;
 
@@ -43,7 +48,7 @@ class PhoneVerificationControllerTest {
                         new PhoneVerificationStartResponse(
                                 VERIFICATION_ID,
                                 "16663538",
-                                "GATHER-7F2K9Q8M4P",
+                                MESSAGE_TEXT,
                                 Instant.parse("2026-08-09T06:50:00Z")));
 
         mockMvc.perform(
@@ -54,7 +59,7 @@ class PhoneVerificationControllerTest {
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.verificationId").value(VERIFICATION_ID))
                 .andExpect(jsonPath("$.data.receiverNumber").value("16663538"))
-                .andExpect(jsonPath("$.data.messageText").value("GATHER-7F2K9Q8M4P"))
+                .andExpect(jsonPath("$.data.messageText").value(MESSAGE_TEXT))
                 .andExpect(jsonPath("$.data.expiresAt").value("2026-08-09T06:50:00Z"));
     }
 
