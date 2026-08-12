@@ -24,13 +24,13 @@ import org.hibernate.annotations.UpdateTimestamp;
 public class NotificationSetting {
 
     private static final boolean DEFAULT_VOLUNTEER_SCHEDULE = true;
-    private static final boolean DEFAULT_BOOKMARKED_POSTING_DEADLINE = false;
-    private static final boolean DEFAULT_BADGE = false;
-    private static final boolean DEFAULT_ACTIVITY_POST_COMMENT = false;
+    private static final boolean DEFAULT_BOOKMARKED_POSTING_DEADLINE = true;
+    private static final boolean DEFAULT_BADGE = true;
+    private static final boolean DEFAULT_ACTIVITY_POST_COMMENT = true;
 
     private static final boolean DEFAULT_MEETING_JOIN_RESULT = true;
-    private static final boolean DEFAULT_BOOKMARKED_MEETING_DEADLINE = false;
-    private static final boolean DEFAULT_MEETING_POST_COMMENT = false;
+    private static final boolean DEFAULT_BOOKMARKED_MEETING_DEADLINE = true;
+    private static final boolean DEFAULT_MEETING_POST_COMMENT = true;
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

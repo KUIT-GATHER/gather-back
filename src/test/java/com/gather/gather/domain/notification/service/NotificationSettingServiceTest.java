@@ -58,7 +58,12 @@ class NotificationSettingServiceTest {
         NotificationSettingResponse response = notificationSettingService.getSettings();
 
         assertThat(response.volunteerScheduleEnabled()).isTrue();
+        assertThat(response.bookmarkedPostingDeadlineEnabled()).isTrue();
+        assertThat(response.badgeEnabled()).isTrue();
+        assertThat(response.activityPostCommentEnabled()).isTrue();
         assertThat(response.meetingJoinResultEnabled()).isTrue();
+        assertThat(response.bookmarkedMeetingDeadlineEnabled()).isTrue();
+        assertThat(response.meetingPostCommentEnabled()).isTrue();
     }
 
     @Test
@@ -144,8 +149,8 @@ class NotificationSettingServiceTest {
     }
 
     @Test
-    @DisplayName("설정이 없으면 기본 설정에 따라 모임 댓글 알림을 비활성화한다")
-    void isMeetingPostCommentEnabledCreatesDefaultDisabledSetting() {
+    @DisplayName("설정이 없으면 기본 설정에 따라 모임 댓글 알림을 활성화한다")
+    void isMeetingPostCommentEnabledCreatesDefaultEnabledSetting() {
         when(notificationSettingRepository.findByUser_Id(USER_ID)).thenReturn(Optional.empty());
         when(userRepository.findById(USER_ID)).thenReturn(Optional.of(user));
         when(notificationSettingRepository.save(
@@ -154,7 +159,7 @@ class NotificationSettingServiceTest {
 
         boolean enabled = notificationSettingService.isMeetingPostCommentEnabled(USER_ID);
 
-        assertThat(enabled).isFalse();
+        assertThat(enabled).isTrue();
 
         verify(notificationSettingRepository)
                 .save(org.mockito.ArgumentMatchers.any(NotificationSetting.class));
