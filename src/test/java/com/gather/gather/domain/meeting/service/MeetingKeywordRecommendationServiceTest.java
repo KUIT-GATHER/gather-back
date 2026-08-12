@@ -2,6 +2,7 @@ package com.gather.gather.domain.meeting.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.gather.gather.domain.meeting.entity.MeetingRecommendedKeyword;
@@ -55,21 +56,11 @@ class MeetingKeywordRecommendationServiceTest {
     }
 
     @Test
-    void getRecommendedKeywords_returnsKeywordsOrderedByScore() {
-        when(meetingRecommendedKeywordRepository.findAllByOrderByScoreDesc())
-                .thenReturn(
-                        List.of(
-                                MeetingRecommendedKeyword.builder()
-                                        .keyword("플로깅")
-                                        .score(10)
-                                        .build(),
-                                MeetingRecommendedKeyword.builder()
-                                        .keyword("교육")
-                                        .score(5)
-                                        .build()));
-
+    void getRecommendedKeywords_returnsFixedKeywords() {
         List<String> result = meetingKeywordRecommendationService.getRecommendedKeywords();
 
-        assertThat(result).containsExactly("플로깅", "교육");
+        assertThat(result)
+                .containsExactly("플로깅", "러닝", "독서", "스터디", "멘토링", "문화", "환경", "유기견", "아동", "노인");
+        verifyNoInteractions(meetingRecommendedKeywordRepository);
     }
 }

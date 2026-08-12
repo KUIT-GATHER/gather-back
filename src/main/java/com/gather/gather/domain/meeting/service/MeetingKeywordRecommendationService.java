@@ -20,6 +20,8 @@ public class MeetingKeywordRecommendationService {
     private static final int LOG_RETENTION_DAYS = 60;
     private static final int TOP_KEYWORD_COUNT = 10;
     private static final int MAX_RECOMMENDED_KEYWORD_LENGTH = 50;
+    private static final List<String> FIXED_RECOMMENDED_KEYWORDS =
+            List.of("플로깅", "러닝", "독서", "스터디", "멘토링", "문화", "환경", "유기견", "아동", "노인");
     private static final List<String> STOPWORDS =
             List.of("봉사", "활동", "모집", "모임", "참여", "지원", "신청", "사람", "함께");
 
@@ -70,10 +72,7 @@ public class MeetingKeywordRecommendationService {
         meetingSearchLogRepository.deleteBySearchedAtBefore(before);
     }
 
-    @Transactional(readOnly = true)
     public List<String> getRecommendedKeywords() {
-        return meetingRecommendedKeywordRepository.findAllByOrderByScoreDesc().stream()
-                .map(MeetingRecommendedKeyword::getKeyword)
-                .toList();
+        return FIXED_RECOMMENDED_KEYWORDS;
     }
 }
