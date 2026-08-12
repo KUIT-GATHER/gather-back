@@ -18,6 +18,10 @@ import com.gather.gather.domain.notification.repository.NotificationRepository;
 import com.gather.gather.global.common.PageResponse;
 import com.gather.gather.global.exception.BusinessException;
 import com.gather.gather.global.exception.ErrorCode;
+import java.time.Clock;
+import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -26,7 +30,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.PageImpl;
@@ -40,15 +43,23 @@ class NotificationQueryServiceTest {
 
     private static final Long USER_ID = 1L;
     private static final Long NOTIFICATION_ID = 10L;
+    private static final Instant NOW_INSTANT = Instant.parse("2026-08-11T07:09:09Z");
+    private static final LocalDateTime NOW = LocalDateTime.ofInstant(NOW_INSTANT, ZoneOffset.UTC);
 
     @Mock private NotificationRepository notificationRepository;
     @Mock private User user;
     @Mock private NotificationThumbnailResolver notificationThumbnailResolver;
 
-    @InjectMocks private NotificationQueryService notificationQueryService;
+    private NotificationQueryService notificationQueryService;
 
     @BeforeEach
     void setUp() {
+        notificationQueryService =
+                new NotificationQueryService(
+                        notificationRepository,
+                        notificationThumbnailResolver,
+                        Clock.fixed(NOW_INSTANT, ZoneOffset.UTC));
+
         SecurityContextHolder.getContext()
                 .setAuthentication(
                         new UsernamePasswordAuthenticationToken(USER_ID, null, List.of()));
@@ -78,6 +89,7 @@ class NotificationQueryServiceTest {
         assertThat(response.content()).hasSize(1);
         assertThat(response.content().get(0).id()).isEqualTo(NOTIFICATION_ID);
         assertThat(response.content().get(0).read()).isFalse();
+        assertThat(response.content().get(0).createdAt()).isEqualTo(NOW_INSTANT);
     }
 
     @Test
@@ -94,7 +106,7 @@ class NotificationQueryServiceTest {
         NotificationResponse response = notificationQueryService.markAsRead(NOTIFICATION_ID);
 
         assertThat(response.read()).isTrue();
-        assertThat(notification.getReadAt()).isNotNull();
+        assertThat(notification.getReadAt()).isEqualTo(NOW);
     }
 
     @Test
@@ -102,11 +114,7 @@ class NotificationQueryServiceTest {
     void markAllAsRead_updatesCategoryNotifications() {
         notificationQueryService.markAllAsRead(NotificationCategory.ACTIVITY);
 
-        verify(notificationRepository)
-                .markAllAsRead(
-                        org.mockito.ArgumentMatchers.eq(USER_ID),
-                        org.mockito.ArgumentMatchers.eq(NotificationCategory.ACTIVITY),
-                        org.mockito.ArgumentMatchers.any());
+        verify(notificationRepository).markAllAsRead(USER_ID, NotificationCategory.ACTIVITY, NOW);
     }
 
     @Test
@@ -119,7 +127,7 @@ class NotificationQueryServiceTest {
 
         notificationQueryService.deleteNotification(NOTIFICATION_ID);
 
-        assertThat(notification.getDeletedAt()).isNotNull();
+        assertThat(notification.getDeletedAt()).isEqualTo(NOW);
     }
 
     @Test
@@ -146,6 +154,7 @@ class NotificationQueryServiceTest {
                         5L);
 
         ReflectionTestUtils.setField(notification, "id", NOTIFICATION_ID);
+        ReflectionTestUtils.setField(notification, "createdAt", NOW);
 
         return notification;
     }
