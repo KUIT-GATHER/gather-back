@@ -31,7 +31,6 @@ public class PhoneVerificationService {
     private final PhoneNumberPolicy phoneNumberPolicy;
     private final AccountIdentityGuardService accountIdentityGuardService;
     private final PhoneVerificationCodeGenerator codeGenerator;
-    private final PhoneVerificationSmsMessageFormatter smsMessageFormatter;
     private final PhoneVerificationTransactionService transactionService;
     private final OctomoApiClient octomoApiClient;
     private final OctomoProperties octomoProperties;
@@ -55,7 +54,6 @@ public class PhoneVerificationService {
         LocalDateTime expiresAt = now.plusMinutes(REQUEST_VALIDITY_MINUTES);
         String verificationId = UUID.randomUUID().toString();
         String verificationCode = codeGenerator.generate();
-        String messageText = smsMessageFormatter.format(verificationCode);
         PhoneVerification verification =
                 PhoneVerification.create(
                         verificationId, phoneNumber, verificationCode, expiresAt, now);
@@ -63,14 +61,13 @@ public class PhoneVerificationService {
         return new PhoneVerificationStartResponse(
                 verificationId,
                 octomoProperties.receiverNumber(),
-                messageText,
+                verificationCode,
                 expiresAt.toInstant(ZoneOffset.UTC));
     }
 
     public PhoneVerificationQrCodeResponse createQrCode(String verificationId) {
-        String verificationCode = transactionService.reserveQr(verificationId);
         return new PhoneVerificationQrCodeResponse(
-                octomoApiClient.createQrCode(smsMessageFormatter.format(verificationCode)));
+                octomoApiClient.createQrCode(transactionService.reserveQr(verificationId)));
     }
 
     public PhoneVerificationConfirmResponse confirm(String verificationId) {
@@ -83,7 +80,7 @@ public class PhoneVerificationService {
         boolean exists =
                 octomoApiClient.existsMessage(
                         reservation.phoneNumber(),
-                        smsMessageFormatter.format(reservation.verificationCode()),
+                        reservation.verificationCode(),
                         OCTOMO_LOOKUP_MINUTES);
         if (!exists) {
             return new PhoneVerificationConfirmResponse(PhoneVerificationStatus.PENDING);
