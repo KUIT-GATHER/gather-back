@@ -26,11 +26,7 @@ class OctomoApiClientTest {
     private static final String BASE_URL = "https://api.octoverse.kr";
     private static final String API_KEY = "test-octomo-api-key";
     private static final String PNG_DATA_URL = "data:image/png;base64,iVBORw0KGgo=";
-    private static final String MESSAGE_TEXT =
-            "[Gather]\n"
-                    + "전화번호 인증을 위한 문자입니다.\n"
-                    + "본 문자를 전송하시면 전화번호 인증이 자동으로 완료됩니다.\n\n"
-                    + "인증코드: [GATHER-7F2K9Q8M4P]";
+    private static final String VERIFICATION_CODE = "GATHER-7F2K9Q8M4P";
 
     private MockRestServiceServer server;
     private OctomoApiClient client;
@@ -56,7 +52,7 @@ class OctomoApiClientTest {
                                         """
                                         {
                                           "mobileNum": "01012345678",
-                                          "text": "[Gather]\\n전화번호 인증을 위한 문자입니다.\\n본 문자를 전송하시면 전화번호 인증이 자동으로 완료됩니다.\\n\\n인증코드: [GATHER-7F2K9Q8M4P]",
+                                          "text": "GATHER-7F2K9Q8M4P",
                                           "withinMinutes": 5
                                         }
                                         """))
@@ -65,26 +61,23 @@ class OctomoApiClientTest {
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .body("{\"exists\":true}"));
 
-        assertThat(client.existsMessage("01012345678", MESSAGE_TEXT, 5)).isTrue();
+        assertThat(client.existsMessage("01012345678", VERIFICATION_CODE, 5)).isTrue();
         server.verify();
     }
 
     @Test
-    @DisplayName("QR 발급은 전체 SMS 본문만 body로 보내고 PNG data URL을 반환한다")
+    @DisplayName("QR 발급은 인증코드만 body로 보내고 PNG data URL을 반환한다")
     void createQrCode_sendsTextOnly() {
         server.expect(requestTo(BASE_URL + "/octomo/v1/public/message/qr-code"))
                 .andExpect(method(HttpMethod.POST))
                 .andExpect(header(HttpHeaders.AUTHORIZATION, "Octomo " + API_KEY))
-                .andExpect(
-                        content()
-                                .json(
-                                        "{\"text\":\"[Gather]\\n전화번호 인증을 위한 문자입니다.\\n본 문자를 전송하시면 전화번호 인증이 자동으로 완료됩니다.\\n\\n인증코드: [GATHER-7F2K9Q8M4P]\"}"))
+                .andExpect(content().json("{\"text\":\"GATHER-7F2K9Q8M4P\"}"))
                 .andRespond(
                         withStatus(HttpStatus.CREATED)
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .body("{\"qrCode\":\"" + PNG_DATA_URL + "\"}"));
 
-        assertThat(client.createQrCode(MESSAGE_TEXT)).isEqualTo(PNG_DATA_URL);
+        assertThat(client.createQrCode(VERIFICATION_CODE)).isEqualTo(PNG_DATA_URL);
         server.verify();
     }
 
