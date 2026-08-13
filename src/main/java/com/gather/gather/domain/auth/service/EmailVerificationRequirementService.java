@@ -22,16 +22,22 @@ public class EmailVerificationRequirementService {
     private final Clock clock;
 
     @Transactional(propagation = Propagation.MANDATORY)
-    public void consumeForSignup(UUID verificationId, String email) {
+    public void consumeForSignup(String email, UUID verificationId) {
         if (verificationId == null) {
+            throw required();
+        }
+        // 미존재 email에 대한 불필요한 gap lock을 줄이기 위한 fast guard다.
+        // 실제 검증은 아래 locking read가 반환한 최신 row 상태를 기준으로 수행한다.
+        if (!emailVerificationRepository.existsByEmail(email)) {
             throw required();
         }
         EmailVerification verification =
                 emailVerificationRepository
-                        .findByVerificationIdForUpdate(verificationId.toString())
+                        .findByEmailForUpdate(email)
                         .orElseThrow(EmailVerificationRequirementService::required);
         LocalDateTime now = LocalDateTime.now(clock);
         if (!verification.getEmail().equals(email)
+                || !verification.getVerificationId().equals(verificationId.toString())
                 || !verification.isVerified()
                 || verification.isVerifiedResultExpired(now, VERIFIED_RESULT_VALIDITY_MINUTES)
                 || verification.isConsumed()) {

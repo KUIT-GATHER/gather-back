@@ -430,7 +430,7 @@ class AuthServiceTest {
     void signup_withoutEmailVerification_throwsEmailVerificationRequired() {
         doThrow(new BusinessException(ErrorCode.EMAIL_VERIFICATION_REQUIRED))
                 .when(emailVerificationRequirementService)
-                .consumeForSignup(EMAIL_VERIFICATION_ID, "test@example.com");
+                .consumeForSignup("test@example.com", EMAIL_VERIFICATION_ID);
 
         assertErrorCode(
                 () -> authService.signup(signupRequest(123L)),
@@ -522,7 +522,7 @@ class AuthServiceTest {
         verify(phoneVerificationRequirementService)
                 .consumeForSignup(PHONE_VERIFICATION_ID, "01012345678");
         verify(emailVerificationRequirementService)
-                .consumeForSignup(EMAIL_VERIFICATION_ID, "test@example.com");
+                .consumeForSignup("test@example.com", EMAIL_VERIFICATION_ID);
 
         ArgumentCaptor<User> userCaptor = ArgumentCaptor.forClass(User.class);
         verify(userRepository).saveAndFlush(userCaptor.capture());

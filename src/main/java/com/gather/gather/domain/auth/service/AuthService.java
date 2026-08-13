@@ -184,7 +184,7 @@ public class AuthService {
         RejoinBlockIdentifier phoneIdentifier =
                 accountIdentityGuardService.lockPhone(phoneNumber, now);
         validatePhoneRejoinAllowed(phoneIdentifier, now);
-        emailVerificationRequirementService.consumeForSignup(request.emailVerificationId(), email);
+        emailVerificationRequirementService.consumeForSignup(email, request.emailVerificationId());
         phoneVerificationRequirementService.consumeForSignup(
                 request.phoneVerificationId(), phoneNumber);
         validateDuplicates(email, phoneNumber, nickname);

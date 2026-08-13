@@ -98,8 +98,8 @@ class EmailVerificationConsumptionIntegrationTest {
                                         .executeWithoutResult(
                                                 status ->
                                                         requirementService.consumeForSignup(
-                                                                verificationId,
-                                                                "other@example.com")))
+                                                                "other@example.com",
+                                                                verificationId)))
                 .isInstanceOfSatisfying(
                         BusinessException.class,
                         exception ->
@@ -131,7 +131,7 @@ class EmailVerificationConsumptionIntegrationTest {
     private void consume() {
         transactionTemplate()
                 .executeWithoutResult(
-                        status -> requirementService.consumeForSignup(verificationId, EMAIL));
+                        status -> requirementService.consumeForSignup(EMAIL, verificationId));
     }
 
     private boolean consumeAfterBarrier(CountDownLatch ready, CountDownLatch start)

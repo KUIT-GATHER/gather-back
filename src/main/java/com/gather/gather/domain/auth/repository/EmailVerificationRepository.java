@@ -28,10 +28,6 @@ public interface EmailVerificationRepository extends JpaRepository<EmailVerifica
     @Query("select e from EmailVerification e where e.email = :email")
     Optional<EmailVerification> findByEmailForUpdate(String email);
 
-    @Lock(LockModeType.PESSIMISTIC_WRITE)
-    @Query("select e from EmailVerification e where e.verificationId = :verificationId")
-    Optional<EmailVerification> findByVerificationIdForUpdate(String verificationId);
-
     // 최초 발송 실패 시 이후 상태 변경이 없는 해당 발송 세대만 삭제한다.
     @Modifying
     @Transactional(propagation = Propagation.REQUIRES_NEW)
