@@ -272,6 +272,24 @@ class PostingSyncServiceTest {
         assertThat(result).isEqualTo(new PostingSyncResult(1, 0, 0, 1, 0));
     }
 
+    @Test
+    @DisplayName(
+            "a candidate whose title+activityDate matches an already-stored posting (e.g. one"
+                    + " previously synced from VMS) is skipped without a detail lookup or save")
+    void syncRecentPostings_skipsNewPosting_whenTitleAndActivityDateMatchExistingPosting() {
+        when(volunteerApiClient.searchList(any(), eq(1), eq(100)))
+                .thenReturn(List.of(searchItem("DUP1", "2")));
+        when(postingRepository.findByExtId("DUP1")).thenReturn(Optional.empty());
+        when(postingRepository.existsByTitleAndActivityDate("제목-DUP1", LocalDate.of(2026, 6, 1)))
+                .thenReturn(true);
+
+        PostingSyncResult result = postingSyncService.syncRecentPostings();
+
+        verify(volunteerApiClient, never()).getItem(any());
+        verify(postingRepository, never()).save(any());
+        assertThat(result).isEqualTo(new PostingSyncResult(1, 0, 0, 0, 1));
+    }
+
     @ParameterizedTest(name = "progrmSttusSe={0} maps to {1}")
     @CsvSource({
         "1, RECRUITING",

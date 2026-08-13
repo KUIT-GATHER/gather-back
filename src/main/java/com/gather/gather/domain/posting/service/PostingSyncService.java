@@ -160,12 +160,31 @@ public class PostingSyncService {
                         })
                 .orElseGet(
                         () -> {
+                            if (isDuplicateOfExistingPosting(item.progrmSj(), item.progrmBgnde())) {
+                                log.info(
+                                        "title+activityDate가 일치하는 기존 공고가 있어 중복으로 판단해 저장하지"
+                                                + " 않습니다. progrmRegistNo={}",
+                                        item.progrmRegistNo());
+                                return UpsertOutcome.SKIPPED;
+                            }
                             if (detailLookupBudgetExhausted) {
                                 return UpsertOutcome.SKIPPED;
                             }
                             insertNew(item.progrmRegistNo());
                             return UpsertOutcome.INSERTED;
                         });
+    }
+
+    /**
+     * 1365와 VMS가 같은 실제 봉사공고를 각각 독립적으로 올릴 수 있어, extId만으로는 교차 소스 중복을 걸러낼 수 없다. title+activityDate가
+     * 완전히 같은 공고가 소스 무관하게 이미 저장돼 있으면 중복으로 간주한다(상세조회 전 목록 단계 필드만으로 판단해 API 쿼터를 소모하지 않는다).
+     */
+    private boolean isDuplicateOfExistingPosting(String title, String rawActivityDate) {
+        LocalDate activityDate = parseDate(rawActivityDate);
+        if (title == null || activityDate == null) {
+            return false;
+        }
+        return postingRepository.existsByTitleAndActivityDate(title.trim(), activityDate);
     }
 
     private void updateExisting(Posting posting, VolunteerApiSearchItemDto item) {

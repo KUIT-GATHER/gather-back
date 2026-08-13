@@ -122,6 +122,23 @@ class VmsPostingSyncServiceTest {
     }
 
     @Test
+    @DisplayName("title+활동기간 시작일이 기존 공고(예: 1365로 이미 저장된 공고)와 일치하면 상세조회 없이 중복으로 스킵된다")
+    void syncRecentPostings_skipsNewPosting_whenTitleAndActivityDateMatchExistingPosting() {
+        when(vmsCrawlClient.fetchList(eq(1), any(), any()))
+                .thenReturn(List.of(listItem("DUP1", "모집중")))
+                .thenReturn(List.of());
+        when(postingRepository.findByExtId("vms:DUP1")).thenReturn(Optional.empty());
+        when(postingRepository.existsByTitleAndActivityDate("제목-DUP1", LocalDate.of(2026, 8, 11)))
+                .thenReturn(true);
+
+        PostingSyncResult result = vmsPostingSyncService.syncRecentPostings();
+
+        verify(vmsCrawlClient, never()).fetchDetail(any());
+        verify(postingRepository, never()).save(any());
+        assertThat(result).isEqualTo(new PostingSyncResult(1, 0, 0, 0, 1));
+    }
+
+    @Test
     @DisplayName("활동기간 시작일이 없는 상세페이지는 실패로 집계되고 저장되지 않는다")
     void syncRecentPostings_countsFailed_whenActivityDateMissing() {
         when(vmsCrawlClient.fetchList(eq(1), any(), any()))

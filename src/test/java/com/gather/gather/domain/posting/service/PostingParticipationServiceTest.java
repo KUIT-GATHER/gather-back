@@ -9,11 +9,13 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.gather.gather.domain.badge.event.VolunteerActivityCompletedEvent;
+import com.gather.gather.domain.posting.crawler.VmsCrawlProperties;
 import com.gather.gather.domain.posting.dto.PostingParticipationResponse;
 import com.gather.gather.domain.posting.entity.Posting;
 import com.gather.gather.domain.posting.entity.PostingCategory;
 import com.gather.gather.domain.posting.entity.PostingParticipation;
 import com.gather.gather.domain.posting.entity.PostingParticipationStatus;
+import com.gather.gather.domain.posting.entity.PostingSource;
 import com.gather.gather.domain.posting.entity.PostingStatus;
 import com.gather.gather.domain.posting.repository.PostingParticipationRepository;
 import com.gather.gather.domain.posting.repository.PostingRepository;
@@ -41,6 +43,12 @@ class PostingParticipationServiceTest {
     private static final String EXT_ID = "3422497";
     private static final String EXPECTED_APPLICATION_URL =
             "https://1365.go.kr/vols/P9210/partcptn/timeCptn.do?type=show&progrmRegistNo=" + EXT_ID;
+    private static final String VMS_EXT_ID = "vms:998877";
+    private static final String VMS_BASE_URL = "https://www.vms.or.kr";
+    private static final String EXPECTED_VMS_APPLICATION_URL =
+            VMS_BASE_URL + "/partspace/recruitView.do?seq=998877";
+    private static final VmsCrawlProperties VMS_CRAWL_PROPERTIES =
+            new VmsCrawlProperties(VMS_BASE_URL, "test-agent", 1, 0, 1, 1);
 
     @Mock private PostingParticipationRepository postingParticipationRepository;
     @Mock private PostingRepository postingRepository;
@@ -52,7 +60,10 @@ class PostingParticipationServiceTest {
     void setUp() {
         postingParticipationService =
                 new PostingParticipationService(
-                        postingParticipationRepository, postingRepository, eventPublisher);
+                        postingParticipationRepository,
+                        postingRepository,
+                        eventPublisher,
+                        VMS_CRAWL_PROPERTIES);
     }
 
     @Test
@@ -70,6 +81,24 @@ class PostingParticipationServiceTest {
 
             assertThat(response.status()).isEqualTo(PostingParticipationStatus.APPLIED);
             assertThat(response.applicationUrl()).isEqualTo(EXPECTED_APPLICATION_URL);
+        }
+    }
+
+    @Test
+    @DisplayName("apply returns the VMS detail page url when the posting was sourced from VMS")
+    void apply_savesParticipation_returnsVmsApplicationUrl_whenPostingSourcedFromVms() {
+        try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
+            securityUtil.when(SecurityUtil::getCurrentUserId).thenReturn(USER_ID);
+            when(postingRepository.findById(POSTING_ID)).thenReturn(Optional.of(vmsPosting()));
+            when(postingParticipationRepository.existsByUserIdAndPostingId(USER_ID, POSTING_ID))
+                    .thenReturn(false);
+            when(postingParticipationRepository.saveAndFlush(any(PostingParticipation.class)))
+                    .thenAnswer(invocation -> invocation.getArgument(0));
+
+            PostingParticipationResponse response = postingParticipationService.apply(POSTING_ID);
+
+            assertThat(response.status()).isEqualTo(PostingParticipationStatus.APPLIED);
+            assertThat(response.applicationUrl()).isEqualTo(EXPECTED_VMS_APPLICATION_URL);
         }
     }
 
@@ -524,6 +553,20 @@ class PostingParticipationServiceTest {
                 .activityDate(LocalDate.now().plusMonths(1))
                 .category(PostingCategory.ENVIRONMENT)
                 .isActive(true)
+                .source(PostingSource.API_1365)
+                .build();
+    }
+
+    /** VMS 크롤링으로 수집된 공고 — extId가 "vms:" 접두어를 갖는다. */
+    private Posting vmsPosting() {
+        return Posting.builder()
+                .extId(VMS_EXT_ID)
+                .title("테스트 공고")
+                .status(PostingStatus.RECRUITING)
+                .activityDate(LocalDate.now().plusMonths(1))
+                .category(PostingCategory.ENVIRONMENT)
+                .isActive(true)
+                .source(PostingSource.VMS_CRAWL)
                 .build();
     }
 
