@@ -4,6 +4,7 @@ import com.gather.gather.domain.recruit.dto.MyAppliedRecruitResponse;
 import com.gather.gather.domain.recruit.dto.ReviewableRecruitActivity;
 import com.gather.gather.domain.recruit.entity.MeetingRecruitParticipation;
 import com.gather.gather.domain.recruit.entity.MeetingRecruitParticipationStatus;
+import com.gather.gather.domain.mypage.dto.MyPageMeetingRecruitSchedule;
 import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.List;
@@ -148,4 +149,32 @@ public interface MeetingRecruitParticipationRepository
             """)
     List<ReviewableRecruitActivity> findReviewableActivities(
             @Param("userId") Long userId, @Param("meetingId") Long meetingId);
+
+    @Query(
+            """
+            SELECT new com.gather.gather.domain.mypage.dto.MyPageMeetingRecruitSchedule(
+                prt.id,
+                prt.status,
+                p.meeting.id,
+                p.id,
+                p.title,
+                r.regionId,
+                r.place,
+                r.activityStartAt,
+                r.activityEndAt,
+                r.applyDeadlineAt,
+                r.confirmationStatus
+            )
+            FROM MeetingRecruitParticipation prt
+            JOIN Post p ON p.id = prt.postId
+            JOIN MeetingRecruit r ON r.postId = prt.postId
+            WHERE prt.userId = :userId
+              AND p.deletedAt IS NULL
+              AND p.meeting.volunteerPostingId IS NULL
+              AND prt.status IN (
+                  com.gather.gather.domain.recruit.entity.MeetingRecruitParticipationStatus.APPLIED,
+                  com.gather.gather.domain.recruit.entity.MeetingRecruitParticipationStatus.CONFIRMED
+              )
+            """)
+    List<MyPageMeetingRecruitSchedule> findMyUpcomingSchedules(@Param("userId") Long userId);
 }

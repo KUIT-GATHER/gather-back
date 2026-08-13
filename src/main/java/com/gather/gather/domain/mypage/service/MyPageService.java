@@ -2,7 +2,6 @@ package com.gather.gather.domain.mypage.service;
 
 import com.gather.gather.domain.auth.entity.User;
 import com.gather.gather.domain.auth.repository.UserRepository;
-import com.gather.gather.domain.meeting.entity.Meeting;
 import com.gather.gather.domain.meeting.entity.MeetingMember;
 import com.gather.gather.domain.meeting.enums.MeetingMemberStatus;
 import com.gather.gather.domain.meeting.enums.MeetingStatus;
@@ -13,6 +12,7 @@ import com.gather.gather.domain.mypage.dto.MyPageActivityResponse;
 import com.gather.gather.domain.mypage.dto.MyPageActivitySummaryResponse;
 import com.gather.gather.domain.mypage.dto.MyPageActivitySummaryResponse.CategoryBlock;
 import com.gather.gather.domain.mypage.dto.MyPageHomeResponse;
+import com.gather.gather.domain.mypage.dto.MyPageMeetingRecruitSchedule;
 import com.gather.gather.domain.posting.entity.Posting;
 import com.gather.gather.domain.posting.entity.PostingCategory;
 import com.gather.gather.domain.posting.entity.PostingParticipation;
@@ -21,6 +21,9 @@ import com.gather.gather.domain.posting.repository.BookmarkRepository;
 import com.gather.gather.domain.posting.repository.PostingParticipationRepository;
 import com.gather.gather.domain.posting.repository.PostingRepository;
 import com.gather.gather.domain.posting.service.RegionNameResolver;
+import com.gather.gather.domain.recruit.entity.MeetingRecruitParticipationStatus;
+import com.gather.gather.domain.recruit.entity.RecruitConfirmationStatus;
+import com.gather.gather.domain.recruit.repository.MeetingRecruitParticipationRepository;
 import com.gather.gather.domain.user.service.ProfileImageUrlResolver;
 import com.gather.gather.global.common.PageResponse;
 import com.gather.gather.global.exception.BusinessException;
@@ -33,6 +36,7 @@ import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -61,6 +65,7 @@ public class MyPageService {
     private final PostingParticipationRepository postingParticipationRepository;
     private final PostingRepository postingRepository;
     private final MeetingMemberRepository meetingMemberRepository;
+    private final MeetingRecruitParticipationRepository meetingRecruitParticipationRepository;
     private final RegionNameResolver regionNameResolver;
     private final ProfileImageUrlResolver profileImageUrlResolver;
 
@@ -79,14 +84,22 @@ public class MyPageService {
                 user, profileImageUrlResolver.resolve(user.getProfileImageKey()), hasBookmark);
     }
 
+    /**
+     * 마이페이지 활동 캘린더 조회.
+     *
+     * <p>2026-08 정책 변경: 봉사공고 기반 모임의 실제 봉사 일정은 원본 공고의 {@code PostingParticipation} 개인 일정으로 이미
+     * 표현되므로, 모임 멤버십 자체({@code Meeting.activityStartAt/endAt})는 더 이상 별도 카드를 만들지 않는다(중복 제거). 자유모임의
+     * 실제 일정은 그 내부 {@code MeetingRecruit}에 신청했을 때만 노출한다({@link #getMeetingRecruitActivities}).
+     */
     public List<MyPageActivityResponse> getActivities(YearMonth yearMonth) {
         Long userId = SecurityUtil.getCurrentUserId();
 
         List<MyPageActivityResponse> volunteerActivities =
                 getVolunteerActivities(userId, yearMonth.atDay(1), yearMonth.atEndOfMonth());
-        List<MyPageActivityResponse> meetingActivities = getMeetingActivities(userId, yearMonth);
+        List<MyPageActivityResponse> meetingRecruitActivities =
+                getMeetingRecruitActivities(userId, yearMonth.atDay(1), yearMonth.atEndOfMonth());
 
-        return Stream.concat(volunteerActivities.stream(), meetingActivities.stream())
+        return Stream.concat(volunteerActivities.stream(), meetingRecruitActivities.stream())
                 .sorted(Comparator.comparing(MyPageActivityResponse::actStartDate))
                 .toList();
     }
@@ -115,72 +128,63 @@ public class MyPageService {
                 .toList();
     }
 
-    /** 승인된 멤버로 참여 중인 모임 중 활동기간이 조회 월과 겹치는 일정만 캘린더에 포함한다. */
-    private List<MyPageActivityResponse> getMeetingActivities(Long userId, YearMonth yearMonth) {
-        LocalDateTime monthStartInclusive = yearMonth.atDay(1).atStartOfDay();
-        LocalDateTime monthEndExclusive = yearMonth.plusMonths(1).atDay(1).atStartOfDay();
+    /**
+     * 자유모임(volunteerPostingId가 없는 모임) 내부 {@code MeetingRecruit}에 사용자가 신청한 일정을 캘린더에 포함한다.
+     * CANCELLED/REJECTED/COMPLETED/REVIEWED는 리포지토리 쿼리 단계에서 이미 제외돼 APPLIED/CONFIRMED만 들어온다.
+     */
+    private List<MyPageActivityResponse> getMeetingRecruitActivities(
+            Long userId, LocalDate monthStart, LocalDate monthEnd) {
+        List<MyPageMeetingRecruitSchedule> schedules =
+                meetingRecruitParticipationRepository.findMyUpcomingSchedules(userId);
+        if (schedules.isEmpty()) {
+            return List.of();
+        }
 
-        List<MeetingMember> approvedMembers =
-                meetingMemberRepository.findApprovedForCalendar(
-                        userId, monthStartInclusive, monthEndExclusive);
+        List<Long> regionIds =
+                schedules.stream()
+                        .map(MyPageMeetingRecruitSchedule::regionId)
+                        .filter(Objects::nonNull)
+                        .distinct()
+                        .toList();
+        Map<Long, String> regionNames = regionNameResolver.resolve(regionIds);
 
-        Map<Long, PostingParticipationStatus> participationStatusByPostingId =
-                fetchLinkedParticipationStatuses(userId, approvedMembers);
-        Map<Long, String> regionNamesByRegionId =
-                regionNameResolver.resolve(
-                        approvedMembers.stream()
-                                .map(member -> member.getMeeting().getRegionId())
-                                .toList());
-
-        return approvedMembers.stream()
+        return schedules.stream()
+                .filter(schedule -> isRecruitScheduleVisibleInMonth(schedule, monthStart, monthEnd))
                 .map(
-                        member ->
-                                MyPageActivityResponse.ofMeeting(
-                                        member.getMeeting(),
-                                        resolveLinkedParticipationStatus(
-                                                member.getMeeting(),
-                                                participationStatusByPostingId),
-                                        regionNamesByRegionId.get(
-                                                member.getMeeting().getRegionId())))
+                        schedule ->
+                                MyPageActivityResponse.ofMeetingRecruit(
+                                        schedule.participationId(),
+                                        schedule.meetingId(),
+                                        schedule.postId(),
+                                        schedule.title(),
+                                        schedule.place(),
+                                        regionNames.get(schedule.regionId()),
+                                        schedule.activityStartAt(),
+                                        schedule.activityEndAt(),
+                                        schedule.participationStatus().name(),
+                                        resolveMeetingRecruitParticipationAction(schedule)))
                 .toList();
     }
 
-    /**
-     * {@code Map.of()}로 생성된 배치 조회 결과는 null 키 조회 시 NPE를 던지므로 자유 모임(volunteerPostingId=null)을 먼저
-     * 걸러낸다.
-     */
-    private PostingParticipationStatus resolveLinkedParticipationStatus(
-            Meeting meeting, Map<Long, PostingParticipationStatus> participationStatusByPostingId) {
-        Long volunteerPostingId = meeting.getVolunteerPostingId();
-        if (volunteerPostingId == null) {
-            return null;
-        }
-        return participationStatusByPostingId.get(volunteerPostingId);
+    private boolean isRecruitScheduleVisibleInMonth(
+            MyPageMeetingRecruitSchedule schedule, LocalDate monthStart, LocalDate monthEnd) {
+        LocalDate start = schedule.activityStartAt().toLocalDate();
+        LocalDate end = schedule.activityEndAt().toLocalDate();
+        return !start.isAfter(monthEnd) && !end.isBefore(monthStart);
     }
 
     /**
-     * 공고 기반 모임(volunteerPostingId != null)들의 연결 봉사공고에 대한 사용자의 참여 상태를 배치 조회한다. 모임과 참여 상태를 postingId
-     * 하나로 매핑하는 이유: posting_participation에는 (user_id, posting_id) 유니크 제약이 있어 postingId당 참여가 최대 1건이다.
+     * MeetingRecruit 상세 API의 기존 취소 가능 정책과 동일 기준: 신청(APPLIED) 상태이면서 아직 확정 전(UNCONFIRMED)이고 신청
+     * 마감 시각 전이면 취소 가능(CANCEL), 그 외(CONFIRMED로 넘어갔거나 마감 지남)는 NONE.
      */
-    private Map<Long, PostingParticipationStatus> fetchLinkedParticipationStatuses(
-            Long userId, List<MeetingMember> approvedMembers) {
-        List<Long> volunteerPostingIds =
-                approvedMembers.stream()
-                        .map(member -> member.getMeeting().getVolunteerPostingId())
-                        .filter(volunteerPostingId -> volunteerPostingId != null)
-                        .distinct()
-                        .toList();
-        if (volunteerPostingIds.isEmpty()) {
-            return Map.of();
+    private String resolveMeetingRecruitParticipationAction(MyPageMeetingRecruitSchedule schedule) {
+        if (schedule.participationStatus() != MeetingRecruitParticipationStatus.APPLIED) {
+            return "NONE";
         }
-
-        return postingParticipationRepository
-                .findAllByUserIdAndPostingIdIn(userId, volunteerPostingIds)
-                .stream()
-                .collect(
-                        Collectors.toMap(
-                                PostingParticipation::getPostingId,
-                                PostingParticipation::getStatus));
+        boolean open =
+                schedule.confirmationStatus() == RecruitConfirmationStatus.UNCONFIRMED
+                        && !LocalDateTime.now().isAfter(schedule.applyDeadlineAt());
+        return open ? "CANCEL" : "NONE";
     }
 
     /**
@@ -212,14 +216,14 @@ public class MyPageService {
         long totalCompletedCount = resolvedPostings.size() + completedMeetingMembers.size();
         long totalRecognizedMinutes =
                 sumRecognizedMinutes(
-                                completedParticipations, PostingParticipation::getRecognizedMinutes)
+                        completedParticipations, PostingParticipation::getRecognizedMinutes)
                         + sumRecognizedMinutes(
-                                completedMeetingMembers, MeetingMember::getRecognizedMinutes);
+                        completedMeetingMembers, MeetingMember::getRecognizedMinutes);
         long timeCertifiableCompletedCount =
                 countWithRecognizedMinutes(
-                                completedParticipations, PostingParticipation::getRecognizedMinutes)
+                        completedParticipations, PostingParticipation::getRecognizedMinutes)
                         + countWithRecognizedMinutes(
-                                completedMeetingMembers, MeetingMember::getRecognizedMinutes);
+                        completedMeetingMembers, MeetingMember::getRecognizedMinutes);
 
         return MyPageActivitySummaryResponse.of(
                 totalCompletedCount,
@@ -257,7 +261,8 @@ public class MyPageService {
                         .sorted(
                                 Comparator.comparing(
                                                 (Map.Entry<PostingParticipation, Posting> entry) ->
-                                                        entry.getValue().getActStartDate(),
+                                                        effectiveStartDate(
+                                                                entry.getKey(), entry.getValue()),
                                                 Comparator.nullsLast(Comparator.reverseOrder()))
                                         // 활동 시작일이 같은 카드가 여럿이면 순서가 조회마다 바뀌지 않도록 참여 ID로 타이브레이크한다.
                                         .thenComparing(
@@ -351,6 +356,9 @@ public class MyPageService {
     /**
      * posting_participation은 posting_id에 FK가 걸려 있어 정상 운영 중에는 항상 posting이 존재하지만, 참여한 공고를 찾지 못하는
      * 경우(데이터 정합성 이슈 등)를 대비해 방어적으로 로그를 남기고 캘린더에서 제외한다.
+     *
+     * <p>2026-08 정책 변경: 날짜 source를 공고 전체 활동기간에서 사용자 개인 참여일정으로 바꿨다. 개인 일정이 없는(정책 변경 이전) 기존
+     * 참여만 공고 전체 활동기간으로 fallback한다.
      */
     private boolean isVisibleInMonth(
             PostingParticipation participation,
@@ -364,8 +372,19 @@ public class MyPageService {
                     participation.getId());
             return false;
         }
-        return isWithinMonth(
-                posting.getActStartDate(), posting.getActEndDate(), monthStart, monthEnd);
+        LocalDate effectiveStart = effectiveStartDate(participation, posting);
+        LocalDate effectiveEnd =
+                participation.getParticipationEndDate() != null
+                        ? participation.getParticipationEndDate()
+                        : posting.getActEndDate();
+        return isWithinMonth(effectiveStart, effectiveEnd, monthStart, monthEnd);
+    }
+
+    /** 참여의 개인 일정 시작일(없으면 공고 전체 시작일로 fallback). getActivityRecords 정렬과 isVisibleInMonth에서 함께 쓴다. */
+    private LocalDate effectiveStartDate(PostingParticipation participation, Posting posting) {
+        return participation.getParticipationStartDate() != null
+                ? participation.getParticipationStartDate()
+                : posting.getActStartDate();
     }
 
     /** 종료일이 없는 단일 일정은 시작일과 동일한 것으로 간주하고, 활동 기간과 조회 월의 겹침 여부로 판단한다. */
