@@ -217,7 +217,7 @@ public class KakaoAuthController {
             description =
                     """
                     카카오 로그인에서 받은 가입용 임시 토큰과 추가정보로 회원가입을 완료하고 곧바로 로그인 토큰을 발급합니다.
-                    이메일과 비밀번호는 받지 않습니다.
+                    이메일과 비밀번호는 받지 않습니다. 요청 전화번호와 일치하는 30분 이내 미소비 휴대폰 인증이 필요합니다.
 
                     가입 토큰은 Authorization이 아니라 X-Signup-Token 헤더로 보냅니다.
                     전화번호가 이미 가입에 사용된 경우 DUPLICATE_PHONE_NUMBER(409)로 실패합니다. 이는 기존 일반 계정과
@@ -269,6 +269,12 @@ public class KakaoAuthController {
                                             value =
                                                     KakaoAuthSwaggerExamples
                                                             .REQUIRED_TERMS_NOT_AGREED_EXAMPLE),
+                                    @ExampleObject(
+                                            name = "PHONE_VERIFICATION_REQUIRED",
+                                            summary = "인증 없음·ID/전화번호 불일치·인증 만료·이미 소비됨",
+                                            value =
+                                                    KakaoAuthSwaggerExamples
+                                                            .PHONE_VERIFICATION_REQUIRED_EXAMPLE),
                                     @ExampleObject(
                                             name = "INVALID_INTEREST_CATEGORY_COUNT",
                                             value =

@@ -107,6 +107,17 @@ final class KakaoAuthSwaggerExamples {
               }
             }
             """;
+    static final String PHONE_VERIFICATION_REQUIRED_EXAMPLE =
+            """
+            {
+              "success": false,
+              "data": null,
+              "error": {
+                "code": "PHONE_VERIFICATION_REQUIRED",
+                "message": "휴대폰 인증이 필요합니다."
+              }
+            }
+            """;
     static final String INVALID_INTEREST_CATEGORY_COUNT_EXAMPLE =
             """
             {

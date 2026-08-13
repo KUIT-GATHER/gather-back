@@ -129,6 +129,61 @@ final class AuthSwaggerExamples {
               }
             }
             """;
+    static final String PHONE_VERIFICATION_NOT_FOUND_EXAMPLE =
+            """
+            {
+              "success": false,
+              "data": null,
+              "error": {
+                "code": "PHONE_VERIFICATION_NOT_FOUND",
+                "message": "휴대폰 인증 요청을 찾을 수 없습니다."
+              }
+            }
+            """;
+    static final String PHONE_VERIFICATION_EXPIRED_EXAMPLE =
+            """
+            {
+              "success": false,
+              "data": null,
+              "error": {
+                "code": "PHONE_VERIFICATION_EXPIRED",
+                "message": "휴대폰 인증 요청이 만료되었습니다."
+              }
+            }
+            """;
+    static final String PHONE_VERIFICATION_REQUIRED_EXAMPLE =
+            """
+            {
+              "success": false,
+              "data": null,
+              "error": {
+                "code": "PHONE_VERIFICATION_REQUIRED",
+                "message": "휴대폰 인증이 필요합니다."
+              }
+            }
+            """;
+    static final String PHONE_VERIFICATION_PROVIDER_UNAVAILABLE_EXAMPLE =
+            """
+            {
+              "success": false,
+              "data": null,
+              "error": {
+                "code": "PHONE_VERIFICATION_PROVIDER_UNAVAILABLE",
+                "message": "휴대폰 인증 서비스를 일시적으로 사용할 수 없습니다."
+              }
+            }
+            """;
+    static final String PHONE_VERIFICATION_RATE_LIMITED_EXAMPLE =
+            """
+            {
+              "success": false,
+              "data": null,
+              "error": {
+                "code": "PHONE_VERIFICATION_RATE_LIMITED",
+                "message": "휴대폰 인증 요청이 많습니다. 잠시 후 다시 시도해주세요."
+              }
+            }
+            """;
     static final String PASSWORD_MISMATCH_EXAMPLE =
             """
             {

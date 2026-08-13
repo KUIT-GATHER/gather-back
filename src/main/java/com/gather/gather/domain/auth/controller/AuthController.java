@@ -65,8 +65,8 @@ public class AuthController {
                                                           "success": true,
                                                           "data": {
                                                             "email": "test@example.com",
-                                                            "expiresAt": "2026-06-28T12:10:00",
-                                                            "resendAvailableAt": "2026-06-28T12:03:00",
+                                                            "expiresAt": "2026-06-28T03:10:00",
+                                                            "resendAvailableAt": "2026-06-28T03:03:00",
                                                             "message": "인증 코드가 발송되었습니다."
                                                           },
                                                           "error": null
@@ -150,7 +150,7 @@ public class AuthController {
                                                           "data": {
                                                             "email": "test@example.com",
                                                             "verified": true,
-                                                            "verifiedAt": "2026-06-28T12:05:00"
+                                                            "verifiedAt": "2026-06-28T03:05:00"
                                                           },
                                                           "error": null
                                                         }
@@ -210,7 +210,8 @@ public class AuthController {
     @Operation(
             summary = "전화번호 중복 확인",
             description =
-                    "회원가입 기본 정보 단계에서 입력한 전화번호의 가입 가능 여부를 확인합니다. 이미 가입에 사용됐거나 탈퇴 후 재가입 제한 중이면 available은 false입니다.")
+                    "기존 클라이언트 호환을 위해 유지하는 API입니다. 신규 회원가입에서는 휴대폰 인증 API를 사용합니다. "
+                            + "이미 가입에 사용됐거나 탈퇴 후 재가입 제한 중이면 available은 false입니다.")
     @ApiResponses({
         @io.swagger.v3.oas.annotations.responses.ApiResponse(
                 responseCode = "200",
@@ -269,7 +270,9 @@ public class AuthController {
 
     @Operation(
             summary = "회원가입",
-            description = "회원가입 성공 시 Access Token은 응답 본문으로, Refresh Token은 HttpOnly 쿠키로 발급합니다.")
+            description =
+                    "요청 전화번호와 일치하는 30분 이내 미소비 휴대폰 인증이 필요합니다. 회원가입 성공 시 Access Token은 응답 본문으로, "
+                            + "Refresh Token은 HttpOnly 쿠키로 발급합니다.")
     @ApiResponses({
         @io.swagger.v3.oas.annotations.responses.ApiResponse(
                 responseCode = "201",
@@ -319,6 +322,12 @@ public class AuthController {
                                     @ExampleObject(
                                             name = "EMAIL_NOT_VERIFIED",
                                             value = AuthSwaggerExamples.EMAIL_NOT_VERIFIED_EXAMPLE),
+                                    @ExampleObject(
+                                            name = "PHONE_VERIFICATION_REQUIRED",
+                                            summary = "인증 없음·ID/전화번호 불일치·인증 만료·이미 소비됨",
+                                            value =
+                                                    AuthSwaggerExamples
+                                                            .PHONE_VERIFICATION_REQUIRED_EXAMPLE),
                                     @ExampleObject(
                                             name = "REQUIRED_TERMS_NOT_AGREED",
                                             value =

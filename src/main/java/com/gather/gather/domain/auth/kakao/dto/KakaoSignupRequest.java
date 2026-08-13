@@ -43,7 +43,10 @@ public record KakaoSignupRequest(
                 String nickname,
         @Schema(description = "소개글. 최대 50자입니다.", example = "함께 봉사하고 싶습니다.") @Size(max = 50)
                 String introduction,
-        @Schema(description = "활동 지역 ID. 시군구(level 2) 단위 1개만 선택합니다.", example = "123") @NotNull
+        @Schema(
+                        description = "활동 지역 ID. 시도(level 1) 또는 시군구(level 2) 단위 1개를 선택합니다.",
+                        example = "123")
+                @NotNull
                 Long activityRegionId,
         @Schema(
                         description = "관심 카테고리 목록. 중복 없이 1개 이상입니다.",
