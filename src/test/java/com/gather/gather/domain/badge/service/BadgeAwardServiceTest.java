@@ -124,9 +124,9 @@ class BadgeAwardServiceTest {
 
     @Test
     @DisplayName(
-            "award skips the notification when the user has no NotificationSetting row (defaults"
-                    + " to disabled, M-6)")
-    void award_skipsNotification_whenNoNotificationSettingExists() {
+            "award sends the notification when the user has no NotificationSetting row (defaults"
+                    + " to enabled)")
+    void award_sendsNotification_whenNoNotificationSettingExists() {
         when(userBadgeRepository.existsByUserIdAndBadgeType(USER_ID, BadgeType.FIRST_COMPLETION))
                 .thenReturn(false);
         when(userBadgeWriter.tryInsert(USER_ID, BadgeType.FIRST_COMPLETION)).thenReturn(true);
@@ -134,7 +134,13 @@ class BadgeAwardServiceTest {
 
         badgeAwardService.award(USER_ID, BadgeType.FIRST_COMPLETION);
 
-        verify(notificationCreateService, never()).create(any(), any(), any(), any(), any());
+        verify(notificationCreateService)
+                .create(
+                        eq(USER_ID),
+                        eq(NotificationType.BADGE_EARNED),
+                        any(String.class),
+                        eq(NotificationTargetType.MY_PAGE),
+                        eq(null));
     }
 
     private NotificationSetting badgeEnabledSetting(boolean badgeEnabled) {

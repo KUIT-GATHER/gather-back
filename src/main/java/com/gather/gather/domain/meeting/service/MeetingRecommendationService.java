@@ -53,6 +53,7 @@ public class MeetingRecommendationService {
     private final PreferredCategoryResolver preferredCategoryResolver;
     private final CategoryDeadlineScoreCalculator scoreCalculator;
     private final RegionNameResolver regionNameResolver;
+    private final MeetingThumbnailResolver meetingThumbnailResolver;
 
     public List<MeetingResponse> getRecommendedMeetings() {
         Long userId = SecurityUtil.getCurrentUserIdOrNull();
@@ -76,6 +77,8 @@ public class MeetingRecommendationService {
 
         Map<Long, String> regionNames =
                 regionNameResolver.resolve(ranked.stream().map(Meeting::getRegionId).toList());
+        Map<Long, String> thumbnails =
+                meetingThumbnailResolver.resolve(ranked.stream().map(Meeting::getId).toList());
 
         return ranked.stream()
                 .map(
@@ -83,7 +86,8 @@ public class MeetingRecommendationService {
                                 MeetingResponse.from(
                                         meeting,
                                         MeetingStatus.RECRUITING,
-                                        regionNames.get(meeting.getRegionId())))
+                                        regionNames.get(meeting.getRegionId()),
+                                        thumbnails.get(meeting.getId())))
                 .toList();
     }
 

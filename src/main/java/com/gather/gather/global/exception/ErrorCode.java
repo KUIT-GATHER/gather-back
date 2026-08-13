@@ -20,6 +20,13 @@ public enum ErrorCode {
             HttpStatus.TOO_MANY_REQUESTS, "하루 이메일 인증 발송 횟수를 초과했습니다. 내일 다시 시도해주세요."),
     EMAIL_VERIFICATION_ATTEMPTS_EXCEEDED(
             HttpStatus.TOO_MANY_REQUESTS, "인증 코드 입력 가능 횟수를 초과했습니다. 코드를 다시 발송해주세요."),
+    PHONE_VERIFICATION_NOT_FOUND(HttpStatus.NOT_FOUND, "휴대폰 인증 요청을 찾을 수 없습니다."),
+    PHONE_VERIFICATION_EXPIRED(HttpStatus.BAD_REQUEST, "휴대폰 인증 요청이 만료되었습니다."),
+    PHONE_VERIFICATION_REQUIRED(HttpStatus.BAD_REQUEST, "휴대폰 인증이 필요합니다."),
+    PHONE_VERIFICATION_PROVIDER_UNAVAILABLE(
+            HttpStatus.SERVICE_UNAVAILABLE, "휴대폰 인증 서비스를 일시적으로 사용할 수 없습니다."),
+    PHONE_VERIFICATION_RATE_LIMITED(
+            HttpStatus.TOO_MANY_REQUESTS, "휴대폰 인증 요청이 많습니다. 잠시 후 다시 시도해주세요."),
     PASSWORD_MISMATCH(HttpStatus.BAD_REQUEST, "비밀번호가 일치하지 않습니다."),
     EMAIL_NOT_VERIFIED(HttpStatus.BAD_REQUEST, "이메일 인증이 완료되지 않았습니다."),
     REQUIRED_TERMS_NOT_AGREED(HttpStatus.BAD_REQUEST, "필수 약관 동의가 필요합니다."),
@@ -134,6 +141,7 @@ public enum ErrorCode {
     // ── 모집공고(RECRUIT) ──
     POST_RECRUIT_NOT_ALLOWED(HttpStatus.BAD_REQUEST, "모집공고는 전용 API로 작성해주세요."),
     RECRUIT_HOST_ONLY(HttpStatus.FORBIDDEN, "모집공고는 모임장만 작성할 수 있습니다."),
+    RECRUIT_POSTING_BASED_NOT_ALLOWED(HttpStatus.FORBIDDEN, "공고 기반 모임은 자체 모집공고를 작성할 수 없습니다."),
     RECRUIT_NOT_FOUND(HttpStatus.NOT_FOUND, "모집공고를 찾을 수 없습니다."),
     RECRUIT_RECOGNIZED_MINUTES_REQUIRED(HttpStatus.BAD_REQUEST, "봉사시간 인정 시 인정 시간을 입력해야 합니다."),
     RECRUIT_APPLICATION_CLOSED(HttpStatus.CONFLICT, "신청 기간이 종료되어 변경할 수 없습니다."),

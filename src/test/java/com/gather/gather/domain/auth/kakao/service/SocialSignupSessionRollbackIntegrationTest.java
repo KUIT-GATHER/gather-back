@@ -6,12 +6,14 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 
 import com.gather.gather.domain.auth.entity.Gender;
+import com.gather.gather.domain.auth.entity.PhoneVerification;
 import com.gather.gather.domain.auth.entity.RefreshToken;
 import com.gather.gather.domain.auth.entity.SocialProvider;
 import com.gather.gather.domain.auth.entity.SocialSignupSession;
 import com.gather.gather.domain.auth.entity.SocialSignupSessionStatus;
 import com.gather.gather.domain.auth.entity.User;
 import com.gather.gather.domain.auth.kakao.token.SocialSignupTokenService;
+import com.gather.gather.domain.auth.repository.PhoneVerificationRepository;
 import com.gather.gather.domain.auth.repository.RefreshTokenRepository;
 import com.gather.gather.domain.auth.repository.SocialAccountRepository;
 import com.gather.gather.domain.auth.repository.SocialSignupSessionRepository;
@@ -20,8 +22,11 @@ import com.gather.gather.domain.auth.service.RejoinBlockIdentifier;
 import com.gather.gather.domain.auth.service.RejoinBlockIdentifierHasher;
 import com.gather.gather.domain.auth.service.SocialAccountProviderIdCipher;
 import com.gather.gather.domain.posting.entity.PostingCategory;
+import java.time.Clock;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
+import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -31,11 +36,14 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 @SpringBootTest
 class SocialSignupSessionRollbackIntegrationTest {
 
     private static final String PROVIDER_USER_ID = "signup-refresh-failure-20260730";
+    private static final String PHONE_NUMBER = "01093999999";
 
     @Autowired private KakaoSignupTransactionService signupTransactionService;
     @Autowired private SocialSignupSessionService signupSessionService;
@@ -43,18 +51,37 @@ class SocialSignupSessionRollbackIntegrationTest {
     @Autowired private SocialSignupSessionRepository signupSessionRepository;
     @Autowired private SocialAccountRepository socialAccountRepository;
     @Autowired private UserRepository userRepository;
+    @Autowired private PhoneVerificationRepository phoneVerificationRepository;
     @Autowired private RejoinBlockIdentifierHasher identifierHasher;
     @Autowired private SocialAccountProviderIdCipher providerIdCipher;
     @Autowired private JdbcTemplate jdbcTemplate;
+    @Autowired private PlatformTransactionManager transactionManager;
+    @Autowired private Clock clock;
     @MockitoBean private RefreshTokenRepository refreshTokenRepository;
 
     private RejoinBlockIdentifier identifier;
     private String token;
+    private UUID phoneVerificationId;
 
     @BeforeEach
     void setUp() {
         identifier = identifierHasher.hashKakao(PROVIDER_USER_ID);
         token = signupSessionService.issue(identifier, providerIdCipher.encrypt(PROVIDER_USER_ID));
+        phoneVerificationId = UUID.randomUUID();
+        transactionTemplate()
+                .executeWithoutResult(
+                        status -> {
+                            LocalDateTime now = LocalDateTime.now(clock);
+                            PhoneVerification verification =
+                                    PhoneVerification.create(
+                                            phoneVerificationId.toString(),
+                                            PHONE_NUMBER,
+                                            "GATHER-KAKAORB01",
+                                            now.plusMinutes(5),
+                                            now.minusMinutes(1));
+                            verification.verify(now.minusMinutes(1));
+                            phoneVerificationRepository.save(verification);
+                        });
     }
 
     @AfterEach
@@ -62,10 +89,16 @@ class SocialSignupSessionRollbackIntegrationTest {
         signupSessionRepository
                 .findByTokenHash(signupTokenService.validateAndHash(token))
                 .ifPresent(signupSessionRepository::delete);
+        transactionTemplate()
+                .executeWithoutResult(
+                        status ->
+                                phoneVerificationRepository
+                                        .findByVerificationId(phoneVerificationId.toString())
+                                        .ifPresent(phoneVerificationRepository::delete));
     }
 
     @Test
-    @DisplayName("Refresh Token 저장 실패는 User·SocialAccount·세션 상태를 함께 rollback한다")
+    @DisplayName("Refresh Token 저장 실패는 User·SocialAccount·인증 소비·세션 상태를 함께 rollback한다")
     void refreshTokenSaveFailure_rollsBackEntireSignup() {
         long userCount = databaseCount("users");
         long accountCount = databaseCount("social_account");
@@ -77,7 +110,7 @@ class SocialSignupSessionRollbackIntegrationTest {
                         "홍길동",
                         LocalDate.of(2002, 3, 15),
                         Gender.MALE,
-                        "01093999999",
+                        PHONE_NUMBER,
                         "refreshrollback",
                         null,
                         true,
@@ -89,12 +122,22 @@ class SocialSignupSessionRollbackIntegrationTest {
         assertThatThrownBy(
                         () ->
                                 signupTransactionService.createAccount(
-                                        user, token, user.getPhoneNumber(), user.getNickname()))
+                                        user,
+                                        token,
+                                        phoneVerificationId,
+                                        user.getPhoneNumber(),
+                                        user.getNickname()))
                 .isInstanceOf(DataIntegrityViolationException.class);
 
         assertThat(databaseCount("users")).isEqualTo(userCount);
         assertThat(databaseCount("social_account")).isEqualTo(accountCount);
         assertThat(databaseCount("refresh_token")).isEqualTo(refreshCount);
+        assertThat(
+                        phoneVerificationRepository
+                                .findByVerificationId(phoneVerificationId.toString())
+                                .orElseThrow()
+                                .getConsumedAt())
+                .isNull();
         assertThat(
                         socialAccountRepository.findByProviderAndProviderUserKey(
                                 SocialProvider.KAKAO, identifier.hash()))
@@ -109,5 +152,9 @@ class SocialSignupSessionRollbackIntegrationTest {
     private long databaseCount(String table) {
         Long count = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM " + table, Long.class);
         return count == null ? 0 : count;
+    }
+
+    private TransactionTemplate transactionTemplate() {
+        return new TransactionTemplate(transactionManager);
     }
 }

@@ -129,6 +129,10 @@ public class Posting {
     @Column(name = "category", nullable = false, length = 20)
     private PostingCategory category;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "source", nullable = false, length = 20)
+    private PostingSource source;
+
     @Builder
     private Posting(
             String extId,
@@ -161,7 +165,8 @@ public class Posting {
             BigDecimal latitude,
             BigDecimal longitude,
             Long regionId,
-            PostingCategory category) {
+            PostingCategory category,
+            PostingSource source) {
         this.extId = extId;
         this.title = title;
         this.status = status;
@@ -193,6 +198,7 @@ public class Posting {
         this.longitude = longitude;
         this.regionId = regionId;
         this.category = category;
+        this.source = source;
         this.createdAt = LocalDateTime.now();
         this.updatedAt = this.createdAt;
     }
@@ -235,6 +241,27 @@ public class Posting {
         this.regionId = regionId;
         this.category = category;
         this.isActive = true;
+        this.updatedAt = LocalDateTime.now();
+    }
+
+    /**
+     * VMS 목록카드 재확인 시 갱신 가능한 필드만 반영한다. VMS 목록카드는 1365 목록조회와 달리 category/actPlace/regionId를 주지
+     * 않아(상세페이지에만 있음), 이 필드들은 최초 등록(신규 insert) 시점 값을 그대로 유지하고 재조회하지 않는다 — 매번 상세페이지까지 다시 긁는 것보다 요청량을
+     * 줄이는 쪽을 택했다(구조적 사실은 잘 안 바뀐다는 전제).
+     */
+    public void updateFromVmsSync(
+            String title,
+            PostingStatus status,
+            String recruitOrg,
+            LocalDate actStartDate,
+            LocalDate actEndDate,
+            boolean isActive) {
+        this.title = title;
+        this.status = status;
+        this.recruitOrg = recruitOrg;
+        this.actStartDate = actStartDate;
+        this.actEndDate = actEndDate;
+        this.isActive = isActive;
         this.updatedAt = LocalDateTime.now();
     }
 }

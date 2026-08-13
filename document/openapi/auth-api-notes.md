@@ -37,10 +37,11 @@
 ## 2. 회원가입 전체 흐름
 
 ```text
-이메일 인증 발송 → 인증 코드 확인 → (전화번호 중복 확인) → 회원가입(201) → 로그인 → 토큰 발급
+이메일 인증 발송 → 인증 코드 확인 → 휴대폰 문자 인증 → 회원가입(201) + 자동 로그인
 ```
 
-- **회원가입 성공 시 토큰을 발급하지 않습니다.** 가입 완료 후 반드시 로그인 화면으로 보내주세요.
+- 회원가입 성공 시 Access Token은 응답 body로, Refresh Token은 HttpOnly 쿠키로 발급됩니다. 별도 로그인 호출은 필요하지 않습니다.
+- 회원가입 요청도 기존 로그인과 동일하게 `withCredentials: true` 또는 `credentials: "include"`로 호출해야 Refresh Token 쿠키가 저장됩니다.
 - 회원가입 성공은 `200`이 아니라 **`201 Created`** 입니다.
 
 ## 3. 엔드포인트 별 주의사항
@@ -50,7 +51,8 @@
 - 이미 가입된 이메일이면 `409 DUPLICATE_EMAIL` → 이 시점에 "이미 가입된 이메일" 안내 가능.
 - 인증 코드는 **6자리 숫자, 유효시간 10분** (`expiresAt`으로 만료 시각 내려줌 → 타이머 표시에 사용).
 - **재발송하면 이전 코드는 무효**가 되고 인증 상태도 초기화됩니다.
-- ⚠️ 현재는 실제 메일이 발송되지 않고 **백엔드 서버 로그에 코드가 출력**됩니다(개발용). 로컬/개발 연동 시 백엔드에 코드 요청하세요. 실메일 발송은 이후 조치 예정.
+- ⚠️ 기본 `log` 모드는 실제 메일을 발송하지 않으며, 개인정보와 인증정보 보호를 위해 백엔드 서버 로그에도 인증 코드를 출력하지 않습니다. 따라서 이 모드에서는 인증 코드 확인 API까지의 전체 연동을 완료할 수 없습니다.
+- 로컬/개발에서 전체 이메일 인증 흐름을 검증하려면 `src/main/resources/application-secret.yml.example`을 참고해 팀에서 승인한 개발용 SMTP 계정과 `gather.email.mode: smtp`를 설정하세요. SMTP 자격 증명은 저장소에 커밋하지 마세요.
 
 ### 3-2. 인증 코드 확인 — `POST /api/v1/auth/email-verifications/confirm`
 
@@ -60,12 +62,27 @@
   - `404 EMAIL_VERIFICATION_NOT_FOUND`(발송 이력 없음) — 각각 다른 안내 문구 권장.
 - 이메일은 서버에서 **trim + 소문자 정규화** 후 대조하므로, 발송 때와 확인 때 대소문자가 달라도 동일 이메일로 처리됩니다.
 
-### 3-3. 전화번호 중복 확인 — `POST /api/v1/auth/phone-numbers/availability`
+### 3-3. 휴대폰 문자 인증 — `POST /api/v1/auth/phone-verifications`
+
+- 요청: `{ "phoneNumber": "01012345678" }`. 하이픈·공백은 제거하며 정규화 결과가 `010`으로 시작하는 11자리 숫자여야 합니다.
+- 응답의 `verificationId`는 이후 QR·confirm 경로뿐 아니라 최종 회원가입 body의 `phoneVerificationId`로도 사용합니다. `receiverNumber`와 줄바꿈을 포함한 전체 SMS 본문인 `messageText`는 모바일에서 `sms:` URI를 구성할 때 그대로 사용합니다.
+- 같은 번호의 인증 시작은 60초 간격으로 제한합니다.
+- 문자 전송·확인 제한은 5분입니다. 인증문구는 서버가 안전한 난수로 만들며 프론트가 지정하거나 confirm 때 다시 보내지 않습니다.
+- 모바일: `receiverNumber`/`messageText`를 별도 가공 없이 사용해 문자 앱을 열고 사용자가 전송한 뒤 confirm을 호출합니다.
+- PC: `POST /api/v1/auth/phone-verifications/{verificationId}/qr-code`의 `qrCode` data URL을 이미지로 표시합니다. request body는 없습니다. 같은 세션은 10초 간격, 최대 3회로 제한합니다.
+- 확인: `POST /api/v1/auth/phone-verifications/{verificationId}/confirm`. request body는 없으며, 문자가 아직 조회되지 않으면 오류가 아닌 `PENDING`, 성공하면 `VERIFIED`입니다. 같은 세션은 3초 간격, 최대 30회로 제한합니다.
+- OCTOMO가 문자를 확인한 직후 서버가 현재 전화번호 중복과 탈퇴 후 재가입 제한을 확인합니다. 이는 빠른 안내를 위한 사전 검사이며, 최종 정합성은 가입 트랜잭션과 `users.phone_number` UNIQUE 제약이 보장합니다.
+- 인증 완료 결과는 30분 안에 회원가입 body의 동일한 `phoneNumber`와 `phoneVerificationId`를 함께 제출해야 합니다. 한 번 가입에 사용된 인증은 재사용할 수 없으며, 가입 트랜잭션이 실패하면 소비도 함께 rollback됩니다. ID/번호 불일치, 만료, 이미 소비된 인증은 모두 `400 PHONE_VERIFICATION_REQUIRED`입니다.
+- OCTOMO 장애는 `503 PHONE_VERIFICATION_PROVIDER_UNAVAILABLE`, 요청 제한은 `429 PHONE_VERIFICATION_RATE_LIMITED`로 변환됩니다.
+- 자동 확인을 사용하더라도 1초 polling은 피하고 수 초 이상의 간격으로 호출하며 `expiresAt`에서 중단하세요.
+
+### 3-3-1. 기존 전화번호 중복 확인(호환 유지) — `POST /api/v1/auth/phone-numbers/availability`
 
 - HTTP 메서드는 **POST**입니다.
 - 하이픈, 공백은 서버에서 제거 후 판단합니다 (`010-1234-5678` → `01012345678`).
 - 중복이어도 HTTP는 `200`이고 `data.available: false`로 구분합니다. 
   - **에러 응답이 아님에 주의.**
+- 새 회원가입 화면에서는 별도 호출하지 않습니다. 기존 클라이언트 호환을 위해 endpoint만 유지하며, 휴대폰 인증 성공 처리 안에서 서버가 중복을 다시 확인합니다.
 
 ### 3-4. 회원가입 — `POST /api/v1/auth/signup`
 
@@ -77,6 +94,7 @@
 | `birthDate` | `yyyy-MM-dd`, 미래 날짜 불가 |
 | `gender` | `MALE` / `FEMALE` (그 외 값은 400) |
 | `phoneNumber` | 숫자만 권장(하이픈은 서버가 제거) |
+| `phoneVerificationId` | **필수 UUID**. 해당 `phoneNumber`를 VERIFIED로 만든 세션 ID |
 | `email` | **인증 완료된 이메일**이어야 함, 최대 255자 |
 | `password` / `passwordConfirm` | 6~12자, 두 값 일치 필수 |
 | `nickname` | 완성형 한글 2~10자 또는 영문 2~20자. 혼합·공백·숫자·특수문자 불가 |
@@ -92,6 +110,7 @@
 |---|---|---|
 | 400 | `PASSWORD_MISMATCH` | 비밀번호 확인 필드 |
 | 400 | `EMAIL_NOT_VERIFIED` | 이메일 인증 단계로 유도 |
+| 400 | `PHONE_VERIFICATION_REQUIRED` | 휴대폰 인증 단계로 유도(ID/번호 불일치·30분 초과·이미 소비 포함) |
 | 400 | `REQUIRED_TERMS_NOT_AGREED` | 약관 동의 |
 | 400 | `INVALID_ACTIVITY_REGION` / `INVALID_INTEREST_CATEGORY_COUNT` | 지역/카테고리 선택 |
 | 400 | `VALIDATION_ERROR` | 정의되지 않은 카테고리 enum 값 (정상 UI에선 미발생) |
@@ -99,6 +118,9 @@
 | 409 | `DUPLICATE_EMAIL` / `DUPLICATE_PHONE_NUMBER` / `DUPLICATE_NICKNAME` | 각 필드 |
 
 - 사전 중복확인을 통과했어도 가입 시점에 `409`가 다시 날 수 있습니다(그 사이 다른 가입). **409 재처리 로직 필수.**
+- 가입 시 서버가 `phoneVerificationId`의 행을 잠그고 요청 전화번호 일치, 30분 이내 `VERIFIED`, 미소비 상태를 확인한 뒤 같은 트랜잭션에서 한 번만 소비합니다.
+- 성공 응답은 기존 회원 정보와 `{ accessToken, tokenType: "Bearer" }`를 함께 반환하고, Refresh Token은 body가 아닌 `Set-Cookie`로만 전달합니다.
+- 응답의 Access Token은 기존 로그인과 동일한 방식으로 관리합니다. 프로필 이미지가 선택된 경우 기존 `/api/v1/users/me/profile-image/**` 플로우를 이어서 호출하며, 이미지 처리 실패는 이미 완료된 회원가입을 취소하지 않습니다.
 
 ### 3-5. 로그인 — `POST /api/v1/auth/login`
 
@@ -199,7 +221,8 @@
 ### 3-11. 카카오 추가정보 가입 — `POST /api/v1/auth/kakao/signup`
 
 - 로그인에서 받은 `signupToken`을 **`X-Signup-Token` 헤더**로 보냅니다(`Authorization` 아님). 헤더가 없거나 형식이 잘못됐거나 존재하지 않거나 만료·소비·취소된 세션이면 `401`입니다.
-- 요청 body는 회원가입(`/signup`)에서 **`email`·`password`·`passwordConfirm`만 뺀** 형태입니다. 카카오 가입은 이메일·비밀번호를 받지 않습니다. 나머지 필드 규칙은 §3-4와 동일합니다.
+- 요청 body는 회원가입(`/signup`)에서 **`email`·`password`·`passwordConfirm`만 뺀** 형태입니다. `phoneVerificationId`는 동일하게 필수이며, 카카오 가입은 이메일·비밀번호를 받지 않습니다. 나머지 필드 규칙은 §3-4와 동일합니다.
+- 일반 가입과 동일한 단일 서버 정책으로 `phoneVerificationId`를 검증하고 한 번만 소비합니다. 유효한 인증이 없으면 `400 PHONE_VERIFICATION_REQUIRED`이며 signupToken은 유지한 채 인증을 진행하면 됩니다.
 - 성공은 `201`이며 `{ accessToken, tokenType: "Bearer" }` + Refresh Token 쿠키를 곧바로 내려줍니다(가입 후 자동 로그인). 별도 로그인 호출이 필요 없습니다.
 - 에러코드 → 화면 매핑:
 

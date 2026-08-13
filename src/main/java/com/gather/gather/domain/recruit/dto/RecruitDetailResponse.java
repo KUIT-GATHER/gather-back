@@ -28,6 +28,7 @@ public record RecruitDetailResponse(
         boolean timeRecognized,
         Integer recognizedMinutes,
         @Schema(description = "외부 공개 여부") boolean external,
+        @Schema(description = "참여 조건(선택)") String participationCondition,
         Integer likeCount,
         Integer commentCount,
         @Schema(description = "신청 가능 시각인지(마감 전)") boolean applicationOpen,

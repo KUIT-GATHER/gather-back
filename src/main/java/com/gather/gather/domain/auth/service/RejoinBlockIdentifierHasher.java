@@ -18,18 +18,18 @@ public class RejoinBlockIdentifierHasher {
 
     private final SecretKeySpec secretKey;
     private final int keyVersion;
-    private final PhoneNumberNormalizer phoneNumberNormalizer;
+    private final PhoneNumberPolicy phoneNumberPolicy;
 
     public RejoinBlockIdentifierHasher(
-            RejoinBlockHmacProperties properties, PhoneNumberNormalizer phoneNumberNormalizer) {
+            RejoinBlockHmacProperties properties, PhoneNumberPolicy phoneNumberPolicy) {
         this.secretKey =
                 new SecretKeySpec(Base64.getDecoder().decode(properties.secret()), HMAC_ALGORITHM);
         this.keyVersion = properties.keyVersion();
-        this.phoneNumberNormalizer = phoneNumberNormalizer;
+        this.phoneNumberPolicy = phoneNumberPolicy;
     }
 
     public RejoinBlockIdentifier hashPhone(String phoneNumber) {
-        String normalizedPhoneNumber = phoneNumberNormalizer.normalize(phoneNumber);
+        String normalizedPhoneNumber = phoneNumberPolicy.normalize(phoneNumber);
         return hash(AccountRejoinBlockIdentifierType.PHONE, normalizedPhoneNumber);
     }
 

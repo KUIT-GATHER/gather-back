@@ -55,6 +55,7 @@ class MeetingBookmarkServiceTest {
     @Mock private MeetingRepository meetingRepository;
     @Mock private RegionRepository regionRepository;
     @Mock private RegionNameResolver regionNameResolver;
+    @Mock private MeetingThumbnailResolver meetingThumbnailResolver;
     @Mock private Meeting meeting;
 
     private MeetingBookmarkService meetingBookmarkService;
@@ -66,8 +67,10 @@ class MeetingBookmarkServiceTest {
                         meetingBookmarkRepository,
                         meetingRepository,
                         regionRepository,
-                        regionNameResolver);
+                        regionNameResolver,
+                        meetingThumbnailResolver);
         lenient().when(regionNameResolver.resolve(anyList())).thenReturn(Map.of());
+        lenient().when(meetingThumbnailResolver.resolve(anyList())).thenReturn(Map.of());
     }
 
     @Test
@@ -217,6 +220,74 @@ class MeetingBookmarkServiceTest {
                             isNull(),
                             isNull(),
                             argThat(p -> p.getSort().isUnsorted()));
+        }
+    }
+
+    @Test
+    @DisplayName(
+            "getBookmarkedMeetings populates thumbnailUrl from the meeting's representative image")
+    void getBookmarkedMeetings_populatesThumbnailUrlFromRepresentativeImage() {
+        when(meeting.getId()).thenReturn(MEETING_ID);
+        when(meeting.getStatus()).thenReturn(MeetingStatus.RECRUITING);
+        when(meeting.isActivityEnded(any())).thenReturn(false);
+        when(meeting.isDeadlinePassed(any())).thenReturn(false);
+        when(meeting.isFull()).thenReturn(false);
+        Pageable unsortedPageable = PageRequest.of(0, 20);
+
+        try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
+            securityUtil.when(SecurityUtil::getCurrentUserId).thenReturn(USER_ID);
+            when(meetingBookmarkRepository.findBookmarkedMeetings(
+                            eq(USER_ID),
+                            any(),
+                            any(),
+                            eq(false),
+                            eq(List.of(-1L)),
+                            isNull(),
+                            isNull(),
+                            any()))
+                    .thenReturn(new PageImpl<>(List.of(meeting), PageRequest.of(0, 20), 1));
+            when(meetingThumbnailResolver.resolve(List.of(MEETING_ID)))
+                    .thenReturn(
+                            Map.of(MEETING_ID, "https://cdn.example.com/meetings/10/photo.jpg"));
+
+            PageResponse<MeetingResponse> response =
+                    meetingBookmarkService.getBookmarkedMeetings(
+                            null, null, null, null, null, unsortedPageable);
+
+            assertThat(response.content().get(0).thumbnailUrl())
+                    .isEqualTo("https://cdn.example.com/meetings/10/photo.jpg");
+        }
+    }
+
+    @Test
+    @DisplayName(
+            "getBookmarkedMeetings sets thumbnailUrl to null when the meeting has no registered image")
+    void getBookmarkedMeetings_thumbnailUrlIsNull_whenNoImageRegistered() {
+        when(meeting.getId()).thenReturn(MEETING_ID);
+        when(meeting.getStatus()).thenReturn(MeetingStatus.RECRUITING);
+        when(meeting.isActivityEnded(any())).thenReturn(false);
+        when(meeting.isDeadlinePassed(any())).thenReturn(false);
+        when(meeting.isFull()).thenReturn(false);
+        Pageable unsortedPageable = PageRequest.of(0, 20);
+
+        try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
+            securityUtil.when(SecurityUtil::getCurrentUserId).thenReturn(USER_ID);
+            when(meetingBookmarkRepository.findBookmarkedMeetings(
+                            eq(USER_ID),
+                            any(),
+                            any(),
+                            eq(false),
+                            eq(List.of(-1L)),
+                            isNull(),
+                            isNull(),
+                            any()))
+                    .thenReturn(new PageImpl<>(List.of(meeting), PageRequest.of(0, 20), 1));
+
+            PageResponse<MeetingResponse> response =
+                    meetingBookmarkService.getBookmarkedMeetings(
+                            null, null, null, null, null, unsortedPageable);
+
+            assertThat(response.content().get(0).thumbnailUrl()).isNull();
         }
     }
 

@@ -10,6 +10,10 @@ import com.gather.gather.global.exception.ErrorCode;
 import io.jsonwebtoken.JwtBuilder;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
+import java.time.Clock;
+import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.Base64;
 import java.util.Date;
 import javax.crypto.SecretKey;
@@ -22,9 +26,19 @@ class TokenProviderTest {
     // 테스트 전용 더미 시크릿(운영 값 아님). Base64 디코딩 시 64바이트.
     private static final String SECRET =
             "XZWyFEbfHyT37TkUd6Z63CN9wJbT8vlWdmQSzoIZqqGOnAj4ezamA4BO/tChr4bmeE0bbSExFfD8lN/BLitbuQ==";
+    private static final Instant FIXED_INSTANT = Instant.parse("2026-08-09T12:00:00Z");
+    private static final Clock FIXED_CLOCK = Clock.fixed(FIXED_INSTANT, ZoneOffset.UTC);
 
-    private final TokenProvider tokenProvider = new TokenProvider(new JwtProperties(SECRET, 30));
+    private final TokenProvider tokenProvider =
+            new TokenProvider(new JwtProperties(SECRET, 30), FIXED_CLOCK);
     private final SecretKey signingKey = Keys.hmacShaKeyFor(Base64.getDecoder().decode(SECRET));
+
+    @Test
+    @DisplayName("Refresh Token 만료 시각은 주입된 Clock 기준 14일 후이다")
+    void refreshTokenExpiresAt_usesInjectedClock() {
+        assertThat(tokenProvider.refreshTokenExpiresAt())
+                .isEqualTo(LocalDateTime.of(2026, 8, 23, 12, 0));
+    }
 
     @Test
     @DisplayName("발급한 Access Token을 파싱하면 userId와 role이 일치한다")

@@ -244,7 +244,7 @@ state 저장 방식으로 세 가지를 검토했다.
 
 환경변수로 뺀다: `GATHER_KAKAO_STATE_COOKIE_SECURE`, `GATHER_KAKAO_STATE_COOKIE_SAME_SITE`. 기존 `GATHER_REFRESH_COOKIE_*`와 같은 방식이다.
 
-> **참고(이 기능과 무관):** [Gather_backend_deployment_context.md](../.ai/Gather_backend_deployment_context.md)는 아직 API를 `http://52.79.188.167`(평문 HTTP)로 기술하고 있어 현행과 다르다. 이 설계와는 별개 건이므로 손대지 않았으나, 다른 작업에서 오판을 부를 수 있어 갱신을 권한다.
+> **운영 배포 참고:** 현재 HTTPS 도메인과 Nginx·Spring Boot 연결 구조는 [deployment-runbook.md](deployment-runbook.md)를 기준으로 한다.
 
 ### 하위호환 — 프론트 동시 배포 필요
 
@@ -307,4 +307,4 @@ DB 변경이 없으므로 **애플리케이션 롤백만으로 완전히 되돌�
 
 - [auth-api-notes.md](openapi/auth-api-notes.md) §3-10, §3-11 — 카카오 로그인·가입 프론트 계약
 - [openapi-auth.yaml](openapi/openapi-auth.yaml) — API 스펙 정본
-- [Gather_backend_deployment_context.md](../.ai/Gather_backend_deployment_context.md) — 배포 구성 (⚠️ API 주소가 현행과 다름, §11 참고)
+- [deployment-runbook.md](deployment-runbook.md) — 운영 배포 구성과 HTTPS 계약

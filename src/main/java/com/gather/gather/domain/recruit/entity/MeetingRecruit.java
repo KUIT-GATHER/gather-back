@@ -70,6 +70,9 @@ public class MeetingRecruit {
     @Column(nullable = false)
     private boolean external;
 
+    @Column(name = "participation_condition", length = 255)
+    private String participationCondition;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "confirmation_status", nullable = false, length = 20)
     private RecruitConfirmationStatus confirmationStatus;
@@ -104,7 +107,8 @@ public class MeetingRecruit {
             Integer recognizedMinutes,
             LocalDateTime applyDeadlineAt,
             boolean external,
-            Set<PostingCategory> categories) {
+            Set<PostingCategory> categories,
+            String participationCondition) {
         this.postId = postId;
         this.regionId = regionId;
         this.place = place;
@@ -117,6 +121,7 @@ public class MeetingRecruit {
         this.external = external;
         this.confirmationStatus = RecruitConfirmationStatus.UNCONFIRMED;
         this.categories = new LinkedHashSet<>(categories);
+        this.participationCondition = participationCondition;
     }
 
     public static MeetingRecruit create(
@@ -130,7 +135,8 @@ public class MeetingRecruit {
             Integer recognizedMinutes,
             LocalDateTime applyDeadlineAt,
             boolean external,
-            Set<PostingCategory> categories) {
+            Set<PostingCategory> categories,
+            String participationCondition) {
         return new MeetingRecruit(
                 postId,
                 regionId,
@@ -142,7 +148,8 @@ public class MeetingRecruit {
                 recognizedMinutes,
                 applyDeadlineAt,
                 external,
-                categories);
+                categories,
+                participationCondition);
     }
 
     /** 신청 가능한 시각인지: 신청 마감 시각까지(포함) 신청 가능하다. 확정 여부는 서비스에서 별도로 확인한다. */
@@ -172,7 +179,8 @@ public class MeetingRecruit {
             Integer recognizedMinutes,
             LocalDateTime applyDeadlineAt,
             boolean external,
-            Set<PostingCategory> categories) {
+            Set<PostingCategory> categories,
+            String participationCondition) {
         this.regionId = regionId;
         this.place = place;
         this.activityStartAt = activityStartAt;
@@ -183,5 +191,6 @@ public class MeetingRecruit {
         this.applyDeadlineAt = applyDeadlineAt;
         this.external = external;
         this.categories = new LinkedHashSet<>(categories);
+        this.participationCondition = participationCondition;
     }
 }

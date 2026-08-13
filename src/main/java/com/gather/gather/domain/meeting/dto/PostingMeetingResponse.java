@@ -14,18 +14,26 @@ public record PostingMeetingResponse(
                 Set<PostingCategory> categories,
         @Schema(description = "현재 모임 인원", example = "12") Integer currentMemberCount,
         @Schema(description = "최대 모임 인원", example = "20") Integer maxMember,
+        @Schema(description = "지역 ID", example = "3") Long regionId,
+        @Schema(description = "지역명(시군구 단위)", example = "강남구") String regionName,
         @Schema(description = "모임 상태", example = "RECRUITING") MeetingStatus status,
         @Schema(description = "현재 사용자의 모임 가입 여부", example = "true") boolean member,
         @Schema(description = "현재 사용자의 모임장 여부", example = "false") boolean host) {
 
     public static PostingMeetingResponse from(
-            Meeting meeting, MeetingStatus displayStatus, boolean member, boolean host) {
+            Meeting meeting,
+            MeetingStatus displayStatus,
+            String regionName,
+            boolean member,
+            boolean host) {
         return new PostingMeetingResponse(
                 meeting.getId(),
                 meeting.getName(),
                 Set.copyOf(meeting.getCategories()),
                 meeting.getCurrentMemberCount(),
                 meeting.getMaxMember(),
+                meeting.getRegionId(),
+                regionName,
                 displayStatus,
                 member,
                 host);

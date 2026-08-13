@@ -37,6 +37,7 @@ public class MeetingBookmarkService {
     private final MeetingRepository meetingRepository;
     private final RegionRepository regionRepository;
     private final RegionNameResolver regionNameResolver;
+    private final MeetingThumbnailResolver meetingThumbnailResolver;
 
     @Transactional
     public MeetingBookmarkResponse addBookmark(Long meetingId) {
@@ -110,6 +111,9 @@ public class MeetingBookmarkService {
         Map<Long, String> regionNames =
                 regionNameResolver.resolve(
                         meetings.getContent().stream().map(Meeting::getRegionId).toList());
+        Map<Long, String> thumbnails =
+                meetingThumbnailResolver.resolve(
+                        meetings.getContent().stream().map(Meeting::getId).toList());
 
         Page<MeetingResponse> responses =
                 meetings.map(
@@ -117,7 +121,8 @@ public class MeetingBookmarkService {
                                 MeetingResponse.from(
                                         meeting,
                                         resolveDisplayStatus(meeting),
-                                        regionNames.get(meeting.getRegionId())));
+                                        regionNames.get(meeting.getRegionId()),
+                                        thumbnails.get(meeting.getId())));
 
         return PageResponse.from(responses);
     }
