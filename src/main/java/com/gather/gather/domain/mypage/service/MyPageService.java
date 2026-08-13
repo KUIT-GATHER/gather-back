@@ -87,9 +87,9 @@ public class MyPageService {
     /**
      * 마이페이지 활동 캘린더 조회.
      *
-     * <p>2026-08 정책 변경: 봉사공고 기반 모임의 실제 봉사 일정은 원본 공고의 {@code PostingParticipation} 개인 일정으로 이미
-     * 표현되므로, 모임 멤버십 자체({@code Meeting.activityStartAt/endAt})는 더 이상 별도 카드를 만들지 않는다(중복 제거). 자유모임의
-     * 실제 일정은 그 내부 {@code MeetingRecruit}에 신청했을 때만 노출한다({@link #getMeetingRecruitActivities}).
+     * <p>2026-08 정책 변경: 봉사공고 기반 모임의 실제 봉사 일정은 원본 공고의 {@code PostingParticipation} 개인 일정으로 이미 표현되므로,
+     * 모임 멤버십 자체({@code Meeting.activityStartAt/endAt})는 더 이상 별도 카드를 만들지 않는다(중복 제거). 자유모임의 실제 일정은 그
+     * 내부 {@code MeetingRecruit}에 신청했을 때만 노출한다({@link #getMeetingRecruitActivities}).
      */
     public List<MyPageActivityResponse> getActivities(YearMonth yearMonth) {
         Long userId = SecurityUtil.getCurrentUserId();
@@ -174,8 +174,8 @@ public class MyPageService {
     }
 
     /**
-     * MeetingRecruit 상세 API의 기존 취소 가능 정책과 동일 기준: 신청(APPLIED) 상태이면서 아직 확정 전(UNCONFIRMED)이고 신청
-     * 마감 시각 전이면 취소 가능(CANCEL), 그 외(CONFIRMED로 넘어갔거나 마감 지남)는 NONE.
+     * MeetingRecruit 상세 API의 기존 취소 가능 정책과 동일 기준: 신청(APPLIED) 상태이면서 아직 확정 전(UNCONFIRMED)이고 신청 마감 시각
+     * 전이면 취소 가능(CANCEL), 그 외(CONFIRMED로 넘어갔거나 마감 지남)는 NONE.
      */
     private String resolveMeetingRecruitParticipationAction(MyPageMeetingRecruitSchedule schedule) {
         if (schedule.participationStatus() != MeetingRecruitParticipationStatus.APPLIED) {
@@ -216,14 +216,14 @@ public class MyPageService {
         long totalCompletedCount = resolvedPostings.size() + completedMeetingMembers.size();
         long totalRecognizedMinutes =
                 sumRecognizedMinutes(
-                        completedParticipations, PostingParticipation::getRecognizedMinutes)
+                                completedParticipations, PostingParticipation::getRecognizedMinutes)
                         + sumRecognizedMinutes(
-                        completedMeetingMembers, MeetingMember::getRecognizedMinutes);
+                                completedMeetingMembers, MeetingMember::getRecognizedMinutes);
         long timeCertifiableCompletedCount =
                 countWithRecognizedMinutes(
-                        completedParticipations, PostingParticipation::getRecognizedMinutes)
+                                completedParticipations, PostingParticipation::getRecognizedMinutes)
                         + countWithRecognizedMinutes(
-                        completedMeetingMembers, MeetingMember::getRecognizedMinutes);
+                                completedMeetingMembers, MeetingMember::getRecognizedMinutes);
 
         return MyPageActivitySummaryResponse.of(
                 totalCompletedCount,
@@ -357,8 +357,8 @@ public class MyPageService {
      * posting_participation은 posting_id에 FK가 걸려 있어 정상 운영 중에는 항상 posting이 존재하지만, 참여한 공고를 찾지 못하는
      * 경우(데이터 정합성 이슈 등)를 대비해 방어적으로 로그를 남기고 캘린더에서 제외한다.
      *
-     * <p>2026-08 정책 변경: 날짜 source를 공고 전체 활동기간에서 사용자 개인 참여일정으로 바꿨다. 개인 일정이 없는(정책 변경 이전) 기존
-     * 참여만 공고 전체 활동기간으로 fallback한다.
+     * <p>2026-08 정책 변경: 날짜 source를 공고 전체 활동기간에서 사용자 개인 참여일정으로 바꿨다. 개인 일정이 없는(정책 변경 이전) 기존 참여만 공고 전체
+     * 활동기간으로 fallback한다.
      */
     private boolean isVisibleInMonth(
             PostingParticipation participation,

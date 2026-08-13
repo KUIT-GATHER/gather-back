@@ -2,14 +2,11 @@ package com.gather.gather.domain.mypage.controller;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.gather.gather.domain.auth.entity.User;
-import com.gather.gather.domain.meeting.entity.Meeting;
 import com.gather.gather.domain.mypage.dto.MyPageActivityRecordResponse;
 import com.gather.gather.domain.mypage.dto.MyPageActivityResponse;
 import com.gather.gather.domain.mypage.dto.MyPageActivitySummaryResponse;
@@ -19,7 +16,6 @@ import com.gather.gather.domain.mypage.service.MyPageService;
 import com.gather.gather.domain.posting.entity.Posting;
 import com.gather.gather.domain.posting.entity.PostingCategory;
 import com.gather.gather.domain.posting.entity.PostingParticipation;
-import com.gather.gather.domain.posting.entity.PostingParticipationStatus;
 import com.gather.gather.domain.posting.entity.PostingStatus;
 import com.gather.gather.domain.region.dto.RegionResponse;
 import com.gather.gather.global.common.PageResponse;
@@ -28,7 +24,6 @@ import com.gather.gather.global.exception.ErrorCode;
 import java.time.LocalDate;
 import java.time.YearMonth;
 import java.util.List;
-import java.util.Set;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -96,44 +91,6 @@ class MyPageControllerTest {
                 .andExpect(jsonPath("$.data[0].status").value("APPLIED"));
     }
 
-    @Test
-    @DisplayName(
-            "GET /api/v1/mypage/activities returns a MEETING card with meetingId for approved"
-                    + " meeting participation")
-    void getActivities_returns200WithMeetingCard() throws Exception {
-        Meeting meeting =
-                Meeting.create(
-                        "테스트 모임",
-                        "설명",
-                        5,
-                        LocalDate.of(2026, 6, 1).atStartOfDay(),
-                        null,
-                        Set.of(PostingCategory.ENVIRONMENT),
-                        1L,
-                        mockHost(),
-                        null,
-                        10L,
-                        LocalDate.of(2026, 7, 5).atStartOfDay(),
-                        LocalDate.of(2026, 7, 6).atStartOfDay());
-        ReflectionTestUtils.setField(meeting, "id", 3L);
-
-        when(myPageService.getActivities(eq(YearMonth.of(2026, 7))))
-                .thenReturn(
-                        List.of(
-                                MyPageActivityResponse.ofMeeting(
-                                        meeting, PostingParticipationStatus.APPLIED, "강남구")));
-
-        mockMvc.perform(get("/api/v1/mypage/activities").param("yearMonth", "2026-07"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data[0].activityType").value("MEETING"))
-                .andExpect(jsonPath("$.data[0].meetingId").value(3))
-                .andExpect(jsonPath("$.data[0].postingId").doesNotExist())
-                .andExpect(jsonPath("$.data[0].volunteerPostingId").value(10))
-                .andExpect(jsonPath("$.data[0].regionName").value("강남구"))
-                .andExpect(jsonPath("$.data[0].meetingStatus").value("RECRUITING"))
-                .andExpect(jsonPath("$.data[0].postingParticipationStatus").value("APPLIED"));
-    }
-
     private PostingParticipation volunteerParticipation() {
         PostingParticipation participation = PostingParticipation.create(1L, 10L);
         ReflectionTestUtils.setField(participation, "id", 1L);
@@ -154,10 +111,6 @@ class MyPageControllerTest {
                         .build();
         ReflectionTestUtils.setField(posting, "id", 10L);
         return posting;
-    }
-
-    private User mockHost() {
-        return mock(User.class);
     }
 
     @Test

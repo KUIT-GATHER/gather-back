@@ -547,7 +547,10 @@ class PostingServiceTest {
         when(postingLocationRepository.findAllByPostingIdOrderByLocationSeq(1L))
                 .thenReturn(List.of());
         when(postingParticipationRepository.findByUserIdAndPostingId(userId, 1L))
-                .thenReturn(Optional.of(participationWithStatus(userId, 1L, status)));
+                .thenReturn(
+                        Optional.of(
+                                participationWithStatus(
+                                        userId, 1L, status, LocalDate.now().minusDays(1))));
 
         try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
             securityUtil.when(SecurityUtil::getCurrentUserIdOrNull).thenReturn(userId);
@@ -627,12 +630,13 @@ class PostingServiceTest {
 
     private PostingParticipation participationWithStatus(
             Long userId, Long postingId, PostingParticipationStatus status) {
+        return participationWithStatus(userId, postingId, status, LocalDate.now().plusDays(30));
+    }
+
+    private PostingParticipation participationWithStatus(
+            Long userId, Long postingId, PostingParticipationStatus status, LocalDate endDate) {
         PostingParticipation participation =
-                PostingParticipation.create(
-                        userId,
-                        postingId,
-                        LocalDate.of(2026, 7, 15),
-                        LocalDate.of(2026, 7, 15));
+                PostingParticipation.create(userId, postingId, endDate, endDate);
         ReflectionTestUtils.setField(participation, "status", status);
         return participation;
     }

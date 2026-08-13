@@ -12,7 +12,6 @@ import com.gather.gather.domain.posting.dto.PostingSourceType;
 import com.gather.gather.domain.posting.entity.Posting;
 import com.gather.gather.domain.posting.entity.PostingCategory;
 import com.gather.gather.domain.posting.entity.PostingParticipation;
-import com.gather.gather.domain.posting.entity.PostingParticipationStatus;
 import com.gather.gather.domain.posting.entity.PostingStatus;
 import com.gather.gather.domain.posting.repository.BookmarkRepository;
 import com.gather.gather.domain.posting.repository.PostingLocationRepository;
@@ -112,9 +111,9 @@ public class PostingService {
         String regionName =
                 posting.getRegionId() != null
                         ? regionRepository
-                        .findById(posting.getRegionId())
-                        .map(Region::getName)
-                        .orElse(null)
+                                .findById(posting.getRegionId())
+                                .map(Region::getName)
+                                .orElse(null)
                         : null;
 
         PostingParticipation participation = findCurrentUserParticipation(id).orElse(null);

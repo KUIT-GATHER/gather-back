@@ -1,10 +1,10 @@
 package com.gather.gather.domain.recruit.repository;
 
+import com.gather.gather.domain.mypage.dto.MyPageMeetingRecruitSchedule;
 import com.gather.gather.domain.recruit.dto.MyAppliedRecruitResponse;
 import com.gather.gather.domain.recruit.dto.ReviewableRecruitActivity;
 import com.gather.gather.domain.recruit.entity.MeetingRecruitParticipation;
 import com.gather.gather.domain.recruit.entity.MeetingRecruitParticipationStatus;
-import com.gather.gather.domain.mypage.dto.MyPageMeetingRecruitSchedule;
 import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.List;

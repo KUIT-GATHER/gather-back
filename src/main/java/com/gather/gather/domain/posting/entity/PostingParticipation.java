@@ -22,9 +22,9 @@ import org.hibernate.annotations.UpdateTimestamp;
 @Table(
         name = "posting_participation",
         uniqueConstraints = {
-                @UniqueConstraint(
-                        name = "uq_posting_participation_user_posting",
-                        columnNames = {"user_id", "posting_id"})
+            @UniqueConstraint(
+                    name = "uq_posting_participation_user_posting",
+                    columnNames = {"user_id", "posting_id"})
         })
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class PostingParticipation {
@@ -46,9 +46,8 @@ public class PostingParticipation {
     /**
      * 사용자가 외부 1365/VMS 신청 완료 후 Gather에서 직접 등록한 개인 참여 일정 시작일. 단일 날짜 신청도 종료일과 동일한 값으로 저장한다.
      *
-     * <p>2026-08 정책 변경 이전에 생성된 기존 데이터는 이 값이 null일 수 있다(QA 환경은 초기화 예정). null인 동안에는 완료 가능 시점,
-     * 마이페이지 일정, 활동기록, 알림에서 {@link com.gather.gather.domain.posting.entity.Posting}의 전체 활동기간으로
-     * fallback한다.
+     * <p>2026-08 정책 변경 이전에 생성된 기존 데이터는 이 값이 null일 수 있다(QA 환경은 초기화 예정). null인 동안에는 완료 가능 시점, 마이페이지
+     * 일정, 활동기록, 알림에서 {@link com.gather.gather.domain.posting.entity.Posting}의 전체 활동기간으로 fallback한다.
      */
     @Column(name = "participation_start_date")
     private LocalDate participationStartDate;
@@ -133,5 +132,14 @@ public class PostingParticipation {
     /** 알림 스케줄러 기준일 판정에 쓰는 실질 시작일. 개인 일정이 없는 기존 데이터는 공고 전체 시작일로 fallback한다. */
     public LocalDate resolveEffectiveStartDate(LocalDate postingFallbackStartDate) {
         return participationStartDate != null ? participationStartDate : postingFallbackStartDate;
+    }
+
+    /**
+     * 참여 일정 없이 생성한다 — 정책 변경 이전(2026-08) 레거시 데이터, 또는 테스트에서 개인 일정이 아직 없는 상태를 표현할 때 사용한다. 완료 가능
+     * 시점/마이페이지/알림 계산 시 이 참여는 공고 전체 활동기간으로 fallback한다.
+     */
+    public static PostingParticipation create(Long userId, Long postingId) {
+        return new PostingParticipation(
+                userId, postingId, PostingParticipationStatus.APPLIED, null, null);
     }
 }

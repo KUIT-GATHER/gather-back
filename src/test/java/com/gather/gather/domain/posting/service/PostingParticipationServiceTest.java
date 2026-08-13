@@ -9,6 +9,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.gather.gather.domain.badge.event.VolunteerActivityCompletedEvent;
+import com.gather.gather.domain.posting.dto.PostingParticipationApplyRequest;
 import com.gather.gather.domain.posting.dto.PostingParticipationResponse;
 import com.gather.gather.domain.posting.entity.Posting;
 import com.gather.gather.domain.posting.entity.PostingCategory;
@@ -39,6 +40,7 @@ class PostingParticipationServiceTest {
     private static final Long USER_ID = 1L;
     private static final Long POSTING_ID = 10L;
     private static final String EXT_ID = "3422497";
+    private static final LocalDate PARTICIPATION_DATE = LocalDate.now().plusMonths(1);
     private static final String EXPECTED_APPLICATION_URL =
             "https://1365.go.kr/vols/P9210/partcptn/timeCptn.do?type=show&progrmRegistNo=" + EXT_ID;
 
@@ -66,10 +68,15 @@ class PostingParticipationServiceTest {
             when(postingParticipationRepository.saveAndFlush(any(PostingParticipation.class)))
                     .thenAnswer(invocation -> invocation.getArgument(0));
 
-            PostingParticipationResponse response = postingParticipationService.apply(POSTING_ID);
+            PostingParticipationResponse response =
+                    postingParticipationService.apply(
+                            POSTING_ID,
+                            new PostingParticipationApplyRequest(
+                                    PARTICIPATION_DATE, PARTICIPATION_DATE));
 
             assertThat(response.status()).isEqualTo(PostingParticipationStatus.APPLIED);
-            assertThat(response.applicationUrl()).isEqualTo(EXPECTED_APPLICATION_URL);
+            assertThat(response.participationStartDate()).isEqualTo(PARTICIPATION_DATE);
+            assertThat(response.participationEndDate()).isEqualTo(PARTICIPATION_DATE);
         }
     }
 
@@ -80,7 +87,13 @@ class PostingParticipationServiceTest {
             securityUtil.when(SecurityUtil::getCurrentUserId).thenReturn(USER_ID);
             when(postingRepository.findById(POSTING_ID)).thenReturn(Optional.empty());
 
-            assertThatThrownBy(() -> postingParticipationService.apply(POSTING_ID))
+            assertThatThrownBy(
+                            () ->
+                                    postingParticipationService.apply(
+                                            POSTING_ID,
+                                            new PostingParticipationApplyRequest(
+                                                    LocalDate.of(2026, 8, 15),
+                                                    LocalDate.of(2026, 8, 15))))
                     .isInstanceOf(BusinessException.class)
                     .hasFieldOrPropertyWithValue("errorCode", ErrorCode.POSTING_NOT_FOUND);
 
@@ -95,7 +108,13 @@ class PostingParticipationServiceTest {
             securityUtil.when(SecurityUtil::getCurrentUserId).thenReturn(USER_ID);
             when(postingRepository.findById(POSTING_ID)).thenReturn(Optional.of(closedPosting()));
 
-            assertThatThrownBy(() -> postingParticipationService.apply(POSTING_ID))
+            assertThatThrownBy(
+                            () ->
+                                    postingParticipationService.apply(
+                                            POSTING_ID,
+                                            new PostingParticipationApplyRequest(
+                                                    LocalDate.of(2026, 8, 15),
+                                                    LocalDate.of(2026, 8, 15))))
                     .isInstanceOf(BusinessException.class)
                     .hasFieldOrPropertyWithValue("errorCode", ErrorCode.POSTING_CLOSED);
 
@@ -115,28 +134,15 @@ class PostingParticipationServiceTest {
             when(postingRepository.findById(POSTING_ID))
                     .thenReturn(Optional.of(deactivatedRecruitingPosting()));
 
-            assertThatThrownBy(() -> postingParticipationService.apply(POSTING_ID))
+            assertThatThrownBy(
+                            () ->
+                                    postingParticipationService.apply(
+                                            POSTING_ID,
+                                            new PostingParticipationApplyRequest(
+                                                    LocalDate.of(2026, 8, 15),
+                                                    LocalDate.of(2026, 8, 15))))
                     .isInstanceOf(BusinessException.class)
                     .hasFieldOrPropertyWithValue("errorCode", ErrorCode.POSTING_CLOSED);
-
-            verify(postingParticipationRepository, never())
-                    .existsByUserIdAndPostingId(any(), any());
-            verify(postingParticipationRepository, never()).saveAndFlush(any());
-        }
-    }
-
-    @Test
-    @DisplayName("apply throws POSTING_APPLICATION_UNAVAILABLE when the posting has no extId")
-    void apply_throwsPostingApplicationUnavailable_whenExtIdMissing() {
-        try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
-            securityUtil.when(SecurityUtil::getCurrentUserId).thenReturn(USER_ID);
-            when(postingRepository.findById(POSTING_ID))
-                    .thenReturn(Optional.of(postingWithoutExtId()));
-
-            assertThatThrownBy(() -> postingParticipationService.apply(POSTING_ID))
-                    .isInstanceOf(BusinessException.class)
-                    .hasFieldOrPropertyWithValue(
-                            "errorCode", ErrorCode.POSTING_APPLICATION_UNAVAILABLE);
 
             verify(postingParticipationRepository, never())
                     .existsByUserIdAndPostingId(any(), any());
@@ -153,7 +159,13 @@ class PostingParticipationServiceTest {
             when(postingParticipationRepository.existsByUserIdAndPostingId(USER_ID, POSTING_ID))
                     .thenReturn(true);
 
-            assertThatThrownBy(() -> postingParticipationService.apply(POSTING_ID))
+            assertThatThrownBy(
+                            () ->
+                                    postingParticipationService.apply(
+                                            POSTING_ID,
+                                            new PostingParticipationApplyRequest(
+                                                    LocalDate.of(2026, 8, 15),
+                                                    LocalDate.of(2026, 8, 15))))
                     .isInstanceOf(BusinessException.class)
                     .hasFieldOrPropertyWithValue("errorCode", ErrorCode.PARTICIPATION_DUPLICATE);
 
@@ -178,7 +190,12 @@ class PostingParticipationServiceTest {
             when(postingParticipationRepository.saveAndFlush(any(PostingParticipation.class)))
                     .thenThrow(dbException);
 
-            assertThatThrownBy(() -> postingParticipationService.apply(POSTING_ID))
+            assertThatThrownBy(
+                            () ->
+                                    postingParticipationService.apply(
+                                            POSTING_ID,
+                                            new PostingParticipationApplyRequest(
+                                                    PARTICIPATION_DATE, PARTICIPATION_DATE)))
                     .isInstanceOf(BusinessException.class)
                     .hasFieldOrPropertyWithValue("errorCode", ErrorCode.PARTICIPATION_DUPLICATE)
                     .hasCause(dbException);
@@ -201,7 +218,12 @@ class PostingParticipationServiceTest {
             when(postingParticipationRepository.saveAndFlush(any(PostingParticipation.class)))
                     .thenThrow(dbException);
 
-            assertThatThrownBy(() -> postingParticipationService.apply(POSTING_ID))
+            assertThatThrownBy(
+                            () ->
+                                    postingParticipationService.apply(
+                                            POSTING_ID,
+                                            new PostingParticipationApplyRequest(
+                                                    PARTICIPATION_DATE, PARTICIPATION_DATE)))
                     .isSameAs(dbException);
         }
     }
@@ -521,7 +543,9 @@ class PostingParticipationServiceTest {
                 .extId(EXT_ID)
                 .title("테스트 공고")
                 .status(PostingStatus.RECRUITING)
-                .activityDate(LocalDate.now().plusMonths(1))
+                .activityDate(PARTICIPATION_DATE)
+                .actStartDate(PARTICIPATION_DATE.minusDays(5))
+                .actEndDate(PARTICIPATION_DATE.plusDays(5))
                 .category(PostingCategory.ENVIRONMENT)
                 .isActive(true)
                 .build();

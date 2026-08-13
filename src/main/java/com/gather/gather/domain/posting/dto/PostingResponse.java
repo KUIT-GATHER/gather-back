@@ -15,7 +15,7 @@ public record PostingResponse(
         String title,
         PostingStatus status,
         @Schema(nullable = true, description = "봉사공고 본문. 활동 종료 후 보존기간(1개월)이 지나면 null일 수 있다")
-        String content,
+                String content,
         String recruitOrg,
         String registerOrg,
         LocalDate actStartDate,
@@ -43,22 +43,23 @@ public record PostingResponse(
         LocalDateTime createdAt,
         LocalDateTime updatedAt,
         boolean bookmarked,
-        @Schema(nullable = true, description = "비로그인 또는 미참여 시 null") PostingParticipationStatus participationStatus,
+        @Schema(nullable = true, description = "비로그인 또는 미참여 시 null")
+                PostingParticipationStatus participationStatus,
         @Schema(description = "공고 상세 하단 버튼 액션. participationStatus가 null이어도 항상 반환된다")
-        PostingParticipationAction participationAction,
+                PostingParticipationAction participationAction,
         @Schema(description = "공고 원본 출처(API_1365: 1365자원봉사포털, VMS_CRAWL: VMS 크롤링)")
-        PostingSource source,
+                PostingSource source,
         @Schema(
-                nullable = true,
-                description =
-                        "외부(1365/VMS) 신청 페이지 URL. source에 따라 자동 분기되며 프론트는 이 값을 그대로 새 탭으로 열면 된다."
-                                + " extId가 없는 등 링크를 만들 수 없는 공고는 null이며, 이 경우 신청하기 버튼을 비활성화하거나"
-                                + " 안내 문구를 노출해야 한다.")
-        String applicationUrl,
+                        nullable = true,
+                        description =
+                                "외부(1365/VMS) 신청 페이지 URL. source에 따라 자동 분기되며 프론트는 이 값을 그대로 새 탭으로 열면 된다."
+                                        + " extId가 없는 등 링크를 만들 수 없는 공고는 null이며, 이 경우 신청하기 버튼을 비활성화하거나"
+                                        + " 안내 문구를 노출해야 한다.")
+                String applicationUrl,
         @Schema(nullable = true, description = "로그인 사용자의 현재 참여 일정 시작일. 참여 이력이 없으면 null")
-        LocalDate participationStartDate,
+                LocalDate participationStartDate,
         @Schema(nullable = true, description = "로그인 사용자의 현재 참여 일정 종료일. 참여 이력이 없으면 null")
-        LocalDate participationEndDate) {
+                LocalDate participationEndDate) {
 
     public static PostingResponse from(
             Posting posting,
