@@ -17,7 +17,7 @@ import com.gather.gather.domain.notification.enums.NotificationTargetType;
 import com.gather.gather.domain.notification.enums.NotificationType;
 import com.gather.gather.domain.notification.service.NotificationQueryService;
 import com.gather.gather.global.common.PageResponse;
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -50,7 +50,7 @@ class NotificationControllerTest {
                         null,
                         "https://example.com/meeting-thumbnail.jpg",
                         false,
-                        LocalDateTime.of(2026, 7, 27, 12, 0));
+                        Instant.parse("2026-07-27T12:00:00Z"));
 
         when(notificationQueryService.getNotifications(
                         any(NotificationCategory.class), any(Pageable.class)))
@@ -65,7 +65,8 @@ class NotificationControllerTest {
                 .andExpect(
                         jsonPath("$.data.content[0].thumbnailUrl")
                                 .value("https://example.com/meeting-thumbnail.jpg"))
-                .andExpect(jsonPath("$.data.content[0].read").value(false));
+                .andExpect(jsonPath("$.data.content[0].read").value(false))
+                .andExpect(jsonPath("$.data.content[0].createdAt").value("2026-07-27T12:00:00Z"));
     }
 
     @Test
@@ -82,7 +83,7 @@ class NotificationControllerTest {
                         3L,
                         "https://example.com/meeting-thumbnail.jpg",
                         false,
-                        LocalDateTime.of(2026, 7, 27, 12, 0));
+                        Instant.parse("2026-07-27T12:00:00Z"));
 
         when(notificationQueryService.getNotifications(
                         any(NotificationCategory.class), any(Pageable.class)))
@@ -112,7 +113,7 @@ class NotificationControllerTest {
                         null,
                         "https://example.com/meeting-thumbnail.jpg",
                         true,
-                        LocalDateTime.of(2026, 7, 27, 12, 0));
+                        Instant.parse("2026-07-27T12:00:00Z"));
 
         when(notificationQueryService.markAsRead(1L)).thenReturn(notification);
 
@@ -138,7 +139,7 @@ class NotificationControllerTest {
                         null,
                         null,
                         false,
-                        LocalDateTime.of(2026, 7, 27, 12, 0));
+                        Instant.parse("2026-07-27T12:00:00Z"));
 
         when(notificationQueryService.getNotifications(
                         any(NotificationCategory.class), any(Pageable.class)))

@@ -151,15 +151,15 @@ public class Notification {
         return readAt != null;
     }
 
-    public void markAsRead() {
+    public void markAsRead(LocalDateTime now) {
         if (readAt == null) {
-            readAt = LocalDateTime.now();
+            readAt = now;
         }
     }
 
-    public void delete() {
+    public void delete(LocalDateTime now) {
         if (deletedAt == null) {
-            deletedAt = LocalDateTime.now();
+            deletedAt = now;
         }
     }
 }
