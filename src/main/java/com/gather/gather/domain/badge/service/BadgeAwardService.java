@@ -53,11 +53,11 @@ public class BadgeAwardService {
         }
     }
 
-    /** 알림 설정이 없는 사용자는 NotificationSetting의 기본값(badgeEnabled=false)과 동일하게 취급해 발송하지 않는다. */
+    /** 알림 설정이 없는 사용자는 NotificationSetting의 기본값(badgeEnabled=true)을 적용한다. */
     private boolean isBadgeNotificationEnabled(Long userId) {
         return notificationSettingRepository
                 .findByUser_Id(userId)
                 .map(setting -> setting.isBadgeEnabled())
-                .orElse(false);
+                .orElse(true);
     }
 }
