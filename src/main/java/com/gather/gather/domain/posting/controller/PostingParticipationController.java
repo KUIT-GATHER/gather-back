@@ -1,5 +1,6 @@
 package com.gather.gather.domain.posting.controller;
 
+import com.gather.gather.domain.posting.dto.PostingParticipationApplyRequest;
 import com.gather.gather.domain.posting.dto.PostingParticipationResponse;
 import com.gather.gather.domain.posting.dto.PostingRecognizedMinutesRequest;
 import com.gather.gather.domain.posting.service.PostingParticipationService;
@@ -9,6 +10,7 @@ import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.ExampleObject;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -143,8 +145,10 @@ public class PostingParticipationController {
                                 }))
     })
     @PostMapping
-    public ApiResponse<PostingParticipationResponse> apply(@PathVariable Long postingId) {
-        return ApiResponse.success(postingParticipationService.apply(postingId));
+    public ApiResponse<PostingParticipationResponse> apply(
+            @PathVariable Long postingId,
+            @Valid @RequestBody PostingParticipationApplyRequest request) {
+        return ApiResponse.success(postingParticipationService.apply(postingId, request));
     }
 
     @Operation(summary = "봉사 신청 취소", description = "로그인한 사용자가 자신의 봉사 신청 내역을 취소(삭제)한다.")

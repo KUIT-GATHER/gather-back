@@ -86,6 +86,9 @@ public enum ErrorCode {
     PARTICIPATION_COMPLETE_NOT_ALLOWED(HttpStatus.CONFLICT, "활동종료일이 지나야 완료 처리를 할 수 있습니다."),
     PARTICIPATION_HOURS_NOT_ALLOWED(HttpStatus.CONFLICT, "완료 처리된 참여만 인정시간을 입력할 수 있습니다."),
     PARTICIPATION_HOURS_ALREADY_SUBMITTED(HttpStatus.CONFLICT, "이미 인정시간을 입력했습니다."),
+    PARTICIPATION_DATE_INVALID_RANGE(HttpStatus.CONFLICT, "참여 시작일은 종료일보다 늦을 수 없습니다."),
+    PARTICIPATION_DATE_OUT_OF_POSTING_PERIOD(HttpStatus.CONFLICT, "참여 일정은 공고 활동기간 안에서만 선택할 수 있습니다."),
+    PARTICIPATION_DATE_IN_PAST(HttpStatus.CONFLICT, "지난 날짜로는 신규 신청할 수 없습니다."),
 
     UNSUPPORTED_PROFILE_IMAGE_TYPE(HttpStatus.BAD_REQUEST, "지원하지 않는 프로필 이미지 형식입니다."),
     PROFILE_IMAGE_SIZE_EXCEEDED(HttpStatus.BAD_REQUEST, "프로필 이미지의 허용 크기를 초과했습니다."),
