@@ -71,12 +71,9 @@ public record PostingResponse(
             LocalDate participationEndDate) {
         // 완료 가능 여부(activityEnded)는 개인 참여일정 종료일 기준으로 판단하고, 개인 일정이 없는(기존) 참여만
         // 공고 전체 활동종료일로 fallback한다. 실제 계산 로직은 PostingParticipationAction에서 공유한다.
-        LocalDate effectiveEndDate =
-                participationEndDate != null ? participationEndDate : posting.getActEndDate();
         boolean activityEnded =
-                effectiveEndDate != null
-                        ? !effectiveEndDate.isAfter(LocalDate.now())
-                        : posting.isActivityEnded(LocalDate.now());
+                PostingParticipationAction.resolveActivityEnded(
+                        posting, participationEndDate, LocalDate.now());
         return new PostingResponse(
                 posting.getId(),
                 posting.getTitle(),

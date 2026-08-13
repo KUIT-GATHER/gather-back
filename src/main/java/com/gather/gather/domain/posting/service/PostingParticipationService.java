@@ -9,6 +9,7 @@ import com.gather.gather.domain.posting.entity.PostingParticipationStatus;
 import com.gather.gather.domain.posting.entity.PostingStatus;
 import com.gather.gather.domain.posting.repository.PostingParticipationRepository;
 import com.gather.gather.domain.posting.repository.PostingRepository;
+import com.gather.gather.domain.posting.dto.PostingParticipationAction;
 import com.gather.gather.global.exception.BusinessException;
 import com.gather.gather.global.exception.ErrorCode;
 import com.gather.gather.global.util.RecognizedMinutesValidator;
@@ -88,14 +89,17 @@ public class PostingParticipationService {
         PostingParticipation participation =
                 postingParticipationRepository
                         .findByUserIdAndPostingId(userId, postingId)
-                        .orElseThrow(
-                                () -> new BusinessException(ErrorCode.PARTICIPATION_NOT_FOUND));
+                        .orElseThrow(() -> new BusinessException(ErrorCode.PARTICIPATION_NOT_FOUND));
 
         if (participation.getStatus() == PostingParticipationStatus.COMPLETED
                 || participation.getStatus() == PostingParticipationStatus.REVIEWED) {
             throw new BusinessException(ErrorCode.PARTICIPATION_ALREADY_COMPLETED);
         }
-        if (!posting.isActivityEnded(LocalDate.now())) {
+
+        boolean activityEnded =
+                PostingParticipationAction.resolveActivityEnded(
+                        posting, participation.getParticipationEndDate(), LocalDate.now());
+        if (!activityEnded) {
             throw new BusinessException(ErrorCode.PARTICIPATION_COMPLETE_NOT_ALLOWED);
         }
 
