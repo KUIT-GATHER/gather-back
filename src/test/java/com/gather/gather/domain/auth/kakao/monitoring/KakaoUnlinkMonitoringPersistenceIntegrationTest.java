@@ -97,7 +97,7 @@ class KakaoUnlinkMonitoringPersistenceIntegrationTest {
 
         Integer migrationCount =
                 jdbcTemplate.queryForObject(
-                        "select count(*) from flyway_schema_history where version = '52' and success = 1",
+                        "select count(*) from flyway_schema_history where version = '58' and success = 1",
                         Integer.class);
         assertThat(migrationCount).isEqualTo(1);
 
