@@ -67,7 +67,7 @@ class PostingServiceTest {
     @Mock private UnifiedPostingQueryRepository unifiedPostingQueryRepository;
     @Mock private MeetingImageRepository meetingImageRepository;
     @Mock private MeetingImageUrlResolver meetingImageUrlResolver;
-
+    @Mock private PostingApplicationUrlResolver postingApplicationUrlResolver;
     private PostingService postingService;
 
     @BeforeEach
@@ -84,7 +84,8 @@ class PostingServiceTest {
                         unifiedPostingQueryRepository,
                         meetingImageRepository,
                         meetingImageUrlResolver,
-                        new ObjectMapper());
+                        new ObjectMapper(),
+                        postingApplicationUrlResolver);
     }
 
     @Test
@@ -626,7 +627,12 @@ class PostingServiceTest {
 
     private PostingParticipation participationWithStatus(
             Long userId, Long postingId, PostingParticipationStatus status) {
-        PostingParticipation participation = PostingParticipation.create(userId, postingId);
+        PostingParticipation participation =
+                PostingParticipation.create(
+                        userId,
+                        postingId,
+                        LocalDate.of(2026, 7, 15),
+                        LocalDate.of(2026, 7, 15));
         ReflectionTestUtils.setField(participation, "status", status);
         return participation;
     }

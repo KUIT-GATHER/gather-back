@@ -34,6 +34,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
@@ -59,6 +60,7 @@ public class PostingService {
     private final MeetingImageRepository meetingImageRepository;
     private final MeetingImageUrlResolver meetingImageUrlResolver;
     private final ObjectMapper objectMapper;
+    private final PostingApplicationUrlResolver postingApplicationUrlResolver;
 
     /**
      * 앱 전체 봉사공고 목록(#9). 기존 봉사공고와 external=true인 모임 모집공고를 하나의 페이지네이션·정렬 안에서 함께 반환한다.
@@ -110,16 +112,22 @@ public class PostingService {
         String regionName =
                 posting.getRegionId() != null
                         ? regionRepository
-                                .findById(posting.getRegionId())
-                                .map(Region::getName)
-                                .orElse(null)
+                        .findById(posting.getRegionId())
+                        .map(Region::getName)
+                        .orElse(null)
                         : null;
+
+        PostingParticipation participation = findCurrentUserParticipation(id).orElse(null);
+
         return PostingResponse.from(
                 posting,
                 regionName,
                 buildLocations(posting),
                 isBookmarkedByCurrentUser(id),
-                resolveParticipationStatus(id));
+                participation != null ? participation.getStatus() : null,
+                postingApplicationUrlResolver.resolve(posting),
+                participation != null ? participation.getParticipationStartDate() : null,
+                participation != null ? participation.getParticipationEndDate() : null);
     }
 
     /** 인증이 선택적인 엔드포인트이므로, 로그인하지 않은 사용자는 항상 false를 받는다. */
@@ -129,15 +137,12 @@ public class PostingService {
     }
 
     /** 인증이 선택적인 엔드포인트이므로, 로그인하지 않은 사용자는 항상 참여 이력 없음(null)으로 취급한다. */
-    private PostingParticipationStatus resolveParticipationStatus(Long postingId) {
+    private Optional<PostingParticipation> findCurrentUserParticipation(Long postingId) {
         Long userId = SecurityUtil.getCurrentUserIdOrNull();
         if (userId == null) {
-            return null;
+            return Optional.empty();
         }
-        return postingParticipationRepository
-                .findByUserIdAndPostingId(userId, postingId)
-                .map(PostingParticipation::getStatus)
-                .orElse(null);
+        return postingParticipationRepository.findByUserIdAndPostingId(userId, postingId);
     }
 
     /**
