@@ -39,7 +39,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 @RequiredArgsConstructor
 public class VmsPostingSyncService {
 
-    private static final String EXT_ID_PREFIX = "vms:";
+    static final String EXT_ID_PREFIX = "vms:";
 
     /**
      * VMS 활동분야(acttype) 8종 → PostingCategory 6종. 1365의 CATEGORY_MAPPING(V14 마이그레이션과 동기화 의무 있음)과는
@@ -95,6 +95,13 @@ public class VmsPostingSyncService {
             try {
                 if (tryUpdateExisting(extId, item)) {
                     updated++;
+                    continue;
+                }
+                if (isDuplicateOfExistingPosting(item)) {
+                    log.info(
+                            "title+activityDate가 일치하는 기존 공고가 있어 중복으로 판단해 저장하지 않습니다. seq={}",
+                            item.seq());
+                    skipped++;
                     continue;
                 }
                 if (detailLookups >= maxDetailLookups) {
@@ -186,6 +193,18 @@ public class VmsPostingSyncService {
                 actStartDate,
                 actEndDate,
                 status == PostingStatus.RECRUITING);
+    }
+
+    /**
+     * 1365와 VMS가 같은 실제 봉사공고를 각각 독립적으로 올릴 수 있어, extId만으로는 교차 소스 중복을 걸러낼 수 없다. title+activityDate가
+     * 완전히 같은 공고가 소스 무관하게 이미 저장돼 있으면 중복으로 간주한다(상세페이지 크롤링 전 목록카드 필드만으로 판단해 대상 서버에 불필요한 요청을 보내지 않는다).
+     */
+    private boolean isDuplicateOfExistingPosting(VmsPostingListItem item) {
+        LocalDate activityDate = parseDateRange(item.actPeriodText())[0];
+        if (item.title() == null || activityDate == null) {
+            return false;
+        }
+        return postingRepository.existsByTitleAndActivityDate(item.title().trim(), activityDate);
     }
 
     /**

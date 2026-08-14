@@ -17,7 +17,10 @@ import com.gather.gather.domain.posting.entity.PostingParticipation;
 import com.gather.gather.domain.posting.entity.PostingStatus;
 import com.gather.gather.domain.posting.repository.PostingParticipationRepository;
 import com.gather.gather.domain.posting.repository.PostingRepository;
+import com.gather.gather.domain.region.entity.Region;
+import com.gather.gather.domain.region.repository.RegionRepository;
 import com.gather.gather.global.config.RecommendationProperties;
+import com.gather.gather.global.util.ActivityRegionResolver;
 import com.gather.gather.global.util.CategoryDeadlineScoreCalculator;
 import com.gather.gather.global.util.PreferredCategoryResolver;
 import com.gather.gather.global.util.SecurityUtil;
@@ -46,6 +49,7 @@ class PostingRecommendationServiceTest {
     @Mock private PostingRepository postingRepository;
     @Mock private PostingParticipationRepository postingParticipationRepository;
     @Mock private UserRepository userRepository;
+    @Mock private RegionRepository regionRepository;
     @Mock private RegionNameResolver regionNameResolver;
 
     private PostingRecommendationService postingRecommendationService;
@@ -61,6 +65,7 @@ class PostingRecommendationServiceTest {
                         postingRepository,
                         postingParticipationRepository,
                         new PreferredCategoryResolver(userRepository),
+                        new ActivityRegionResolver(userRepository, regionRepository),
                         regionNameResolver,
                         new CategoryDeadlineScoreCalculator(
                                 new RecommendationProperties(0.7, 0.3, 30)));
@@ -352,6 +357,38 @@ class PostingRecommendationServiceTest {
         }
     }
 
+    @Test
+    @DisplayName(
+            "getRecommendedPostings filters candidates to the user's activity region (including"
+                    + " descendant regions) when the user has one set")
+    void getRecommendedPostings_userHasActivityRegion_filtersToRegionAndDescendants() {
+        LocalDate today = LocalDate.now();
+        Posting p1 = posting(1L, PostingCategory.ENVIRONMENT, today.plusDays(1));
+
+        List<Long> regionFilter = List.of(2L, 20L, 21L);
+        when(postingRepository.search(
+                        eq(PostingStatus.RECRUITING),
+                        eq(regionFilter),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of(p1)));
+        when(userRepository.findById(USER_ID)).thenReturn(Optional.of(userWithActivityRegion(2L)));
+        when(regionRepository.findIdsIncludingChildren(2L)).thenReturn(regionFilter);
+        when(postingParticipationRepository.findByUserId(eq(USER_ID))).thenReturn(List.of());
+
+        try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
+            securityUtil.when(SecurityUtil::getCurrentUserIdOrNull).thenReturn(USER_ID);
+
+            List<PostingSummaryResponse> recommended =
+                    postingRecommendationService.getRecommendedPostings();
+
+            assertThat(recommended).extracting(PostingSummaryResponse::id).containsExactly(1L);
+        }
+    }
+
     private Posting posting(Long id, PostingCategory category, LocalDate noticeEndDate) {
         return posting(id, category, noticeEndDate, true);
     }
@@ -386,6 +423,28 @@ class PostingRecommendationServiceTest {
                         false,
                         null,
                         List.of(category));
+        ReflectionTestUtils.setField(createdUser, "id", USER_ID);
+        return createdUser;
+    }
+
+    private User userWithActivityRegion(Long activityRegionId) {
+        Region activityRegion = Region.create("서울특별시 강남구", 2, "1168000000", null);
+        ReflectionTestUtils.setField(activityRegion, "id", activityRegionId);
+        User createdUser =
+                User.create(
+                        "홍길동",
+                        LocalDate.of(2000, 1, 1),
+                        Gender.MALE,
+                        "01012345678",
+                        "test@example.com",
+                        "encoded-password",
+                        "길동",
+                        "소개",
+                        true,
+                        true,
+                        false,
+                        activityRegion,
+                        List.of());
         ReflectionTestUtils.setField(createdUser, "id", USER_ID);
         return createdUser;
     }
