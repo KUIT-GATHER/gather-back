@@ -17,6 +17,7 @@ import com.gather.gather.domain.posting.dto.PostingSourceType;
 import com.gather.gather.domain.posting.dto.PostingSummaryResponse;
 import com.gather.gather.domain.posting.entity.PostingCategory;
 import com.gather.gather.domain.posting.entity.PostingParticipationStatus;
+import com.gather.gather.domain.posting.entity.PostingSource;
 import com.gather.gather.domain.posting.entity.PostingStatus;
 import com.gather.gather.domain.posting.service.PostingKeywordRecommendationService;
 import com.gather.gather.domain.posting.service.PostingRecommendationService;
@@ -289,7 +290,11 @@ class PostingControllerTest {
                         null,
                         true,
                         PostingParticipationStatus.APPLIED,
-                        PostingParticipationAction.CANCEL);
+                        PostingParticipationAction.CANCEL,
+                        PostingSource.API_1365,
+                        "https://1365.go.kr/vols/P9210/partcptn/timeCptn.do?type=show&progrmRegistNo=3422497",
+                        LocalDate.of(2026, 7, 10),
+                        LocalDate.of(2026, 7, 10));
         when(postingService.getPosting(1L)).thenReturn(response);
 
         mockMvc.perform(get("/api/v1/postings/1"))
@@ -344,7 +349,11 @@ class PostingControllerTest {
                         null,
                         false,
                         null,
-                        PostingParticipationAction.APPLY);
+                        PostingParticipationAction.APPLY,
+                        PostingSource.API_1365,
+                        "https://1365.go.kr/vols/P9210/partcptn/timeCptn.do?type=show&progrmRegistNo=3422497",
+                        null,
+                        null);
         when(postingService.getPosting(1L)).thenReturn(response);
 
         mockMvc.perform(get("/api/v1/postings/1"))

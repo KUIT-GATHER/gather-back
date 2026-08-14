@@ -67,7 +67,7 @@ class PostingServiceTest {
     @Mock private UnifiedPostingQueryRepository unifiedPostingQueryRepository;
     @Mock private MeetingImageRepository meetingImageRepository;
     @Mock private MeetingImageUrlResolver meetingImageUrlResolver;
-
+    @Mock private PostingApplicationUrlResolver postingApplicationUrlResolver;
     private PostingService postingService;
 
     @BeforeEach
@@ -84,7 +84,8 @@ class PostingServiceTest {
                         unifiedPostingQueryRepository,
                         meetingImageRepository,
                         meetingImageUrlResolver,
-                        new ObjectMapper());
+                        new ObjectMapper(),
+                        postingApplicationUrlResolver);
     }
 
     @Test
@@ -546,7 +547,10 @@ class PostingServiceTest {
         when(postingLocationRepository.findAllByPostingIdOrderByLocationSeq(1L))
                 .thenReturn(List.of());
         when(postingParticipationRepository.findByUserIdAndPostingId(userId, 1L))
-                .thenReturn(Optional.of(participationWithStatus(userId, 1L, status)));
+                .thenReturn(
+                        Optional.of(
+                                participationWithStatus(
+                                        userId, 1L, status, LocalDate.now().minusDays(1))));
 
         try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
             securityUtil.when(SecurityUtil::getCurrentUserIdOrNull).thenReturn(userId);
@@ -626,7 +630,13 @@ class PostingServiceTest {
 
     private PostingParticipation participationWithStatus(
             Long userId, Long postingId, PostingParticipationStatus status) {
-        PostingParticipation participation = PostingParticipation.create(userId, postingId);
+        return participationWithStatus(userId, postingId, status, LocalDate.now().plusDays(30));
+    }
+
+    private PostingParticipation participationWithStatus(
+            Long userId, Long postingId, PostingParticipationStatus status, LocalDate endDate) {
+        PostingParticipation participation =
+                PostingParticipation.create(userId, postingId, endDate, endDate);
         ReflectionTestUtils.setField(participation, "status", status);
         return participation;
     }

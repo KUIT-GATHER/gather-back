@@ -58,7 +58,7 @@ public interface PostingParticipationRepository extends JpaRepository<PostingPar
                 com.gather.gather.domain.posting.entity.PostingParticipationStatus.APPLIED,
                 com.gather.gather.domain.posting.entity.PostingParticipationStatus.CONFIRMED
             )
-              AND COALESCE(posting.actStartDate, posting.activityDate) = :activityDate
+              AND COALESCE(participation.participationStartDate, posting.actStartDate, posting.activityDate) = :activityDate
               AND posting.isActive = true
               AND user.status = com.gather.gather.domain.auth.entity.UserStatus.ACTIVE
             """)
