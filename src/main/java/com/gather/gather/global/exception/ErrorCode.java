@@ -81,7 +81,6 @@ public enum ErrorCode {
     PARTICIPATION_NOT_FOUND(HttpStatus.NOT_FOUND, "신청 내역을 찾을 수 없습니다."),
     PARTICIPATION_CANCEL_NOT_ALLOWED(
             HttpStatus.CONFLICT, "이력 보존을 위해 완료되었거나 후기가 작성된 신청은 취소할 수 없습니다."),
-    POSTING_APPLICATION_UNAVAILABLE(HttpStatus.CONFLICT, "1365 신청 정보가 연동되지 않아 신청할 수 없는 공고입니다."),
     PARTICIPATION_ALREADY_COMPLETED(HttpStatus.CONFLICT, "이미 완료 처리된 참여입니다."),
     PARTICIPATION_COMPLETE_NOT_ALLOWED(HttpStatus.CONFLICT, "활동종료일이 지나야 완료 처리를 할 수 있습니다."),
     PARTICIPATION_HOURS_NOT_ALLOWED(HttpStatus.CONFLICT, "완료 처리된 참여만 인정시간을 입력할 수 있습니다."),

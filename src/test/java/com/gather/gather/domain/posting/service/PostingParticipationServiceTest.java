@@ -41,8 +41,6 @@ class PostingParticipationServiceTest {
     private static final Long POSTING_ID = 10L;
     private static final String EXT_ID = "3422497";
     private static final LocalDate PARTICIPATION_DATE = LocalDate.now().plusMonths(1);
-    private static final String EXPECTED_APPLICATION_URL =
-            "https://1365.go.kr/vols/P9210/partcptn/timeCptn.do?type=show&progrmRegistNo=" + EXT_ID;
 
     @Mock private PostingParticipationRepository postingParticipationRepository;
     @Mock private PostingRepository postingRepository;
@@ -58,7 +56,7 @@ class PostingParticipationServiceTest {
     }
 
     @Test
-    @DisplayName("apply saves a participation and returns the 1365 application url")
+    @DisplayName("apply saves a participation with the requested schedule")
     void apply_savesParticipation_whenPostingExistsAndNotDuplicate() {
         try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
             securityUtil.when(SecurityUtil::getCurrentUserId).thenReturn(USER_ID);

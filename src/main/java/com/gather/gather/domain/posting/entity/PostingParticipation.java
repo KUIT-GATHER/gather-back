@@ -124,16 +124,6 @@ public class PostingParticipation {
         this.recognizedMinutes = recognizedMinutes;
     }
 
-    /** 완료 가능 시점 판정에 쓰는 실질 종료일. 개인 일정이 없는 기존 데이터는 공고 전체 종료일로 fallback한다. */
-    public LocalDate resolveEffectiveEndDate(LocalDate postingFallbackEndDate) {
-        return participationEndDate != null ? participationEndDate : postingFallbackEndDate;
-    }
-
-    /** 알림 스케줄러 기준일 판정에 쓰는 실질 시작일. 개인 일정이 없는 기존 데이터는 공고 전체 시작일로 fallback한다. */
-    public LocalDate resolveEffectiveStartDate(LocalDate postingFallbackStartDate) {
-        return participationStartDate != null ? participationStartDate : postingFallbackStartDate;
-    }
-
     /**
      * 참여 일정 없이 생성한다 — 정책 변경 이전(2026-08) 레거시 데이터, 또는 테스트에서 개인 일정이 아직 없는 상태를 표현할 때 사용한다. 완료 가능
      * 시점/마이페이지/알림 계산 시 이 참여는 공고 전체 활동기간으로 fallback한다.
