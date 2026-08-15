@@ -65,13 +65,13 @@ final class UserSwaggerExamples {
             """
             { "success": false, "data": null, "error": { "code": "EXPIRED_TOKEN", "message": "만료된 토큰입니다." } }
             """;
-    static final String REVOKED_TOKEN =
+    static final String WITHDRAWAL_PENDING_USER =
             """
-            { "success": false, "data": null, "error": { "code": "REVOKED_TOKEN", "message": "폐기된 토큰입니다." } }
+            { "success": false, "data": null, "error": { "code": "WITHDRAWAL_PENDING_USER", "message": "탈퇴 처리 중인 계정입니다." } }
             """;
-    static final String INVALID_ACTIVITY_REGION =
+    static final String WITHDRAWN_USER =
             """
-            { "success": false, "data": null, "error": { "code": "INVALID_ACTIVITY_REGION", "message": "활동 지역이 올바르지 않습니다." } }
+            { "success": false, "data": null, "error": { "code": "WITHDRAWN_USER", "message": "탈퇴한 계정입니다." } }
             """;
     static final String INVALID_INTEREST_CATEGORY_COUNT =
             """

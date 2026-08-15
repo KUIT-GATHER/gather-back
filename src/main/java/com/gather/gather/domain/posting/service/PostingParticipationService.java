@@ -1,6 +1,8 @@
 package com.gather.gather.domain.posting.service;
 
 import com.gather.gather.domain.badge.event.VolunteerActivityCompletedEvent;
+import com.gather.gather.domain.posting.dto.PostingParticipationAction;
+import com.gather.gather.domain.posting.dto.PostingParticipationApplyRequest;
 import com.gather.gather.domain.posting.dto.PostingParticipationResponse;
 import com.gather.gather.domain.posting.entity.Posting;
 import com.gather.gather.domain.posting.entity.PostingParticipation;
@@ -27,9 +29,6 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 public class PostingParticipationService {
 
-    private static final String VOLUNTEER_1365_APPLICATION_URL_PREFIX =
-            "https://1365.go.kr/vols/P9210/partcptn/timeCptn.do?type=show&progrmRegistNo=";
-
     /** V23 마이그레이션에서 정의한 (user_id, posting_id) 복합 유니크 제약. */
     private static final String PARTICIPATION_UNIQUE_CONSTRAINT =
             "uq_posting_participation_user_posting";
@@ -39,7 +38,8 @@ public class PostingParticipationService {
     private final ApplicationEventPublisher eventPublisher;
 
     @Transactional
-    public PostingParticipationResponse apply(Long postingId) {
+    public PostingParticipationResponse apply(
+            Long postingId, PostingParticipationApplyRequest request) {
         Long userId = SecurityUtil.getCurrentUserId();
 
         Posting posting =
@@ -51,22 +51,25 @@ public class PostingParticipationService {
                 || !Boolean.TRUE.equals(posting.getIsActive())) {
             throw new BusinessException(ErrorCode.POSTING_CLOSED);
         }
-
-        if (posting.getExtId() == null) {
-            throw new BusinessException(ErrorCode.POSTING_APPLICATION_UNAVAILABLE);
-        }
-
         if (postingParticipationRepository.existsByUserIdAndPostingId(userId, postingId)) {
             throw new BusinessException(ErrorCode.PARTICIPATION_DUPLICATE);
         }
 
+        PostingParticipationDateValidator.validate(
+                posting,
+                request.participationStartDate(),
+                request.participationEndDate(),
+                LocalDate.now());
+
         PostingParticipation participation;
-        // existsBy 사전 체크만으로는 동시 요청을 막지 못하므로, unique(user_id, posting_id) 제약 위반을
-        // 최종 방어선으로 삼아 레이스 컨디션에서도 중복 신청을 막는다.
         try {
             participation =
                     postingParticipationRepository.saveAndFlush(
-                            PostingParticipation.create(userId, postingId));
+                            PostingParticipation.create(
+                                    userId,
+                                    postingId,
+                                    request.participationStartDate(),
+                                    request.participationEndDate()));
         } catch (DataIntegrityViolationException exception) {
             if (!isParticipationUniqueConstraintViolation(exception)) {
                 throw exception;
@@ -75,10 +78,7 @@ public class PostingParticipationService {
             throw new BusinessException(ErrorCode.PARTICIPATION_DUPLICATE, exception);
         }
 
-        return PostingParticipationResponse.of(
-                participation.getId(),
-                participation.getStatus(),
-                VOLUNTEER_1365_APPLICATION_URL_PREFIX + posting.getExtId());
+        return PostingParticipationResponse.of(participation);
     }
 
     /** 개인 봉사 완료 판정: 활동종료일이 지난 뒤 본인이 직접 완료 처리한다(모임 봉사는 모임장이 별도로 완료 처리한다). */
@@ -101,7 +101,11 @@ public class PostingParticipationService {
                 || participation.getStatus() == PostingParticipationStatus.REVIEWED) {
             throw new BusinessException(ErrorCode.PARTICIPATION_ALREADY_COMPLETED);
         }
-        if (!posting.isActivityEnded(LocalDate.now())) {
+
+        boolean activityEnded =
+                PostingParticipationAction.resolveActivityEnded(
+                        posting, participation.getParticipationEndDate(), LocalDate.now());
+        if (!activityEnded) {
             throw new BusinessException(ErrorCode.PARTICIPATION_COMPLETE_NOT_ALLOWED);
         }
 

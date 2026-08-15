@@ -30,7 +30,7 @@ public enum ErrorCode {
     PASSWORD_MISMATCH(HttpStatus.BAD_REQUEST, "비밀번호가 일치하지 않습니다."),
     EMAIL_NOT_VERIFIED(HttpStatus.BAD_REQUEST, "이메일 인증이 완료되지 않았습니다."),
     REQUIRED_TERMS_NOT_AGREED(HttpStatus.BAD_REQUEST, "필수 약관 동의가 필요합니다."),
-    INVALID_ACTIVITY_REGION(HttpStatus.BAD_REQUEST, "활동 지역은 시군구 단위로 1개 선택해야 합니다."),
+    INVALID_ACTIVITY_REGION(HttpStatus.BAD_REQUEST, "활동 지역은 시도 또는 시군구 단위로 1개 선택해야 합니다."),
     INVALID_INTEREST_CATEGORY_COUNT(HttpStatus.BAD_REQUEST, "관심 카테고리는 중복 없이 1개 이상 선택해야 합니다."),
     REGION_NOT_FOUND(HttpStatus.NOT_FOUND, "활동 지역을 찾을 수 없습니다."),
     CATEGORY_NOT_FOUND(HttpStatus.NOT_FOUND, "관심 카테고리를 찾을 수 없습니다."),
@@ -81,11 +81,14 @@ public enum ErrorCode {
     PARTICIPATION_NOT_FOUND(HttpStatus.NOT_FOUND, "신청 내역을 찾을 수 없습니다."),
     PARTICIPATION_CANCEL_NOT_ALLOWED(
             HttpStatus.CONFLICT, "이력 보존을 위해 완료되었거나 후기가 작성된 신청은 취소할 수 없습니다."),
-    POSTING_APPLICATION_UNAVAILABLE(HttpStatus.CONFLICT, "1365 신청 정보가 연동되지 않아 신청할 수 없는 공고입니다."),
     PARTICIPATION_ALREADY_COMPLETED(HttpStatus.CONFLICT, "이미 완료 처리된 참여입니다."),
     PARTICIPATION_COMPLETE_NOT_ALLOWED(HttpStatus.CONFLICT, "활동종료일이 지나야 완료 처리를 할 수 있습니다."),
     PARTICIPATION_HOURS_NOT_ALLOWED(HttpStatus.CONFLICT, "완료 처리된 참여만 인정시간을 입력할 수 있습니다."),
     PARTICIPATION_HOURS_ALREADY_SUBMITTED(HttpStatus.CONFLICT, "이미 인정시간을 입력했습니다."),
+    PARTICIPATION_DATE_INVALID_RANGE(HttpStatus.CONFLICT, "참여 시작일은 종료일보다 늦을 수 없습니다."),
+    PARTICIPATION_DATE_OUT_OF_POSTING_PERIOD(
+            HttpStatus.CONFLICT, "참여 일정은 공고 활동기간 안에서만 선택할 수 있습니다."),
+    PARTICIPATION_DATE_IN_PAST(HttpStatus.CONFLICT, "지난 날짜로는 신규 신청할 수 없습니다."),
 
     UNSUPPORTED_PROFILE_IMAGE_TYPE(HttpStatus.BAD_REQUEST, "지원하지 않는 프로필 이미지 형식입니다."),
     PROFILE_IMAGE_SIZE_EXCEEDED(HttpStatus.BAD_REQUEST, "프로필 이미지의 허용 크기를 초과했습니다."),

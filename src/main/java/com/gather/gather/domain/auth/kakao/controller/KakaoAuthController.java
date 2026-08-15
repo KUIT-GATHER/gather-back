@@ -48,8 +48,8 @@ public class KakaoAuthController {
                     두 경우 모두 HTTP 200이며 signupStatus로 구분합니다. ADDITIONAL_INFO_REQUIRED는 에러가 아닙니다.
 
                     400(인가 코드 무효·재사용, redirectUri 불일치), 500(카카오 장애), 503(카카오 요청 제한)은
-                    모두 '카카오 로그인 다시 시작'으로 처리하세요. 단 403(정지·탈퇴)은 기존 로그인과 동일하게
-                    계정 상태를 안내해야 하며 재시작으로 처리하지 않습니다.
+                    모두 '카카오 로그인 다시 시작'으로 처리하세요. 403은 계정 상태를 안내해야 하며,
+                    409는 탈퇴 후 재가입 제한 또는 연결 해제된 소셜 계정 상태를 안내해야 합니다.
                     """)
     @ApiResponses({
         @io.swagger.v3.oas.annotations.responses.ApiResponse(
@@ -143,8 +143,31 @@ public class KakaoAuthController {
                                                     KakaoAuthSwaggerExamples
                                                             .SUSPENDED_USER_EXAMPLE),
                                     @ExampleObject(
+                                            name = "WITHDRAWAL_PENDING_USER",
+                                            value =
+                                                    KakaoAuthSwaggerExamples
+                                                            .WITHDRAWAL_PENDING_USER_EXAMPLE),
+                                    @ExampleObject(
                                             name = "WITHDRAWN_USER",
                                             value = KakaoAuthSwaggerExamples.WITHDRAWN_USER_EXAMPLE)
+                                })),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                responseCode = "409",
+                description = "탈퇴 후 재가입 제한 또는 연결 해제된 소셜 계정",
+                content =
+                        @Content(
+                                mediaType = JSON,
+                                examples = {
+                                    @ExampleObject(
+                                            name = "ACCOUNT_REJOIN_BLOCKED",
+                                            value =
+                                                    KakaoAuthSwaggerExamples
+                                                            .ACCOUNT_REJOIN_BLOCKED_EXAMPLE),
+                                    @ExampleObject(
+                                            name = "SOCIAL_ACCOUNT_NOT_LINKED",
+                                            value =
+                                                    KakaoAuthSwaggerExamples
+                                                            .SOCIAL_ACCOUNT_NOT_LINKED_EXAMPLE)
                                 })),
         @io.swagger.v3.oas.annotations.responses.ApiResponse(
                 responseCode = "500",
@@ -194,7 +217,7 @@ public class KakaoAuthController {
             description =
                     """
                     카카오 로그인에서 받은 가입용 임시 토큰과 추가정보로 회원가입을 완료하고 곧바로 로그인 토큰을 발급합니다.
-                    이메일과 비밀번호는 받지 않습니다.
+                    이메일과 비밀번호는 받지 않습니다. 요청 전화번호와 일치하는 30분 이내 미소비 휴대폰 인증이 필요합니다.
 
                     가입 토큰은 Authorization이 아니라 X-Signup-Token 헤더로 보냅니다.
                     전화번호가 이미 가입에 사용된 경우 DUPLICATE_PHONE_NUMBER(409)로 실패합니다. 이는 기존 일반 계정과
@@ -247,10 +270,11 @@ public class KakaoAuthController {
                                                     KakaoAuthSwaggerExamples
                                                             .REQUIRED_TERMS_NOT_AGREED_EXAMPLE),
                                     @ExampleObject(
-                                            name = "INVALID_ACTIVITY_REGION",
+                                            name = "PHONE_VERIFICATION_REQUIRED",
+                                            summary = "인증 없음·ID/전화번호 불일치·인증 만료·이미 소비됨",
                                             value =
                                                     KakaoAuthSwaggerExamples
-                                                            .INVALID_ACTIVITY_REGION_EXAMPLE),
+                                                            .PHONE_VERIFICATION_REQUIRED_EXAMPLE),
                                     @ExampleObject(
                                             name = "INVALID_INTEREST_CATEGORY_COUNT",
                                             value =
@@ -311,7 +335,17 @@ public class KakaoAuthController {
                                             summary = "가입 세션 발급 후 이미 가입 완료된 카카오 계정",
                                             value =
                                                     KakaoAuthSwaggerExamples
-                                                            .ALREADY_REGISTERED_EXAMPLE)
+                                                            .ALREADY_REGISTERED_EXAMPLE),
+                                    @ExampleObject(
+                                            name = "ACCOUNT_REJOIN_BLOCKED",
+                                            value =
+                                                    KakaoAuthSwaggerExamples
+                                                            .ACCOUNT_REJOIN_BLOCKED_EXAMPLE),
+                                    @ExampleObject(
+                                            name = "SOCIAL_ACCOUNT_NOT_LINKED",
+                                            value =
+                                                    KakaoAuthSwaggerExamples
+                                                            .SOCIAL_ACCOUNT_NOT_LINKED_EXAMPLE)
                                 }))
     })
     @PostMapping("/signup")

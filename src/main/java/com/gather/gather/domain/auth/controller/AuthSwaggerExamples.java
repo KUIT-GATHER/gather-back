@@ -129,6 +129,61 @@ final class AuthSwaggerExamples {
               }
             }
             """;
+    static final String PHONE_VERIFICATION_NOT_FOUND_EXAMPLE =
+            """
+            {
+              "success": false,
+              "data": null,
+              "error": {
+                "code": "PHONE_VERIFICATION_NOT_FOUND",
+                "message": "휴대폰 인증 요청을 찾을 수 없습니다."
+              }
+            }
+            """;
+    static final String PHONE_VERIFICATION_EXPIRED_EXAMPLE =
+            """
+            {
+              "success": false,
+              "data": null,
+              "error": {
+                "code": "PHONE_VERIFICATION_EXPIRED",
+                "message": "휴대폰 인증 요청이 만료되었습니다."
+              }
+            }
+            """;
+    static final String PHONE_VERIFICATION_REQUIRED_EXAMPLE =
+            """
+            {
+              "success": false,
+              "data": null,
+              "error": {
+                "code": "PHONE_VERIFICATION_REQUIRED",
+                "message": "휴대폰 인증이 필요합니다."
+              }
+            }
+            """;
+    static final String PHONE_VERIFICATION_PROVIDER_UNAVAILABLE_EXAMPLE =
+            """
+            {
+              "success": false,
+              "data": null,
+              "error": {
+                "code": "PHONE_VERIFICATION_PROVIDER_UNAVAILABLE",
+                "message": "휴대폰 인증 서비스를 일시적으로 사용할 수 없습니다."
+              }
+            }
+            """;
+    static final String PHONE_VERIFICATION_RATE_LIMITED_EXAMPLE =
+            """
+            {
+              "success": false,
+              "data": null,
+              "error": {
+                "code": "PHONE_VERIFICATION_RATE_LIMITED",
+                "message": "휴대폰 인증 요청이 많습니다. 잠시 후 다시 시도해주세요."
+              }
+            }
+            """;
     static final String PASSWORD_MISMATCH_EXAMPLE =
             """
             {
@@ -159,17 +214,6 @@ final class AuthSwaggerExamples {
               "error": {
                 "code": "REQUIRED_TERMS_NOT_AGREED",
                 "message": "필수 약관 동의가 필요합니다."
-              }
-            }
-            """;
-    static final String INVALID_ACTIVITY_REGION_EXAMPLE =
-            """
-            {
-              "success": false,
-              "data": null,
-              "error": {
-                "code": "INVALID_ACTIVITY_REGION",
-                "message": "활동 지역은 시군구 단위로 1개 선택해야 합니다."
               }
             }
             """;
@@ -217,6 +261,17 @@ final class AuthSwaggerExamples {
               }
             }
             """;
+    static final String WITHDRAWAL_PENDING_USER_EXAMPLE =
+            """
+            {
+              "success": false,
+              "data": null,
+              "error": {
+                "code": "WITHDRAWAL_PENDING_USER",
+                "message": "탈퇴 처리 중인 계정입니다."
+              }
+            }
+            """;
     static final String WITHDRAWN_USER_EXAMPLE =
             """
             {
@@ -225,6 +280,17 @@ final class AuthSwaggerExamples {
               "error": {
                 "code": "WITHDRAWN_USER",
                 "message": "탈퇴한 계정입니다."
+              }
+            }
+            """;
+    static final String ACCOUNT_REJOIN_BLOCKED_EXAMPLE =
+            """
+            {
+              "success": false,
+              "data": null,
+              "error": {
+                "code": "ACCOUNT_REJOIN_BLOCKED",
+                "message": "탈퇴 후 7일 동안 재가입할 수 없습니다."
               }
             }
             """;

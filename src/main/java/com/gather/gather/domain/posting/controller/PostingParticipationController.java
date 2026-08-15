@@ -1,5 +1,6 @@
 package com.gather.gather.domain.posting.controller;
 
+import com.gather.gather.domain.posting.dto.PostingParticipationApplyRequest;
 import com.gather.gather.domain.posting.dto.PostingParticipationResponse;
 import com.gather.gather.domain.posting.dto.PostingRecognizedMinutesRequest;
 import com.gather.gather.domain.posting.service.PostingParticipationService;
@@ -9,6 +10,7 @@ import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.ExampleObject;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -41,12 +43,15 @@ public class PostingParticipationController {
     private final PostingParticipationService postingParticipationService;
 
     @Operation(
-            summary = "봉사 신청",
-            description = "로그인한 사용자가 봉사공고에 신청한다. 신청 내역을 저장하고 1365 신청 링크를 함께 반환한다.")
+            summary = "봉사 신청 일정 등록",
+            description =
+                    "외부(1365/VMS) 신청 완료 후, 사용자가 선택한 참여 일정(단일 날짜 또는 연속 기간)을 Gather에 등록한다."
+                            + " 외부 신청 페이지 URL은 공고 상세 조회(GET /api/v1/postings/{id})의 applicationUrl로"
+                            + " 별도 제공되며, 이 API는 더 이상 applicationUrl을 반환하지 않는다.")
     @ApiResponses({
         @io.swagger.v3.oas.annotations.responses.ApiResponse(
                 responseCode = "200",
-                description = "봉사 신청 성공",
+                description = "참여 일정 등록 성공",
                 content =
                         @Content(
                                 mediaType = JSON,
@@ -54,16 +59,20 @@ public class PostingParticipationController {
                                         @ExampleObject(
                                                 value =
                                                         """
-                                                        {
-                                                          "success": true,
-                                                          "data": {
-                                                            "participationId": 1,
-                                                            "status": "APPLIED",
-                                                            "applicationUrl": "https://1365.go.kr/vols/P9210/partcptn/timeCptn.do?type=show&progrmRegistNo=3422497"
-                                                          },
-                                                          "error": null
-                                                        }
-                                                        """))),
+                                            {
+                                              "success": true,
+                                              "data": {
+                                                "participationId": 1,
+                                                "status": "APPLIED",
+                                                "participationStartDate": "2026-08-15",
+                                                "participationEndDate": "2026-08-18"
+                                              },
+                                              "error": null
+                                            }
+                                            """))),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                responseCode = "400",
+                description = "요청 필드 누락(participationStartDate/EndDate 필수, VALIDATION_ERROR)"),
         @io.swagger.v3.oas.annotations.responses.ApiResponse(
                 responseCode = "401",
                 description = "인증되지 않은 요청",
@@ -85,18 +94,18 @@ public class PostingParticipationController {
                                                 name = "POSTING_NOT_FOUND",
                                                 value =
                                                         """
-                                                        {
-                                                          "success": false,
-                                                          "data": null,
-                                                          "error": {
-                                                            "code": "POSTING_NOT_FOUND",
-                                                            "message": "봉사공고를 찾을 수 없습니다."
-                                                          }
-                                                        }
-                                                        """))),
+                                            {
+                                              "success": false,
+                                              "data": null,
+                                              "error": {
+                                                "code": "POSTING_NOT_FOUND",
+                                                "message": "봉사공고를 찾을 수 없습니다."
+                                              }
+                                            }
+                                            """))),
         @io.swagger.v3.oas.annotations.responses.ApiResponse(
                 responseCode = "409",
-                description = "마감된 공고 / 이미 신청한 공고 / 1365 신청 정보가 연동되지 않은 공고",
+                description = "마감된 공고 / 이미 신청한 공고 / 참여 일정이 유효하지 않음",
                 content =
                         @Content(
                                 mediaType = JSON,
@@ -128,23 +137,51 @@ public class PostingParticipationController {
                                                     }
                                                     """),
                                     @ExampleObject(
-                                            name = "POSTING_APPLICATION_UNAVAILABLE",
+                                            name = "PARTICIPATION_DATE_INVALID_RANGE",
                                             value =
                                                     """
                                                     {
                                                       "success": false,
                                                       "data": null,
                                                       "error": {
-                                                        "code": "POSTING_APPLICATION_UNAVAILABLE",
-                                                        "message": "1365 신청 정보가 연동되지 않아 신청할 수 없는 공고입니다."
+                                                        "code": "PARTICIPATION_DATE_INVALID_RANGE",
+                                                        "message": "참여 시작일은 종료일보다 늦을 수 없습니다."
+                                                      }
+                                                    }
+                                                    """),
+                                    @ExampleObject(
+                                            name = "PARTICIPATION_DATE_OUT_OF_POSTING_PERIOD",
+                                            value =
+                                                    """
+                                                    {
+                                                      "success": false,
+                                                      "data": null,
+                                                      "error": {
+                                                        "code": "PARTICIPATION_DATE_OUT_OF_POSTING_PERIOD",
+                                                        "message": "참여 일정은 공고 활동기간 안에서만 선택할 수 있습니다."
+                                                      }
+                                                    }
+                                                    """),
+                                    @ExampleObject(
+                                            name = "PARTICIPATION_DATE_IN_PAST",
+                                            value =
+                                                    """
+                                                    {
+                                                      "success": false,
+                                                      "data": null,
+                                                      "error": {
+                                                        "code": "PARTICIPATION_DATE_IN_PAST",
+                                                        "message": "지난 날짜로는 신규 신청할 수 없습니다."
                                                       }
                                                     }
                                                     """)
                                 }))
     })
     @PostMapping
-    public ApiResponse<PostingParticipationResponse> apply(@PathVariable Long postingId) {
-        return ApiResponse.success(postingParticipationService.apply(postingId));
+    public ApiResponse<PostingParticipationResponse> apply(
+            @PathVariable Long postingId,
+            @Valid @RequestBody PostingParticipationApplyRequest request) {
+        return ApiResponse.success(postingParticipationService.apply(postingId, request));
     }
 
     @Operation(summary = "봉사 신청 취소", description = "로그인한 사용자가 자신의 봉사 신청 내역을 취소(삭제)한다.")
