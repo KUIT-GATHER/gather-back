@@ -58,7 +58,8 @@ public class MyPageService {
     /** 이 리포 전체가 COMPLETED/REVIEWED를 함께 "완료"로 취급한다(PostingParticipationAction 등과 동일 정책). */
     private static final Set<PostingParticipationStatus> COMPLETED_STATUSES =
             Set.of(PostingParticipationStatus.COMPLETED, PostingParticipationStatus.REVIEWED);
-
+    private static final Set<PostingParticipationStatus> UPCOMING_VOLUNTEER_STATUSES =
+            Set.of(PostingParticipationStatus.APPLIED, PostingParticipationStatus.CONFIRMED);
     private final UserRepository userRepository;
     private final BookmarkRepository bookmarkRepository;
     private final MeetingBookmarkRepository meetingBookmarkRepository;
@@ -107,7 +108,8 @@ public class MyPageService {
     private List<MyPageActivityResponse> getVolunteerActivities(
             Long userId, LocalDate monthStart, LocalDate monthEnd) {
         List<PostingParticipation> participations =
-                postingParticipationRepository.findByUserId(userId);
+                postingParticipationRepository.findAllByUserIdAndStatusIn(
+                        userId, UPCOMING_VOLUNTEER_STATUSES);
         if (participations.isEmpty()) {
             return List.of();
         }
@@ -360,6 +362,7 @@ public class MyPageService {
      * <p>2026-08 정책 변경: 날짜 source를 공고 전체 활동기간에서 사용자 개인 참여일정으로 바꿨다. 개인 일정이 없는(정책 변경 이전) 기존 참여만 공고 전체
      * 활동기간으로 fallback한다.
      */
+    // isVisibleInMonth: 종료일이 오늘보다 이전이면 "다가오는 활동"에서 제외
     private boolean isVisibleInMonth(
             PostingParticipation participation,
             Posting posting,

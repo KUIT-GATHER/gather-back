@@ -68,8 +68,13 @@ public record MyPageActivityResponse(
         boolean activityEnded =
                 PostingParticipationAction.resolveActivityEnded(
                         posting, participation.getParticipationEndDate(), LocalDate.now());
-        PostingParticipationAction action =
+        PostingParticipationAction rawAction =
                 PostingParticipationAction.from(participation.getStatus(), activityEnded);
+        // MyPage는 취소/미노출(CANCEL|NONE)만 지원한다. COMPLETE는 취소 자체는 여전히 가능하므로 CANCEL로 내린다.
+        PostingParticipationAction action =
+                rawAction == PostingParticipationAction.COMPLETE
+                        ? PostingParticipationAction.CANCEL
+                        : rawAction;
 
         return new MyPageActivityResponse(
                 ActivityType.VOLUNTEER,
