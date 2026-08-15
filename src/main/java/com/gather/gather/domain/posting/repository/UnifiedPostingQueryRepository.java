@@ -184,15 +184,15 @@ public class UnifiedPostingQueryRepository {
             params.put("noticeEndDate", noticeEndDate);
         }
         if (activityStartDate != null) {
-            // 종료일 = act_end_date, 없으면 act_start_date, 그마저 없으면 activity_date로 대체(POSTING_EFFECTIVE_END).
+            // 종료일 = act_end_date, 없으면 act_start_date, 그마저 없으면 activity_date로
+            // 대체(POSTING_EFFECTIVE_END).
             where.append(
                     " AND COALESCE(p.act_end_date, p.act_start_date, p.activity_date) >= :activityStartDate");
             params.put("activityStartDate", activityStartDate);
         }
         if (activityEndDate != null) {
             // 시작일 = act_start_date, 없으면 activity_date로 대체(POSTING_EFFECTIVE_START).
-            where.append(
-                    " AND COALESCE(p.act_start_date, p.activity_date) <= :activityEndDate");
+            where.append(" AND COALESCE(p.act_start_date, p.activity_date) <= :activityEndDate");
             params.put("activityEndDate", activityEndDate);
         }
         if (keyword != null && !keyword.isBlank()) {

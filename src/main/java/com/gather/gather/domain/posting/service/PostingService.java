@@ -68,9 +68,9 @@ public class PostingService {
      *
      * <p>noticeStartDate/noticeEndDate 필터는 기존 봉사공고에만 적용된다(모집공고에는 대응 개념이 없어 항상 포함).
      *
-     * <p>activityStartDate/activityEndDate는 두 출처 모두에 적용되는 활동일 겹침(overlap) 필터다. 선택 기간과 실제
-     * 활동기간이 하루라도 겹치면 조회된다(활동종료일 &gt;= activityStartDate AND 활동시작일 &lt;= activityEndDate).
-     * POSTING은 actStartDate/actEndDate 기준이며 값이 없으면 activityDate로 대체하고, MEETING_RECRUIT는
+     * <p>activityStartDate/activityEndDate는 두 출처 모두에 적용되는 활동일 겹침(overlap) 필터다. 선택 기간과 실제 활동기간이 하루라도
+     * 겹치면 조회된다(활동종료일 &gt;= activityStartDate AND 활동시작일 &lt;= activityEndDate). POSTING은
+     * actStartDate/actEndDate 기준이며 값이 없으면 activityDate로 대체하고, MEETING_RECRUIT는
      * activityStartAt/activityEndAt 기준이다.
      */
     @Transactional(readOnly = true)
@@ -141,10 +141,10 @@ public class PostingService {
     }
 
     /**
-     * 봉사공고 지도 조회(#186). 정책상 일반 봉사공고(POSTING)만 노출하고 모임 모집공고(MEETING_RECRUIT)는 제외한다.
-     * 페이지네이션 없이 현재 지도 bounds(swLat/swLng ~ neLat/neLng) 안에 활동장소가 있는 공고 전체를 반환한다. bounds는 1번째
-     * 장소(Posting 자신의 위·경도) 또는 2·3번째 장소(PostingLocation) 중 하나라도 포함되면 매칭되고, 응답의 locations 배열에는
-     * bounds 여부와 무관하게 해당 공고의 유효한(위·경도가 있는) 장소를 모두 담는다.
+     * 봉사공고 지도 조회(#186). 정책상 일반 봉사공고(POSTING)만 노출하고 모임 모집공고(MEETING_RECRUIT)는 제외한다. 페이지네이션 없이 현재 지도
+     * bounds(swLat/swLng ~ neLat/neLng) 안에 활동장소가 있는 공고 전체를 반환한다. bounds는 1번째 장소(Posting 자신의 위·경도)
+     * 또는 2·3번째 장소(PostingLocation) 중 하나라도 포함되면 매칭되고, 응답의 locations 배열에는 bounds 여부와 무관하게 해당 공고의
+     * 유효한(위·경도가 있는) 장소를 모두 담는다.
      */
     @Transactional(readOnly = true)
     public List<PostingMapItem> getPostingsMap(

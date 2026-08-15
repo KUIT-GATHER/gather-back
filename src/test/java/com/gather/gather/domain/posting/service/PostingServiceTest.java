@@ -93,12 +93,18 @@ class PostingServiceTest {
     void getPostings_passesNullStatusThrough_whenStatusNotProvided() {
         Pageable pageable = PageRequest.of(0, 20);
         when(unifiedPostingQueryRepository.search(
-                        isNull(), isNull(), isNull(), isNull(), isNull(), isNull(), isNull(),
-                        isNull(), eq(pageable)))
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        eq(pageable)))
                 .thenReturn(new SearchResult(List.of(), 0));
 
-        postingService.getPostings(
-                pageable, null, null, null, null, null, null, null, null, null);
+        postingService.getPostings(pageable, null, null, null, null, null, null, null, null, null);
 
         verify(unifiedPostingQueryRepository)
                 .search(null, null, null, null, null, null, null, null, pageable);
@@ -126,8 +132,7 @@ class PostingServiceTest {
                 pageable, null, null, PostingStatus.CLOSED, null, null, null, null, null, null);
 
         verify(unifiedPostingQueryRepository)
-                .search(
-                        PostingStatus.CLOSED, null, null, null, null, null, null, null, pageable);
+                .search(PostingStatus.CLOSED, null, null, null, null, null, null, null, pageable);
     }
 
     @Test
@@ -147,13 +152,11 @@ class PostingServiceTest {
                         eq(pageable)))
                 .thenReturn(new SearchResult(List.of(), 0));
 
-        postingService.getPostings(
-                pageable, 1L, null, null, null, null, null, null, null, null);
+        postingService.getPostings(pageable, 1L, null, null, null, null, null, null, null, null);
 
         verify(regionRepository).findIdsIncludingChildren(1L);
         verify(unifiedPostingQueryRepository)
-                .search(
-                        null, List.of(1L, 2L, 3L), null, null, null, null, null, null, pageable);
+                .search(null, List.of(1L, 2L, 3L), null, null, null, null, null, null, pageable);
     }
 
     @Test
@@ -176,8 +179,7 @@ class PostingServiceTest {
                         eq(pageable)))
                 .thenReturn(new SearchResult(List.of(), 0));
 
-        postingService.getPostings(
-                pageable, null, 7L, null, null, null, null, null, null, null);
+        postingService.getPostings(pageable, null, 7L, null, null, null, null, null, null, null);
 
         verify(regionRepository).findIdsIncludingChildrenByGroupId(7L);
         verify(regionRepository, never()).findIdsIncludingChildren(any());
@@ -202,8 +204,7 @@ class PostingServiceTest {
         assertThatThrownBy(
                         () ->
                                 postingService.getPostings(
-                                        pageable, 1L, 7L, null, null, null, null, null, "환경",
-                                        null))
+                                        pageable, 1L, 7L, null, null, null, null, null, "환경", null))
                 .isInstanceOf(BusinessException.class)
                 .satisfies(
                         ex ->
@@ -240,12 +241,18 @@ class PostingServiceTest {
         Pageable pageable = PageRequest.of(0, 20, Sort.by("activityStartAt").ascending());
         when(unifiedPostingQueryRepository.isSortable("activityStartAt")).thenReturn(true);
         when(unifiedPostingQueryRepository.search(
-                        isNull(), isNull(), isNull(), isNull(), isNull(), isNull(), isNull(),
-                        isNull(), eq(pageable)))
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        eq(pageable)))
                 .thenReturn(new SearchResult(List.of(), 0));
 
-        postingService.getPostings(
-                pageable, null, null, null, null, null, null, null, null, null);
+        postingService.getPostings(pageable, null, null, null, null, null, null, null, null, null);
 
         verify(unifiedPostingQueryRepository)
                 .search(null, null, null, null, null, null, null, null, pageable);
@@ -256,12 +263,18 @@ class PostingServiceTest {
     void getPostings_logsKeyword_onlyAfterSearchSucceeds() {
         Pageable pageable = PageRequest.of(0, 20);
         when(unifiedPostingQueryRepository.search(
-                        isNull(), isNull(), isNull(), isNull(), isNull(), isNull(), eq("환경"),
-                        isNull(), eq(pageable)))
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        eq("환경"),
+                        isNull(),
+                        eq(pageable)))
                 .thenReturn(new SearchResult(List.of(), 0));
 
-        postingService.getPostings(
-                pageable, null, null, null, null, null, null, null, "환경", null);
+        postingService.getPostings(pageable, null, null, null, null, null, null, null, "환경", null);
 
         verify(postingSearchLogService).log("환경");
     }
@@ -271,8 +284,15 @@ class PostingServiceTest {
     void getPostings_returnsResults_whenSearchLoggingThrows() {
         Pageable pageable = PageRequest.of(0, 20);
         when(unifiedPostingQueryRepository.search(
-                        isNull(), isNull(), isNull(), isNull(), isNull(), isNull(), eq("환경"),
-                        isNull(), eq(pageable)))
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        eq("환경"),
+                        isNull(),
+                        eq(pageable)))
                 .thenReturn(new SearchResult(List.of(), 0));
         doThrow(new RuntimeException("logging failed")).when(postingSearchLogService).log("환경");
 
@@ -290,12 +310,18 @@ class PostingServiceTest {
         LocalDate from = LocalDate.of(2026, 7, 1);
         LocalDate to = LocalDate.of(2026, 7, 31);
         when(unifiedPostingQueryRepository.search(
-                        isNull(), isNull(), eq(from), eq(to), isNull(), isNull(), isNull(),
-                        isNull(), eq(pageable)))
+                        isNull(),
+                        isNull(),
+                        eq(from),
+                        eq(to),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        eq(pageable)))
                 .thenReturn(new SearchResult(List.of(), 0));
 
-        postingService.getPostings(
-                pageable, null, null, null, from, to, null, null, null, null);
+        postingService.getPostings(pageable, null, null, null, from, to, null, null, null, null);
 
         verify(unifiedPostingQueryRepository)
                 .search(null, null, from, to, null, null, null, null, pageable);
@@ -308,12 +334,18 @@ class PostingServiceTest {
         LocalDate from = LocalDate.of(2026, 8, 20);
         LocalDate to = LocalDate.of(2026, 8, 25);
         when(unifiedPostingQueryRepository.search(
-                        isNull(), isNull(), isNull(), isNull(), eq(from), eq(to), isNull(),
-                        isNull(), eq(pageable)))
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        eq(from),
+                        eq(to),
+                        isNull(),
+                        isNull(),
+                        eq(pageable)))
                 .thenReturn(new SearchResult(List.of(), 0));
 
-        postingService.getPostings(
-                pageable, null, null, null, null, null, from, to, null, null);
+        postingService.getPostings(pageable, null, null, null, null, null, from, to, null, null);
 
         verify(unifiedPostingQueryRepository)
                 .search(null, null, null, null, from, to, null, null, pageable);
@@ -336,12 +368,18 @@ class PostingServiceTest {
                 .thenReturn(new SearchResult(List.of(), 0));
 
         postingService.getPostings(
-                pageable, null, null, null, null, null, null, null, null,
-                PostingCategory.WELFARE);
+                pageable, null, null, null, null, null, null, null, null, PostingCategory.WELFARE);
 
         verify(unifiedPostingQueryRepository)
                 .search(
-                        null, null, null, null, null, null, null, PostingCategory.WELFARE,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        PostingCategory.WELFARE,
                         pageable);
     }
 
@@ -432,8 +470,15 @@ class PostingServiceTest {
     void getPostings_returnsEmptyPageResponse_whenNoRowsExist() {
         Pageable pageable = PageRequest.of(0, 20);
         when(unifiedPostingQueryRepository.search(
-                        isNull(), isNull(), isNull(), isNull(), isNull(), isNull(), isNull(),
-                        isNull(), eq(pageable)))
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        eq(pageable)))
                 .thenReturn(new SearchResult(List.of(), 0));
 
         PageResponse<PostingListItem> result =
@@ -655,8 +700,7 @@ class PostingServiceTest {
     @Test
     @DisplayName("getPostingsMap returns an empty list when nothing matches")
     void getPostingsMap_returnsEmptyList_whenNoPostingsMatch() {
-        when(postingRepository.searchForMap(
-                        any(), any(), any(), any(), any(), any(), any(), any()))
+        when(postingRepository.searchForMap(any(), any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(List.of());
 
         List<com.gather.gather.domain.posting.dto.PostingMapItem> result =
@@ -679,8 +723,7 @@ class PostingServiceTest {
     @DisplayName("getPostingsMap includes the primary location and resolves regionName")
     void getPostingsMap_includesPrimaryLocation_andResolvesRegionName() {
         Posting posting = postingWithMapFields(1L, 2L);
-        when(postingRepository.searchForMap(
-                        any(), any(), any(), any(), any(), any(), any(), any()))
+        when(postingRepository.searchForMap(any(), any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(List.of(posting));
         when(regionRepository.findAllById(any())).thenReturn(List.of(regionWithId(2L, "동구")));
         when(postingLocationRepository.findAllByPostingIdInOrderByPostingIdAscLocationSeqAsc(any()))
@@ -709,8 +752,7 @@ class PostingServiceTest {
     @DisplayName("getPostingsMap appends secondary locations from the batch lookup")
     void getPostingsMap_appendsSecondaryLocations_fromBatchLookup() {
         Posting posting = postingWithMapFields(1L, null);
-        when(postingRepository.searchForMap(
-                        any(), any(), any(), any(), any(), any(), any(), any()))
+        when(postingRepository.searchForMap(any(), any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(List.of(posting));
         when(regionRepository.findAllById(any())).thenReturn(List.of());
         when(postingLocationRepository.findAllByPostingIdInOrderByPostingIdAscLocationSeqAsc(any()))

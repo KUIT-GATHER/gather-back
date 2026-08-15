@@ -207,7 +207,8 @@ public class PostingController {
                             + "반환하므로, 사용자가 지도를 이동한 뒤 '이 지역 검색하기'를 누르면 바뀐 bounds로 다시 호출해야 한다.")
     @GetMapping("/map")
     public ApiResponse<List<PostingMapItem>> getPostingsMap(
-            @Parameter(description = "지역 ID (상위 지역 선택 시 하위 지역까지 포함)") @RequestParam(required = false)
+            @Parameter(description = "지역 ID (상위 지역 선택 시 하위 지역까지 포함)")
+                    @RequestParam(required = false)
                     Long regionId,
             @Parameter(description = "활동기간 필터 하한 (yyyy-MM-dd)") @RequestParam(required = false)
                     LocalDate activityStartDate,

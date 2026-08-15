@@ -546,8 +546,7 @@ class PostingRepositoryTest {
 
     @Test
     void searchForMap_matchesPosting_whenPrimaryLocationIsWithinBounds() {
-        Posting inBounds =
-                postingWithLatLng(new BigDecimal("37.55"), new BigDecimal("126.90"));
+        Posting inBounds = postingWithLatLng(new BigDecimal("37.55"), new BigDecimal("126.90"));
         postingWithLatLng(new BigDecimal("35.10"), new BigDecimal("129.00"));
 
         List<Posting> result =
@@ -592,11 +591,14 @@ class PostingRepositoryTest {
 
     @Test
     void searchForMap_matchesPosting_whenOnlySecondaryLocationIsWithinBounds() {
-        Posting matching =
-                postingWithLatLng(new BigDecimal("35.10"), new BigDecimal("129.00"));
+        Posting matching = postingWithLatLng(new BigDecimal("35.10"), new BigDecimal("129.00"));
         postingLocationRepository.save(
                 PostingLocation.create(
-                        matching.getId(), 2, "서울 어딘가", new BigDecimal("37.55"), new BigDecimal("126.90")));
+                        matching.getId(),
+                        2,
+                        "서울 어딘가",
+                        new BigDecimal("37.55"),
+                        new BigDecimal("126.90")));
 
         List<Posting> result =
                 postingRepository.searchForMap(
@@ -674,7 +676,8 @@ class PostingRepositoryTest {
                         .build());
     }
 
-    private Posting postingWithLatLngAndActivityDates(LocalDate actStartDate, LocalDate actEndDate) {
+    private Posting postingWithLatLngAndActivityDates(
+            LocalDate actStartDate, LocalDate actEndDate) {
         return postingRepository.save(
                 Posting.builder()
                         .title("지도 활동일 테스트 공고")

@@ -146,7 +146,15 @@ class PostingControllerTest {
         ArgumentCaptor<Pageable> captor = ArgumentCaptor.forClass(Pageable.class);
         verify(postingService)
                 .getPostings(
-                        captor.capture(), any(), any(), any(), any(), any(), any(), any(), any(),
+                        captor.capture(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
                         any());
         org.assertj.core.api.Assertions.assertThat(captor.getValue().getPageNumber()).isEqualTo(1);
         org.assertj.core.api.Assertions.assertThat(captor.getValue().getPageSize()).isEqualTo(5);
@@ -201,8 +209,7 @@ class PostingControllerTest {
                 .andExpect(status().isOk());
 
         verify(postingService)
-                .getPostings(
-                        any(), any(), eq(7L), any(), any(), any(), any(), any(), any(), any());
+                .getPostings(any(), any(), eq(7L), any(), any(), any(), any(), any(), any(), any());
     }
 
     @Test
@@ -224,16 +231,7 @@ class PostingControllerTest {
     @DisplayName("GET /api/v1/postings?keyword=환경 binds keyword query param")
     void getPostings_bindsKeywordQueryParam() throws Exception {
         when(postingService.getPostings(
-                        any(),
-                        any(),
-                        any(),
-                        any(),
-                        any(),
-                        any(),
-                        any(),
-                        any(),
-                        eq("환경"),
-                        any()))
+                        any(), any(), any(), any(), any(), any(), any(), any(), eq("환경"), any()))
                 .thenReturn(new PageResponse<>(List.of(), 0, 0, 0, 20));
 
         mockMvc.perform(get("/api/v1/postings").param("keyword", "환경")).andExpect(status().isOk());
@@ -311,8 +309,7 @@ class PostingControllerTest {
                                         "서울특별시 양천구",
                                         java.math.BigDecimal.valueOf(37.5251621),
                                         java.math.BigDecimal.valueOf(126.8560855))));
-        when(postingService.getPostingsMap(
-                        any(), any(), any(), any(), any(), any(), any(), any()))
+        when(postingService.getPostingsMap(any(), any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(List.of(item));
 
         mockMvc.perform(

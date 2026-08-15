@@ -104,7 +104,15 @@ class UnifiedPostingQueryRepositoryTest {
 
         SearchResult result =
                 unifiedPostingQueryRepository.search(
-                        PostingStatus.RECRUITING, null, null, null, null, null, null, null, applyDeadlineAscending);
+                        PostingStatus.RECRUITING,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        applyDeadlineAscending);
 
         assertThat(result.rows())
                 .extracting(UnifiedPostingRow::id)
@@ -126,7 +134,15 @@ class UnifiedPostingQueryRepositoryTest {
 
         SearchResult result =
                 unifiedPostingQueryRepository.search(
-                        PostingStatus.CLOSED, null, null, null, null, null, null, null, applyDeadlineAscending);
+                        PostingStatus.CLOSED,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        applyDeadlineAscending);
 
         assertThat(result.rows())
                 .extracting(UnifiedPostingRow::id)
@@ -147,7 +163,15 @@ class UnifiedPostingQueryRepositoryTest {
 
         SearchResult result =
                 unifiedPostingQueryRepository.search(
-                        PostingStatus.RECRUITING, null, null, null, null, null, null, null, appliedCountDescending);
+                        PostingStatus.RECRUITING,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        appliedCountDescending);
 
         assertThat(result.rows())
                 .extracting(UnifiedPostingRow::id)
@@ -171,7 +195,15 @@ class UnifiedPostingQueryRepositoryTest {
 
         SearchResult result =
                 unifiedPostingQueryRepository.search(
-                        PostingStatus.RECRUITING, null, null, null, null, null, null, null, applyDeadlineAscending);
+                        PostingStatus.RECRUITING,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        applyDeadlineAscending);
 
         assertThat(result.rows())
                 .extracting(UnifiedPostingRow::id)
