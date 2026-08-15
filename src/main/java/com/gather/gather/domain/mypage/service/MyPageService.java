@@ -58,6 +58,7 @@ public class MyPageService {
     /** 이 리포 전체가 COMPLETED/REVIEWED를 함께 "완료"로 취급한다(PostingParticipationAction 등과 동일 정책). */
     private static final Set<PostingParticipationStatus> COMPLETED_STATUSES =
             Set.of(PostingParticipationStatus.COMPLETED, PostingParticipationStatus.REVIEWED);
+
     private static final Set<PostingParticipationStatus> UPCOMING_VOLUNTEER_STATUSES =
             Set.of(PostingParticipationStatus.APPLIED, PostingParticipationStatus.CONFIRMED);
     private final UserRepository userRepository;
@@ -137,7 +138,8 @@ public class MyPageService {
     private List<MyPageActivityResponse> getMeetingRecruitActivities(
             Long userId, LocalDate monthStart, LocalDate monthEnd) {
         List<MyPageMeetingRecruitSchedule> schedules =
-                meetingRecruitParticipationRepository.findMyUpcomingSchedules(userId, LocalDateTime.now());
+                meetingRecruitParticipationRepository.findMyUpcomingSchedules(
+                        userId, LocalDateTime.now());
         if (schedules.isEmpty()) {
             return List.of();
         }
