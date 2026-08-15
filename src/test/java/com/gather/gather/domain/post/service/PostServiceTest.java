@@ -30,6 +30,7 @@ import com.gather.gather.domain.post.repository.PostLikeRepository;
 import com.gather.gather.domain.post.repository.PostRepository;
 import com.gather.gather.global.exception.BusinessException;
 import com.gather.gather.global.exception.ErrorCode;
+import com.gather.gather.global.util.DuplicateSubmissionGuard;
 import com.gather.gather.global.util.SecurityUtil;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
@@ -60,6 +61,7 @@ class PostServiceTest {
     @Mock private PostImageService postImageService;
     @Mock private PostSummaryAssembler summaryAssembler;
     @Mock private PostReviewSourceService postReviewSourceService;
+    @Mock private DuplicateSubmissionGuard duplicateSubmissionGuard;
 
     private PostService postService;
     private Meeting meeting;
@@ -76,7 +78,8 @@ class PostServiceTest {
                         meetingMemberRepository,
                         userRepository,
                         eventPublisher,
-                        postReviewSourceService);
+                        postReviewSourceService,
+                        duplicateSubmissionGuard);
         meeting = mock(Meeting.class);
     }
 

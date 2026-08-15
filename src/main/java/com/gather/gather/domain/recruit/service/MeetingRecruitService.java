@@ -29,6 +29,7 @@ import com.gather.gather.domain.region.repository.RegionRepository;
 import com.gather.gather.global.exception.BusinessException;
 import com.gather.gather.global.exception.ErrorCode;
 import com.gather.gather.global.util.SecurityUtil;
+import com.gather.gather.global.util.DuplicateSubmissionGuard;
 import java.time.LocalDateTime;
 import java.util.EnumSet;
 import java.util.Optional;
@@ -73,10 +74,12 @@ public class MeetingRecruitService {
     private final MeetingRecruitRepository meetingRecruitRepository;
     private final MeetingRecruitParticipationRepository participationRepository;
     private final ApplicationEventPublisher eventPublisher;
+    private final DuplicateSubmissionGuard duplicateSubmissionGuard;
 
     @Transactional
     public RecruitDetailResponse createRecruit(Long meetingId, RecruitCreateRequest request) {
         Long userId = SecurityUtil.getCurrentUserId();
+        duplicateSubmissionGuard.guard("recruit:create:" + userId + ":" + meetingId);
         Meeting meeting = getMeeting(meetingId);
         requireHost(meetingId, userId);
         // RECRUIT 게시글은 자유 모임의 팀장만 작성할 수 있다. 공고 기반 모임(volunteerPostingId != null)은

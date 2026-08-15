@@ -24,6 +24,7 @@ import com.gather.gather.global.common.PageResponse;
 import com.gather.gather.global.exception.BusinessException;
 import com.gather.gather.global.exception.ErrorCode;
 import com.gather.gather.global.util.SecurityUtil;
+import com.gather.gather.global.util.DuplicateSubmissionGuard;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Optional;
@@ -63,6 +64,7 @@ public class PostService {
     private final UserRepository userRepository;
     private final ApplicationEventPublisher eventPublisher;
     private final PostReviewSourceService postReviewSourceService;
+    private final DuplicateSubmissionGuard duplicateSubmissionGuard;
 
     public PageResponse<PostSummaryResponse> getPosts(
             Long meetingId, List<PostType> requestedTypes, Pageable pageable) {
@@ -104,6 +106,7 @@ public class PostService {
     @Transactional
     public PostResponse createPost(Long meetingId, PostCreateRequest request) {
         Long userId = SecurityUtil.getCurrentUserId();
+        duplicateSubmissionGuard.guard("post:create:" + userId + ":" + meetingId);
         Meeting meeting = getMeeting(meetingId);
         MeetingMember membership = getApprovedMembership(meetingId, userId);
 

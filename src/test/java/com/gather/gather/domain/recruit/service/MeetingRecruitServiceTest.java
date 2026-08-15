@@ -35,6 +35,7 @@ import com.gather.gather.domain.recruit.repository.MeetingRecruitRepository;
 import com.gather.gather.domain.region.repository.RegionRepository;
 import com.gather.gather.global.exception.BusinessException;
 import com.gather.gather.global.exception.ErrorCode;
+import com.gather.gather.global.util.DuplicateSubmissionGuard;
 import com.gather.gather.global.util.SecurityUtil;
 import java.time.LocalDateTime;
 import java.util.Optional;
@@ -68,6 +69,7 @@ class MeetingRecruitServiceTest {
     @Mock private MeetingRecruitRepository meetingRecruitRepository;
     @Mock private MeetingRecruitParticipationRepository participationRepository;
     @Mock private ApplicationEventPublisher eventPublisher;
+    @Mock private DuplicateSubmissionGuard duplicateSubmissionGuard;
 
     @InjectMocks private MeetingRecruitService meetingRecruitService;
 
