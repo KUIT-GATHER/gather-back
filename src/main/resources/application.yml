@@ -93,6 +93,8 @@ gather:
       - https://gathernow.kr
       - http://localhost:5173
       - https://dev.gathernow.kr
+      - https://intro.gathernow.kr
+      - http://localhost:3000
   email:
     mode: ${GATHER_EMAIL_MODE:log}
   recommendation:
