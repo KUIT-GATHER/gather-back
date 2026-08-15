@@ -39,11 +39,6 @@ class PhoneVerificationServiceTest {
     private static final Clock CLOCK = Clock.fixed(NOW.toInstant(ZoneOffset.UTC), ZoneOffset.UTC);
     private static final String VERIFICATION_ID = "5c5d5db1-4187-43d0-8580-672307994878";
     private static final String CODE = "GATHER-7F2K9Q8M4P";
-    private static final String MESSAGE_TEXT =
-            "[Gather]\n"
-                    + "전화번호 인증을 위한 문자입니다.\n"
-                    + "본 문자를 전송하시면 전화번호 인증이 자동으로 완료됩니다.\n\n"
-                    + "인증코드: [GATHER-7F2K9Q8M4P]";
     private static final PhoneVerificationProperties PROPERTIES =
             new PhoneVerificationProperties(
                     Duration.ofSeconds(60), Duration.ofSeconds(3), 30, Duration.ofSeconds(10), 3);
@@ -64,7 +59,6 @@ class PhoneVerificationServiceTest {
                         new PhoneNumberPolicy(),
                         accountIdentityGuardService,
                         codeGenerator,
-                        new PhoneVerificationSmsMessageFormatter(),
                         transactionService,
                         octomoApiClient,
                         new OctomoProperties(
@@ -92,7 +86,7 @@ class PhoneVerificationServiceTest {
         assertThat(saved.getExpiresAt()).isEqualTo(NOW.plusMinutes(5));
         assertThat(response.verificationId()).isEqualTo(saved.getVerificationId());
         assertThat(response.receiverNumber()).isEqualTo("16663538");
-        assertThat(response.messageText()).isEqualTo(MESSAGE_TEXT);
+        assertThat(response.messageText()).isEqualTo(CODE);
         assertThat(response.expiresAt()).isEqualTo(NOW.plusMinutes(5).toInstant(ZoneOffset.UTC));
         InOrder order = inOrder(accountIdentityGuardService, phoneVerificationRepository);
         order.verify(accountIdentityGuardService).lockPhone("01012345678", NOW);
@@ -134,18 +128,17 @@ class PhoneVerificationServiceTest {
     }
 
     @Test
-    @DisplayName("QR은 내부 예약 성공 후 전체 SMS 본문으로 OCTOMO에 요청한다")
-    void createQrCode_usesFormattedSmsMessage() {
+    @DisplayName("QR은 내부 예약 성공 후 저장된 인증코드로 OCTOMO에 요청한다")
+    void createQrCode_usesReservedVerificationCode() {
         when(transactionService.reserveQr(VERIFICATION_ID)).thenReturn(CODE);
-        when(octomoApiClient.createQrCode(MESSAGE_TEXT))
-                .thenReturn("data:image/png;base64,cXItY29kZQ==");
+        when(octomoApiClient.createQrCode(CODE)).thenReturn("data:image/png;base64,cXItY29kZQ==");
 
         var response = service.createQrCode(VERIFICATION_ID);
 
         assertThat(response.qrCode()).isEqualTo("data:image/png;base64,cXItY29kZQ==");
         InOrder order = inOrder(transactionService, octomoApiClient);
         order.verify(transactionService).reserveQr(VERIFICATION_ID);
-        order.verify(octomoApiClient).createQrCode(MESSAGE_TEXT);
+        order.verify(octomoApiClient).createQrCode(CODE);
     }
 
     @Test
@@ -166,7 +159,7 @@ class PhoneVerificationServiceTest {
     void confirm_returnsPendingWhenMessageDoesNotExist() {
         when(transactionService.reserveConfirm(VERIFICATION_ID))
                 .thenReturn(PhoneVerificationConfirmReservation.reserved("01012345678", CODE));
-        when(octomoApiClient.existsMessage("01012345678", MESSAGE_TEXT, 5)).thenReturn(false);
+        when(octomoApiClient.existsMessage("01012345678", CODE, 5)).thenReturn(false);
 
         var response = service.confirm(VERIFICATION_ID);
 
@@ -179,7 +172,7 @@ class PhoneVerificationServiceTest {
     void confirm_verifiesAfterProviderSuccess() {
         when(transactionService.reserveConfirm(VERIFICATION_ID))
                 .thenReturn(PhoneVerificationConfirmReservation.reserved("01012345678", CODE));
-        when(octomoApiClient.existsMessage("01012345678", MESSAGE_TEXT, 5)).thenReturn(true);
+        when(octomoApiClient.existsMessage("01012345678", CODE, 5)).thenReturn(true);
         when(transactionService.verify(VERIFICATION_ID))
                 .thenReturn(PhoneVerificationStatus.VERIFIED);
 
@@ -188,22 +181,21 @@ class PhoneVerificationServiceTest {
         assertThat(response.status()).isEqualTo(PhoneVerificationStatus.VERIFIED);
         InOrder order = inOrder(transactionService, octomoApiClient);
         order.verify(transactionService).reserveConfirm(VERIFICATION_ID);
-        order.verify(octomoApiClient).existsMessage("01012345678", MESSAGE_TEXT, 5);
+        order.verify(octomoApiClient).existsMessage("01012345678", CODE, 5);
         order.verify(transactionService).verify(VERIFICATION_ID);
     }
 
     @Test
-    @DisplayName("start 응답과 QR 및 confirm의 OCTOMO text는 완전히 동일하다")
-    void startQrAndConfirm_useExactlySameSmsMessage() {
+    @DisplayName("start 응답과 QR 및 confirm의 OCTOMO text는 동일한 인증코드다")
+    void startQrAndConfirm_useExactlySameVerificationCode() {
         when(phoneVerificationRepository.findTopByPhoneNumberOrderByCreatedAtDesc("01012345678"))
                 .thenReturn(Optional.empty());
         when(codeGenerator.generate()).thenReturn(CODE);
         when(transactionService.reserveQr(VERIFICATION_ID)).thenReturn(CODE);
-        when(octomoApiClient.createQrCode(MESSAGE_TEXT))
-                .thenReturn("data:image/png;base64,cXItY29kZQ==");
+        when(octomoApiClient.createQrCode(CODE)).thenReturn("data:image/png;base64,cXItY29kZQ==");
         when(transactionService.reserveConfirm(VERIFICATION_ID))
                 .thenReturn(PhoneVerificationConfirmReservation.reserved("01012345678", CODE));
-        when(octomoApiClient.existsMessage("01012345678", MESSAGE_TEXT, 5)).thenReturn(false);
+        when(octomoApiClient.existsMessage("01012345678", CODE, 5)).thenReturn(false);
 
         var startResponse = service.start(new PhoneVerificationStartRequest("010-1234-5678"));
         service.createQrCode(VERIFICATION_ID);
@@ -216,7 +208,7 @@ class PhoneVerificationServiceTest {
         assertThat(startResponse.messageText())
                 .isEqualTo(qrText.getValue())
                 .isEqualTo(confirmText.getValue())
-                .isEqualTo(MESSAGE_TEXT);
+                .isEqualTo(CODE);
     }
 
     private void assertErrorCode(Runnable action, ErrorCode errorCode) {

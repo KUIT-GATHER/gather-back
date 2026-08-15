@@ -66,10 +66,10 @@
 ### 3-3. 휴대폰 문자 인증 — `POST /api/v1/auth/phone-verifications`
 
 - 요청: `{ "phoneNumber": "01012345678" }`. 하이픈·공백은 제거하며 정규화 결과가 `010`으로 시작하는 11자리 숫자여야 합니다.
-- 응답의 `verificationId`는 이후 QR·confirm 경로뿐 아니라 최종 회원가입 body의 `phoneVerificationId`로도 사용합니다. `receiverNumber`와 줄바꿈을 포함한 전체 SMS 본문인 `messageText`는 모바일에서 `sms:` URI를 구성할 때 그대로 사용합니다.
+- 응답의 `verificationId`는 이후 QR·confirm 경로뿐 아니라 최종 회원가입 body의 `phoneVerificationId`로도 사용합니다. `receiverNumber`와 인증코드 원문인 `messageText`는 모바일에서 `sms:` URI를 구성할 때 사용합니다.
 - 같은 번호의 인증 시작은 60초 간격으로 제한합니다.
 - 문자 전송·확인 제한은 5분입니다. 인증문구는 서버가 안전한 난수로 만들며 프론트가 지정하거나 confirm 때 다시 보내지 않습니다.
-- 모바일: `receiverNumber`/`messageText`를 별도 가공 없이 사용해 문자 앱을 열고 사용자가 전송한 뒤 confirm을 호출합니다.
+- 모바일: `receiverNumber`/`messageText`를 별도 가공 없이 사용해 인증코드만 전송한 뒤 confirm을 호출합니다.
 - PC: `POST /api/v1/auth/phone-verifications/{verificationId}/qr-code`의 `qrCode` data URL을 이미지로 표시합니다. request body는 없습니다. 같은 세션은 10초 간격, 최대 3회로 제한합니다.
 - 확인: `POST /api/v1/auth/phone-verifications/{verificationId}/confirm`. request body는 없으며, 문자가 아직 조회되지 않으면 오류가 아닌 `PENDING`, 성공하면 `VERIFIED`입니다. 같은 세션은 3초 간격, 최대 30회로 제한합니다.
 - OCTOMO가 문자를 확인한 직후 서버가 현재 전화번호 중복과 탈퇴 후 재가입 제한을 확인합니다. 이는 빠른 안내를 위한 사전 검사이며, 최종 정합성은 가입 트랜잭션과 `users.phone_number` UNIQUE 제약이 보장합니다.

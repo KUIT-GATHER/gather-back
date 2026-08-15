@@ -227,7 +227,10 @@ public class PostingController {
             description =
                     "선호 카테고리 매칭과 마감일 근접도로 점수를 매겨 상위 5개 봉사공고를 추천합니다. 인증이 필요 없으며, "
                             + "비로그인이거나 선호 카테고리를 설정하지 않았으면 마감임박순 상위 5개를 반환합니다. "
-                            + "이미 지원한 공고는 추천에서 제외됩니다.")
+                            + "이미 지원한 공고는 추천에서 제외됩니다. "
+                            + "로그인 사용자가 활동지역을 설정했다면 가중치가 아닌 완전 필터링으로 적용되어, "
+                            + "해당 지역(상위 지역 선택 시 하위 지역 포함) 공고만 추천 대상이 됩니다. "
+                            + "활동지역을 설정하지 않았다면 지역 필터 없이 전체 지역을 대상으로 추천합니다.")
     @GetMapping("/recommended")
     public ApiResponse<List<PostingSummaryResponse>> getRecommendedPostings() {
         return ApiResponse.success(postingRecommendationService.getRecommendedPostings());

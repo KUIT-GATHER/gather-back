@@ -9,11 +9,13 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.gather.gather.domain.posting.dto.PostingParticipationApplyRequest;
 import com.gather.gather.domain.posting.dto.PostingParticipationResponse;
-import com.gather.gather.domain.posting.entity.PostingParticipationStatus;
+import com.gather.gather.domain.posting.entity.PostingParticipation;
 import com.gather.gather.domain.posting.service.PostingParticipationService;
 import com.gather.gather.global.exception.BusinessException;
 import com.gather.gather.global.exception.ErrorCode;
+import java.time.LocalDate;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -21,14 +23,19 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.test.web.servlet.MockMvc;
 
 @WebMvcTest(PostingParticipationController.class)
 @AutoConfigureMockMvc(addFilters = false)
 class PostingParticipationControllerTest {
 
-    private static final String APPLICATION_URL =
-            "https://1365.go.kr/vols/P9210/partcptn/timeCptn.do?type=show&progrmRegistNo=3422497";
+    private static final LocalDate PARTICIPATION_START_DATE = LocalDate.of(2026, 8, 15);
+    private static final LocalDate PARTICIPATION_END_DATE = LocalDate.of(2026, 8, 18);
+    private static final String VALID_REQUEST_BODY =
+            """
+            {"participationStartDate":"2026-08-15","participationEndDate":"2026-08-18"}
+            """;
 
     @Autowired private MockMvc mockMvc;
 
@@ -37,17 +44,23 @@ class PostingParticipationControllerTest {
     @Test
     @DisplayName("POST /api/v1/postings/{id}/participations returns 200 with participation details")
     void apply_returns200WithParticipationDetails() throws Exception {
-        when(postingParticipationService.apply(1L))
-                .thenReturn(
-                        PostingParticipationResponse.of(
-                                1L, PostingParticipationStatus.APPLIED, APPLICATION_URL));
+        PostingParticipation participation =
+                PostingParticipation.create(
+                        1L, 1L, PARTICIPATION_START_DATE, PARTICIPATION_END_DATE);
+        ReflectionTestUtils.setField(participation, "id", 1L);
+        when(postingParticipationService.apply(1L, expectedRequest()))
+                .thenReturn(PostingParticipationResponse.of(participation));
 
-        mockMvc.perform(post("/api/v1/postings/1/participations"))
+        mockMvc.perform(
+                        post("/api/v1/postings/1/participations")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(VALID_REQUEST_BODY))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
-                .andExpect(jsonPath("$.data.participationId").value(1))
+                .andExpect(jsonPath("$.data.participationId").isNotEmpty())
                 .andExpect(jsonPath("$.data.status").value("APPLIED"))
-                .andExpect(jsonPath("$.data.applicationUrl").value(APPLICATION_URL));
+                .andExpect(jsonPath("$.data.participationStartDate").value("2026-08-15"))
+                .andExpect(jsonPath("$.data.participationEndDate").value("2026-08-18"));
     }
 
     @Test
@@ -55,10 +68,13 @@ class PostingParticipationControllerTest {
             "POST /api/v1/postings/{id}/participations returns 404 when the posting does not"
                     + " exist")
     void apply_returns404_whenPostingMissing() throws Exception {
-        when(postingParticipationService.apply(999L))
+        when(postingParticipationService.apply(999L, expectedRequest()))
                 .thenThrow(new BusinessException(ErrorCode.POSTING_NOT_FOUND));
 
-        mockMvc.perform(post("/api/v1/postings/999/participations"))
+        mockMvc.perform(
+                        post("/api/v1/postings/999/participations")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(VALID_REQUEST_BODY))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.error.code").value("POSTING_NOT_FOUND"));
@@ -67,10 +83,13 @@ class PostingParticipationControllerTest {
     @Test
     @DisplayName("POST /api/v1/postings/{id}/participations returns 409 when already applied")
     void apply_returns409_whenDuplicate() throws Exception {
-        when(postingParticipationService.apply(1L))
+        when(postingParticipationService.apply(1L, expectedRequest()))
                 .thenThrow(new BusinessException(ErrorCode.PARTICIPATION_DUPLICATE));
 
-        mockMvc.perform(post("/api/v1/postings/1/participations"))
+        mockMvc.perform(
+                        post("/api/v1/postings/1/participations")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(VALID_REQUEST_BODY))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.error.code").value("PARTICIPATION_DUPLICATE"));
@@ -79,10 +98,13 @@ class PostingParticipationControllerTest {
     @Test
     @DisplayName("POST /api/v1/postings/{id}/participations returns 409 when the posting is closed")
     void apply_returns409_whenPostingClosed() throws Exception {
-        when(postingParticipationService.apply(1L))
+        when(postingParticipationService.apply(1L, expectedRequest()))
                 .thenThrow(new BusinessException(ErrorCode.POSTING_CLOSED));
 
-        mockMvc.perform(post("/api/v1/postings/1/participations"))
+        mockMvc.perform(
+                        post("/api/v1/postings/1/participations")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(VALID_REQUEST_BODY))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.error.code").value("POSTING_CLOSED"));
@@ -90,16 +112,21 @@ class PostingParticipationControllerTest {
 
     @Test
     @DisplayName(
-            "POST /api/v1/postings/{id}/participations returns 409 when the posting has no"
-                    + " extId")
-    void apply_returns409_whenExtIdMissing() throws Exception {
-        when(postingParticipationService.apply(1L))
-                .thenThrow(new BusinessException(ErrorCode.POSTING_APPLICATION_UNAVAILABLE));
+            "POST /api/v1/postings/{id}/participations returns 409 when the participation date"
+                    + " is outside the posting period")
+    void apply_returns409_whenDateOutOfPostingPeriod() throws Exception {
+        when(postingParticipationService.apply(1L, expectedRequest()))
+                .thenThrow(
+                        new BusinessException(ErrorCode.PARTICIPATION_DATE_OUT_OF_POSTING_PERIOD));
 
-        mockMvc.perform(post("/api/v1/postings/1/participations"))
+        mockMvc.perform(
+                        post("/api/v1/postings/1/participations")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(VALID_REQUEST_BODY))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.success").value(false))
-                .andExpect(jsonPath("$.error.code").value("POSTING_APPLICATION_UNAVAILABLE"));
+                .andExpect(
+                        jsonPath("$.error.code").value("PARTICIPATION_DATE_OUT_OF_POSTING_PERIOD"));
     }
 
     @Test
@@ -107,10 +134,26 @@ class PostingParticipationControllerTest {
             "POST /api/v1/postings/{id}/participations returns 400 when postingId is not"
                     + " numeric")
     void apply_returns400_whenPostingIdNotNumeric() throws Exception {
-        mockMvc.perform(post("/api/v1/postings/abc/participations"))
+        mockMvc.perform(
+                        post("/api/v1/postings/abc/participations")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(VALID_REQUEST_BODY))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.error.code").value("VALIDATION_ERROR"));
+    }
+
+    @Test
+    @DisplayName(
+            "POST /api/v1/postings/{id}/participations returns 400 when the request body is"
+                    + " missing required dates")
+    void apply_returns400_whenRequestBodyMissingDates() throws Exception {
+        mockMvc.perform(
+                        post("/api/v1/postings/1/participations")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("{}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false));
     }
 
     @Test
@@ -206,5 +249,10 @@ class PostingParticipationControllerTest {
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.error.code").value("PARTICIPATION_HOURS_NOT_ALLOWED"));
+    }
+
+    private PostingParticipationApplyRequest expectedRequest() {
+        return new PostingParticipationApplyRequest(
+                PARTICIPATION_START_DATE, PARTICIPATION_END_DATE);
     }
 }

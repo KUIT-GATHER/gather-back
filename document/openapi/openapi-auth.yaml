@@ -236,12 +236,7 @@ paths:
                 data:
                   verificationId: 5c5d5db1-4187-43d0-8580-672307994878
                   receiverNumber: '16663538'
-                  messageText: |-
-                    [Gather]
-                    전화번호 인증을 위한 문자입니다.
-                    본 문자를 전송하시면 전화번호 인증이 자동으로 완료됩니다.
-
-                    인증코드: [GATHER-7F2K9Q8M4P]
+                  messageText: GATHER-7F2K9Q8M4P
                   expiresAt: '2026-08-09T06:50:00Z'
                 error: null
         '400':
@@ -1376,13 +1371,8 @@ components:
           example: '16663538'
         messageText:
           type: string
-          description: 줄바꿈을 포함해 모바일 SMS body에 그대로 사용할 전체 문자 본문
-          example: |-
-            [Gather]
-            전화번호 인증을 위한 문자입니다.
-            본 문자를 전송하시면 전화번호 인증이 자동으로 완료됩니다.
-
-            인증코드: [GATHER-7F2K9Q8M4P]
+          description: 모바일 SMS body와 OCTOMO 조회에 그대로 사용할 인증코드
+          example: GATHER-7F2K9Q8M4P
         expiresAt:
           type: string
           format: date-time

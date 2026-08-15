@@ -323,6 +323,29 @@ class PostingRepositoryTest {
     }
 
     @Test
+    void
+            existsByTitleAndActivityDate_returnsTrue_whenTitleAndActivityDateMatchRegardlessOfSource() {
+        postingRepository.save(postingWithTitleAndOrg("동구 환경정화 봉사", "울산 동구청"));
+
+        boolean exists =
+                postingRepository.existsByTitleAndActivityDate(
+                        "동구 환경정화 봉사", LocalDate.of(2026, 7, 15));
+
+        assertThat(exists).isTrue();
+    }
+
+    @Test
+    void existsByTitleAndActivityDate_returnsFalse_whenActivityDateDiffers() {
+        postingRepository.save(postingWithTitleAndOrg("동구 환경정화 봉사", "울산 동구청"));
+
+        boolean exists =
+                postingRepository.existsByTitleAndActivityDate(
+                        "동구 환경정화 봉사", LocalDate.of(2026, 7, 16));
+
+        assertThat(exists).isFalse();
+    }
+
+    @Test
     void deactivateExpired_deactivatesPosting_whenActEndDateIsBeforeToday() {
         Posting posting =
                 postingRepository.save(
