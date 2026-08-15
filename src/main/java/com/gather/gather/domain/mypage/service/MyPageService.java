@@ -137,7 +137,7 @@ public class MyPageService {
     private List<MyPageActivityResponse> getMeetingRecruitActivities(
             Long userId, LocalDate monthStart, LocalDate monthEnd) {
         List<MyPageMeetingRecruitSchedule> schedules =
-                meetingRecruitParticipationRepository.findMyUpcomingSchedules(userId);
+                meetingRecruitParticipationRepository.findMyUpcomingSchedules(userId, LocalDateTime.now());
         if (schedules.isEmpty()) {
             return List.of();
         }

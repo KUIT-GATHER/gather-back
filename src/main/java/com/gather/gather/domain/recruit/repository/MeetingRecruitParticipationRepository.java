@@ -153,18 +153,8 @@ public interface MeetingRecruitParticipationRepository
     @Query(
             """
             SELECT new com.gather.gather.domain.mypage.dto.MyPageMeetingRecruitSchedule(
-                prt.id,
-                prt.status,
-                p.meeting.id,
-                p.id,
-                p.title,
-                r.regionId,
-                r.place,
-                r.activityStartAt,
-                r.activityEndAt,
-                r.applyDeadlineAt,
-                r.confirmationStatus
-            )
+                prt.id, prt.status, p.meeting.id, p.id, p.title, r.regionId, r.place,
+                r.activityStartAt, r.activityEndAt, r.applyDeadlineAt, r.confirmationStatus)
             FROM MeetingRecruitParticipation prt
             JOIN Post p ON p.id = prt.postId
             JOIN MeetingRecruit r ON r.postId = prt.postId
@@ -175,6 +165,8 @@ public interface MeetingRecruitParticipationRepository
                   com.gather.gather.domain.recruit.entity.MeetingRecruitParticipationStatus.APPLIED,
                   com.gather.gather.domain.recruit.entity.MeetingRecruitParticipationStatus.CONFIRMED
               )
+              AND r.activityEndAt >= :now
             """)
-    List<MyPageMeetingRecruitSchedule> findMyUpcomingSchedules(@Param("userId") Long userId);
+    List<MyPageMeetingRecruitSchedule> findMyUpcomingSchedules(
+            @Param("userId") Long userId, @Param("now") LocalDateTime now);
 }

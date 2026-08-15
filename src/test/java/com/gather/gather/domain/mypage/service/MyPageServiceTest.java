@@ -3,6 +3,7 @@ package com.gather.gather.domain.mypage.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.never;
@@ -39,6 +40,7 @@ import com.gather.gather.global.exception.BusinessException;
 import com.gather.gather.global.exception.ErrorCode;
 import com.gather.gather.global.util.SecurityUtil;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.YearMonth;
 import java.util.Collection;
 import java.util.List;
@@ -94,7 +96,9 @@ class MyPageServiceTest {
                                 USER_ID, MeetingMemberStatus.APPROVED, MeetingStatus.COMPLETED))
                 .thenReturn(List.of());
         lenient()
-                .when(meetingRecruitParticipationRepository.findMyUpcomingSchedules(USER_ID))
+                .when(
+                        meetingRecruitParticipationRepository.findMyUpcomingSchedules(
+                                eq(USER_ID), any(LocalDateTime.class)))
                 .thenReturn(List.of());
         lenient().when(regionNameResolver.resolve(any(Collection.class))).thenReturn(Map.of());
     }
