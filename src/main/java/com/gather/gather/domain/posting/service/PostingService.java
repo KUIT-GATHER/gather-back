@@ -7,6 +7,7 @@ import com.gather.gather.domain.meeting.repository.MeetingImageRepository;
 import com.gather.gather.domain.meeting.service.MeetingImageUrlResolver;
 import com.gather.gather.domain.posting.dto.PostingListItem;
 import com.gather.gather.domain.posting.dto.PostingLocationResponse;
+import com.gather.gather.domain.posting.dto.PostingMapItem;
 import com.gather.gather.domain.posting.dto.PostingResponse;
 import com.gather.gather.domain.posting.dto.PostingSourceType;
 import com.gather.gather.domain.posting.entity.Posting;
@@ -26,6 +27,7 @@ import com.gather.gather.global.common.PageResponse;
 import com.gather.gather.global.exception.BusinessException;
 import com.gather.gather.global.exception.ErrorCode;
 import com.gather.gather.global.util.SecurityUtil;
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -65,6 +67,11 @@ public class PostingService {
      * 앱 전체 봉사공고 목록(#9). 기존 봉사공고와 external=true인 모임 모집공고를 하나의 페이지네이션·정렬 안에서 함께 반환한다.
      *
      * <p>noticeStartDate/noticeEndDate 필터는 기존 봉사공고에만 적용된다(모집공고에는 대응 개념이 없어 항상 포함).
+     *
+     * <p>activityStartDate/activityEndDate는 두 출처 모두에 적용되는 활동일 겹침(overlap) 필터다. 선택 기간과 실제
+     * 활동기간이 하루라도 겹치면 조회된다(활동종료일 &gt;= activityStartDate AND 활동시작일 &lt;= activityEndDate).
+     * POSTING은 actStartDate/actEndDate 기준이며 값이 없으면 activityDate로 대체하고, MEETING_RECRUIT는
+     * activityStartAt/activityEndAt 기준이다.
      */
     @Transactional(readOnly = true)
     public PageResponse<PostingListItem> getPostings(
@@ -74,6 +81,8 @@ public class PostingService {
             PostingStatus status,
             LocalDate noticeStartDate,
             LocalDate noticeEndDate,
+            LocalDate activityStartDate,
+            LocalDate activityEndDate,
             String keyword,
             PostingCategory category) {
         validateSort(pageable.getSort());
@@ -85,6 +94,8 @@ public class PostingService {
                         regionIds,
                         noticeStartDate,
                         noticeEndDate,
+                        activityStartDate,
+                        activityEndDate,
                         keyword,
                         category,
                         pageable);
@@ -127,6 +138,100 @@ public class PostingService {
                 postingApplicationUrlResolver.resolve(posting),
                 participation != null ? participation.getParticipationStartDate() : null,
                 participation != null ? participation.getParticipationEndDate() : null);
+    }
+
+    /**
+     * 봉사공고 지도 조회(#186). 정책상 일반 봉사공고(POSTING)만 노출하고 모임 모집공고(MEETING_RECRUIT)는 제외한다.
+     * 페이지네이션 없이 현재 지도 bounds(swLat/swLng ~ neLat/neLng) 안에 활동장소가 있는 공고 전체를 반환한다. bounds는 1번째
+     * 장소(Posting 자신의 위·경도) 또는 2·3번째 장소(PostingLocation) 중 하나라도 포함되면 매칭되고, 응답의 locations 배열에는
+     * bounds 여부와 무관하게 해당 공고의 유효한(위·경도가 있는) 장소를 모두 담는다.
+     */
+    @Transactional(readOnly = true)
+    public List<PostingMapItem> getPostingsMap(
+            Long regionId,
+            LocalDate activityStartDate,
+            LocalDate activityEndDate,
+            PostingCategory category,
+            BigDecimal swLat,
+            BigDecimal swLng,
+            BigDecimal neLat,
+            BigDecimal neLng) {
+        List<Long> regionIds =
+                regionId != null ? regionRepository.findIdsIncludingChildren(regionId) : null;
+
+        List<Posting> postings =
+                postingRepository.searchForMap(
+                        regionIds,
+                        activityStartDate,
+                        activityEndDate,
+                        category,
+                        swLat,
+                        swLng,
+                        neLat,
+                        neLng);
+        if (postings.isEmpty()) {
+            return List.of();
+        }
+
+        Set<Long> postingIds = postings.stream().map(Posting::getId).collect(Collectors.toSet());
+        Set<Long> regionIdsForNames =
+                postings.stream()
+                        .map(Posting::getRegionId)
+                        .filter(java.util.Objects::nonNull)
+                        .collect(Collectors.toSet());
+        Map<Long, String> regionNames = regionNameResolver.resolve(regionIdsForNames);
+        Map<Long, List<PostingLocationResponse>> extraLocationsByPostingId =
+                postingLocationRepository
+                        .findAllByPostingIdInOrderByPostingIdAscLocationSeqAsc(postingIds)
+                        .stream()
+                        .collect(
+                                Collectors.groupingBy(
+                                        com.gather.gather.domain.posting.entity.PostingLocation
+                                                ::getPostingId,
+                                        Collectors.mapping(
+                                                PostingLocationResponse::from,
+                                                Collectors.toList())));
+
+        return postings.stream()
+                .map(
+                        posting ->
+                                toMapItem(
+                                        posting,
+                                        regionNames.get(posting.getRegionId()),
+                                        extraLocationsByPostingId.getOrDefault(
+                                                posting.getId(), List.of())))
+                .toList();
+    }
+
+    private PostingMapItem toMapItem(
+            Posting posting, String regionName, List<PostingLocationResponse> extraLocations) {
+        List<PostingLocationResponse> locations = new ArrayList<>();
+        if (posting.getLatitude() != null && posting.getLongitude() != null) {
+            locations.add(PostingLocationResponse.first(posting));
+        }
+        locations.addAll(extraLocations);
+
+        LocalDate effectiveStart =
+                posting.getActStartDate() != null
+                        ? posting.getActStartDate()
+                        : posting.getActivityDate();
+        LocalDate effectiveEnd =
+                posting.getActEndDate() != null ? posting.getActEndDate() : effectiveStart;
+
+        return new PostingMapItem(
+                posting.getId(),
+                posting.getTitle(),
+                posting.getRecruitOrg(),
+                posting.getRegionId(),
+                regionName,
+                effectiveStart != null ? effectiveStart.atStartOfDay() : null,
+                effectiveEnd != null ? effectiveEnd.atStartOfDay() : null,
+                posting.getNoticeEndDate() != null
+                        ? posting.getNoticeEndDate().atStartOfDay()
+                        : null,
+                posting.getCategory(),
+                posting.getStatus(),
+                locations);
     }
 
     /** 인증이 선택적인 엔드포인트이므로, 로그인하지 않은 사용자는 항상 false를 받는다. */

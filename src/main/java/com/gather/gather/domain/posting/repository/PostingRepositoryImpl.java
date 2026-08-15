@@ -2,6 +2,7 @@ package com.gather.gather.domain.posting.repository;
 
 import com.gather.gather.domain.posting.entity.Posting;
 import com.gather.gather.domain.posting.entity.PostingCategory;
+import com.gather.gather.domain.posting.entity.PostingLocation;
 import com.gather.gather.domain.posting.entity.PostingStatus;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.TypedQuery;
@@ -11,6 +12,8 @@ import jakarta.persistence.criteria.Expression;
 import jakarta.persistence.criteria.Order;
 import jakarta.persistence.criteria.Predicate;
 import jakarta.persistence.criteria.Root;
+import jakarta.persistence.criteria.Subquery;
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.ArrayList;
@@ -183,5 +186,109 @@ public class PostingRepositoryImpl implements PostingRepositoryCustom {
         return cb.or(
                 cb.isNull(root.get("noticeEndDate")),
                 cb.greaterThanOrEqualTo(root.get("noticeEndDate"), today));
+    }
+
+    @Override
+    public List<Posting> searchForMap(
+            List<Long> regionIds,
+            LocalDate activityStartDate,
+            LocalDate activityEndDate,
+            PostingCategory category,
+            BigDecimal swLat,
+            BigDecimal swLng,
+            BigDecimal neLat,
+            BigDecimal neLng) {
+        CriteriaBuilder cb = entityManager.getCriteriaBuilder();
+        CriteriaQuery<Posting> query = cb.createQuery(Posting.class);
+        Root<Posting> root = query.from(Posting.class);
+
+        query.where(
+                buildMapPredicates(
+                                cb,
+                                query,
+                                root,
+                                regionIds,
+                                activityStartDate,
+                                activityEndDate,
+                                category,
+                                swLat,
+                                swLng,
+                                neLat,
+                                neLng)
+                        .toArray(new Predicate[0]));
+        query.orderBy(cb.desc(root.get("id")));
+
+        return entityManager.createQuery(query).getResultList();
+    }
+
+    private List<Predicate> buildMapPredicates(
+            CriteriaBuilder cb,
+            CriteriaQuery<Posting> query,
+            Root<Posting> root,
+            List<Long> regionIds,
+            LocalDate activityStartDate,
+            LocalDate activityEndDate,
+            PostingCategory category,
+            BigDecimal swLat,
+            BigDecimal swLng,
+            BigDecimal neLat,
+            BigDecimal neLng) {
+        List<Predicate> predicates = new ArrayList<>();
+        predicates.add(root.get("status").in(DEFAULT_STATUSES));
+
+        if (regionIds != null) {
+            predicates.add(
+                    regionIds.isEmpty() ? cb.disjunction() : root.get("regionId").in(regionIds));
+        }
+        if (category != null) {
+            predicates.add(cb.equal(root.get("category"), category));
+        }
+
+        // 활동일 겹침(overlap): 종료일 = act_end_date, 없으면 act_start_date, 그마저 없으면 activity_date로
+        // 대체. 시작일 = act_start_date, 없으면 activity_date로 대체(GET /postings의 overlap 필터와 동일 규칙).
+        Expression<LocalDate> effectiveStartDate =
+                cb.<LocalDate>coalesce(root.get("actStartDate"), root.get("activityDate"));
+        Expression<LocalDate> effectiveEndDate =
+                cb.<LocalDate>coalesce(root.get("actEndDate"), effectiveStartDate);
+        if (activityStartDate != null) {
+            predicates.add(cb.greaterThanOrEqualTo(effectiveEndDate, activityStartDate));
+        }
+        if (activityEndDate != null) {
+            predicates.add(cb.lessThanOrEqualTo(effectiveStartDate, activityEndDate));
+        }
+
+        predicates.add(buildBoundsPredicate(cb, query, root, swLat, swLng, neLat, neLng));
+
+        return predicates;
+    }
+
+    /** 1번째 장소(Posting 자신의 위·경도) 또는 2·3번째 장소(PostingLocation) 중 하나라도 지도 bounds 안에 있으면 통과시킨다. */
+    private Predicate buildBoundsPredicate(
+            CriteriaBuilder cb,
+            CriteriaQuery<Posting> query,
+            Root<Posting> root,
+            BigDecimal swLat,
+            BigDecimal swLng,
+            BigDecimal neLat,
+            BigDecimal neLng) {
+        Predicate primaryInBounds =
+                cb.and(
+                        cb.isNotNull(root.get("latitude")),
+                        cb.isNotNull(root.get("longitude")),
+                        cb.between(root.get("latitude"), swLat, neLat),
+                        cb.between(root.get("longitude"), swLng, neLng));
+
+        Subquery<Long> locationSubquery = query.subquery(Long.class);
+        Root<PostingLocation> locationRoot = locationSubquery.from(PostingLocation.class);
+        locationSubquery
+                .select(locationRoot.get("id"))
+                .where(
+                        cb.equal(locationRoot.get("postingId"), root.get("id")),
+                        cb.isNotNull(locationRoot.get("latitude")),
+                        cb.isNotNull(locationRoot.get("longitude")),
+                        cb.between(locationRoot.get("latitude"), swLat, neLat),
+                        cb.between(locationRoot.get("longitude"), swLng, neLng));
+
+        return cb.or(primaryInBounds, cb.exists(locationSubquery));
     }
 }

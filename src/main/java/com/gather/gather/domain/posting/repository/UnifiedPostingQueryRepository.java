@@ -60,6 +60,8 @@ public class UnifiedPostingQueryRepository {
             List<Long> regionIds,
             LocalDate noticeStartDate,
             LocalDate noticeEndDate,
+            LocalDate activityStartDate,
+            LocalDate activityEndDate,
             String keyword,
             PostingCategory category,
             Pageable pageable) {
@@ -71,10 +73,20 @@ public class UnifiedPostingQueryRepository {
                         regionIds,
                         noticeStartDate,
                         noticeEndDate,
+                        activityStartDate,
+                        activityEndDate,
                         keyword,
                         category,
                         params);
-        String recruitWhere = buildRecruitWhere(status, regionIds, keyword, category, params);
+        String recruitWhere =
+                buildRecruitWhere(
+                        status,
+                        regionIds,
+                        activityStartDate,
+                        activityEndDate,
+                        keyword,
+                        category,
+                        params);
         Map<String, Object> orderParams = new java.util.HashMap<>();
         String orderBy = buildOrderBy(status, pageable.getSort(), orderParams);
 
@@ -143,6 +155,8 @@ public class UnifiedPostingQueryRepository {
             List<Long> regionIds,
             LocalDate noticeStartDate,
             LocalDate noticeEndDate,
+            LocalDate activityStartDate,
+            LocalDate activityEndDate,
             String keyword,
             PostingCategory category,
             Map<String, Object> params) {
@@ -169,6 +183,18 @@ public class UnifiedPostingQueryRepository {
             where.append(" AND p.notice_end_date <= :noticeEndDate");
             params.put("noticeEndDate", noticeEndDate);
         }
+        if (activityStartDate != null) {
+            // 종료일 = act_end_date, 없으면 act_start_date, 그마저 없으면 activity_date로 대체(POSTING_EFFECTIVE_END).
+            where.append(
+                    " AND COALESCE(p.act_end_date, p.act_start_date, p.activity_date) >= :activityStartDate");
+            params.put("activityStartDate", activityStartDate);
+        }
+        if (activityEndDate != null) {
+            // 시작일 = act_start_date, 없으면 activity_date로 대체(POSTING_EFFECTIVE_START).
+            where.append(
+                    " AND COALESCE(p.act_start_date, p.activity_date) <= :activityEndDate");
+            params.put("activityEndDate", activityEndDate);
+        }
         if (keyword != null && !keyword.isBlank()) {
             where.append(" AND (p.title LIKE :keyword OR p.recruit_org LIKE :keyword)");
             params.put("keyword", "%" + keyword + "%");
@@ -183,12 +209,22 @@ public class UnifiedPostingQueryRepository {
     private String buildRecruitWhere(
             PostingStatus status,
             List<Long> regionIds,
+            LocalDate activityStartDate,
+            LocalDate activityEndDate,
             String keyword,
             PostingCategory category,
             Map<String, Object> params) {
         StringBuilder where =
                 new StringBuilder(
                         "r.external = 1 AND post.deleted_at IS NULL AND m.deleted_at IS NULL");
+        if (activityStartDate != null) {
+            where.append(" AND DATE(r.activity_end_at) >= :activityStartDate");
+            params.put("activityStartDate", activityStartDate);
+        }
+        if (activityEndDate != null) {
+            where.append(" AND DATE(r.activity_start_at) <= :activityEndDate");
+            params.put("activityEndDate", activityEndDate);
+        }
         if (status != null) {
             // COMPLETED 상태는 모집공고 쪽에 대응 개념이 없어 항상 결과가 비게 된다(기존 목록과 동일하게 기본은 RECRUITING+CLOSED만 노출).
             where.append(

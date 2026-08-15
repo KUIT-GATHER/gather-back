@@ -3,6 +3,7 @@ package com.gather.gather.domain.posting.repository;
 import com.gather.gather.domain.posting.entity.Posting;
 import com.gather.gather.domain.posting.entity.PostingCategory;
 import com.gather.gather.domain.posting.entity.PostingStatus;
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 import org.springframework.data.domain.Page;
@@ -22,4 +23,18 @@ public interface PostingRepositoryCustom {
             String keyword,
             PostingCategory category,
             Pageable pageable);
+
+    /**
+     * 봉사공고 지도 조회(#186)용. RECRUITING·CLOSED 상태만 대상이며, 활동일 겹침(overlap) 필터·지역·카테고리와 함께 지도 bounds(1번째
+     * 장소 또는 2·3번째 장소 중 하나라도 bounds 안이면 포함) 조건으로 조회한다. 페이지네이션 없이 전체 목록을 반환한다.
+     */
+    List<Posting> searchForMap(
+            List<Long> regionIds,
+            LocalDate activityStartDate,
+            LocalDate activityEndDate,
+            PostingCategory category,
+            BigDecimal swLat,
+            BigDecimal swLng,
+            BigDecimal neLat,
+            BigDecimal neLng);
 }
