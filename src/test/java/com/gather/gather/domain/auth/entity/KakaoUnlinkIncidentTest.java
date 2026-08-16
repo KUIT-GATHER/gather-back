@@ -64,6 +64,8 @@ class KakaoUnlinkIncidentTest {
         KakaoUnlinkIncident cause = operationalIncident(2L, "KAKAO_UNLINK:DEAD_TASK:2:0");
 
         child.suppressBy(cause, 1, OPENED_AT.plusMinutes(1));
+        assertThatThrownBy(() -> cause.suppressBy(child, 1, OPENED_AT.plusMinutes(1)))
+                .isInstanceOf(IllegalStateException.class);
         child.observe(
                 KakaoUnlinkAlertType.DEAD_TASK,
                 KakaoUnlinkAlertSeverity.WARNING,
@@ -78,6 +80,50 @@ class KakaoUnlinkIncidentTest {
         assertThat(child.getLastObservedAt()).isEqualTo(OPENED_AT.plusMinutes(2));
         assertThatThrownBy(() -> child.suppressBy(child, 1, OPENED_AT.plusMinutes(3)))
                 .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void observeFillsOnlyMissingReminderScheduleAndResolveClearsSuppression() {
+        KakaoUnlinkIncident child = operationalIncident(1L, "KAKAO_UNLINK:DEAD_TASK:1:0");
+        KakaoUnlinkIncident cause = operationalIncident(2L, "KAKAO_UNLINK:DEAD_TASK:2:0");
+        LocalDateTime firstSchedule = OPENED_AT.plusMinutes(10);
+
+        child.observe(
+                KakaoUnlinkAlertType.DEAD_TASK,
+                KakaoUnlinkAlertSeverity.WARNING,
+                2,
+                OPENED_AT.plusMinutes(1),
+                deadDetails(),
+                firstSchedule,
+                null);
+        child.observe(
+                KakaoUnlinkAlertType.DEAD_TASK,
+                KakaoUnlinkAlertSeverity.WARNING,
+                3,
+                OPENED_AT.plusMinutes(2),
+                deadDetails(),
+                OPENED_AT.plusMinutes(20),
+                null);
+
+        assertThat(child.getNextDiscordReminderAt()).isEqualTo(firstSchedule);
+        child.suppressBy(cause, 1, OPENED_AT.plusMinutes(3));
+        child.resolve(OPENED_AT.plusMinutes(4));
+
+        assertThat(child.getNotificationState()).isEqualTo(KakaoUnlinkNotificationState.ELIGIBLE);
+        assertThat(child.getSuppressedByIncident()).isNull();
+        assertThat(child.getSuppressedByOccurrenceNo()).isNull();
+        assertThat(child.getSuppressedAt()).isNull();
+    }
+
+    @Test
+    void releaseSuppressionRequiresSuppressedOpenIncident() {
+        KakaoUnlinkIncident incident = operationalIncident(1L, "KAKAO_UNLINK:DEAD_TASK:1:0");
+
+        assertThatThrownBy(
+                        () ->
+                                incident.releaseSuppression(
+                                        OPENED_AT.plusMinutes(2), OPENED_AT.plusMinutes(1)))
+                .isInstanceOf(IllegalStateException.class);
     }
 
     @Test

@@ -18,6 +18,8 @@ import org.springframework.data.repository.query.Param;
 public interface KakaoUnlinkAlertDeliveryRepository
         extends JpaRepository<KakaoUnlinkAlertDelivery, Long> {
 
+    long countByIncidentIdAndEventType(Long incidentId, KakaoUnlinkAlertEventType eventType);
+
     @Modifying(flushAutomatically = true)
     @Query(
             value =

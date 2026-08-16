@@ -28,6 +28,9 @@ public record KakaoUnlinkIncidentObservation(
         if (alertType == KakaoUnlinkAlertType.SYNTHETIC_TEST || !safeDetails.supports(alertType)) {
             throw new IllegalArgumentException("operational observation의 alert type이 올바르지 않습니다.");
         }
+        if (fingerprint.alertType() != alertType) {
+            throw new IllegalArgumentException("fingerprint와 alert type이 일치하지 않습니다.");
+        }
         initialChannels = Set.copyOf(initialChannels == null ? Set.of() : initialChannels);
         escalationChannels = Set.copyOf(escalationChannels == null ? Set.of() : escalationChannels);
     }

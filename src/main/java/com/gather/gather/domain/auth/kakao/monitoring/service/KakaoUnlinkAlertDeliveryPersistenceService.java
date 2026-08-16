@@ -9,13 +9,19 @@ import com.gather.gather.domain.auth.kakao.monitoring.exception.KakaoUnlinkMonit
 import com.gather.gather.domain.auth.kakao.monitoring.model.KakaoUnlinkAlertDeliveryResult;
 import com.gather.gather.domain.auth.kakao.monitoring.model.OperationalAlertPayloadSnapshot;
 import com.gather.gather.domain.auth.repository.KakaoUnlinkAlertDeliveryRepository;
+import com.gather.gather.domain.auth.repository.KakaoUnlinkIncidentRepository;
 import java.time.LocalDateTime;
 import java.util.EnumSet;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
+@Slf4j
 @RequiredArgsConstructor
+@Transactional(propagation = Propagation.MANDATORY)
 public class KakaoUnlinkAlertDeliveryPersistenceService {
 
     private static final EnumSet<KakaoUnlinkAlertEventType> PROBLEM_EVENTS =
@@ -25,6 +31,7 @@ public class KakaoUnlinkAlertDeliveryPersistenceService {
                     KakaoUnlinkAlertEventType.ESCALATED);
 
     private final KakaoUnlinkAlertDeliveryRepository deliveryRepository;
+    private final KakaoUnlinkIncidentRepository incidentRepository;
     private final KakaoUnlinkMonitoringJsonCodec jsonCodec;
 
     public KakaoUnlinkAlertDeliveryResult enqueueIfAbsent(
@@ -37,6 +44,13 @@ public class KakaoUnlinkAlertDeliveryPersistenceService {
         KakaoUnlinkAlertDelivery existing =
                 findExisting(incident, eventType, eventSequence, channel);
         if (existing != null) {
+            log.debug(
+                    "Kakao unlink alert delivery 중복 생성을 건너뜁니다: incidentId={}, occurrenceNo={}, eventType={}, eventSequence={}, channel={}",
+                    incident.getId(),
+                    incident.getOccurrenceNo(),
+                    eventType,
+                    eventSequence,
+                    channel);
             return new KakaoUnlinkAlertDeliveryResult(
                     existing.getId(), existing.getEventSequence(), false);
         }
@@ -53,7 +67,7 @@ public class KakaoUnlinkAlertDeliveryPersistenceService {
         KakaoUnlinkAlertDelivery existing =
                 findExisting(incident, eventType, eventSequence, channel);
         if (existing != null) {
-            if (!existing.getPayloadSnapshot().equals(payload)) {
+            if (!existing.getPayloadSnapshot().hasSameLogicalContent(payload)) {
                 throw new KakaoUnlinkMonitoringInvariantException(
                         "동일 delivery 자연키에 다른 payload가 요청되었습니다.");
             }
@@ -94,15 +108,20 @@ public class KakaoUnlinkAlertDeliveryPersistenceService {
             OperationalAlertPayloadSnapshot payload,
             LocalDateTime databaseNow) {
         validateEvent(incident, eventType, eventSequence, channel, payload, databaseNow);
-        deliveryRepository.upsertPending(
-                incident.getId(),
-                incident.getOccurrenceNo(),
-                eventType.name(),
-                eventSequence,
-                channel.name(),
-                jsonCodec.write(payload),
-                databaseNow,
-                databaseNow);
+        int affected =
+                deliveryRepository.upsertPending(
+                        incident.getId(),
+                        incident.getOccurrenceNo(),
+                        eventType.name(),
+                        eventSequence,
+                        channel.name(),
+                        jsonCodec.write(payload),
+                        databaseNow,
+                        databaseNow);
+        if (affected != 1) {
+            throw new KakaoUnlinkMonitoringInvariantException(
+                    "delivery insert가 incident lock 안에서 정확히 한 행을 생성하지 못했습니다.");
+        }
         KakaoUnlinkAlertDelivery persisted =
                 deliveryRepository
                         .findEventForUpdate(
@@ -115,7 +134,7 @@ public class KakaoUnlinkAlertDeliveryPersistenceService {
                                 () ->
                                         new KakaoUnlinkMonitoringInvariantException(
                                                 "upsert한 delivery를 다시 읽을 수 없습니다."));
-        if (!persisted.getPayloadSnapshot().equals(payload)) {
+        if (!persisted.getPayloadSnapshot().hasSameLogicalContent(payload)) {
             throw new KakaoUnlinkMonitoringInvariantException(
                     "동일 delivery 자연키가 다른 payload를 가지고 있습니다.");
         }
@@ -169,6 +188,17 @@ public class KakaoUnlinkAlertDeliveryPersistenceService {
             KakaoUnlinkAlertChannel channel) {
         if (incident == null || incident.getId() == null || eventType == null || channel == null) {
             throw new IllegalArgumentException("delivery 자연키 필수 값이 누락되었습니다.");
+        }
+        KakaoUnlinkIncident locked =
+                incidentRepository
+                        .findByIdForUpdate(incident.getId())
+                        .orElseThrow(
+                                () ->
+                                        new KakaoUnlinkMonitoringInvariantException(
+                                                "delivery 대상 incident를 잠글 수 없습니다."));
+        if (locked.getOccurrenceNo() != incident.getOccurrenceNo()) {
+            throw new KakaoUnlinkMonitoringInvariantException(
+                    "delivery 대상 incident occurrence가 변경되었습니다.");
         }
         eventType.validateSequence(eventSequence);
         if (incident.isSynthetic() != (eventType == KakaoUnlinkAlertEventType.TEST)) {

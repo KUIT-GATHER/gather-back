@@ -19,7 +19,7 @@ public record TaskPopulationSafeDetails(
 
     public TaskPopulationSafeDetails {
         if (taskStatus == null
-                || affectedCount < 0
+                || affectedCount < 1
                 || oldestAgeSeconds < 0
                 || thresholdSeconds < 0) {
             throw new IllegalArgumentException("task population 관측 값이 올바르지 않습니다.");

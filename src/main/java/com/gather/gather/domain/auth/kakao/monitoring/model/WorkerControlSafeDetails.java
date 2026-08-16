@@ -23,7 +23,9 @@ public record WorkerControlSafeDetails(
                     KakaoUnlinkAlertType.WORKER_HEARTBEAT_MISSED);
 
     public WorkerControlSafeDetails {
-        if (status == null) {
+        if (status == null
+                || (lastHttpStatus != null && (lastHttpStatus < 100 || lastHttpStatus > 599))
+                || (lastKakaoCode != null && lastKakaoCode > 0)) {
             throw new IllegalArgumentException("worker control 상태는 필수입니다.");
         }
     }

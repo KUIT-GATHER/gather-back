@@ -55,9 +55,9 @@ public class KakaoUnlinkMonitorControl {
     }
 
     public long acquire(
-            String token, String owner, LocalDateTime acquiredAt, LocalDateTime expiresAt) {
-        requireText(token, "monitor lease token", 64);
+            String owner, String token, LocalDateTime acquiredAt, LocalDateTime expiresAt) {
         requireText(owner, "monitor lease owner", 128);
+        requireText(token, "monitor lease token", 64);
         requireNow(acquiredAt);
         requireNow(expiresAt);
         if (hasValidLease(acquiredAt)) {

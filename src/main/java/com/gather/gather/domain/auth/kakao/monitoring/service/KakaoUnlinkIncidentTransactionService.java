@@ -6,6 +6,7 @@ import com.gather.gather.domain.auth.entity.KakaoUnlinkIncident;
 import com.gather.gather.domain.auth.entity.KakaoUnlinkIncidentStatus;
 import com.gather.gather.domain.auth.entity.KakaoUnlinkIncidentTransition;
 import com.gather.gather.domain.auth.entity.KakaoUnlinkMonitorControl;
+import com.gather.gather.domain.auth.entity.KakaoUnlinkNotificationState;
 import com.gather.gather.domain.auth.kakao.monitoring.exception.KakaoUnlinkMonitorLeaseLostException;
 import com.gather.gather.domain.auth.kakao.monitoring.exception.KakaoUnlinkMonitoringInvariantException;
 import com.gather.gather.domain.auth.kakao.monitoring.model.KakaoUnlinkAlertDeliveryResult;
@@ -15,7 +16,9 @@ import com.gather.gather.domain.auth.kakao.monitoring.model.KakaoUnlinkIncidentR
 import com.gather.gather.domain.auth.kakao.monitoring.model.KakaoUnlinkIncidentSnapshot;
 import com.gather.gather.domain.auth.kakao.monitoring.model.KakaoUnlinkIncidentSuppression;
 import com.gather.gather.domain.auth.kakao.monitoring.model.KakaoUnlinkMonitorLease;
+import com.gather.gather.domain.auth.kakao.monitoring.model.KakaoUnlinkObservationResult;
 import com.gather.gather.domain.auth.kakao.monitoring.model.KakaoUnlinkRecoveredDeliveryRequest;
+import com.gather.gather.domain.auth.kakao.monitoring.model.KakaoUnlinkRecoveredDeliveryResult;
 import com.gather.gather.domain.auth.kakao.monitoring.model.KakaoUnlinkReminderRequest;
 import com.gather.gather.domain.auth.kakao.monitoring.model.KakaoUnlinkSuppressionRelease;
 import com.gather.gather.domain.auth.kakao.monitoring.model.OperationalAlertPayloadSnapshot;
@@ -29,11 +32,13 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Set;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
+@Slf4j
 @RequiredArgsConstructor
 public class KakaoUnlinkIncidentTransactionService {
 
@@ -43,17 +48,18 @@ public class KakaoUnlinkIncidentTransactionService {
     private final KakaoUnlinkMonitoringJsonCodec jsonCodec;
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public KakaoUnlinkIncidentSnapshot observe(KakaoUnlinkIncidentObservation observation) {
+    public KakaoUnlinkObservationResult observe(KakaoUnlinkIncidentObservation observation) {
         LocalDateTime databaseNow = lockAndValidateLease(observation.lease());
-        incidentRepository.upsertInitialObservation(
-                observation.fingerprint().value(),
-                observation.alertType().name(),
-                observation.severity().name(),
-                databaseNow,
-                observation.lease().scanSequence(),
-                observation.nextDiscordReminderAt(),
-                observation.nextEmailReminderAt(),
-                jsonCodec.write(observation.safeDetails()));
+        int inserted =
+                incidentRepository.upsertInitialObservation(
+                        observation.fingerprint().value(),
+                        observation.alertType().name(),
+                        observation.severity().name(),
+                        databaseNow,
+                        observation.lease().scanSequence(),
+                        observation.nextDiscordReminderAt(),
+                        observation.nextEmailReminderAt(),
+                        jsonCodec.write(observation.safeDetails()));
 
         KakaoUnlinkIncident incident =
                 incidentRepository
@@ -72,32 +78,58 @@ public class KakaoUnlinkIncidentTransactionService {
                         observation.nextDiscordReminderAt(),
                         observation.nextEmailReminderAt());
 
-        for (KakaoUnlinkAlertChannel channel : observation.initialChannels()) {
-            OperationalAlertPayloadSnapshot payload =
-                    snapshot(incident, KakaoUnlinkAlertEventType.INITIAL, 1, channel, databaseNow);
-            deliveryPersistenceService.enqueueIfAbsent(
-                    incident, KakaoUnlinkAlertEventType.INITIAL, 1, channel, payload, databaseNow);
-        }
-        if (transition.severityEscalated()) {
-            for (KakaoUnlinkAlertChannel channel : observation.escalationChannels()) {
-                int sequence = incident.getSeverityEscalationNo();
+        List<KakaoUnlinkAlertDeliveryResult> deliveryResults = new ArrayList<>();
+        if (incident.getNotificationState() == KakaoUnlinkNotificationState.ELIGIBLE) {
+            for (KakaoUnlinkAlertChannel channel : observation.initialChannels()) {
                 OperationalAlertPayloadSnapshot payload =
                         snapshot(
                                 incident,
-                                KakaoUnlinkAlertEventType.ESCALATED,
-                                sequence,
+                                KakaoUnlinkAlertEventType.INITIAL,
+                                1,
                                 channel,
                                 databaseNow);
-                deliveryPersistenceService.enqueueExact(
-                        incident,
-                        KakaoUnlinkAlertEventType.ESCALATED,
-                        sequence,
-                        channel,
-                        payload,
-                        databaseNow);
+                deliveryResults.add(
+                        deliveryPersistenceService.enqueueIfAbsent(
+                                incident,
+                                KakaoUnlinkAlertEventType.INITIAL,
+                                1,
+                                channel,
+                                payload,
+                                databaseNow));
+            }
+            if (transition.severityEscalated()) {
+                for (KakaoUnlinkAlertChannel channel : observation.escalationChannels()) {
+                    int sequence = incident.getSeverityEscalationNo();
+                    OperationalAlertPayloadSnapshot payload =
+                            snapshot(
+                                    incident,
+                                    KakaoUnlinkAlertEventType.ESCALATED,
+                                    sequence,
+                                    channel,
+                                    databaseNow);
+                    deliveryResults.add(
+                            deliveryPersistenceService.enqueueExact(
+                                    incident,
+                                    KakaoUnlinkAlertEventType.ESCALATED,
+                                    sequence,
+                                    channel,
+                                    payload,
+                                    databaseNow));
+                }
             }
         }
-        return KakaoUnlinkIncidentSnapshot.from(incident);
+        if (inserted == 1 || transition.reopened() || transition.severityEscalated()) {
+            log.info(
+                    "Kakao unlink incident를 조정했습니다: incidentId={}, occurrenceNo={}, inserted={}, reopened={}, severityEscalated={}, deliveryCount={}",
+                    incident.getId(),
+                    incident.getOccurrenceNo(),
+                    inserted == 1,
+                    transition.reopened(),
+                    transition.severityEscalated(),
+                    deliveryResults.size());
+        }
+        return new KakaoUnlinkObservationResult(
+                KakaoUnlinkIncidentSnapshot.from(incident), transition, deliveryResults);
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
@@ -157,20 +189,18 @@ public class KakaoUnlinkIncidentTransactionService {
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public KakaoUnlinkAlertDeliveryResult enqueueRecovered(
+    public KakaoUnlinkRecoveredDeliveryResult enqueueRecovered(
             KakaoUnlinkRecoveredDeliveryRequest request) {
-        LocalDateTime databaseNow = monitorControlRepository.currentUtcDateTime();
+        LocalDateTime databaseNow = lockAndValidateLease(request.lease());
         KakaoUnlinkIncident incident = findIncidentForUpdate(request.incidentId());
         if (incident.isSynthetic()
                 || incident.getStatus() != KakaoUnlinkIncidentStatus.RESOLVED
                 || incident.getOccurrenceNo() != request.occurrenceNo()) {
-            throw new KakaoUnlinkMonitoringInvariantException(
-                    "현재 RESOLVED occurrence에만 RECOVERED delivery를 만들 수 있습니다.");
+            return KakaoUnlinkRecoveredDeliveryResult.notApplicable();
         }
         if (!deliveryPersistenceService.hasSuccessfulProblemDelivery(
                 incident.getId(), incident.getOccurrenceNo(), request.channel())) {
-            throw new KakaoUnlinkMonitoringInvariantException(
-                    "성공한 장애 알림이 없는 channel에는 RECOVERED를 만들 수 없습니다.");
+            return KakaoUnlinkRecoveredDeliveryResult.noSuccessfulProblemAlert();
         }
         OperationalAlertPayloadSnapshot payload =
                 snapshot(
@@ -179,13 +209,14 @@ public class KakaoUnlinkIncidentTransactionService {
                         1,
                         request.channel(),
                         databaseNow);
-        return deliveryPersistenceService.enqueueIfAbsent(
-                incident,
-                KakaoUnlinkAlertEventType.RECOVERED,
-                1,
-                request.channel(),
-                payload,
-                databaseNow);
+        return KakaoUnlinkRecoveredDeliveryResult.enqueued(
+                deliveryPersistenceService.enqueueIfAbsent(
+                        incident,
+                        KakaoUnlinkAlertEventType.RECOVERED,
+                        1,
+                        request.channel(),
+                        payload,
+                        databaseNow));
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
@@ -194,6 +225,8 @@ public class KakaoUnlinkIncidentTransactionService {
         if (channels == null || channels.isEmpty()) {
             throw new IllegalArgumentException("synthetic test channel은 하나 이상이어야 합니다.");
         }
+        // Synthetic test is an explicit operator action, not a monitor scan, so it has no scan
+        // lease.
         LocalDateTime databaseNow = monitorControlRepository.currentUtcDateTime();
         KakaoUnlinkIncident incident =
                 incidentRepository
@@ -258,6 +291,10 @@ public class KakaoUnlinkIncidentTransactionService {
         LocalDateTime databaseNow = monitorControlRepository.currentUtcDateTime();
         if (!control.hasOwnedValidLease(
                 lease.scanSequence(), lease.owner(), lease.token(), databaseNow)) {
+            log.warn(
+                    "Kakao unlink monitoring mutation이 stale lease로 fencing되었습니다: sequence={}, owner={}",
+                    lease.scanSequence(),
+                    lease.owner());
             throw new KakaoUnlinkMonitorLeaseLostException();
         }
         return databaseNow;

@@ -13,9 +13,9 @@ class KakaoUnlinkMonitorControlTest {
     @Test
     void staleLeaseCannotClearNewerLease() {
         KakaoUnlinkMonitorControl control = control();
-        long firstSequence = control.acquire("token-1", "owner-1", NOW, NOW.plusMinutes(1));
+        long firstSequence = control.acquire("owner-1", "token-1", NOW, NOW.plusMinutes(1));
         long secondSequence =
-                control.acquire("token-2", "owner-2", NOW.plusMinutes(2), NOW.plusMinutes(5));
+                control.acquire("owner-2", "token-2", NOW.plusMinutes(2), NOW.plusMinutes(5));
 
         assertThat(
                         control.complete(
@@ -25,6 +25,7 @@ class KakaoUnlinkMonitorControlTest {
                                 NOW.plusMinutes(2).plusSeconds(1)))
                 .isFalse();
         assertThat(control.getLeaseToken()).isEqualTo("token-2");
+        assertThat(control.getLeaseOwner()).isEqualTo("owner-2");
         assertThat(control.complete(secondSequence, "owner-2", "token-2", NOW.plusMinutes(3)))
                 .isTrue();
         assertThat(control.getLeaseToken()).isNull();

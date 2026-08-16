@@ -10,21 +10,32 @@ import com.gather.gather.domain.auth.entity.KakaoUnlinkAlertSeverity;
 import com.gather.gather.domain.auth.entity.KakaoUnlinkAlertType;
 import com.gather.gather.domain.auth.entity.KakaoUnlinkTaskErrorType;
 import com.gather.gather.domain.auth.entity.KakaoUnlinkTaskStatus;
+import com.gather.gather.domain.auth.entity.KakaoUnlinkWorkerControlStatus;
 import com.gather.gather.domain.auth.kakao.monitoring.model.DeadTaskSafeDetails;
 import com.gather.gather.domain.auth.kakao.monitoring.model.DeadTaskSample;
 import com.gather.gather.domain.auth.kakao.monitoring.model.DeadTaskSummarySafeDetails;
 import com.gather.gather.domain.auth.kakao.monitoring.model.KakaoUnlinkIncidentFingerprint;
 import com.gather.gather.domain.auth.kakao.monitoring.model.KakaoUnlinkIncidentSafeDetails;
 import com.gather.gather.domain.auth.kakao.monitoring.model.KakaoUnlinkMonitorLease;
+import com.gather.gather.domain.auth.kakao.monitoring.model.KakaoUnlinkOperationalFailureType;
+import com.gather.gather.domain.auth.kakao.monitoring.model.KakaoUnlinkStateInvariantType;
 import com.gather.gather.domain.auth.kakao.monitoring.model.OperationalAlertPayloadSnapshot;
+import com.gather.gather.domain.auth.kakao.monitoring.model.StateInvariantSafeDetails;
 import com.gather.gather.domain.auth.kakao.monitoring.model.SyntheticTestSafeDetails;
+import com.gather.gather.domain.auth.kakao.monitoring.model.TaskPopulationSafeDetails;
+import com.gather.gather.domain.auth.kakao.monitoring.model.WorkerControlSafeDetails;
 import com.gather.gather.domain.auth.kakao.monitoring.service.KakaoUnlinkMonitoringJsonCodec;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.json.JsonTest;
 
+@JsonTest
 class KakaoUnlinkMonitoringModelTest {
+
+    @Autowired private ObjectMapper objectMapper;
 
     @Test
     void severityOrdering_neverTreatsLowerSeverityAsHigher() {
@@ -122,13 +133,15 @@ class KakaoUnlinkMonitoringModelTest {
     @Test
     void fingerprint_rejectsNonAllowlistedCharacters() {
         assertThatThrownBy(
-                        () -> new KakaoUnlinkIncidentFingerprint("KAKAO_UNLINK:user@example.com"))
+                        () ->
+                                KakaoUnlinkIncidentFingerprint.validateStored(
+                                        "KAKAO_UNLINK:user@example.com",
+                                        KakaoUnlinkAlertType.DEAD_TASK))
                 .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
     void typedJsonContainsStableDiscriminatorAndRoundTrips() throws Exception {
-        ObjectMapper objectMapper = new ObjectMapper().findAndRegisterModules();
         KakaoUnlinkMonitoringJsonCodec codec = new KakaoUnlinkMonitoringJsonCodec(objectMapper);
         DeadTaskSafeDetails details = deadDetails();
         OperationalAlertPayloadSnapshot payload =
@@ -148,6 +161,43 @@ class KakaoUnlinkMonitoringModelTest {
                 .isEqualTo(details);
         assertThat(objectMapper.readValue(payloadJson, OperationalAlertPayloadSnapshot.class))
                 .isEqualTo(payload);
+    }
+
+    @Test
+    void allSafeDetailsTypesRoundTripWithSpringObjectMapper() throws Exception {
+        DeadTaskSample sample =
+                new DeadTaskSample(
+                        1,
+                        0,
+                        1,
+                        KakaoUnlinkTaskStatus.DEAD,
+                        KakaoUnlinkTaskErrorType.REQUEST,
+                        400,
+                        -1);
+        List<KakaoUnlinkIncidentSafeDetails> values =
+                List.of(
+                        deadDetails(),
+                        new DeadTaskSummarySafeDetails(1, List.of(sample)),
+                        new TaskPopulationSafeDetails(KakaoUnlinkTaskStatus.PENDING, 1, 600, 300),
+                        new WorkerControlSafeDetails(
+                                KakaoUnlinkWorkerControlStatus.ACTIVE,
+                                null,
+                                Instant.parse("2026-08-08T00:00:00Z"),
+                                null,
+                                null,
+                                KakaoUnlinkOperationalFailureType.DATABASE,
+                                503,
+                                -1),
+                        new StateInvariantSafeDetails(
+                                KakaoUnlinkStateInvariantType.ACCOUNT_TASK_STATE, 1, List.of(1L)),
+                        new SyntheticTestSafeDetails());
+
+        KakaoUnlinkMonitoringJsonCodec codec = new KakaoUnlinkMonitoringJsonCodec(objectMapper);
+        for (KakaoUnlinkIncidentSafeDetails value : values) {
+            String json = codec.write(value);
+            assertThat(objectMapper.readValue(json, KakaoUnlinkIncidentSafeDetails.class))
+                    .isEqualTo(value);
+        }
     }
 
     private DeadTaskSafeDetails deadDetails() {

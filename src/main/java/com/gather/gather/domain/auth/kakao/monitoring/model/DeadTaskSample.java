@@ -13,8 +13,21 @@ public record DeadTaskSample(
         Integer lastKakaoCode) {
 
     public DeadTaskSample {
-        if (taskId <= 0 || retryCycle < 0 || attemptCount < 0 || taskStatus == null) {
+        if (taskId <= 0
+                || retryCycle < 0
+                || attemptCount < 0
+                || taskStatus == null
+                || !isValidHttpStatus(lastHttpStatus)
+                || !isValidKakaoCode(lastKakaoCode)) {
             throw new IllegalArgumentException("DEAD task 표본 값이 올바르지 않습니다.");
         }
+    }
+
+    private static boolean isValidHttpStatus(Integer status) {
+        return status == null || (status >= 100 && status <= 599);
+    }
+
+    private static boolean isValidKakaoCode(Integer code) {
+        return code == null || code <= 0;
     }
 }

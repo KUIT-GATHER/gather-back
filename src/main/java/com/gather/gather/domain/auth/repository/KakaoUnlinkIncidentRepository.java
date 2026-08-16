@@ -124,6 +124,7 @@ public interface KakaoUnlinkIncidentRepository extends JpaRepository<KakaoUnlink
             where incident.status = com.gather.gather.domain.auth.entity.KakaoUnlinkIncidentStatus.OPEN
               and incident.notificationState = com.gather.gather.domain.auth.entity.KakaoUnlinkNotificationState.ELIGIBLE
               and incident.alertType <> com.gather.gather.domain.auth.entity.KakaoUnlinkAlertType.SYNTHETIC_TEST
+              and (incident.notificationEligibleAt is null or incident.notificationEligibleAt <= :now)
               and (
                     incident.nextDiscordReminderAt <= :now
                  or incident.nextEmailReminderAt <= :now
@@ -131,4 +132,18 @@ public interface KakaoUnlinkIncidentRepository extends JpaRepository<KakaoUnlink
             order by incident.id
             """)
     List<KakaoUnlinkIncident> findOperationalReminderCandidates(@Param("now") LocalDateTime now);
+
+    @Query(
+            """
+            select incident
+            from KakaoUnlinkIncident incident
+            where incident.status = com.gather.gather.domain.auth.entity.KakaoUnlinkIncidentStatus.OPEN
+              and incident.notificationState = com.gather.gather.domain.auth.entity.KakaoUnlinkNotificationState.SUPPRESSED
+              and (
+                    incident.suppressedByIncident.status = com.gather.gather.domain.auth.entity.KakaoUnlinkIncidentStatus.RESOLVED
+                 or incident.suppressedByIncident.occurrenceNo <> incident.suppressedByOccurrenceNo
+              )
+            order by incident.id
+            """)
+    List<KakaoUnlinkIncident> findStaleSuppressionCandidates();
 }

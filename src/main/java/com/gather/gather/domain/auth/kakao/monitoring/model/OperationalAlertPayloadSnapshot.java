@@ -24,7 +24,7 @@ public record OperationalAlertPayloadSnapshot(
         if (schemaVersion != CURRENT_SCHEMA_VERSION) {
             throw new IllegalArgumentException("지원하지 않는 운영 알림 payload schema version입니다.");
         }
-        new KakaoUnlinkIncidentFingerprint(fingerprint);
+        KakaoUnlinkIncidentFingerprint.validateStored(fingerprint, alertType);
         if (alertType == null
                 || severity == null
                 || eventType == null
@@ -42,5 +42,18 @@ public record OperationalAlertPayloadSnapshot(
                 != (eventType == KakaoUnlinkAlertEventType.TEST)) {
             throw new IllegalArgumentException("synthetic incident에는 TEST delivery만 허용됩니다.");
         }
+    }
+
+    public boolean hasSameLogicalContent(OperationalAlertPayloadSnapshot other) {
+        return other != null
+                && schemaVersion == other.schemaVersion
+                && fingerprint.equals(other.fingerprint)
+                && alertType == other.alertType
+                && occurrenceNo == other.occurrenceNo
+                && severity == other.severity
+                && eventType == other.eventType
+                && eventSequence == other.eventSequence
+                && channel == other.channel
+                && details.equals(other.details);
     }
 }

@@ -135,6 +135,12 @@ public class KakaoUnlinkIncident {
             severityEscalationNo = Math.addExact(severityEscalationNo, 1);
             escalated = true;
         }
+        if (this.nextDiscordReminderAt == null && nextDiscordReminderAt != null) {
+            this.nextDiscordReminderAt = nextDiscordReminderAt;
+        }
+        if (this.nextEmailReminderAt == null && nextEmailReminderAt != null) {
+            this.nextEmailReminderAt = nextEmailReminderAt;
+        }
 
         if (scanSequence > lastObservedScanSequence) {
             lastObservedScanSequence = scanSequence;
@@ -155,6 +161,9 @@ public class KakaoUnlinkIncident {
         }
         status = KakaoUnlinkIncidentStatus.RESOLVED;
         resolvedAt = now;
+        notificationState = KakaoUnlinkNotificationState.ELIGIBLE;
+        clearSuppression();
+        notificationEligibleAt = null;
         nextDiscordReminderAt = null;
         nextEmailReminderAt = null;
         updatedAt = now;
@@ -167,7 +176,10 @@ public class KakaoUnlinkIncident {
             throw new IllegalArgumentException(
                     "유효한 별도 operational incident만 suppression 원인이 될 수 있습니다.");
         }
-        if (!isOpen() || !cause.isOpen() || cause.occurrenceNo != causeOccurrenceNo) {
+        if (!isOpen()
+                || !cause.isOpen()
+                || cause.notificationState != KakaoUnlinkNotificationState.ELIGIBLE
+                || cause.occurrenceNo != causeOccurrenceNo) {
             throw new IllegalStateException("현재 OPEN occurrence만 suppression 관계를 만들 수 있습니다.");
         }
         notificationState = KakaoUnlinkNotificationState.SUPPRESSED;
@@ -181,6 +193,9 @@ public class KakaoUnlinkIncident {
     public void releaseSuppression(LocalDateTime eligibleAt, LocalDateTime now) {
         requireNow(now);
         rejectSynthetic("suppression release");
+        if (!isOpen() || notificationState != KakaoUnlinkNotificationState.SUPPRESSED) {
+            throw new IllegalStateException("억제 중인 OPEN incident만 suppression을 해제할 수 있습니다.");
+        }
         if (eligibleAt != null && eligibleAt.isBefore(now)) {
             throw new IllegalArgumentException("notification eligible 시각은 현재보다 빠를 수 없습니다.");
         }
@@ -200,12 +215,12 @@ public class KakaoUnlinkIncident {
         if (nextReminderAt != null && nextReminderAt.isBefore(now)) {
             throw new IllegalArgumentException("다음 reminder 시각은 현재보다 빠를 수 없습니다.");
         }
-        if (channel == KakaoUnlinkAlertChannel.DISCORD) {
-            nextDiscordReminderAt = nextReminderAt;
-        } else if (channel == KakaoUnlinkAlertChannel.EMAIL) {
-            nextEmailReminderAt = nextReminderAt;
-        } else {
+        if (channel == null) {
             throw new IllegalArgumentException("알림 channel은 필수입니다.");
+        }
+        switch (channel) {
+            case DISCORD -> nextDiscordReminderAt = nextReminderAt;
+            case EMAIL -> nextEmailReminderAt = nextReminderAt;
         }
         updatedAt = now;
     }

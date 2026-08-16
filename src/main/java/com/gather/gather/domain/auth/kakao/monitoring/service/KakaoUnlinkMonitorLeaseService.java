@@ -10,17 +10,20 @@ import java.time.DateTimeException;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
+@Slf4j
 @RequiredArgsConstructor
 public class KakaoUnlinkMonitorLeaseService {
 
     private final KakaoUnlinkMonitorControlRepository controlRepository;
     private final KakaoUnlinkMonitorTokenGenerator tokenGenerator;
 
-    @Transactional
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public KakaoUnlinkMonitorLeaseAcquireResult tryAcquire(String owner, Duration duration) {
         requireOwner(owner);
         if (duration == null || duration.isZero() || duration.isNegative()) {
@@ -30,6 +33,7 @@ public class KakaoUnlinkMonitorLeaseService {
         KakaoUnlinkMonitorControl control = findControlForUpdate();
         LocalDateTime databaseNow = controlRepository.currentUtcDateTime();
         if (control.hasValidLease(databaseNow)) {
+            log.debug("Kakao unlink monitor lease 획득을 건너뜁니다: active lease 존재");
             return KakaoUnlinkMonitorLeaseAcquireResult.busy();
         }
 
@@ -40,22 +44,28 @@ public class KakaoUnlinkMonitorLeaseService {
             throw new IllegalArgumentException("monitor lease duration이 너무 큽니다.", exception);
         }
         String token = tokenGenerator.generate();
-        long sequence = control.acquire(token, owner, databaseNow, expiresAt);
+        long sequence = control.acquire(owner, token, databaseNow, expiresAt);
+        log.info("Kakao unlink monitor lease를 획득했습니다: sequence={}, owner={}", sequence, owner);
         return KakaoUnlinkMonitorLeaseAcquireResult.acquired(
                 new KakaoUnlinkMonitorLease(sequence, owner, token, databaseNow, expiresAt));
     }
 
-    @Transactional
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public KakaoUnlinkMonitorLeaseFinishResult complete(KakaoUnlinkMonitorLease lease) {
         requireLease(lease);
         KakaoUnlinkMonitorControl control = findControlForUpdate();
         LocalDateTime databaseNow = controlRepository.currentUtcDateTime();
-        return control.complete(lease.scanSequence(), lease.owner(), lease.token(), databaseNow)
-                ? KakaoUnlinkMonitorLeaseFinishResult.COMPLETED
-                : KakaoUnlinkMonitorLeaseFinishResult.LEASE_LOST;
+        if (control.complete(lease.scanSequence(), lease.owner(), lease.token(), databaseNow)) {
+            return KakaoUnlinkMonitorLeaseFinishResult.COMPLETED;
+        }
+        log.warn(
+                "Kakao unlink monitor lease 완료가 fencing되었습니다: sequence={}, owner={}",
+                lease.scanSequence(),
+                lease.owner());
+        return KakaoUnlinkMonitorLeaseFinishResult.LEASE_LOST;
     }
 
-    @Transactional
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public KakaoUnlinkMonitorLeaseFinishResult fail(
             KakaoUnlinkMonitorLease lease, KakaoUnlinkOperationalFailureType failureType) {
         requireLease(lease);
@@ -64,14 +74,20 @@ public class KakaoUnlinkMonitorLeaseService {
         }
         KakaoUnlinkMonitorControl control = findControlForUpdate();
         LocalDateTime databaseNow = controlRepository.currentUtcDateTime();
-        return control.fail(
-                        lease.scanSequence(),
-                        lease.owner(),
-                        lease.token(),
-                        failureType.name(),
-                        databaseNow)
-                ? KakaoUnlinkMonitorLeaseFinishResult.FAILED
-                : KakaoUnlinkMonitorLeaseFinishResult.LEASE_LOST;
+        if (control.fail(
+                lease.scanSequence(),
+                lease.owner(),
+                lease.token(),
+                failureType.name(),
+                databaseNow)) {
+            return KakaoUnlinkMonitorLeaseFinishResult.FAILED;
+        }
+        log.warn(
+                "Kakao unlink monitor lease 실패 기록이 fencing되었습니다: sequence={}, owner={}, failureType={}",
+                lease.scanSequence(),
+                lease.owner(),
+                failureType);
+        return KakaoUnlinkMonitorLeaseFinishResult.LEASE_LOST;
     }
 
     private KakaoUnlinkMonitorControl findControlForUpdate() {
