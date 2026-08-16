@@ -37,7 +37,8 @@ public record MyPageActivityResponse(
         @Schema(description = "지역명", nullable = true, example = "강남구") String regionName,
         @Schema(
                         description =
-                                "참여 상태. VOLUNTEER는 APPLIED/CONFIRMED/COMPLETED/REVIEWED,"
+                                "참여 상태. VOLUNTEER는 다가오는 활동 정책상 APPLIED/CONFIRMED만 반환됨"
+                                        + " (COMPLETED/REVIEWED는 활동기록 API에서 조회),"
                                         + " MEETING_RECRUIT은 MeetingRecruitParticipationStatus 값",
                         example = "APPLIED")
                 String status,
@@ -68,9 +69,15 @@ public record MyPageActivityResponse(
         boolean activityEnded =
                 PostingParticipationAction.resolveActivityEnded(
                         posting, participation.getParticipationEndDate(), LocalDate.now());
-        PostingParticipationAction action =
+        PostingParticipationAction rawAction =
                 PostingParticipationAction.from(participation.getStatus(), activityEnded);
-
+        // MyPage는 CANCEL/NONE만 지원한다(위 Schema 설명 참고). 활동 종료 후에도 취소 서비스는
+        // 활동 종료 여부를 검사하지 않고 APPLIED/CONFIRMED 참여를 물리 삭제하므로, 종료된 참여가
+        // 실수로라도 취소 가능한 것처럼 보이면 안 되어 COMPLETE는 CANCEL이 아닌 NONE으로 내린다.
+        PostingParticipationAction action =
+                rawAction == PostingParticipationAction.COMPLETE
+                        ? PostingParticipationAction.NONE
+                        : rawAction;
         return new MyPageActivityResponse(
                 ActivityType.VOLUNTEER,
                 participation.getId(),
