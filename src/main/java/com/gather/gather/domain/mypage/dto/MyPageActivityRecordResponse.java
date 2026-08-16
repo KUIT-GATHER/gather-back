@@ -24,13 +24,24 @@ public record MyPageActivityRecordResponse(
 
     public static MyPageActivityRecordResponse of(
             PostingParticipation participation, Posting posting) {
+        // 2026-08 정책: 활동기록 날짜도 다가오는 활동과 동일하게 개인 참여 일정 기준.
+        // 개인 일정이 없는(정책 변경 이전) 기존 데이터만 공고 전체 활동기간으로 fallback한다.
+        LocalDate actStartDate =
+                participation.getParticipationStartDate() != null
+                        ? participation.getParticipationStartDate()
+                        : posting.getActStartDate();
+        LocalDate actEndDate =
+                participation.getParticipationEndDate() != null
+                        ? participation.getParticipationEndDate()
+                        : posting.getActEndDate();
+
         return new MyPageActivityRecordResponse(
                 participation.getId(),
                 posting.getId(),
                 posting.getTitle(),
                 posting.getCategory(),
-                posting.getActStartDate(),
-                posting.getActEndDate(),
+                actStartDate,
+                actEndDate,
                 posting.getActPlace(),
                 participation.getRecognizedMinutes(),
                 participation.getRecognizedMinutes() != null);

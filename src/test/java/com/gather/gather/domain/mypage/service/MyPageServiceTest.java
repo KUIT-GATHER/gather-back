@@ -3,6 +3,7 @@ package com.gather.gather.domain.mypage.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.never;
@@ -39,6 +40,7 @@ import com.gather.gather.global.exception.BusinessException;
 import com.gather.gather.global.exception.ErrorCode;
 import com.gather.gather.global.util.SecurityUtil;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.YearMonth;
 import java.util.Collection;
 import java.util.List;
@@ -62,7 +64,8 @@ class MyPageServiceTest {
     private static final Long USER_ID = 1L;
     private static final Set<PostingParticipationStatus> COMPLETED_STATUSES =
             Set.of(PostingParticipationStatus.COMPLETED, PostingParticipationStatus.REVIEWED);
-
+    private static final Set<PostingParticipationStatus> UPCOMING_STATUSES =
+            Set.of(PostingParticipationStatus.APPLIED, PostingParticipationStatus.CONFIRMED);
     @Mock private UserRepository userRepository;
     @Mock private BookmarkRepository bookmarkRepository;
     @Mock private MeetingBookmarkRepository meetingBookmarkRepository;
@@ -94,7 +97,9 @@ class MyPageServiceTest {
                                 USER_ID, MeetingMemberStatus.APPROVED, MeetingStatus.COMPLETED))
                 .thenReturn(List.of());
         lenient()
-                .when(meetingRecruitParticipationRepository.findMyUpcomingSchedules(USER_ID))
+                .when(
+                        meetingRecruitParticipationRepository.findMyUpcomingSchedules(
+                                eq(USER_ID), any(LocalDateTime.class)))
                 .thenReturn(List.of());
         lenient().when(regionNameResolver.resolve(any(Collection.class))).thenReturn(Map.of());
     }
@@ -169,9 +174,14 @@ class MyPageServiceTest {
     @DisplayName(
             "getActivities returns only cards within the requested month, sorted by actStartDate")
     void getActivities_filtersByMonthAndSorts() {
-        Posting laterPosting = posting(101L, LocalDate.of(2026, 7, 20));
-        Posting earlierPosting = posting(102L, LocalDate.of(2026, 7, 5));
-        Posting outsideMonthPosting = posting(103L, LocalDate.of(2026, 8, 1));
+        YearMonth targetMonth = YearMonth.from(LocalDate.now().plusMonths(2)); // 확실히 미래인 달
+        LocalDate laterDate = targetMonth.atDay(Math.min(20, targetMonth.lengthOfMonth()));
+        LocalDate earlierDate = targetMonth.atDay(5);
+        LocalDate outsideDate = targetMonth.plusMonths(1).atDay(1);
+
+        Posting laterPosting = posting(101L, laterDate);
+        Posting earlierPosting = posting(102L, earlierDate);
+        Posting outsideMonthPosting = posting(103L, outsideDate);
 
         PostingParticipation laterParticipation = PostingParticipation.create(USER_ID, 101L);
         PostingParticipation earlierParticipation = PostingParticipation.create(USER_ID, 102L);
@@ -179,7 +189,8 @@ class MyPageServiceTest {
 
         try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
             securityUtil.when(SecurityUtil::getCurrentUserId).thenReturn(USER_ID);
-            when(postingParticipationRepository.findByUserId(USER_ID))
+            when(postingParticipationRepository.findAllByUserIdAndStatusIn(
+                            eq(USER_ID), eq(UPCOMING_STATUSES)))
                     .thenReturn(
                             List.of(
                                     laterParticipation,
@@ -188,8 +199,7 @@ class MyPageServiceTest {
             when(postingRepository.findAllById(List.of(101L, 102L, 103L)))
                     .thenReturn(List.of(laterPosting, earlierPosting, outsideMonthPosting));
 
-            List<MyPageActivityResponse> activities =
-                    myPageService.getActivities(YearMonth.of(2026, 7));
+            List<MyPageActivityResponse> activities = myPageService.getActivities(targetMonth);
 
             assertThat(activities)
                     .extracting(MyPageActivityResponse::postingId)
@@ -199,35 +209,22 @@ class MyPageServiceTest {
 
     @Test
     @DisplayName(
-            "getActivities includes COMPLETED/REVIEWED participations so the 봉사 완료 tag can be"
-                    + " shown, using the unfiltered repository query")
-    void getActivities_includesCompletedAndReviewedParticipations() {
-        Posting completedPosting = posting(701L, LocalDate.of(2026, 7, 10));
-        Posting reviewedPosting = posting(702L, LocalDate.of(2026, 7, 11));
-        PostingParticipation completedParticipation = PostingParticipation.create(USER_ID, 701L);
-        ReflectionTestUtils.setField(
-                completedParticipation, "status", PostingParticipationStatus.COMPLETED);
-        PostingParticipation reviewedParticipation = PostingParticipation.create(USER_ID, 702L);
-        ReflectionTestUtils.setField(
-                reviewedParticipation, "status", PostingParticipationStatus.REVIEWED);
-
+            "getActivities excludes COMPLETED/REVIEWED participations — those belong in 활동기록,"
+                    + " not 다가오는 활동")
+    void getActivities_excludesCompletedAndReviewedParticipations() {
         try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
             securityUtil.when(SecurityUtil::getCurrentUserId).thenReturn(USER_ID);
-            when(postingParticipationRepository.findByUserId(USER_ID))
-                    .thenReturn(List.of(completedParticipation, reviewedParticipation));
-            when(postingRepository.findAllById(List.of(701L, 702L)))
-                    .thenReturn(List.of(completedPosting, reviewedPosting));
+
+            when(postingParticipationRepository.findAllByUserIdAndStatusIn(
+                            eq(USER_ID), eq(UPCOMING_STATUSES)))
+                    .thenReturn(List.of());
 
             List<MyPageActivityResponse> activities =
                     myPageService.getActivities(YearMonth.of(2026, 7));
 
-            assertThat(activities)
-                    .extracting(MyPageActivityResponse::postingId)
-                    .containsExactlyInAnyOrder(701L, 702L);
-            assertThat(activities)
-                    .extracting(MyPageActivityResponse::status)
-                    .containsExactlyInAnyOrder("COMPLETED", "REVIEWED");
-            verify(postingParticipationRepository).findByUserId(USER_ID);
+            assertThat(activities).isEmpty();
+            verify(postingParticipationRepository)
+                    .findAllByUserIdAndStatusIn(USER_ID, UPCOMING_STATUSES);
         }
     }
 
@@ -243,7 +240,8 @@ class MyPageServiceTest {
 
         try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
             securityUtil.when(SecurityUtil::getCurrentUserId).thenReturn(USER_ID);
-            when(postingParticipationRepository.findByUserId(USER_ID))
+            when(postingParticipationRepository.findAllByUserIdAndStatusIn(
+                            eq(USER_ID), eq(UPCOMING_STATUSES)))
                     .thenReturn(List.of(firstDayParticipation, lastDayParticipation));
             when(postingRepository.findAllById(List.of(201L, 202L)))
                     .thenReturn(List.of(firstDayPosting, lastDayPosting));
@@ -262,22 +260,32 @@ class MyPageServiceTest {
             "getActivities includes a multi-day activity in every month it spans, and excludes it"
                     + " from months outside that range")
     void getActivities_includesMultiDayActivityInEveryOverlappingMonth() {
-        Posting multiDayPosting =
-                posting(401L, LocalDate.of(2026, 7, 30), LocalDate.of(2026, 8, 2));
+        // After
+        YearMonth firstMonth = YearMonth.from(LocalDate.now().plusMonths(2));
+        YearMonth secondMonth = firstMonth.plusMonths(1);
+        YearMonth thirdMonth = secondMonth.plusMonths(1);
+        LocalDate spanStart = firstMonth.atEndOfMonth();
+        LocalDate spanEnd = secondMonth.atDay(2);
+
+        Posting multiDayPosting = posting(401L, spanStart, spanEnd);
         PostingParticipation participation = PostingParticipation.create(USER_ID, 401L);
 
         try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
             securityUtil.when(SecurityUtil::getCurrentUserId).thenReturn(USER_ID);
-            when(postingParticipationRepository.findByUserId(USER_ID))
+            when(postingParticipationRepository.findAllByUserIdAndStatusIn(
+                            eq(USER_ID),
+                            eq(
+                                    Set.of(
+                                            PostingParticipationStatus.APPLIED,
+                                            PostingParticipationStatus.CONFIRMED))))
                     .thenReturn(List.of(participation));
             when(postingRepository.findAllById(List.of(401L))).thenReturn(List.of(multiDayPosting));
 
-            List<MyPageActivityResponse> julyActivities =
-                    myPageService.getActivities(YearMonth.of(2026, 7));
+            List<MyPageActivityResponse> julyActivities = myPageService.getActivities(firstMonth);
             List<MyPageActivityResponse> augustActivities =
-                    myPageService.getActivities(YearMonth.of(2026, 8));
+                    myPageService.getActivities(secondMonth);
             List<MyPageActivityResponse> septemberActivities =
-                    myPageService.getActivities(YearMonth.of(2026, 9));
+                    myPageService.getActivities(thirdMonth);
 
             assertThat(julyActivities)
                     .extracting(MyPageActivityResponse::postingId)
@@ -297,13 +305,45 @@ class MyPageServiceTest {
 
         try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
             securityUtil.when(SecurityUtil::getCurrentUserId).thenReturn(USER_ID);
-            when(postingParticipationRepository.findByUserId(USER_ID))
+            when(postingParticipationRepository.findAllByUserIdAndStatusIn(
+                            eq(USER_ID),
+                            eq(
+                                    Set.of(
+                                            PostingParticipationStatus.APPLIED,
+                                            PostingParticipationStatus.CONFIRMED))))
                     .thenReturn(List.of(participation));
             when(postingRepository.findAllById(List.of(301L)))
                     .thenReturn(List.of(unscheduledPosting));
 
             List<MyPageActivityResponse> activities =
                     myPageService.getActivities(YearMonth.of(2026, 7));
+
+            assertThat(activities).isEmpty();
+        }
+    }
+
+    @Test
+    @DisplayName(
+            "getActivities excludes a volunteer activity whose participation end date has already"
+                    + " passed, even though it overlaps the requested month")
+    void getActivities_excludesVolunteerActivityThatAlreadyEnded() {
+        LocalDate today = LocalDate.now();
+        YearMonth thisMonth = YearMonth.from(today);
+        LocalDate pastStart = thisMonth.atDay(1);
+
+        Posting endedPosting = posting(901L, pastStart, today.minusDays(1));
+        PostingParticipation endedParticipation = PostingParticipation.create(USER_ID, 901L);
+        ReflectionTestUtils.setField(
+                endedParticipation, "participationEndDate", today.minusDays(1));
+
+        try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
+            securityUtil.when(SecurityUtil::getCurrentUserId).thenReturn(USER_ID);
+            when(postingParticipationRepository.findAllByUserIdAndStatusIn(
+                            eq(USER_ID), eq(UPCOMING_STATUSES)))
+                    .thenReturn(List.of(endedParticipation));
+            when(postingRepository.findAllById(List.of(901L))).thenReturn(List.of(endedPosting));
+
+            List<MyPageActivityResponse> activities = myPageService.getActivities(thisMonth);
 
             assertThat(activities).isEmpty();
         }

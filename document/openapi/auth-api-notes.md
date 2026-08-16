@@ -141,6 +141,16 @@
 - 계정 상태가 정지·탈퇴 처리 중·탈퇴이면 각각 `403 SUSPENDED_USER` / `WITHDRAWAL_PENDING_USER` / `WITHDRAWN_USER`로 재발급이 차단됩니다.
 - Refresh Token 유효기간: **14일**.
 
+### 3-6-1. 로그인 세션 복원 — `POST /api/v1/auth/session/restore`
+
+- 앱 최초 로딩 또는 새로고침 시 호출합니다. 요청 body와 Authorization Header는 없으며, `credentials: include`로 HttpOnly Refresh Token 쿠키를 전송합니다.
+- 유효한 Refresh Token이면 `/reissue`와 동일하게 기존 Refresh Token을 폐기하고 새 Access Token과 Refresh Token을 발급합니다.
+- Cookie 없음, `INVALID_TOKEN`, `EXPIRED_TOKEN`, `REVOKED_TOKEN`은 오류가 아닌 `200`과 `authenticated: false`로 반환합니다.
+- 복원 성공은 `authenticated: true`와 `{ accessToken, tokenType: "Bearer" }`를 반환하고, rotation된 Refresh Token은 `Set-Cookie`로 갱신합니다.
+- 실패한 복원 응답은 Refresh Cookie를 삭제하거나 변경하지 않습니다. 동시에 수행된 다른 인증 요청이 설정한 새 쿠키를 삭제하지 않기 위한 정책입니다.
+- `SUSPENDED_USER`, `WITHDRAWAL_PENDING_USER`, `WITHDRAWN_USER`는 기존 계정 상태 오류인 `403`을 유지하고, DB·서버 장애는 `5xx`를 유지합니다.
+- 같은 Refresh Token으로 복원·재발급 요청이 동시에 실행되면 한 요청만 rotation에 성공하고 경쟁에서 패배한 restore 요청은 `authenticated: false`, reissue 요청은 `401 REVOKED_TOKEN`을 받을 수 있습니다. 실패 응답은 쿠키를 변경하지 않으므로 새 Refresh Cookie는 훼손하지 않습니다.
+
 ### 3-7. 로그아웃 — `POST /api/v1/auth/logout`
 
 - **Access Token 불필요**, 요청 body 없음. Refresh Token은 `gather_refresh_token` 쿠키로 전송됩니다.

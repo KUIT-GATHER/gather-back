@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -35,6 +36,7 @@ import com.gather.gather.domain.recruit.repository.MeetingRecruitRepository;
 import com.gather.gather.domain.region.repository.RegionRepository;
 import com.gather.gather.global.exception.BusinessException;
 import com.gather.gather.global.exception.ErrorCode;
+import com.gather.gather.global.util.DuplicateSubmissionGuard;
 import com.gather.gather.global.util.SecurityUtil;
 import java.time.LocalDateTime;
 import java.util.Optional;
@@ -68,6 +70,7 @@ class MeetingRecruitServiceTest {
     @Mock private MeetingRecruitRepository meetingRecruitRepository;
     @Mock private MeetingRecruitParticipationRepository participationRepository;
     @Mock private ApplicationEventPublisher eventPublisher;
+    @Mock private DuplicateSubmissionGuard duplicateSubmissionGuard;
 
     @InjectMocks private MeetingRecruitService meetingRecruitService;
 
@@ -145,6 +148,8 @@ class MeetingRecruitServiceTest {
 
         verify(postRepository, never()).save(any());
         verify(eventPublisher, never()).publishEvent(Mockito.any(Object.class));
+        // H2: 권한 검증 실패는 가드보다 먼저 걸려야 한다.
+        verify(duplicateSubmissionGuard, never()).guard(any());
     }
 
     @Test
@@ -189,6 +194,57 @@ class MeetingRecruitServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .hasFieldOrPropertyWithValue(
                         "errorCode", ErrorCode.RECRUIT_RECOGNIZED_MINUTES_REQUIRED);
+        verify(postRepository, never()).save(any());
+        verify(eventPublisher, never()).publishEvent(Mockito.any(Object.class));
+    }
+
+    @Test
+    @DisplayName(
+            "createRecruit calls DuplicateSubmissionGuard with the user:meeting key after"
+                    + " validation passes (H3)")
+    void createRecruit_callsDuplicateSubmissionGuard_withExpectedKey_afterValidationPasses() {
+        Meeting meeting = meeting();
+        MeetingMember host = member(MeetingMemberRole.HOST);
+        User author = author();
+        Post savedPost = recruitPost();
+        when(meetingRepository.findByIdAndDeletedAtIsNull(MEETING_ID))
+                .thenReturn(Optional.of(meeting));
+        when(meetingMemberRepository.findByMeeting_IdAndUser_IdAndStatus(
+                        MEETING_ID, USER_ID, MeetingMemberStatus.APPROVED))
+                .thenReturn(Optional.of(host));
+        when(userRepository.findById(USER_ID)).thenReturn(Optional.of(author));
+        when(postRepository.save(any(Post.class))).thenReturn(savedPost);
+        when(meetingRecruitRepository.save(any(MeetingRecruit.class)))
+                .thenAnswer(inv -> inv.getArgument(0));
+
+        meetingRecruitService.createRecruit(MEETING_ID, createRequest(30, false, null));
+
+        verify(duplicateSubmissionGuard).guard("recruit:create:" + USER_ID + ":" + MEETING_ID);
+    }
+
+    @Test
+    @DisplayName(
+            "createRecruit does not save or publish events when DuplicateSubmissionGuard"
+                    + " rejects the request (H3)")
+    void createRecruit_doesNotSaveOrPublish_whenDuplicateSubmissionGuardThrows() {
+        Meeting meeting = meeting();
+        MeetingMember host = member(MeetingMemberRole.HOST);
+        when(meetingRepository.findByIdAndDeletedAtIsNull(MEETING_ID))
+                .thenReturn(Optional.of(meeting));
+        when(meetingMemberRepository.findByMeeting_IdAndUser_IdAndStatus(
+                        MEETING_ID, USER_ID, MeetingMemberStatus.APPROVED))
+                .thenReturn(Optional.of(host));
+        doThrow(new BusinessException(ErrorCode.DUPLICATE_SUBMISSION))
+                .when(duplicateSubmissionGuard)
+                .guard("recruit:create:" + USER_ID + ":" + MEETING_ID);
+
+        assertThatThrownBy(
+                        () ->
+                                meetingRecruitService.createRecruit(
+                                        MEETING_ID, createRequest(30, false, null)))
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("errorCode", ErrorCode.DUPLICATE_SUBMISSION);
+
         verify(postRepository, never()).save(any());
         verify(eventPublisher, never()).publishEvent(Mockito.any(Object.class));
     }

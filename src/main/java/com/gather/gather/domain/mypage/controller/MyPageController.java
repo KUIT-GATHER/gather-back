@@ -88,7 +88,13 @@ public class MyPageController {
         return ApiResponse.success(myPageService.getHome());
     }
 
-    @Operation(summary = "마이페이지 활동 캘린더 조회", description = "지정한 월의 봉사 참여 일정 목록(일정카드)을 조회한다.")
+    // After
+    @Operation(
+            summary = "마이페이지 다가오는 활동 조회",
+            description =
+                    "다가오는 활동 일정 목록(일정카드)을 조회한다. status가 APPLIED/CONFIRMED이고 활동 종료일이 오늘"
+                            + " 이후인 일정만 반환하며, 종료됐거나 COMPLETED/REVIEWED로 전환된 참여는 포함하지 않는다."
+                            + " 완료된 활동은 활동기록 API(GET /api/v1/mypage/activity-records)에서 조회한다.")
     @ApiResponses({
         @io.swagger.v3.oas.annotations.responses.ApiResponse(
                 responseCode = "200",

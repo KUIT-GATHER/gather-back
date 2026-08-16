@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.AdditionalAnswers.returnsFirstArg;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockStatic;
@@ -30,6 +31,7 @@ import com.gather.gather.domain.post.repository.PostLikeRepository;
 import com.gather.gather.domain.post.repository.PostRepository;
 import com.gather.gather.global.exception.BusinessException;
 import com.gather.gather.global.exception.ErrorCode;
+import com.gather.gather.global.util.DuplicateSubmissionGuard;
 import com.gather.gather.global.util.SecurityUtil;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
@@ -60,6 +62,7 @@ class PostServiceTest {
     @Mock private PostImageService postImageService;
     @Mock private PostSummaryAssembler summaryAssembler;
     @Mock private PostReviewSourceService postReviewSourceService;
+    @Mock private DuplicateSubmissionGuard duplicateSubmissionGuard;
 
     private PostService postService;
     private Meeting meeting;
@@ -76,7 +79,8 @@ class PostServiceTest {
                         meetingMemberRepository,
                         userRepository,
                         eventPublisher,
-                        postReviewSourceService);
+                        postReviewSourceService,
+                        duplicateSubmissionGuard);
         meeting = mock(Meeting.class);
     }
 
@@ -262,6 +266,8 @@ class PostServiceTest {
                     .hasFieldOrPropertyWithValue("errorCode", ErrorCode.NOTICE_HOST_ONLY);
             verify(eventPublisher, never()).publishEvent(any());
             verify(postRepository, never()).save(any());
+            // H2: 권한 검증 실패는 가드보다 먼저 걸려야 한다 — 검증 실패로 재시도해야 하는 요청이 쿨다운을 소비하면 안 된다.
+            verify(duplicateSubmissionGuard, never()).guard(any());
         }
     }
 
@@ -316,6 +322,69 @@ class PostServiceTest {
                                                     null)))
                     .isInstanceOf(BusinessException.class)
                     .hasFieldOrPropertyWithValue("errorCode", ErrorCode.MEETING_NOT_FOUND);
+        }
+    }
+
+    @Test
+    @DisplayName(
+            "createPost calls DuplicateSubmissionGuard with the user:meeting key after validation"
+                    + " passes (H3)")
+    void createPost_callsDuplicateSubmissionGuard_withExpectedKey_afterValidationPasses() {
+        try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
+            securityUtil.when(SecurityUtil::getCurrentUserId).thenReturn(USER_ID);
+            when(meetingRepository.findByIdAndDeletedAtIsNull(MEETING_ID))
+                    .thenReturn(Optional.of(meeting));
+            MeetingMember membership = approvedMember(MeetingMemberRole.MEMBER);
+            when(meetingMemberRepository.findByMeeting_IdAndUser_IdAndStatus(
+                            MEETING_ID, USER_ID, MeetingMemberStatus.APPROVED))
+                    .thenReturn(Optional.of(membership));
+            User author = mock(User.class);
+            when(author.getId()).thenReturn(USER_ID);
+            when(userRepository.findById(USER_ID)).thenReturn(Optional.of(author));
+            when(postRepository.save(any(Post.class))).thenAnswer(returnsFirstArg());
+
+            postService.createPost(
+                    MEETING_ID,
+                    new PostCreateRequest("자유 게시글", "내용", PostType.FREE, null, null, null, null));
+
+            verify(duplicateSubmissionGuard).guard("post:create:" + USER_ID + ":" + MEETING_ID);
+        }
+    }
+
+    @Test
+    @DisplayName(
+            "createPost does not save or publish events when DuplicateSubmissionGuard rejects the"
+                    + " request (H3)")
+    void createPost_doesNotSaveOrPublish_whenDuplicateSubmissionGuardThrows() {
+        try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
+            securityUtil.when(SecurityUtil::getCurrentUserId).thenReturn(USER_ID);
+            when(meetingRepository.findByIdAndDeletedAtIsNull(MEETING_ID))
+                    .thenReturn(Optional.of(meeting));
+            MeetingMember membership = approvedMember(MeetingMemberRole.MEMBER);
+            when(meetingMemberRepository.findByMeeting_IdAndUser_IdAndStatus(
+                            MEETING_ID, USER_ID, MeetingMemberStatus.APPROVED))
+                    .thenReturn(Optional.of(membership));
+            doThrow(new BusinessException(ErrorCode.DUPLICATE_SUBMISSION))
+                    .when(duplicateSubmissionGuard)
+                    .guard("post:create:" + USER_ID + ":" + MEETING_ID);
+
+            assertThatThrownBy(
+                            () ->
+                                    postService.createPost(
+                                            MEETING_ID,
+                                            new PostCreateRequest(
+                                                    "자유 게시글",
+                                                    "내용",
+                                                    PostType.FREE,
+                                                    null,
+                                                    null,
+                                                    null,
+                                                    null)))
+                    .isInstanceOf(BusinessException.class)
+                    .hasFieldOrPropertyWithValue("errorCode", ErrorCode.DUPLICATE_SUBMISSION);
+
+            verify(postRepository, never()).save(any());
+            verify(eventPublisher, never()).publishEvent(any());
         }
     }
 

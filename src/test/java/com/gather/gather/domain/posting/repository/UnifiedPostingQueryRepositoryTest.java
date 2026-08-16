@@ -64,7 +64,7 @@ class UnifiedPostingQueryRepositoryTest {
 
         SearchResult result =
                 unifiedPostingQueryRepository.search(
-                        null, null, null, null, null, null, applyDeadlineAscending);
+                        null, null, null, null, null, null, null, null, applyDeadlineAscending);
 
         assertThat(result.rows())
                 .extracting(UnifiedPostingRow::id)
@@ -84,7 +84,7 @@ class UnifiedPostingQueryRepositoryTest {
 
         SearchResult result =
                 unifiedPostingQueryRepository.search(
-                        null, null, null, null, null, null, applyDeadlineAscending);
+                        null, null, null, null, null, null, null, null, applyDeadlineAscending);
 
         assertThat(result.rows())
                 .extracting(UnifiedPostingRow::id)
@@ -105,6 +105,8 @@ class UnifiedPostingQueryRepositoryTest {
         SearchResult result =
                 unifiedPostingQueryRepository.search(
                         PostingStatus.RECRUITING,
+                        null,
+                        null,
                         null,
                         null,
                         null,
@@ -132,7 +134,15 @@ class UnifiedPostingQueryRepositoryTest {
 
         SearchResult result =
                 unifiedPostingQueryRepository.search(
-                        PostingStatus.CLOSED, null, null, null, null, null, applyDeadlineAscending);
+                        PostingStatus.CLOSED,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        applyDeadlineAscending);
 
         assertThat(result.rows())
                 .extracting(UnifiedPostingRow::id)
@@ -154,6 +164,8 @@ class UnifiedPostingQueryRepositoryTest {
         SearchResult result =
                 unifiedPostingQueryRepository.search(
                         PostingStatus.RECRUITING,
+                        null,
+                        null,
                         null,
                         null,
                         null,
@@ -189,6 +201,8 @@ class UnifiedPostingQueryRepositoryTest {
                         null,
                         null,
                         null,
+                        null,
+                        null,
                         applyDeadlineAscending);
 
         assertThat(result.rows())
@@ -196,8 +210,72 @@ class UnifiedPostingQueryRepositoryTest {
                 .containsExactly(nearRecruit.getId(), farRecruit.getId(), openPosting.getId());
     }
 
+    @Test
+    void search_appliesActivityDateOverlapFilter_forPostingSource() {
+        Posting withinRange = savePostingWithActivityDates(TODAY.plusDays(5), TODAY.plusDays(10));
+        Posting overlapsRangeStart =
+                savePostingWithActivityDates(TODAY.plusDays(1), TODAY.plusDays(6));
+        savePostingWithActivityDates(TODAY.minusDays(10), TODAY.minusDays(5));
+        savePostingWithActivityDates(TODAY.plusDays(20), TODAY.plusDays(25));
+        Pageable pageable = PageRequest.of(0, 20);
+
+        SearchResult result =
+                unifiedPostingQueryRepository.search(
+                        null,
+                        null,
+                        null,
+                        null,
+                        TODAY.plusDays(5),
+                        TODAY.plusDays(10),
+                        null,
+                        null,
+                        pageable);
+
+        assertThat(result.rows())
+                .extracting(UnifiedPostingRow::id)
+                .containsExactlyInAnyOrder(withinRange.getId(), overlapsRangeStart.getId());
+    }
+
+    @Test
+    void search_appliesActivityDateOverlapFilter_forMeetingRecruitSource() {
+        Post withinRange = saveRecruit(TODAY.plusDays(3).atStartOfDay());
+        saveRecruit(TODAY.minusDays(12).atStartOfDay());
+        saveRecruit(TODAY.plusDays(18).atStartOfDay());
+        Pageable pageable = PageRequest.of(0, 20);
+
+        SearchResult result =
+                unifiedPostingQueryRepository.search(
+                        null,
+                        null,
+                        null,
+                        null,
+                        TODAY.plusDays(5),
+                        TODAY.plusDays(10),
+                        null,
+                        null,
+                        pageable);
+
+        assertThat(result.rows())
+                .extracting(UnifiedPostingRow::id)
+                .containsExactly(withinRange.getId());
+    }
+
     private Posting save(PostingStatus status, LocalDate noticeEnd) {
         return save(status, noticeEnd, null);
+    }
+
+    /** 활동일 겹침(overlap) 필터 테스트 전용 — act_start_date/act_end_date를 직접 지정한다. */
+    private Posting savePostingWithActivityDates(LocalDate actStartDate, LocalDate actEndDate) {
+        return postingRepository.save(
+                Posting.builder()
+                        .title("활동일 필터 테스트 공고")
+                        .status(PostingStatus.RECRUITING)
+                        .activityDate(actStartDate)
+                        .actStartDate(actStartDate)
+                        .actEndDate(actEndDate)
+                        .category(PostingCategory.ENVIRONMENT)
+                        .source(PostingSource.API_1365)
+                        .build());
     }
 
     private Posting save(PostingStatus status, LocalDate noticeEnd, Integer applicantCount) {
