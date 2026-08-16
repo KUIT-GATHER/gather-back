@@ -24,7 +24,7 @@ fetch(url, { credentials: "include" });
 
 ## 1️⃣ 모든 보호 API에 헤더 필수
 
-공개 API(회원가입/로그인/재발급/로그아웃, 지역/카테고리 조회) 외 **모든 API 요청에 아래 헤더가 필요합니다.**
+`/api/v1/auth/**`, 지역 조회(`GET /api/v1/regions/**`), 카테고리 조회(`GET /api/v1/categories`) 등의 공개 API 외 **모든 API 요청에 아래 헤더가 필요합니다.**
 
 ```
 Authorization: Bearer <accessToken>
@@ -35,10 +35,19 @@ Authorization: Bearer <accessToken>
 ## 1-1️⃣ 회원가입 활동 지역
 
 - 회원가입 요청은 `activityRegionId` 단일 값을 보냅니다.
-- `activityRegionId`는 시군구(`level === 2`) 단위 지역 1개입니다.
+- `activityRegionId`는 시도(`level === 1`) 또는 시군구(`level === 2`) 단위 지역 1개입니다.
 - 이 값은 향후 공고/모임 검색 화면의 기본 지역 필터 초기값으로 사용합니다.
 
-## 1-2️⃣ 이메일 회원가입 자동 로그인과 프로필 이미지
+## 1-2️⃣ 회원가입 휴대폰 인증
+
+- 일반·카카오 회원가입 모두 먼저 `POST /api/v1/auth/phone-verifications`로 휴대폰 인증 세션을 생성합니다.
+- 모바일은 응답의 `receiverNumber`와 `messageText`로 문자 앱을 열고, PC는 `POST /api/v1/auth/phone-verifications/{verificationId}/qr-code`로 받은 QR 이미지를 표시합니다.
+- 문자 전송 뒤 `POST /api/v1/auth/phone-verifications/{verificationId}/confirm`을 호출합니다. `PENDING`은 아직 확인되지 않은 정상 응답이고 `VERIFIED`가 인증 완료입니다.
+- 인증 완료 후 30분 안에 동일한 `phoneNumber`와 응답에서 받은 `verificationId`를 회원가입 body의 `phoneVerificationId`로 제출해야 합니다. 인증 결과는 한 번만 사용할 수 있습니다.
+- 인증이 없거나 ID·전화번호가 다르거나 만료·소비된 경우 `400 PHONE_VERIFICATION_REQUIRED`입니다. 요청 제한은 `429 PHONE_VERIFICATION_RATE_LIMITED`, 인증 제공자 장애는 `503 PHONE_VERIFICATION_PROVIDER_UNAVAILABLE`로 처리합니다.
+- 기존 `POST /api/v1/auth/phone-numbers/availability`는 호환용입니다. 신규 회원가입 화면에서는 별도 호출하지 않습니다.
+
+## 1-3️⃣ 이메일 회원가입 자동 로그인과 프로필 이미지
 
 - `POST /api/v1/auth/signup` 성공 시 기존 회원 정보와 함께 `accessToken`, `tokenType: "Bearer"`가 응답 body에 내려옵니다.
 - Refresh Token은 로그인과 동일하게 `HttpOnly` 쿠키로만 발급됩니다. 회원가입 요청도 `withCredentials: true` 또는 `credentials: "include"`로 호출해야 쿠키가 저장됩니다.
@@ -68,9 +77,9 @@ Authorization: Bearer <accessToken>
 
 ## 4️⃣ 기타
 
-- API 명세는 서버의 `/swagger-ui.html`에서 확인할 수 있고, 테스트 계정은 회원가입 API로 직접 생성하면 됩니다
+- API 명세는 서버의 `/swagger-ui.html`에서 확인할 수 있고, 테스트 계정은 이메일·휴대폰 인증을 완료한 뒤 회원가입 API로 생성하면 됩니다
 - Access Token 형식이 랜덤 문자열에서 JWT(`eyJ...`)로 바뀌어 길이가 길어졌습니다 — 토큰을 문자열 그대로 저장/전달한다면 코드 수정은 불필요합니다
-- `/signup`, `/login`, `/reissue`, `/logout` 요청은 모두 credentials 옵션이 필요합니다
+- `/signup`, `/login`, `/reissue`, `/logout`, `/kakao/login`, `/kakao/signup` 요청은 모두 credentials 옵션이 필요합니다
 - 개발 중 30분 만료가 불편하면 백엔드에 요청하세요 — 서버 설정으로 늘릴 수 있습니다
 - JWT payload(`sub`=userId, `role`)는 디코딩해 볼 수 있지만 **표시 용도로만** 사용하고, 권한 판단의 근거로 신뢰하지 마세요
 

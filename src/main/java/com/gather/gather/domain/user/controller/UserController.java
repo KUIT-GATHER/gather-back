@@ -60,10 +60,21 @@ public class UserController {
                                             value = UserSwaggerExamples.INVALID_TOKEN),
                                     @ExampleObject(
                                             name = "EXPIRED_TOKEN",
-                                            value = UserSwaggerExamples.EXPIRED_TOKEN),
+                                            value = UserSwaggerExamples.EXPIRED_TOKEN)
+                                })),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                responseCode = "403",
+                description = "탈퇴 상태로 인한 접근 차단",
+                content =
+                        @Content(
+                                mediaType = JSON,
+                                examples = {
                                     @ExampleObject(
-                                            name = "REVOKED_TOKEN",
-                                            value = UserSwaggerExamples.REVOKED_TOKEN)
+                                            name = "WITHDRAWAL_PENDING_USER",
+                                            value = UserSwaggerExamples.WITHDRAWAL_PENDING_USER),
+                                    @ExampleObject(
+                                            name = "WITHDRAWN_USER",
+                                            value = UserSwaggerExamples.WITHDRAWN_USER)
                                 })),
         @io.swagger.v3.oas.annotations.responses.ApiResponse(
                 responseCode = "404",
@@ -99,9 +110,6 @@ public class UserController {
                                             name = "VALIDATION_ERROR",
                                             value = UserSwaggerExamples.VALIDATION_ERROR),
                                     @ExampleObject(
-                                            name = "INVALID_ACTIVITY_REGION",
-                                            value = UserSwaggerExamples.INVALID_ACTIVITY_REGION),
-                                    @ExampleObject(
                                             name = "INVALID_INTEREST_CATEGORY_COUNT",
                                             value =
                                                     UserSwaggerExamples
@@ -122,10 +130,21 @@ public class UserController {
                                             value = UserSwaggerExamples.INVALID_TOKEN),
                                     @ExampleObject(
                                             name = "EXPIRED_TOKEN",
-                                            value = UserSwaggerExamples.EXPIRED_TOKEN),
+                                            value = UserSwaggerExamples.EXPIRED_TOKEN)
+                                })),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                responseCode = "403",
+                description = "탈퇴 상태로 인한 접근 차단",
+                content =
+                        @Content(
+                                mediaType = JSON,
+                                examples = {
                                     @ExampleObject(
-                                            name = "REVOKED_TOKEN",
-                                            value = UserSwaggerExamples.REVOKED_TOKEN)
+                                            name = "WITHDRAWAL_PENDING_USER",
+                                            value = UserSwaggerExamples.WITHDRAWAL_PENDING_USER),
+                                    @ExampleObject(
+                                            name = "WITHDRAWN_USER",
+                                            value = UserSwaggerExamples.WITHDRAWN_USER)
                                 })),
         @io.swagger.v3.oas.annotations.responses.ApiResponse(
                 responseCode = "404",
@@ -208,6 +227,16 @@ public class UserController {
                                             name = "EXPIRED_TOKEN",
                                             value = UserSwaggerExamples.EXPIRED_TOKEN)
                                 })),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                responseCode = "404",
+                description = "사용자를 찾을 수 없음",
+                content =
+                        @Content(
+                                mediaType = JSON,
+                                examples =
+                                        @ExampleObject(
+                                                name = "USER_NOT_FOUND",
+                                                value = UserSwaggerExamples.USER_NOT_FOUND))),
         @io.swagger.v3.oas.annotations.responses.ApiResponse(
                 responseCode = "409",
                 description = "탈퇴 상태 충돌",

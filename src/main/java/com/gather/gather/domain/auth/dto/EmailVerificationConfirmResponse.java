@@ -8,7 +8,9 @@ import java.util.UUID;
 public record EmailVerificationConfirmResponse(
         @Schema(description = "인증 완료 이메일", example = "test@example.com") String email,
         @Schema(description = "인증 완료 여부", example = "true") boolean verified,
-        @Schema(description = "이메일 인증 완료 시각", example = "2026-06-28T12:05:00")
+        @Schema(
+                        description = "이메일 인증 완료 시각(UTC, offset 없는 ISO-8601)",
+                        example = "2026-06-28T03:05:00")
                 LocalDateTime verifiedAt,
         @Schema(
                         description = "회원가입에 사용할 이메일 인증 결과 ID",

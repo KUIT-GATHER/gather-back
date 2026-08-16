@@ -14,9 +14,10 @@ info:
     - 재발급과 로그아웃은 Access Token 없이 Refresh Token 쿠키만으로 요청합니다.
     - 로그아웃은 같은 Refresh Token 쿠키로 여러 번 요청해도 성공 응답을 반환합니다.
     - 휴대폰 인증은 Gather가 5분 유효한 인증문구를 만들고, 사용자가 OCTOMO 대표번호로 직접 문자를 보낸 뒤 confirm API로 확인하는 번호 점유 인증입니다. 인증 완료 결과는 30분 안에 해당 `verificationId`와 전화번호를 함께 제출한 일반·카카오 회원가입에서 한 번만 소비할 수 있습니다.
+    - offset 없는 이메일 인증 시각(`expiresAt`, `resendAvailableAt`, `verifiedAt`)은 UTC 기준입니다. 휴대폰 인증 `expiresAt`은 UTC offset(`Z`)을 포함합니다.
     - 카카오 로그인은 `POST /api/v1/auth/kakao/login`에 `{authorizationCode, redirectUri}`를 전달합니다. `redirectUri`는 서버 허용 목록과 문자열까지 정확히 일치해야 합니다. 응답은 200이며 `signupStatus`로 기존 회원(`LOGIN_COMPLETED`)과 신규 회원(`ADDITIONAL_INFO_REQUIRED`)을 구분합니다. `ADDITIONAL_INFO_REQUIRED`는 에러가 아닙니다.
     - 신규 카카오 회원은 `POST /api/v1/auth/kakao/signup`에 추가정보를 제출하며, 로그인 응답으로 받은 가입용 임시 토큰을 `Authorization`이 아니라 `X-Signup-Token` 헤더로 전달합니다. 카카오 가입은 이메일·비밀번호를 받지 않습니다.
-    - `/kakao/login` 실패 중 400(인가 코드 무효·재사용·redirectUri 불일치), 500(카카오 장애), 503(카카오 요청 제한)은 코드값으로 분기하지 말고 모두 "카카오 로그인 다시 시작"으로 처리합니다. 단 403(정지·탈퇴)은 재시작하지 않고 계정 상태를 안내합니다.
+    - `/kakao/login` 실패 중 400(인가 코드 무효·재사용·redirectUri 불일치), 500(카카오 장애), 503(카카오 요청 제한)은 코드값으로 분기하지 말고 모두 "카카오 로그인 다시 시작"으로 처리합니다. 단 403(정지·탈퇴 처리 중·탈퇴)과 409(재가입 제한·소셜 연결 해제)는 재시작하지 않고 계정 상태를 안내합니다.
   version: 1.0.0
 
 servers:
@@ -58,8 +59,8 @@ paths:
                 success: true
                 data:
                   email: test@example.com
-                  expiresAt: '2026-06-28T12:10:00'
-                  resendAvailableAt: '2026-06-28T12:03:00'
+                  expiresAt: '2026-06-28T03:10:00'
+                  resendAvailableAt: '2026-06-28T03:03:00'
                   message: 인증 코드가 발송되었습니다.
                 error: null
         '400':
@@ -150,7 +151,7 @@ paths:
                 data:
                   email: test@example.com
                   verified: true
-                  verifiedAt: '2026-06-28T12:05:00'
+                  verifiedAt: '2026-06-28T03:05:00'
                   emailVerificationId: 98fa88ef-bbeb-4928-a202-7885197b3774
                 error: null
         '400':
@@ -245,12 +246,24 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorApiResponse'
+              example:
+                success: false
+                data: null
+                error:
+                  code: VALIDATION_ERROR
+                  message: 요청 값이 올바르지 않습니다.
         '429':
           description: 같은 번호의 인증 시작 요청 간격 제한
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorApiResponse'
+              example:
+                success: false
+                data: null
+                error:
+                  code: PHONE_VERIFICATION_RATE_LIMITED
+                  message: 휴대폰 인증 요청이 많습니다. 잠시 후 다시 시도해주세요.
 
   /api/v1/auth/phone-verifications/{verificationId}/qr-code:
     post:
@@ -268,30 +281,70 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/PhoneVerificationQrCodeApiResponse'
+              example:
+                success: true
+                data:
+                  qrCode: data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAA...
+                error: null
         '400':
           description: verificationId 형식 오류 또는 인증 세션 만료
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorApiResponse'
+              examples:
+                validationError:
+                  summary: verificationId 형식 오류
+                  value:
+                    success: false
+                    data: null
+                    error:
+                      code: VALIDATION_ERROR
+                      message: 요청 값이 올바르지 않습니다.
+                phoneVerificationExpired:
+                  summary: 인증 세션 만료
+                  value:
+                    success: false
+                    data: null
+                    error:
+                      code: PHONE_VERIFICATION_EXPIRED
+                      message: 휴대폰 인증 요청이 만료되었습니다.
         '404':
           description: 인증 세션 없음
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorApiResponse'
+              example:
+                success: false
+                data: null
+                error:
+                  code: PHONE_VERIFICATION_NOT_FOUND
+                  message: 휴대폰 인증 요청을 찾을 수 없습니다.
         '429':
           description: QR 발급 횟수·간격 제한 또는 OCTOMO 요청 제한
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorApiResponse'
+              example:
+                success: false
+                data: null
+                error:
+                  code: PHONE_VERIFICATION_RATE_LIMITED
+                  message: 휴대폰 인증 요청이 많습니다. 잠시 후 다시 시도해주세요.
         '503':
           description: OCTOMO 설정·네트워크·서비스 장애
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorApiResponse'
+              example:
+                success: false
+                data: null
+                error:
+                  code: PHONE_VERIFICATION_PROVIDER_UNAVAILABLE
+                  message: 휴대폰 인증 서비스를 일시적으로 사용할 수 없습니다.
 
   /api/v1/auth/phone-verifications/{verificationId}/confirm:
     post:
@@ -328,37 +381,89 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorApiResponse'
+              examples:
+                validationError:
+                  summary: verificationId 형식 오류
+                  value:
+                    success: false
+                    data: null
+                    error:
+                      code: VALIDATION_ERROR
+                      message: 요청 값이 올바르지 않습니다.
+                phoneVerificationExpired:
+                  summary: 인증 세션 만료
+                  value:
+                    success: false
+                    data: null
+                    error:
+                      code: PHONE_VERIFICATION_EXPIRED
+                      message: 휴대폰 인증 요청이 만료되었습니다.
         '404':
           description: 인증 세션 없음
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorApiResponse'
+              example:
+                success: false
+                data: null
+                error:
+                  code: PHONE_VERIFICATION_NOT_FOUND
+                  message: 휴대폰 인증 요청을 찾을 수 없습니다.
         '409':
           description: 이미 가입된 전화번호 또는 탈퇴 후 재가입 제한 중인 전화번호
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorApiResponse'
+              examples:
+                duplicatePhoneNumber:
+                  summary: 이미 가입된 전화번호
+                  value:
+                    success: false
+                    data: null
+                    error:
+                      code: DUPLICATE_PHONE_NUMBER
+                      message: 이미 사용 중인 전화번호입니다.
+                accountRejoinBlocked:
+                  summary: 탈퇴 후 재가입 제한 중인 전화번호
+                  value:
+                    success: false
+                    data: null
+                    error:
+                      code: ACCOUNT_REJOIN_BLOCKED
+                      message: 탈퇴 후 7일 동안 재가입할 수 없습니다.
         '429':
           description: 확인 횟수·간격 제한 또는 OCTOMO 요청 제한
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorApiResponse'
+              example:
+                success: false
+                data: null
+                error:
+                  code: PHONE_VERIFICATION_RATE_LIMITED
+                  message: 휴대폰 인증 요청이 많습니다. 잠시 후 다시 시도해주세요.
         '503':
           description: OCTOMO 설정·네트워크·서비스 장애
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorApiResponse'
+              example:
+                success: false
+                data: null
+                error:
+                  code: PHONE_VERIFICATION_PROVIDER_UNAVAILABLE
+                  message: 휴대폰 인증 서비스를 일시적으로 사용할 수 없습니다.
 
   /api/v1/auth/phone-numbers/availability:
     post:
       tags:
         - Auth
       summary: 전화번호 중복 확인
-      description: 회원가입 기본 정보 단계에서 입력한 전화번호가 이미 가입에 사용되었는지 확인합니다.
+      description: 기존 클라이언트 호환을 위해 유지하는 API입니다. 신규 회원가입에서는 휴대폰 인증 API를 사용합니다. 이미 가입에 사용됐거나 탈퇴 후 재가입 제한 중이면 available은 false입니다.
       operationId: checkPhoneNumberAvailability
       requestBody:
         required: true
@@ -385,7 +490,7 @@ paths:
                       available: true
                     error: null
                 unavailable:
-                  summary: 이미 사용 중인 전화번호
+                  summary: 이미 사용 중이거나 재가입 제한 중인 전화번호
                   value:
                     success: true
                     data:
@@ -410,7 +515,7 @@ paths:
       tags:
         - Auth
       summary: 회원가입
-      description: 기본 정보, 계정 정보, 프로필 정보, 활동 지역, 관심 카테고리, 약관 동의를 한 번에 제출하여 회원가입과 자동 로그인을 완료합니다. Access Token은 응답 body로, Refresh Token은 HttpOnly 쿠키로 발급됩니다.
+      description: 요청 전화번호와 일치하는 30분 이내 미소비 휴대폰 인증이 필요합니다. 기본 정보, 계정 정보, 프로필 정보, 활동 지역, 관심 카테고리, 약관 동의를 한 번에 제출하여 회원가입과 자동 로그인을 완료합니다. Access Token은 응답 body로, Refresh Token은 HttpOnly 쿠키로 발급됩니다.
       operationId: signup
       requestBody:
         required: true
@@ -507,14 +612,6 @@ paths:
                     error:
                       code: REQUIRED_TERMS_NOT_AGREED
                       message: 필수 약관 동의가 필요합니다.
-                invalidActivityRegion:
-                  summary: 활동 지역 오류
-                  value:
-                    success: false
-                    data: null
-                    error:
-                      code: INVALID_ACTIVITY_REGION
-                      message: 활동 지역은 시군구 단위로 1개 선택해야 합니다.
                 invalidInterestCategoryCount:
                   summary: 관심 카테고리 개수 오류
                   value:
@@ -569,6 +666,14 @@ paths:
                     error:
                       code: DUPLICATE_NICKNAME
                       message: 이미 사용 중인 닉네임입니다.
+                accountRejoinBlocked:
+                  summary: 탈퇴 후 7일 재가입 제한
+                  value:
+                    success: false
+                    data: null
+                    error:
+                      code: ACCOUNT_REJOIN_BLOCKED
+                      message: 탈퇴 후 7일 동안 재가입할 수 없습니다.
 
   /api/v1/auth/login:
     post:
@@ -644,6 +749,14 @@ paths:
                     error:
                       code: SUSPENDED_USER
                       message: 이용 정지된 계정입니다.
+                withdrawalPendingUser:
+                  summary: 탈퇴 처리 중인 계정
+                  value:
+                    success: false
+                    data: null
+                    error:
+                      code: WITHDRAWAL_PENDING_USER
+                      message: 탈퇴 처리 중인 계정입니다.
                 withdrawnUser:
                   summary: 탈퇴 계정
                   value:
@@ -732,6 +845,14 @@ paths:
                     error:
                       code: SUSPENDED_USER
                       message: 이용 정지된 계정입니다.
+                withdrawalPendingUser:
+                  summary: 탈퇴 처리 중인 계정
+                  value:
+                    success: false
+                    data: null
+                    error:
+                      code: WITHDRAWAL_PENDING_USER
+                      message: 탈퇴 처리 중인 계정입니다.
                 withdrawnUser:
                   summary: 탈퇴 계정
                   value:
@@ -801,7 +922,7 @@ paths:
         두 경우 모두 HTTP 200이며 `signupStatus`로 구분합니다. `ADDITIONAL_INFO_REQUIRED`는 에러가 아닙니다.
 
         400(인가 코드 무효·재사용, redirectUri 불일치), 500(카카오 장애), 503(카카오 요청 제한)은 코드값으로 분기하지 말고 모두
-        "카카오 로그인 다시 시작"으로 처리합니다. 단 403(정지·탈퇴)은 재시작하지 않고 계정 상태를 안내합니다.
+        "카카오 로그인 다시 시작"으로 처리합니다. 403은 계정 상태를 안내하고, 409는 재가입 제한 또는 연결 해제 상태를 안내합니다.
       operationId: kakaoLogin
       requestBody:
         required: true
@@ -882,6 +1003,14 @@ paths:
                     error:
                       code: SUSPENDED_USER
                       message: 이용 정지된 계정입니다.
+                withdrawalPendingUser:
+                  summary: 탈퇴 처리 중인 계정
+                  value:
+                    success: false
+                    data: null
+                    error:
+                      code: WITHDRAWAL_PENDING_USER
+                      message: 탈퇴 처리 중인 계정입니다.
                 withdrawnUser:
                   summary: 탈퇴 계정
                   value:
@@ -890,6 +1019,29 @@ paths:
                     error:
                       code: WITHDRAWN_USER
                       message: 탈퇴한 계정입니다.
+        '409':
+          description: 탈퇴 후 재가입 제한 또는 연결 해제된 소셜 계정
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorApiResponse'
+              examples:
+                accountRejoinBlocked:
+                  summary: 탈퇴 후 7일 재가입 제한
+                  value:
+                    success: false
+                    data: null
+                    error:
+                      code: ACCOUNT_REJOIN_BLOCKED
+                      message: 탈퇴 후 7일 동안 재가입할 수 없습니다.
+                socialAccountNotLinked:
+                  summary: 연결 해제된 소셜 계정
+                  value:
+                    success: false
+                    data: null
+                    error:
+                      code: SOCIAL_ACCOUNT_NOT_LINKED
+                      message: 연결 해제된 소셜 계정입니다.
         '500':
           description: 카카오 API 장애 또는 타임아웃
           content:
@@ -1006,14 +1158,6 @@ paths:
                     error:
                       code: PHONE_VERIFICATION_REQUIRED
                       message: 휴대폰 인증이 필요합니다.
-                invalidActivityRegion:
-                  summary: 활동 지역 오류
-                  value:
-                    success: false
-                    data: null
-                    error:
-                      code: INVALID_ACTIVITY_REGION
-                      message: 활동 지역은 시군구 단위로 1개 선택해야 합니다.
                 invalidInterestCategoryCount:
                   summary: 관심 카테고리 개수 오류
                   value:
@@ -1088,6 +1232,22 @@ paths:
                     error:
                       code: ALREADY_REGISTERED
                       message: 이미 가입된 계정입니다.
+                accountRejoinBlocked:
+                  summary: 탈퇴 후 7일 재가입 제한
+                  value:
+                    success: false
+                    data: null
+                    error:
+                      code: ACCOUNT_REJOIN_BLOCKED
+                      message: 탈퇴 후 7일 동안 재가입할 수 없습니다.
+                socialAccountNotLinked:
+                  summary: 연결 해제된 소셜 계정
+                  value:
+                    success: false
+                    data: null
+                    error:
+                      code: SOCIAL_ACCOUNT_NOT_LINKED
+                      message: 연결 해제된 소셜 계정입니다.
 
   /api/v1/regions:
     get:
@@ -1256,12 +1416,12 @@ components:
           example: test@example.com
         expiresAt:
           type: string
-          description: 인증 코드 만료 시각
-          example: '2026-06-28T12:10:00'
+          description: 인증 코드 만료 시각(UTC, offset 없는 ISO-8601)
+          example: '2026-06-28T03:10:00'
         resendAvailableAt:
           type: string
-          description: 재발송 가능 시각. 이 시각 전에는 재발송이 거부됩니다.
-          example: '2026-06-28T12:03:00'
+          description: 재발송 가능 시각(UTC, offset 없는 ISO-8601). 이 시각 전에는 재발송이 거부됩니다.
+          example: '2026-06-28T03:03:00'
         message:
           type: string
           example: 인증 코드가 발송되었습니다.
@@ -1318,8 +1478,8 @@ components:
           example: true
         verifiedAt:
           type: string
-          description: 이메일 인증 완료 시각
-          example: '2026-06-28T12:05:00'
+          description: 이메일 인증 완료 시각(UTC, offset 없는 ISO-8601)
+          example: '2026-06-28T03:05:00'
         emailVerificationId:
           type: string
           format: uuid
@@ -1477,7 +1637,7 @@ components:
           example: '01012345678'
         available:
           type: boolean
-          description: true면 사용 가능, false면 이미 사용 중인 번호
+          description: true면 가입 가능, false면 이미 사용 중이거나 탈퇴 후 재가입 제한 중인 번호
           example: true
 
     PhoneNumberAvailabilityApiResponse:
@@ -1580,7 +1740,7 @@ components:
         activityRegionId:
           type: integer
           format: int64
-          description: 활동 지역 ID. 회원가입 시 선택하는 시군구(level 2) 단위 활동 지역 1개입니다. 향후 공고/모임 검색의 기본 지역 필터 초기값으로 사용합니다.
+          description: 활동 지역 ID. 시도(level 1) 또는 시군구(level 2) 단위 활동 지역 1개입니다. 향후 공고/모임 검색의 기본 지역 필터 초기값으로 사용합니다.
           example: 123
         interestCategories:
           type: array
@@ -1793,7 +1953,7 @@ components:
         activityRegionId:
           type: integer
           format: int64
-          description: 활동 지역 ID. 시군구(level 2) 단위 1개입니다.
+          description: 활동 지역 ID. 시도(level 1) 또는 시군구(level 2) 단위 1개입니다.
           example: 123
         interestCategories:
           type: array

@@ -51,10 +51,21 @@ public class ProfileImageController {
                                             value = UserSwaggerExamples.INVALID_TOKEN),
                                     @ExampleObject(
                                             name = "EXPIRED_TOKEN",
-                                            value = UserSwaggerExamples.EXPIRED_TOKEN),
+                                            value = UserSwaggerExamples.EXPIRED_TOKEN)
+                                })),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                responseCode = "403",
+                description = "탈퇴 상태로 인한 접근 차단",
+                content =
+                        @Content(
+                                mediaType = JSON,
+                                examples = {
                                     @ExampleObject(
-                                            name = "REVOKED_TOKEN",
-                                            value = UserSwaggerExamples.REVOKED_TOKEN)
+                                            name = "WITHDRAWAL_PENDING_USER",
+                                            value = UserSwaggerExamples.WITHDRAWAL_PENDING_USER),
+                                    @ExampleObject(
+                                            name = "WITHDRAWN_USER",
+                                            value = UserSwaggerExamples.WITHDRAWN_USER)
                                 })),
         @io.swagger.v3.oas.annotations.responses.ApiResponse(
                 responseCode = "404",
@@ -120,10 +131,21 @@ public class ProfileImageController {
                                             value = UserSwaggerExamples.INVALID_TOKEN),
                                     @ExampleObject(
                                             name = "EXPIRED_TOKEN",
-                                            value = UserSwaggerExamples.EXPIRED_TOKEN),
+                                            value = UserSwaggerExamples.EXPIRED_TOKEN)
+                                })),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                responseCode = "403",
+                description = "탈퇴 상태로 인한 접근 차단",
+                content =
+                        @Content(
+                                mediaType = JSON,
+                                examples = {
                                     @ExampleObject(
-                                            name = "REVOKED_TOKEN",
-                                            value = UserSwaggerExamples.REVOKED_TOKEN)
+                                            name = "WITHDRAWAL_PENDING_USER",
+                                            value = UserSwaggerExamples.WITHDRAWAL_PENDING_USER),
+                                    @ExampleObject(
+                                            name = "WITHDRAWN_USER",
+                                            value = UserSwaggerExamples.WITHDRAWN_USER)
                                 })),
         @io.swagger.v3.oas.annotations.responses.ApiResponse(
                 responseCode = "404",
@@ -224,10 +246,21 @@ public class ProfileImageController {
                                             value = UserSwaggerExamples.INVALID_TOKEN),
                                     @ExampleObject(
                                             name = "EXPIRED_TOKEN",
-                                            value = UserSwaggerExamples.EXPIRED_TOKEN),
+                                            value = UserSwaggerExamples.EXPIRED_TOKEN)
+                                })),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                responseCode = "403",
+                description = "탈퇴 상태로 인한 접근 차단",
+                content =
+                        @Content(
+                                mediaType = JSON,
+                                examples = {
                                     @ExampleObject(
-                                            name = "REVOKED_TOKEN",
-                                            value = UserSwaggerExamples.REVOKED_TOKEN)
+                                            name = "WITHDRAWAL_PENDING_USER",
+                                            value = UserSwaggerExamples.WITHDRAWAL_PENDING_USER),
+                                    @ExampleObject(
+                                            name = "WITHDRAWN_USER",
+                                            value = UserSwaggerExamples.WITHDRAWN_USER)
                                 })),
         @io.swagger.v3.oas.annotations.responses.ApiResponse(
                 responseCode = "404",
