@@ -23,6 +23,7 @@ import java.sql.SQLException;
 import java.time.Clock;
 import java.time.LocalDateTime;
 import java.util.Locale;
+import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.hibernate.exception.ConstraintViolationException;
@@ -233,6 +234,22 @@ public class AuthService {
 
     @Transactional
     public TokenIssueResult reissue(String rawRefreshToken) {
+        return rotateRefreshToken(rawRefreshToken);
+    }
+
+    @Transactional
+    public Optional<TokenIssueResult> restoreSession(String rawRefreshToken) {
+        try {
+            return Optional.of(rotateRefreshToken(rawRefreshToken));
+        } catch (BusinessException exception) {
+            if (isSessionRestoreAnonymousError(exception.getErrorCode())) {
+                return Optional.empty();
+            }
+            throw exception;
+        }
+    }
+
+    private TokenIssueResult rotateRefreshToken(String rawRefreshToken) {
         String tokenHash = requireRefreshTokenHash(rawRefreshToken);
         Long userId =
                 refreshTokenRepository
@@ -258,6 +275,12 @@ public class AuthService {
         loginPolicy.validateLoginAllowed(user);
         refreshToken.revoke(now);
         return tokenIssuer.issue(user);
+    }
+
+    private boolean isSessionRestoreAnonymousError(ErrorCode errorCode) {
+        return errorCode == ErrorCode.INVALID_TOKEN
+                || errorCode == ErrorCode.EXPIRED_TOKEN
+                || errorCode == ErrorCode.REVOKED_TOKEN;
     }
 
     @Transactional
