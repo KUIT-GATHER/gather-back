@@ -382,6 +382,9 @@ public class MyPageService {
                 participation.getParticipationEndDate() != null
                         ? participation.getParticipationEndDate()
                         : posting.getActEndDate();
+        if (effectiveEnd != null && effectiveEnd.isBefore(LocalDate.now())) {
+            return false;
+        }
         return isWithinMonth(effectiveStart, effectiveEnd, monthStart, monthEnd);
     }
 

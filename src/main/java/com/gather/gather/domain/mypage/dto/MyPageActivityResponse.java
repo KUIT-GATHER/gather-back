@@ -70,12 +70,13 @@ public record MyPageActivityResponse(
                         posting, participation.getParticipationEndDate(), LocalDate.now());
         PostingParticipationAction rawAction =
                 PostingParticipationAction.from(participation.getStatus(), activityEnded);
-        // MyPage는 취소/미노출(CANCEL|NONE)만 지원한다. COMPLETE는 취소 자체는 여전히 가능하므로 CANCEL로 내린다.
+        // MyPage는 CANCEL/NONE만 지원한다(위 Schema 설명 참고). 활동 종료 후에도 취소 서비스는
+        // 활동 종료 여부를 검사하지 않고 APPLIED/CONFIRMED 참여를 물리 삭제하므로, 종료된 참여가
+        // 실수로라도 취소 가능한 것처럼 보이면 안 되어 COMPLETE는 CANCEL이 아닌 NONE으로 내린다.
         PostingParticipationAction action =
                 rawAction == PostingParticipationAction.COMPLETE
-                        ? PostingParticipationAction.CANCEL
+                        ? PostingParticipationAction.NONE
                         : rawAction;
-
         return new MyPageActivityResponse(
                 ActivityType.VOLUNTEER,
                 participation.getId(),
