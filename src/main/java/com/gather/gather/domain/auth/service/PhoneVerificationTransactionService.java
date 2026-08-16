@@ -3,7 +3,6 @@ package com.gather.gather.domain.auth.service;
 import com.gather.gather.domain.auth.config.PhoneVerificationProperties;
 import com.gather.gather.domain.auth.dto.PhoneVerificationStatus;
 import com.gather.gather.domain.auth.entity.PhoneVerification;
-import com.gather.gather.domain.auth.entity.PhoneVerificationPurpose;
 import com.gather.gather.domain.auth.repository.PhoneVerificationRepository;
 import com.gather.gather.global.exception.BusinessException;
 import com.gather.gather.global.exception.ErrorCode;
@@ -64,10 +63,15 @@ public class PhoneVerificationTransactionService {
             return PhoneVerificationStatus.VERIFIED;
         }
         requireActive(verification, now);
-        if (verification.getPurpose() == PhoneVerificationPurpose.SIGNUP) {
-            signupValidator.validatePhoneNumberNotDuplicated(verification.getPhoneNumber());
-            if (accountRejoinBlockService.isPhoneBlocked(verification.getPhoneNumber(), now)) {
-                throw new BusinessException(ErrorCode.ACCOUNT_REJOIN_BLOCKED);
+        switch (verification.getPurpose()) {
+            case SIGNUP -> {
+                signupValidator.validatePhoneNumberNotDuplicated(verification.getPhoneNumber());
+                if (accountRejoinBlockService.isPhoneBlocked(verification.getPhoneNumber(), now)) {
+                    throw new BusinessException(ErrorCode.ACCOUNT_REJOIN_BLOCKED);
+                }
+            }
+            case FIND_ACCOUNT, RESET_PASSWORD -> {
+                // 복구 목적에서는 계정 존재 여부를 confirm 단계에서 판정하거나 노출하지 않는다.
             }
         }
         verification.verify(now);

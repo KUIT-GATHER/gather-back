@@ -37,6 +37,7 @@ public class AccountRecoveryTransactionService {
         Optional<User> user =
                 userRepository.findByPhoneNumberForUpdate(verification.getPhoneNumber());
         AccountRecoveryTransactionResult result = classify(user);
+        // 계정 유무를 확인한 정상 복구 시도는 결과 열거와 인증 재사용을 막기 위해 모두 소비한다.
         verification.consume(now);
         return result;
     }
@@ -74,12 +75,13 @@ public class AccountRecoveryTransactionService {
         Optional<AccountLoginType> loginType = accountLoginTypeResolver.resolve(user);
         if (loginType.isEmpty()) {
             if (user.getStatus() == UserStatus.ACTIVE) {
-                log.warn("계정 복구 중 로그인 credential 불일치를 감지했습니다: userId={}", user.getId());
+                log.error("계정 복구 중 로그인 credential 불일치를 감지했습니다: userId={}", user.getId());
             }
             return AccountRecoveryTransactionResult.accountNotFound();
         }
-        return loginType.get() == AccountLoginType.EMAIL
-                ? AccountRecoveryTransactionResult.email(user.getEmail())
-                : AccountRecoveryTransactionResult.kakao();
+        return switch (loginType.get()) {
+            case EMAIL -> AccountRecoveryTransactionResult.email(user.getEmail());
+            case KAKAO -> AccountRecoveryTransactionResult.kakao();
+        };
     }
 }

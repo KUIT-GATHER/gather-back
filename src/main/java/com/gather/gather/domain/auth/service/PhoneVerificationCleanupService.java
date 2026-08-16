@@ -11,6 +11,7 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 public class PhoneVerificationCleanupService {
 
+    // 1시간 fixedDelay의 실행시간·지연을 흡수해 정상 운영 중 24시간 내 파기되도록 여유를 둔다.
     static final int RETENTION_HOURS = 22;
 
     private final PhoneVerificationRepository phoneVerificationRepository;

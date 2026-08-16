@@ -2,6 +2,7 @@ package com.gather.gather.domain.auth.repository;
 
 import com.gather.gather.domain.auth.entity.PhoneVerification;
 import jakarta.persistence.LockModeType;
+import java.time.LocalDateTime;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
@@ -20,5 +21,5 @@ public interface PhoneVerificationRepository extends JpaRepository<PhoneVerifica
 
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("delete from PhoneVerification p where p.createdAt <= :cutoff")
-    int deleteAllCreatedAtOrBefore(java.time.LocalDateTime cutoff);
+    int deleteAllCreatedAtOrBefore(LocalDateTime cutoff);
 }

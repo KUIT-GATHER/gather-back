@@ -116,4 +116,22 @@ class AccountRecoveryControllerTest {
 
         verifyNoInteractions(accountRecoveryService);
     }
+
+    @Test
+    @DisplayName("휴대폰 인증 ID가 UUID 형식이 아니면 서비스 호출 전에 거부한다")
+    void recoverEmail_rejectsInvalidVerificationId() throws Exception {
+        mockMvc.perform(
+                        post("/api/v1/auth/account-recoveries/email")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(
+                                        """
+                                        {
+                                          "phoneVerificationId": "not-a-uuid"
+                                        }
+                                        """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("VALIDATION_ERROR"));
+
+        verifyNoInteractions(accountRecoveryService);
+    }
 }
