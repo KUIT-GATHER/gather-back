@@ -33,8 +33,8 @@ public class PostingRepositoryImpl implements PostingRepositoryCustom {
     private static final ZoneId SEOUL_ZONE = ZoneId.of("Asia/Seoul");
 
     /**
-     * 지도 조회(#186)는 인증 없이 호출 가능한 공개 API라 bounds를 아주 넓게 잡으면 매칭되는 공고 수가 무제한으로 커질 수 있다. 서버 측
-     * 최대 결과 수를 두어, 넓은 bounds 요청이 와도 응답 크기와 메모리 사용량이 일정 수준 이상으로 커지지 않도록 한다.
+     * 지도 조회(#186)는 인증 없이 호출 가능한 공개 API라 bounds를 아주 넓게 잡으면 매칭되는 공고 수가 무제한으로 커질 수 있다. 서버 측 최대 결과 수를
+     * 두어, 넓은 bounds 요청이 와도 응답 크기와 메모리 사용량이 일정 수준 이상으로 커지지 않도록 한다.
      */
     private static final int MAX_MAP_RESULTS = 1000;
 

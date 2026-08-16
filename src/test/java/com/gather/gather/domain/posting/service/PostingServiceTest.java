@@ -353,7 +353,8 @@ class PostingServiceTest {
     }
 
     @Test
-    @DisplayName("getPostings throws VALIDATION_ERROR when activityStartDate is after activityEndDate")
+    @DisplayName(
+            "getPostings throws VALIDATION_ERROR when activityStartDate is after activityEndDate")
     void getPostings_throwsValidationError_whenActivityDateRangeInverted() {
         Pageable pageable = PageRequest.of(0, 20);
         LocalDate start = LocalDate.of(2026, 8, 25);
@@ -390,8 +391,7 @@ class PostingServiceTest {
                         eq(pageable)))
                 .thenReturn(new SearchResult(List.of(), 0));
 
-        postingService.getPostings(
-                pageable, null, null, null, null, null, same, same, null, null);
+        postingService.getPostings(pageable, null, null, null, null, null, same, same, null, null);
 
         verify(unifiedPostingQueryRepository)
                 .search(null, null, null, null, same, same, null, null, pageable);
@@ -857,7 +857,8 @@ class PostingServiceTest {
 
         assertThat(result.get(0).locations()).hasSize(2);
         assertThat(result.get(0).locations())
-                .extracting(com.gather.gather.domain.posting.dto.PostingLocationResponse::locationSeq)
+                .extracting(
+                        com.gather.gather.domain.posting.dto.PostingLocationResponse::locationSeq)
                 .containsExactly(1, 2);
     }
 
@@ -919,7 +920,8 @@ class PostingServiceTest {
     }
 
     @Test
-    @DisplayName("getPostingsMap throws VALIDATION_ERROR when activityStartDate is after activityEndDate")
+    @DisplayName(
+            "getPostingsMap throws VALIDATION_ERROR when activityStartDate is after activityEndDate")
     void getPostingsMap_throwsValidationError_whenActivityDateRangeInverted() {
         assertThatThrownBy(
                         () ->
@@ -1115,7 +1117,10 @@ class PostingServiceTest {
     }
 
     private PostingLocation locationWithLatLng(
-            int locationSeq, String address, java.math.BigDecimal latitude, java.math.BigDecimal longitude) {
+            int locationSeq,
+            String address,
+            java.math.BigDecimal latitude,
+            java.math.BigDecimal longitude) {
         return PostingLocation.create(1L, locationSeq, address, latitude, longitude);
     }
 

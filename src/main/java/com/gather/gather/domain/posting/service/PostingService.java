@@ -211,14 +211,14 @@ public class PostingService {
             PostingMapRow row, String regionName, List<PostingLocationResponse> extraLocations) {
         List<PostingLocationResponse> locations = new ArrayList<>();
         if (row.latitude() != null && row.longitude() != null) {
-            locations.add(new PostingLocationResponse(1, row.postAddress(), row.latitude(), row.longitude()));
+            locations.add(
+                    new PostingLocationResponse(
+                            1, row.postAddress(), row.latitude(), row.longitude()));
         }
         // 2·3번째 장소는 위·경도가 nullable이라(DB 제약 없음), 값이 없는 장소는 지도 응답에서 제외한다
         // (Javadoc/Swagger 계약: locations에는 위·경도가 있는 장소만 담는다).
         extraLocations.stream()
-                .filter(
-                        location ->
-                                location.latitude() != null && location.longitude() != null)
+                .filter(location -> location.latitude() != null && location.longitude() != null)
                 .forEach(locations::add);
 
         LocalDate effectiveStart =
@@ -288,11 +288,11 @@ public class PostingService {
     }
 
     /**
-     * 지도 bounds 4개 값 모두 위도(-90~90)·경도(-180~180) 유효 범위 안에 있어야 하고, 남서쪽이 북동쪽보다 작거나 같아야 한다. 값이
-     * 뒤바뀌거나 범위를 벗어나면 조건이 항상 거짓이 되어 "해당 지역에 공고 없음"과 구분되지 않는 빈 결과가 나오므로, 여기서 명시적으로 400을
-     * 반환한다.
+     * 지도 bounds 4개 값 모두 위도(-90~90)·경도(-180~180) 유효 범위 안에 있어야 하고, 남서쪽이 북동쪽보다 작거나 같아야 한다. 값이 뒤바뀌거나
+     * 범위를 벗어나면 조건이 항상 거짓이 되어 "해당 지역에 공고 없음"과 구분되지 않는 빈 결과가 나오므로, 여기서 명시적으로 400을 반환한다.
      */
-    private void validateBounds(BigDecimal swLat, BigDecimal swLng, BigDecimal neLat, BigDecimal neLng) {
+    private void validateBounds(
+            BigDecimal swLat, BigDecimal swLng, BigDecimal neLat, BigDecimal neLng) {
         if (!isValidLatitude(swLat) || !isValidLatitude(neLat)) {
             throw new BusinessException(ErrorCode.VALIDATION_ERROR);
         }
