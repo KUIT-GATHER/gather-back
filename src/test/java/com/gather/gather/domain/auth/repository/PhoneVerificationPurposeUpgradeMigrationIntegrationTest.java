@@ -20,13 +20,13 @@ import org.springframework.boot.test.context.SpringBootTest;
 @SpringBootTest
 class PhoneVerificationPurposeUpgradeMigrationIntegrationTest {
 
-    private static final String PREVIOUS_VERSION = "59";
+    private static final String PREVIOUS_VERSION = "61";
     private static final String PURPOSE_MIGRATION_VERSION = "62";
 
     @Autowired private DataSourceProperties dataSourceProperties;
 
     @Test
-    void migrateFromV59_backfillsExistingRowAndCreatesCleanupIndex() throws Exception {
+    void migrateFromV61_backfillsExistingRowAndCreatesCleanupIndex() throws Exception {
         String databaseName =
                 "gather_pv_upgrade_"
                         + UUID.randomUUID().toString().replace("-", "").substring(0, 16);
