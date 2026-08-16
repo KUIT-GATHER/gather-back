@@ -7,6 +7,7 @@ import com.gather.gather.domain.meeting.repository.MeetingImageRepository;
 import com.gather.gather.domain.meeting.service.MeetingImageUrlResolver;
 import com.gather.gather.domain.posting.dto.PostingListItem;
 import com.gather.gather.domain.posting.dto.PostingLocationResponse;
+import com.gather.gather.domain.posting.dto.PostingMapItem;
 import com.gather.gather.domain.posting.dto.PostingResponse;
 import com.gather.gather.domain.posting.dto.PostingSourceType;
 import com.gather.gather.domain.posting.entity.Posting;
@@ -15,6 +16,7 @@ import com.gather.gather.domain.posting.entity.PostingParticipation;
 import com.gather.gather.domain.posting.entity.PostingStatus;
 import com.gather.gather.domain.posting.repository.BookmarkRepository;
 import com.gather.gather.domain.posting.repository.PostingLocationRepository;
+import com.gather.gather.domain.posting.repository.PostingMapRow;
 import com.gather.gather.domain.posting.repository.PostingParticipationRepository;
 import com.gather.gather.domain.posting.repository.PostingRepository;
 import com.gather.gather.domain.posting.repository.UnifiedPostingQueryRepository;
@@ -26,6 +28,7 @@ import com.gather.gather.global.common.PageResponse;
 import com.gather.gather.global.exception.BusinessException;
 import com.gather.gather.global.exception.ErrorCode;
 import com.gather.gather.global.util.SecurityUtil;
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -65,6 +68,11 @@ public class PostingService {
      * 앱 전체 봉사공고 목록(#9). 기존 봉사공고와 external=true인 모임 모집공고를 하나의 페이지네이션·정렬 안에서 함께 반환한다.
      *
      * <p>noticeStartDate/noticeEndDate 필터는 기존 봉사공고에만 적용된다(모집공고에는 대응 개념이 없어 항상 포함).
+     *
+     * <p>activityStartDate/activityEndDate는 두 출처 모두에 적용되는 활동일 겹침(overlap) 필터다. 선택 기간과 실제 활동기간이 하루라도
+     * 겹치면 조회된다(활동종료일 &gt;= activityStartDate AND 활동시작일 &lt;= activityEndDate). POSTING은
+     * actStartDate/actEndDate 기준이며 값이 없으면 activityDate로 대체하고, MEETING_RECRUIT는
+     * activityStartAt/activityEndAt 기준이다.
      */
     @Transactional(readOnly = true)
     public PageResponse<PostingListItem> getPostings(
@@ -74,9 +82,12 @@ public class PostingService {
             PostingStatus status,
             LocalDate noticeStartDate,
             LocalDate noticeEndDate,
+            LocalDate activityStartDate,
+            LocalDate activityEndDate,
             String keyword,
             PostingCategory category) {
         validateSort(pageable.getSort());
+        validateActivityDateRange(activityStartDate, activityEndDate);
         List<Long> regionIds = resolveRegionIds(regionId, regionGroupId);
 
         SearchResult result =
@@ -85,6 +96,8 @@ public class PostingService {
                         regionIds,
                         noticeStartDate,
                         noticeEndDate,
+                        activityStartDate,
+                        activityEndDate,
                         keyword,
                         category,
                         pageable);
@@ -129,6 +142,103 @@ public class PostingService {
                 participation != null ? participation.getParticipationEndDate() : null);
     }
 
+    /**
+     * 봉사공고 지도 조회(#186). 정책상 일반 봉사공고(POSTING)만 노출하고 모임 모집공고(MEETING_RECRUIT)는 제외한다. 페이지네이션 없이 현재 지도
+     * bounds(swLat/swLng ~ neLat/neLng) 안에 활동장소가 있는 공고 전체를 반환한다. bounds는 1번째 장소(Posting 자신의 위·경도)
+     * 또는 2·3번째 장소(PostingLocation) 중 하나라도 포함되면 매칭되고, 응답의 locations 배열에는 bounds 여부와 무관하게 해당 공고의
+     * 유효한(위·경도가 있는) 장소를 모두 담는다.
+     */
+    @Transactional(readOnly = true)
+    public List<PostingMapItem> getPostingsMap(
+            Long regionId,
+            LocalDate activityStartDate,
+            LocalDate activityEndDate,
+            PostingCategory category,
+            BigDecimal swLat,
+            BigDecimal swLng,
+            BigDecimal neLat,
+            BigDecimal neLng) {
+        validateActivityDateRange(activityStartDate, activityEndDate);
+        validateBounds(swLat, swLng, neLat, neLng);
+        List<Long> regionIds =
+                regionId != null ? regionRepository.findIdsIncludingChildren(regionId) : null;
+
+        List<PostingMapRow> rows =
+                postingRepository.searchForMap(
+                        regionIds,
+                        activityStartDate,
+                        activityEndDate,
+                        category,
+                        swLat,
+                        swLng,
+                        neLat,
+                        neLng);
+        if (rows.isEmpty()) {
+            return List.of();
+        }
+
+        Set<Long> postingIds = rows.stream().map(PostingMapRow::id).collect(Collectors.toSet());
+        Set<Long> regionIdsForNames =
+                rows.stream()
+                        .map(PostingMapRow::regionId)
+                        .filter(java.util.Objects::nonNull)
+                        .collect(Collectors.toSet());
+        Map<Long, String> regionNames = regionNameResolver.resolve(regionIdsForNames);
+        Map<Long, List<PostingLocationResponse>> extraLocationsByPostingId =
+                postingLocationRepository
+                        .findAllByPostingIdInOrderByPostingIdAscLocationSeqAsc(postingIds)
+                        .stream()
+                        .collect(
+                                Collectors.groupingBy(
+                                        com.gather.gather.domain.posting.entity.PostingLocation
+                                                ::getPostingId,
+                                        Collectors.mapping(
+                                                PostingLocationResponse::from,
+                                                Collectors.toList())));
+
+        return rows.stream()
+                .map(
+                        row ->
+                                toMapItem(
+                                        row,
+                                        regionNames.get(row.regionId()),
+                                        extraLocationsByPostingId.getOrDefault(
+                                                row.id(), List.of())))
+                .toList();
+    }
+
+    private PostingMapItem toMapItem(
+            PostingMapRow row, String regionName, List<PostingLocationResponse> extraLocations) {
+        List<PostingLocationResponse> locations = new ArrayList<>();
+        if (row.latitude() != null && row.longitude() != null) {
+            locations.add(
+                    new PostingLocationResponse(
+                            1, row.postAddress(), row.latitude(), row.longitude()));
+        }
+        // 2·3번째 장소는 위·경도가 nullable이라(DB 제약 없음), 값이 없는 장소는 지도 응답에서 제외한다
+        // (Javadoc/Swagger 계약: locations에는 위·경도가 있는 장소만 담는다).
+        extraLocations.stream()
+                .filter(location -> location.latitude() != null && location.longitude() != null)
+                .forEach(locations::add);
+
+        LocalDate effectiveStart =
+                row.actStartDate() != null ? row.actStartDate() : row.activityDate();
+        LocalDate effectiveEnd = row.actEndDate() != null ? row.actEndDate() : effectiveStart;
+
+        return new PostingMapItem(
+                row.id(),
+                row.title(),
+                row.recruitOrg(),
+                row.regionId(),
+                regionName,
+                effectiveStart != null ? effectiveStart.atStartOfDay() : null,
+                effectiveEnd != null ? effectiveEnd.atStartOfDay() : null,
+                row.noticeEndDate() != null ? row.noticeEndDate().atStartOfDay() : null,
+                row.category(),
+                row.status(),
+                locations);
+    }
+
     /** 인증이 선택적인 엔드포인트이므로, 로그인하지 않은 사용자는 항상 false를 받는다. */
     private boolean isBookmarkedByCurrentUser(Long postingId) {
         Long userId = SecurityUtil.getCurrentUserIdOrNull();
@@ -166,6 +276,42 @@ public class PostingService {
                 throw new BusinessException(ErrorCode.VALIDATION_ERROR);
             }
         }
+    }
+
+    /** 활동일 필터 시작일이 종료일보다 늦으면 잘못된 요청이다(둘 다 지정된 경우에만 검증). 목록·지도 조회 둘 다 사용한다. */
+    private void validateActivityDateRange(LocalDate activityStartDate, LocalDate activityEndDate) {
+        if (activityStartDate != null
+                && activityEndDate != null
+                && activityStartDate.isAfter(activityEndDate)) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR);
+        }
+    }
+
+    /**
+     * 지도 bounds 4개 값 모두 위도(-90~90)·경도(-180~180) 유효 범위 안에 있어야 하고, 남서쪽이 북동쪽보다 작거나 같아야 한다. 값이 뒤바뀌거나
+     * 범위를 벗어나면 조건이 항상 거짓이 되어 "해당 지역에 공고 없음"과 구분되지 않는 빈 결과가 나오므로, 여기서 명시적으로 400을 반환한다.
+     */
+    private void validateBounds(
+            BigDecimal swLat, BigDecimal swLng, BigDecimal neLat, BigDecimal neLng) {
+        if (!isValidLatitude(swLat) || !isValidLatitude(neLat)) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR);
+        }
+        if (!isValidLongitude(swLng) || !isValidLongitude(neLng)) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR);
+        }
+        if (swLat.compareTo(neLat) > 0 || swLng.compareTo(neLng) > 0) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR);
+        }
+    }
+
+    private boolean isValidLatitude(BigDecimal value) {
+        return value.compareTo(BigDecimal.valueOf(-90)) >= 0
+                && value.compareTo(BigDecimal.valueOf(90)) <= 0;
+    }
+
+    private boolean isValidLongitude(BigDecimal value) {
+        return value.compareTo(BigDecimal.valueOf(-180)) >= 0
+                && value.compareTo(BigDecimal.valueOf(180)) <= 0;
     }
 
     /** regionId(단일 시도/시군구)와 regionGroupId(9버튼 권역)는 동시에 줄 수 없다 — 필터 기준이 서로 다른 축이라 모호하다. */

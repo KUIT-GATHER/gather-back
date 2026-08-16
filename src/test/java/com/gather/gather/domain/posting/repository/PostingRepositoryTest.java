@@ -4,8 +4,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.gather.gather.domain.posting.entity.Posting;
 import com.gather.gather.domain.posting.entity.PostingCategory;
+import com.gather.gather.domain.posting.entity.PostingLocation;
 import com.gather.gather.domain.posting.entity.PostingSource;
 import com.gather.gather.domain.posting.entity.PostingStatus;
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
@@ -28,6 +30,7 @@ import org.springframework.transaction.annotation.Transactional;
 class PostingRepositoryTest {
 
     @Autowired private PostingRepository postingRepository;
+    @Autowired private PostingLocationRepository postingLocationRepository;
 
     private static final Pageable PAGEABLE = PageRequest.of(0, 20);
 
@@ -536,6 +539,156 @@ class PostingRepositoryTest {
                         .activityDate(LocalDate.of(2026, 7, 15))
                         .category(PostingCategory.ENVIRONMENT)
                         .source(PostingSource.API_1365)
+                        .build());
+    }
+
+    // ── searchForMap(#186) ──
+
+    @Test
+    void searchForMap_matchesPosting_whenPrimaryLocationIsWithinBounds() {
+        Posting inBounds = postingWithLatLng(new BigDecimal("37.55"), new BigDecimal("126.90"));
+        postingWithLatLng(new BigDecimal("35.10"), new BigDecimal("129.00"));
+
+        List<PostingMapRow> result =
+                postingRepository.searchForMap(
+                        null,
+                        null,
+                        null,
+                        null,
+                        new BigDecimal("37.50"),
+                        new BigDecimal("126.80"),
+                        new BigDecimal("37.60"),
+                        new BigDecimal("126.95"));
+
+        assertThat(result).extracting(PostingMapRow::id).containsExactly(inBounds.getId());
+    }
+
+    @Test
+    void searchForMap_excludesPosting_whenNoLocationHasValidLatLng() {
+        Posting noLocation =
+                postingRepository.save(
+                        Posting.builder()
+                                .title("위치 없는 공고")
+                                .status(PostingStatus.RECRUITING)
+                                .activityDate(LocalDate.of(2026, 7, 15))
+                                .category(PostingCategory.ENVIRONMENT)
+                                .source(PostingSource.API_1365)
+                                .build());
+
+        List<PostingMapRow> result =
+                postingRepository.searchForMap(
+                        null,
+                        null,
+                        null,
+                        null,
+                        new BigDecimal("37.50"),
+                        new BigDecimal("126.80"),
+                        new BigDecimal("37.60"),
+                        new BigDecimal("126.95"));
+
+        assertThat(result).extracting(PostingMapRow::id).doesNotContain(noLocation.getId());
+    }
+
+    @Test
+    void searchForMap_matchesPosting_whenOnlySecondaryLocationIsWithinBounds() {
+        Posting matching = postingWithLatLng(new BigDecimal("35.10"), new BigDecimal("129.00"));
+        postingLocationRepository.save(
+                PostingLocation.create(
+                        matching.getId(),
+                        2,
+                        "서울 어딘가",
+                        new BigDecimal("37.55"),
+                        new BigDecimal("126.90")));
+
+        List<PostingMapRow> result =
+                postingRepository.searchForMap(
+                        null,
+                        null,
+                        null,
+                        null,
+                        new BigDecimal("37.50"),
+                        new BigDecimal("126.80"),
+                        new BigDecimal("37.60"),
+                        new BigDecimal("126.95"));
+
+        assertThat(result).extracting(PostingMapRow::id).containsExactly(matching.getId());
+    }
+
+    @Test
+    void searchForMap_appliesActivityDateOverlapFilter() {
+        Posting withinRange =
+                postingWithLatLngAndActivityDates(
+                        LocalDate.of(2026, 8, 20), LocalDate.of(2026, 8, 25));
+        postingWithLatLngAndActivityDates(LocalDate.of(2026, 9, 1), LocalDate.of(2026, 9, 5));
+
+        List<PostingMapRow> result =
+                postingRepository.searchForMap(
+                        null,
+                        LocalDate.of(2026, 8, 18),
+                        LocalDate.of(2026, 8, 27),
+                        null,
+                        new BigDecimal("37.50"),
+                        new BigDecimal("126.80"),
+                        new BigDecimal("37.60"),
+                        new BigDecimal("126.95"));
+
+        assertThat(result).extracting(PostingMapRow::id).containsExactly(withinRange.getId());
+    }
+
+    @Test
+    void searchForMap_excludesCompletedStatus() {
+        Posting completed =
+                postingRepository.save(
+                        Posting.builder()
+                                .title("완료된 공고")
+                                .status(PostingStatus.COMPLETED)
+                                .activityDate(LocalDate.of(2026, 7, 15))
+                                .category(PostingCategory.ENVIRONMENT)
+                                .source(PostingSource.API_1365)
+                                .latitude(new BigDecimal("37.55"))
+                                .longitude(new BigDecimal("126.90"))
+                                .build());
+
+        List<PostingMapRow> result =
+                postingRepository.searchForMap(
+                        null,
+                        null,
+                        null,
+                        null,
+                        new BigDecimal("37.50"),
+                        new BigDecimal("126.80"),
+                        new BigDecimal("37.60"),
+                        new BigDecimal("126.95"));
+
+        assertThat(result).extracting(PostingMapRow::id).doesNotContain(completed.getId());
+    }
+
+    private Posting postingWithLatLng(BigDecimal latitude, BigDecimal longitude) {
+        return postingRepository.save(
+                Posting.builder()
+                        .title("지도 테스트 공고")
+                        .status(PostingStatus.RECRUITING)
+                        .activityDate(LocalDate.of(2026, 7, 15))
+                        .category(PostingCategory.ENVIRONMENT)
+                        .source(PostingSource.API_1365)
+                        .latitude(latitude)
+                        .longitude(longitude)
+                        .build());
+    }
+
+    private Posting postingWithLatLngAndActivityDates(
+            LocalDate actStartDate, LocalDate actEndDate) {
+        return postingRepository.save(
+                Posting.builder()
+                        .title("지도 활동일 테스트 공고")
+                        .status(PostingStatus.RECRUITING)
+                        .activityDate(actStartDate)
+                        .actStartDate(actStartDate)
+                        .actEndDate(actEndDate)
+                        .category(PostingCategory.ENVIRONMENT)
+                        .source(PostingSource.API_1365)
+                        .latitude(new BigDecimal("37.55"))
+                        .longitude(new BigDecimal("126.90"))
                         .build());
     }
 }
