@@ -17,9 +17,9 @@ import org.springframework.stereotype.Component;
  * <p>단일 인스턴스 배포를 전제로 한 인메모리 가드다(서버가 여러 대로 늘어나면 Redis 등 공유 저장소 기반으로 교체해야 한다). 최초 요청 시각을 기준으로 쿨다운을
  * 적용하며, 쿨다운이 지나면 별도 해제 없이 자동으로 풀린다.
  *
- * <p><b>주의:</b> 이 가드는 진짜 멱등성(idempotency)을 보장하지 않는다. 최초 호출 시각부터 정해진 쿨다운 동안만 같은 key를 차단할 뿐,
- * 첫 요청의 처리가 실제로 끝났는지·성공했는지는 추적하지 않는다. 첫 요청 처리가 쿨다운보다 오래 걸리면 그 요청이 끝나기 전에도 다음 요청이 통과할 수 있다.
- * "버튼 연타 완화" 용도로만 쓰고, 네트워크 재시도까지 포함한 엄밀한 중복 생성 방지가 필요하면 Idempotency-Key 등 별도 설계가 필요하다.
+ * <p><b>주의:</b> 이 가드는 진짜 멱등성(idempotency)을 보장하지 않는다. 최초 호출 시각부터 정해진 쿨다운 동안만 같은 key를 차단할 뿐, 첫 요청의
+ * 처리가 실제로 끝났는지·성공했는지는 추적하지 않는다. 첫 요청 처리가 쿨다운보다 오래 걸리면 그 요청이 끝나기 전에도 다음 요청이 통과할 수 있다. "버튼 연타 완화"
+ * 용도로만 쓰고, 네트워크 재시도까지 포함한 엄밀한 중복 생성 방지가 필요하면 Idempotency-Key 등 별도 설계가 필요하다.
  */
 @Component
 @RequiredArgsConstructor
@@ -65,13 +65,15 @@ public class DuplicateSubmissionGuard {
     }
 
     /**
-     * 맵이 임계값을 넘으면 만료된(쿨다운이 지난) 항목을 청소한다. 정상 사용에서는 (작업 종류 × 사용자 × 모임) 조합 수만큼만 늘어나지만, 존재하지
-     * 않는 리소스에 대한 반복 요청 등으로 키가 계속 새로 생기는 상황에서도 맵이 무한정 커지지 않도록 하는 안전장치다.
+     * 맵이 임계값을 넘으면 만료된(쿨다운이 지난) 항목을 청소한다. 정상 사용에서는 (작업 종류 × 사용자 × 모임) 조합 수만큼만 늘어나지만, 존재하지 않는 리소스에 대한
+     * 반복 요청 등으로 키가 계속 새로 생기는 상황에서도 맵이 무한정 커지지 않도록 하는 안전장치다.
      */
     private void cleanupIfNeeded(Instant now, Duration cooldown) {
         if (recentSubmissions.size() < CLEANUP_THRESHOLD) {
             return;
         }
-        recentSubmissions.entrySet().removeIf(entry -> !entry.getValue().plus(cooldown).isAfter(now));
+        recentSubmissions
+                .entrySet()
+                .removeIf(entry -> !entry.getValue().plus(cooldown).isAfter(now));
     }
 }

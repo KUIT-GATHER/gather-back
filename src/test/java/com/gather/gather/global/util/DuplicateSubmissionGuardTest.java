@@ -44,9 +44,9 @@ class DuplicateSubmissionGuardTest {
     }
 
     /**
-     * B1 회귀 테스트. 리뷰에서 지적된 버그: 두 호출의 {@code Instant.now()}가 완전히 같은 값을 반환하면(해상도가 낮은 Clock 등)
-     * 기존 구현은 {@code Instant.equals()}로 통과 여부를 판정해 두 번째 요청도 통과시켰다. 통과 여부를 별도 플래그로 판정하도록 고친
-     * 뒤에는, 같은 Instant를 받더라도 두 번째 호출은 반드시 막혀야 한다.
+     * B1 회귀 테스트. 리뷰에서 지적된 버그: 두 호출의 {@code Instant.now()}가 완전히 같은 값을 반환하면(해상도가 낮은 Clock 등) 기존 구현은
+     * {@code Instant.equals()}로 통과 여부를 판정해 두 번째 요청도 통과시켰다. 통과 여부를 별도 플래그로 판정하도록 고친 뒤에는, 같은 Instant를
+     * 받더라도 두 번째 호출은 반드시 막혀야 한다.
      */
     @Test
     void guard_blocksSecondRequest_whenBothCallsReceiveTheExactSameInstant() {

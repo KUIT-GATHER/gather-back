@@ -199,8 +199,9 @@ class MeetingRecruitServiceTest {
     }
 
     @Test
-    @DisplayName("createRecruit calls DuplicateSubmissionGuard with the user:meeting key after"
-            + " validation passes (H3)")
+    @DisplayName(
+            "createRecruit calls DuplicateSubmissionGuard with the user:meeting key after"
+                    + " validation passes (H3)")
     void createRecruit_callsDuplicateSubmissionGuard_withExpectedKey_afterValidationPasses() {
         Meeting meeting = meeting();
         MeetingMember host = member(MeetingMemberRole.HOST);
@@ -222,8 +223,9 @@ class MeetingRecruitServiceTest {
     }
 
     @Test
-    @DisplayName("createRecruit does not save or publish events when DuplicateSubmissionGuard"
-            + " rejects the request (H3)")
+    @DisplayName(
+            "createRecruit does not save or publish events when DuplicateSubmissionGuard"
+                    + " rejects the request (H3)")
     void createRecruit_doesNotSaveOrPublish_whenDuplicateSubmissionGuardThrows() {
         Meeting meeting = meeting();
         MeetingMember host = member(MeetingMemberRole.HOST);
