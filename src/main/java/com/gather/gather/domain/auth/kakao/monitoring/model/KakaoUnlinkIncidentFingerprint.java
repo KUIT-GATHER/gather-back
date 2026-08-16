@@ -64,24 +64,27 @@ public final class KakaoUnlinkIncidentFingerprint {
         if (value == null || alertType == null || value.length() > MAX_LENGTH) {
             throw new IllegalArgumentException("Kakao unlink incident fingerprint 값이 올바르지 않습니다.");
         }
-        switch (alertType) {
-            case DEAD_TASK -> validateDeadTask(value);
-            case STATE_INVARIANT_VIOLATION -> validateStateInvariant(value);
-            case SYNTHETIC_TEST -> {
-                if (!SYNTHETIC_TEST_VALUE.equals(value)) {
-                    throw new IllegalArgumentException("synthetic fingerprint 값이 올바르지 않습니다.");
-                }
-            }
-            case WORKER_CONFIGURATION_BLOCKED,
-                    DEAD_TASK_SUMMARY,
-                    OVERDUE_PENDING,
-                    EXPIRED_PROCESSING,
-                    WORKER_HEARTBEAT_MISSED,
-                    BACKLOG_ACCUMULATION -> {
-                if (!("KAKAO_UNLINK:" + alertType.name()).equals(value)) {
-                    throw new IllegalArgumentException("singleton fingerprint 값이 올바르지 않습니다.");
-                }
-            }
+        String expectedValue =
+                switch (alertType) {
+                    case DEAD_TASK -> {
+                        validateDeadTask(value);
+                        yield null;
+                    }
+                    case STATE_INVARIANT_VIOLATION -> {
+                        validateStateInvariant(value);
+                        yield null;
+                    }
+                    case SYNTHETIC_TEST -> SYNTHETIC_TEST_VALUE;
+                    case WORKER_CONFIGURATION_BLOCKED,
+                                    DEAD_TASK_SUMMARY,
+                                    OVERDUE_PENDING,
+                                    EXPIRED_PROCESSING,
+                                    WORKER_HEARTBEAT_MISSED,
+                                    BACKLOG_ACCUMULATION ->
+                            "KAKAO_UNLINK:" + alertType.name();
+                };
+        if (expectedValue != null && !expectedValue.equals(value)) {
+            throw new IllegalArgumentException("fingerprint 값이 alert type과 일치하지 않습니다.");
         }
     }
 

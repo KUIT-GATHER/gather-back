@@ -14,10 +14,14 @@ import com.gather.gather.domain.auth.entity.KakaoUnlinkWorkerControlStatus;
 import com.gather.gather.domain.auth.kakao.monitoring.model.DeadTaskSafeDetails;
 import com.gather.gather.domain.auth.kakao.monitoring.model.DeadTaskSample;
 import com.gather.gather.domain.auth.kakao.monitoring.model.DeadTaskSummarySafeDetails;
+import com.gather.gather.domain.auth.kakao.monitoring.model.KakaoUnlinkAlertDeliveryResult;
 import com.gather.gather.domain.auth.kakao.monitoring.model.KakaoUnlinkIncidentFingerprint;
 import com.gather.gather.domain.auth.kakao.monitoring.model.KakaoUnlinkIncidentSafeDetails;
 import com.gather.gather.domain.auth.kakao.monitoring.model.KakaoUnlinkMonitorLease;
+import com.gather.gather.domain.auth.kakao.monitoring.model.KakaoUnlinkMonitorLeaseAcquireResult;
+import com.gather.gather.domain.auth.kakao.monitoring.model.KakaoUnlinkObservationResult;
 import com.gather.gather.domain.auth.kakao.monitoring.model.KakaoUnlinkOperationalFailureType;
+import com.gather.gather.domain.auth.kakao.monitoring.model.KakaoUnlinkRecoveredDeliveryResult;
 import com.gather.gather.domain.auth.kakao.monitoring.model.KakaoUnlinkStateInvariantType;
 import com.gather.gather.domain.auth.kakao.monitoring.model.OperationalAlertPayloadSnapshot;
 import com.gather.gather.domain.auth.kakao.monitoring.model.StateInvariantSafeDetails;
@@ -128,6 +132,25 @@ class KakaoUnlinkMonitoringModelTest {
                         acquiredAt.plusMinutes(3));
 
         assertThat(lease.toString()).contains("<redacted>").doesNotContain("secret-lease-token");
+    }
+
+    @Test
+    void resultRecordsRejectIllegalOutcomeCombinations() {
+        assertThatThrownBy(
+                        () ->
+                                new KakaoUnlinkMonitorLeaseAcquireResult(
+                                        KakaoUnlinkMonitorLeaseAcquireResult.Outcome.ACQUIRED,
+                                        null))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(
+                        () ->
+                                new KakaoUnlinkRecoveredDeliveryResult(
+                                        KakaoUnlinkRecoveredDeliveryResult.Outcome.ENQUEUED, null))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> new KakaoUnlinkObservationResult(null, null, List.of()))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> new KakaoUnlinkAlertDeliveryResult(0, 1, true))
+                .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test

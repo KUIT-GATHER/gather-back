@@ -50,7 +50,9 @@ public class KakaoUnlinkIncidentTransactionService {
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public KakaoUnlinkObservationResult observe(KakaoUnlinkIncidentObservation observation) {
         LocalDateTime databaseNow = lockAndValidateLease(observation.lease());
-        int inserted =
+        boolean existedBeforeUpsert =
+                incidentRepository.existsByFingerprint(observation.fingerprint().value());
+        int upsertAffectedRows =
                 incidentRepository.upsertInitialObservation(
                         observation.fingerprint().value(),
                         observation.alertType().name(),
@@ -80,22 +82,24 @@ public class KakaoUnlinkIncidentTransactionService {
 
         List<KakaoUnlinkAlertDeliveryResult> deliveryResults = new ArrayList<>();
         if (incident.getNotificationState() == KakaoUnlinkNotificationState.ELIGIBLE) {
-            for (KakaoUnlinkAlertChannel channel : observation.initialChannels()) {
-                OperationalAlertPayloadSnapshot payload =
-                        snapshot(
-                                incident,
-                                KakaoUnlinkAlertEventType.INITIAL,
-                                1,
-                                channel,
-                                databaseNow);
-                deliveryResults.add(
-                        deliveryPersistenceService.enqueueIfAbsent(
-                                incident,
-                                KakaoUnlinkAlertEventType.INITIAL,
-                                1,
-                                channel,
-                                payload,
-                                databaseNow));
+            if (!existedBeforeUpsert || transition.reopened()) {
+                for (KakaoUnlinkAlertChannel channel : observation.initialChannels()) {
+                    OperationalAlertPayloadSnapshot payload =
+                            snapshot(
+                                    incident,
+                                    KakaoUnlinkAlertEventType.INITIAL,
+                                    1,
+                                    channel,
+                                    databaseNow);
+                    deliveryResults.add(
+                            deliveryPersistenceService.enqueueIfAbsent(
+                                    incident,
+                                    KakaoUnlinkAlertEventType.INITIAL,
+                                    1,
+                                    channel,
+                                    payload,
+                                    databaseNow));
+                }
             }
             if (transition.severityEscalated()) {
                 for (KakaoUnlinkAlertChannel channel : observation.escalationChannels()) {
@@ -118,12 +122,13 @@ public class KakaoUnlinkIncidentTransactionService {
                 }
             }
         }
-        if (inserted == 1 || transition.reopened() || transition.severityEscalated()) {
+        if (!existedBeforeUpsert || transition.reopened() || transition.severityEscalated()) {
             log.info(
-                    "Kakao unlink incident를 조정했습니다: incidentId={}, occurrenceNo={}, inserted={}, reopened={}, severityEscalated={}, deliveryCount={}",
+                    "Kakao unlink incident를 조정했습니다: incidentId={}, occurrenceNo={}, firstObserved={}, upsertAffectedRows={}, reopened={}, severityEscalated={}, deliveryCount={}",
                     incident.getId(),
                     incident.getOccurrenceNo(),
-                    inserted == 1,
+                    !existedBeforeUpsert,
+                    upsertAffectedRows,
                     transition.reopened(),
                     transition.severityEscalated(),
                     deliveryResults.size());

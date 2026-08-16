@@ -127,6 +127,33 @@ class KakaoUnlinkIncidentTest {
     }
 
     @Test
+    void scheduleNextReminderRejectsInvalidStatePastScheduleAndMissingChannel() {
+        KakaoUnlinkIncident incident = operationalIncident(1L, "KAKAO_UNLINK:DEAD_TASK:1:0");
+
+        assertThatThrownBy(
+                        () ->
+                                incident.scheduleNextReminder(
+                                        KakaoUnlinkAlertChannel.DISCORD,
+                                        OPENED_AT.minusSeconds(1),
+                                        OPENED_AT))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(
+                        () ->
+                                incident.scheduleNextReminder(
+                                        null, OPENED_AT.plusMinutes(1), OPENED_AT))
+                .isInstanceOf(IllegalArgumentException.class);
+
+        incident.resolve(OPENED_AT.plusMinutes(1));
+        assertThatThrownBy(
+                        () ->
+                                incident.scheduleNextReminder(
+                                        KakaoUnlinkAlertChannel.DISCORD,
+                                        OPENED_AT.plusMinutes(3),
+                                        OPENED_AT.plusMinutes(2)))
+                .isInstanceOf(IllegalStateException.class);
+    }
+
+    @Test
     void syntheticIncidentRejectsOperationalLifecycleOperations() {
         KakaoUnlinkIncident synthetic = new KakaoUnlinkIncident();
         setCommonState(

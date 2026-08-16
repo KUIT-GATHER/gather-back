@@ -41,9 +41,14 @@ public class KakaoUnlinkAlertDeliveryPersistenceService {
             KakaoUnlinkAlertChannel channel,
             OperationalAlertPayloadSnapshot payload,
             LocalDateTime databaseNow) {
+        validateEvent(incident, eventType, eventSequence, channel, payload, databaseNow);
         KakaoUnlinkAlertDelivery existing =
                 findExisting(incident, eventType, eventSequence, channel);
         if (existing != null) {
+            if (!existing.getPayloadSnapshot().hasSameLogicalContent(payload)) {
+                throw new KakaoUnlinkMonitoringInvariantException(
+                        "동일 delivery 자연키에 다른 payload가 요청되었습니다.");
+            }
             log.debug(
                     "Kakao unlink alert delivery 중복 생성을 건너뜁니다: incidentId={}, occurrenceNo={}, eventType={}, eventSequence={}, channel={}",
                     incident.getId(),
@@ -64,6 +69,7 @@ public class KakaoUnlinkAlertDeliveryPersistenceService {
             KakaoUnlinkAlertChannel channel,
             OperationalAlertPayloadSnapshot payload,
             LocalDateTime databaseNow) {
+        validateEvent(incident, eventType, eventSequence, channel, payload, databaseNow);
         KakaoUnlinkAlertDelivery existing =
                 findExisting(incident, eventType, eventSequence, channel);
         if (existing != null) {
@@ -107,7 +113,6 @@ public class KakaoUnlinkAlertDeliveryPersistenceService {
             KakaoUnlinkAlertChannel channel,
             OperationalAlertPayloadSnapshot payload,
             LocalDateTime databaseNow) {
-        validateEvent(incident, eventType, eventSequence, channel, payload, databaseNow);
         int affected =
                 deliveryRepository.upsertPending(
                         incident.getId(),
@@ -147,7 +152,6 @@ public class KakaoUnlinkAlertDeliveryPersistenceService {
             KakaoUnlinkAlertEventType eventType,
             int eventSequence,
             KakaoUnlinkAlertChannel channel) {
-        validateKey(incident, eventType, eventSequence, channel);
         return deliveryRepository
                 .findEventForUpdate(
                         incident.getId(),

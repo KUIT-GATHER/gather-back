@@ -17,6 +17,8 @@ public interface KakaoUnlinkIncidentRepository extends JpaRepository<KakaoUnlink
 
     Optional<KakaoUnlinkIncident> findByFingerprint(String fingerprint);
 
+    boolean existsByFingerprint(String fingerprint);
+
     @Modifying(flushAutomatically = true)
     @Query(
             value =

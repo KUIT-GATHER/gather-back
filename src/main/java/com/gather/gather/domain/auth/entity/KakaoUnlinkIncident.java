@@ -1,5 +1,7 @@
 package com.gather.gather.domain.auth.entity;
 
+import com.gather.gather.domain.auth.kakao.monitoring.exception.KakaoUnlinkMonitoringInvariantException;
+import com.gather.gather.domain.auth.kakao.monitoring.model.KakaoUnlinkIncidentFingerprint;
 import com.gather.gather.domain.auth.kakao.monitoring.model.KakaoUnlinkIncidentSafeDetails;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -11,6 +13,7 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
+import jakarta.persistence.PostLoad;
 import jakarta.persistence.Table;
 import jakarta.persistence.Version;
 import java.time.LocalDateTime;
@@ -96,6 +99,16 @@ public class KakaoUnlinkIncident {
 
     public boolean isSynthetic() {
         return alertType == KakaoUnlinkAlertType.SYNTHETIC_TEST;
+    }
+
+    @PostLoad
+    private void validatePersistedFingerprint() {
+        try {
+            KakaoUnlinkIncidentFingerprint.validateStored(fingerprint, alertType);
+        } catch (IllegalArgumentException exception) {
+            throw new KakaoUnlinkMonitoringInvariantException(
+                    "저장된 incident fingerprint와 alert type이 일치하지 않습니다.", exception);
+        }
     }
 
     public boolean isOpen() {

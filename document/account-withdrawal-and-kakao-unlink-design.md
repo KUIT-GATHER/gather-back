@@ -1464,10 +1464,13 @@ PR B-1은 운영 모니터링의 저장·동시성 기반만 제공한다. 애�
 
 - monitor lease acquire·complete·fail은 각각 독립 `REQUIRES_NEW` transaction으로 commit한다. 상위 transaction에서 호출되더라도 control row lock이 이후 incident별 `REQUIRES_NEW` transaction으로 넘어가지 않게 한다.
 - 한 scan의 lock order는 `MonitorControl → Incident → Delivery`로 고정한다. incident 관측·해소·reminder·suppression 변경은 lease의 owner, token, scan sequence를 DB UTC 기준으로 다시 검증한다.
+- singleton `MonitorControl` lock은 B-1에서 incident mutation을 의도적으로 직렬화한다. B-2 활성화 후 scan 처리량을 측정하고, 병목이 확인되기 전에는 fencing 정확성을 위해 이 경계를 완화하지 않는다.
 - fingerprint 확보는 observation의 전체 초기값을 가진 atomic upsert 뒤 `FOR UPDATE`로 최신 row를 읽어 lifecycle을 수렴시킨다. fingerprint별 transaction을 분리해 한 incident 실패가 scan 전체 rollback으로 전파되지 않게 한다.
 - 이미 OPEN인 incident의 reminder 시각은 기존 값이 `NULL`일 때만 보충한다. suppression 원인은 알림 가능한 OPEN incident만 허용해 chain·cycle을 차단하고, 원인 occurrence가 끝난 stale suppression은 별도 조회해 B-2에서 해제한다. 해제 grace인 `notificationEligibleAt` 이전에는 reminder 후보로 선택하지 않는다.
 - SUPPRESSED incident에는 INITIAL·ESCALATED delivery를 생성하지 않는다. RECOVERED는 같은 occurrence와 channel에서 문제 알림이 한 번 이상 성공한 경우에만 만들며, 재발·중복·성공 이력 부재는 예외가 아닌 명시적 결과로 반환한다.
 - incident의 safe details와 delivery payload는 같은 Spring `ObjectMapper`를 사용하는 typed JSON으로 직렬화한다. fingerprint는 alert type별 factory만 공개하고 provider ID, email, token, 원문 응답을 허용하지 않는다.
+- Hibernate JSON format mapper 설정은 애플리케이션 전역에 적용되지만 현재 JSON entity는 monitoring incident와 delivery뿐이다. 향후 다른 JSON entity를 추가할 때 동일 mapper 호환성 테스트를 선행한다.
+- MySQL 8.4가 `AUTO_INCREMENT` 컬럼을 참조하는 CHECK를 허용하지 않아 self-suppression은 DB CHECK가 아니라 domain validation과 row-lock reconciliation에서 차단한다.
 - synthetic singleton은 일반 운영 incident count, reminder, resolve, suppression, detector reconciliation에서 제외하며 TEST delivery만 허용한다.
 
 - task `DEAD`, 처리 지연, lease 회수 횟수, 오류 code, backlog와 pending 체류시간 metric·alert

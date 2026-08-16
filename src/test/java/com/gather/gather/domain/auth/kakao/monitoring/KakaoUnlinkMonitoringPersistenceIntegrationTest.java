@@ -26,6 +26,7 @@ import com.gather.gather.domain.auth.kakao.monitoring.model.KakaoUnlinkMonitorLe
 import com.gather.gather.domain.auth.kakao.monitoring.model.KakaoUnlinkObservationResult;
 import com.gather.gather.domain.auth.kakao.monitoring.model.KakaoUnlinkRecoveredDeliveryRequest;
 import com.gather.gather.domain.auth.kakao.monitoring.model.KakaoUnlinkRecoveredDeliveryResult;
+import com.gather.gather.domain.auth.kakao.monitoring.model.KakaoUnlinkReminderRequest;
 import com.gather.gather.domain.auth.kakao.monitoring.model.KakaoUnlinkSuppressionRelease;
 import com.gather.gather.domain.auth.kakao.monitoring.model.OperationalAlertPayloadSnapshot;
 import com.gather.gather.domain.auth.kakao.monitoring.model.TaskPopulationSafeDetails;
@@ -176,6 +177,25 @@ class KakaoUnlinkMonitoringPersistenceIntegrationTest {
     }
 
     @Test
+    void scanLeaseFailureRecordsFailedOutcomeAndReleasesLease() {
+        KakaoUnlinkMonitorLease lease = acquire("monitor-failure");
+
+        assertThat(
+                        leaseService.fail(
+                                lease,
+                                com.gather.gather.domain.auth.kakao.monitoring.model
+                                        .KakaoUnlinkOperationalFailureType.DATABASE))
+                .isEqualTo(KakaoUnlinkMonitorLeaseFinishResult.FAILED);
+
+        var control = monitorControlRepository.findById(1L).orElseThrow();
+        assertThat(control.getLastScanFailedAt()).isNotNull();
+        assertThat(control.getLastScanFailureType()).isEqualTo("DATABASE");
+        assertThat(control.getLeaseOwner()).isNull();
+        assertThat(control.getLeaseToken()).isNull();
+        assertThat(control.getLeaseExpiresAt()).isNull();
+    }
+
+    @Test
     @Timeout(10)
     void leaseAcquireAndObservationInsideOuterTransactionDoNotSelfDeadlock() {
         TransactionTemplate outer = new TransactionTemplate(transactionManager);
@@ -216,6 +236,37 @@ class KakaoUnlinkMonitoringPersistenceIntegrationTest {
                 incidentRepository.findById(results.get(0).snapshot().id()).orElseThrow();
         assertThat(persisted.getOccurrenceNo()).isEqualTo(1);
         assertThat(deliveryRepository.count()).isEqualTo(1);
+    }
+
+    @Test
+    void existingOpenObservationDoesNotRewriteInitialDeliveryPayload() {
+        KakaoUnlinkMonitorLease lease = acquire("monitor-existing-initial");
+        KakaoUnlinkIncidentFingerprint fingerprint = fingerprint();
+        KakaoUnlinkIncidentSnapshot opened =
+                reconciliationService
+                        .observe(
+                                deadObservation(
+                                        lease,
+                                        fingerprint,
+                                        KakaoUnlinkAlertSeverity.WARNING,
+                                        Set.of(KakaoUnlinkAlertChannel.DISCORD)))
+                        .snapshot();
+
+        reconciliationService.observe(
+                deadObservation(
+                        lease,
+                        fingerprint,
+                        KakaoUnlinkAlertSeverity.CRITICAL,
+                        Set.of(KakaoUnlinkAlertChannel.DISCORD)));
+
+        assertThat(
+                        deliveryRepository.countByIncidentIdAndEventType(
+                                opened.id(), KakaoUnlinkAlertEventType.INITIAL))
+                .isEqualTo(1);
+        assertThat(
+                        deliveryRepository.countByIncidentIdAndEventType(
+                                opened.id(), KakaoUnlinkAlertEventType.ESCALATED))
+                .isEqualTo(1);
     }
 
     @Test
@@ -293,6 +344,83 @@ class KakaoUnlinkMonitoringPersistenceIntegrationTest {
     }
 
     @Test
+    @Timeout(10)
+    void concurrentSuppressionsCompleteWithoutLockOrderDeadlock() throws Exception {
+        KakaoUnlinkMonitorLease lease = acquire("monitor-concurrent-suppression");
+        KakaoUnlinkIncidentSnapshot firstCause =
+                reconciliationService
+                        .observe(
+                                deadObservation(
+                                        lease,
+                                        fingerprint(),
+                                        KakaoUnlinkAlertSeverity.CRITICAL,
+                                        Set.of()))
+                        .snapshot();
+        KakaoUnlinkIncidentSnapshot firstChild =
+                reconciliationService
+                        .observe(
+                                deadObservation(
+                                        lease,
+                                        fingerprint(),
+                                        KakaoUnlinkAlertSeverity.WARNING,
+                                        Set.of()))
+                        .snapshot();
+        KakaoUnlinkIncidentSnapshot secondChild =
+                reconciliationService
+                        .observe(
+                                deadObservation(
+                                        lease,
+                                        fingerprint(),
+                                        KakaoUnlinkAlertSeverity.WARNING,
+                                        Set.of()))
+                        .snapshot();
+        KakaoUnlinkIncidentSnapshot secondCause =
+                reconciliationService
+                        .observe(
+                                deadObservation(
+                                        lease,
+                                        fingerprint(),
+                                        KakaoUnlinkAlertSeverity.CRITICAL,
+                                        Set.of()))
+                        .snapshot();
+
+        List<KakaoUnlinkIncidentSnapshot> suppressed =
+                runConcurrently(
+                        () ->
+                                reconciliationService.suppress(
+                                        new KakaoUnlinkIncidentSuppression(
+                                                lease,
+                                                firstChild.id(),
+                                                firstCause.id(),
+                                                firstCause.occurrenceNo())),
+                        () ->
+                                reconciliationService.suppress(
+                                        new KakaoUnlinkIncidentSuppression(
+                                                lease,
+                                                secondChild.id(),
+                                                secondCause.id(),
+                                                secondCause.occurrenceNo())));
+
+        assertThat(suppressed)
+                .extracting(KakaoUnlinkIncidentSnapshot::notificationState)
+                .containsOnly(KakaoUnlinkNotificationState.SUPPRESSED);
+        assertThat(
+                        incidentRepository
+                                .findById(firstChild.id())
+                                .orElseThrow()
+                                .getSuppressedByIncident()
+                                .getId())
+                .isEqualTo(firstCause.id());
+        assertThat(
+                        incidentRepository
+                                .findById(secondChild.id())
+                                .orElseThrow()
+                                .getSuppressedByIncident()
+                                .getId())
+                .isEqualTo(secondCause.id());
+    }
+
+    @Test
     void existingOpenIncidentFillsMissingReminderSchedule() {
         KakaoUnlinkMonitorLease lease = acquire("monitor-reminder-fill");
         KakaoUnlinkIncidentFingerprint fingerprint = fingerprint();
@@ -330,6 +458,52 @@ class KakaoUnlinkMonitoringPersistenceIntegrationTest {
         assertThat(incidentRepository.findOperationalReminderCandidates(reminderAt.plusSeconds(1)))
                 .extracting(KakaoUnlinkIncident::getId)
                 .contains(opened.id());
+    }
+
+    @Test
+    void recordReminderPersistsSequencePayloadAndNextSchedule() {
+        KakaoUnlinkMonitorLease lease = acquire("monitor-record-reminder");
+        KakaoUnlinkIncidentSnapshot opened =
+                reconciliationService
+                        .observe(
+                                deadObservation(
+                                        lease,
+                                        fingerprint(),
+                                        KakaoUnlinkAlertSeverity.WARNING,
+                                        Set.of()))
+                        .snapshot();
+        LocalDateTime firstSchedule = monitorControlRepository.currentUtcDateTime().plusMinutes(5);
+        LocalDateTime secondSchedule = firstSchedule.plusMinutes(5);
+
+        var first =
+                reconciliationService.recordReminder(
+                        new KakaoUnlinkReminderRequest(
+                                lease,
+                                opened.id(),
+                                KakaoUnlinkAlertChannel.DISCORD,
+                                firstSchedule));
+        var second =
+                reconciliationService.recordReminder(
+                        new KakaoUnlinkReminderRequest(
+                                lease,
+                                opened.id(),
+                                KakaoUnlinkAlertChannel.DISCORD,
+                                secondSchedule));
+
+        assertThat(first.created()).isTrue();
+        assertThat(first.eventSequence()).isEqualTo(1);
+        assertThat(second.created()).isTrue();
+        assertThat(second.eventSequence()).isEqualTo(2);
+        assertThat(
+                        incidentRepository
+                                .findById(opened.id())
+                                .orElseThrow()
+                                .getNextDiscordReminderAt())
+                .isEqualTo(secondSchedule);
+        assertThat(
+                        deliveryRepository.countByIncidentIdAndEventType(
+                                opened.id(), KakaoUnlinkAlertEventType.REMINDER))
+                .isEqualTo(2);
     }
 
     @Test
@@ -589,7 +763,7 @@ class KakaoUnlinkMonitoringPersistenceIntegrationTest {
                                                 conflictingFingerprint,
                                                 KakaoUnlinkAlertSeverity.WARNING,
                                                 Set.of())))
-                .isInstanceOf(IllegalStateException.class);
+                .isInstanceOf(KakaoUnlinkMonitoringInvariantException.class);
 
         KakaoUnlinkIncidentSnapshot independent =
                 reconciliationService
@@ -604,7 +778,7 @@ class KakaoUnlinkMonitoringPersistenceIntegrationTest {
     }
 
     @Test
-    void exactDeliveryIgnoresGeneratedAtButRejectsDifferentLogicalPayload() {
+    void idempotentDeliveryIgnoresGeneratedAtButRejectsDifferentLogicalPayload() {
         KakaoUnlinkMonitorLease lease = acquire("monitor-payload-invariant");
         KakaoUnlinkIncidentSnapshot snapshot =
                 reconciliationService
@@ -660,7 +834,7 @@ class KakaoUnlinkMonitoringPersistenceIntegrationTest {
                                                             .orElseThrow();
                                             LocalDateTime now =
                                                     deliveryRepository.currentUtcDateTime();
-                                            deliveryPersistenceService.enqueueExact(
+                                            deliveryPersistenceService.enqueueIfAbsent(
                                                     incident,
                                                     KakaoUnlinkAlertEventType.INITIAL,
                                                     1,
@@ -780,12 +954,20 @@ class KakaoUnlinkMonitoringPersistenceIntegrationTest {
     }
 
     private <T> List<T> runConcurrently(ThrowingSupplier<T> supplier) throws Exception {
+        return runConcurrently(supplier, supplier);
+    }
+
+    private <T> List<T> runConcurrently(
+            ThrowingSupplier<T> firstSupplier, ThrowingSupplier<T> secondSupplier)
+            throws Exception {
         CountDownLatch ready = new CountDownLatch(2);
         CountDownLatch start = new CountDownLatch(1);
         ExecutorService executor = Executors.newFixedThreadPool(2);
         try {
-            Future<T> first = executor.submit(() -> executeAfterSignal(supplier, ready, start));
-            Future<T> second = executor.submit(() -> executeAfterSignal(supplier, ready, start));
+            Future<T> first =
+                    executor.submit(() -> executeAfterSignal(firstSupplier, ready, start));
+            Future<T> second =
+                    executor.submit(() -> executeAfterSignal(secondSupplier, ready, start));
             assertThat(ready.await(5, TimeUnit.SECONDS)).isTrue();
             start.countDown();
             return List.of(first.get(10, TimeUnit.SECONDS), second.get(10, TimeUnit.SECONDS));
