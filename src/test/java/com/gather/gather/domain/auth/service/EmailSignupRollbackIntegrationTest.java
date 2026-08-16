@@ -53,6 +53,7 @@ class EmailSignupRollbackIntegrationTest {
 
     private Long activityRegionId;
     private UUID phoneVerificationId;
+    private UUID emailVerificationId;
 
     @BeforeEach
     void setUp() {
@@ -69,8 +70,14 @@ class EmailSignupRollbackIntegrationTest {
                                                     "email-signup-rollback-code",
                                                     null));
                             activityRegionId = activityRegion.getId();
+                            emailVerificationId = UUID.randomUUID();
                             EmailVerification verification =
-                                    EmailVerification.create(EMAIL, "123456", now.plusDays(1));
+                                    EmailVerification.create(
+                                            EMAIL,
+                                            emailVerificationId.toString(),
+                                            "123456",
+                                            now.plusDays(1),
+                                            now);
                             verification.verify(now);
                             emailVerificationRepository.save(verification);
                             PhoneVerification phoneVerification =
@@ -106,8 +113,8 @@ class EmailSignupRollbackIntegrationTest {
     }
 
     @Test
-    @DisplayName("Refresh Token 저장 실패는 신규 User 생성을 함께 rollback한다")
-    void signup_whenRefreshTokenSaveFails_rollsBackUser() {
+    @DisplayName("Refresh Token 저장 실패는 두 인증 소비를 rollback하고 같은 ID 재시도를 허용한다")
+    void signup_whenRefreshTokenSaveFails_rollsBackProofsAndAllowsRetry() {
         when(refreshTokenRepository.save(any(RefreshToken.class)))
                 .thenThrow(new DataIntegrityViolationException("forced refresh token failure"));
 
@@ -117,11 +124,37 @@ class EmailSignupRollbackIntegrationTest {
 
         assertThat(userRepository.findByEmail(EMAIL)).isEmpty();
         assertThat(
+                        emailVerificationRepository
+                                .findByVerificationId(emailVerificationId.toString())
+                                .orElseThrow()
+                                .getConsumedAt())
+                .isNull();
+        assertThat(
                         phoneVerificationRepository
                                 .findByVerificationId(phoneVerificationId.toString())
                                 .orElseThrow()
                                 .getConsumedAt())
                 .isNull();
+
+        org.mockito.Mockito.reset(refreshTokenRepository);
+        when(refreshTokenRepository.save(any(RefreshToken.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        authService.signup(signupRequest());
+
+        assertThat(userRepository.findByEmail(EMAIL)).isPresent();
+        assertThat(
+                        emailVerificationRepository
+                                .findByVerificationId(emailVerificationId.toString())
+                                .orElseThrow()
+                                .getConsumedAt())
+                .isNotNull();
+        assertThat(
+                        phoneVerificationRepository
+                                .findByVerificationId(phoneVerificationId.toString())
+                                .orElseThrow()
+                                .getConsumedAt())
+                .isNotNull();
     }
 
     private SignupRequest signupRequest() {
@@ -132,6 +165,7 @@ class EmailSignupRollbackIntegrationTest {
                 PHONE_NUMBER,
                 phoneVerificationId,
                 EMAIL,
+                emailVerificationId,
                 "password1",
                 "password1",
                 "롤백검증",

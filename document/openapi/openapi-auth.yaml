@@ -152,6 +152,7 @@ paths:
                   email: test@example.com
                   verified: true
                   verifiedAt: '2026-06-28T03:05:00'
+                  emailVerificationId: 98fa88ef-bbeb-4928-a202-7885197b3774
                 error: null
         '400':
           description: 요청 값 검증 실패 또는 인증 코드 오류
@@ -530,6 +531,7 @@ paths:
               phoneNumber: '01012345678'
               phoneVerificationId: 5c5d5db1-4187-43d0-8580-672307994878
               email: test@example.com
+              emailVerificationId: 98fa88ef-bbeb-4928-a202-7885197b3774
               password: password123!
               passwordConfirm: password123!
               nickname: 길동
@@ -587,14 +589,14 @@ paths:
                     error:
                       code: PASSWORD_MISMATCH
                       message: 비밀번호가 일치하지 않습니다.
-                emailNotVerified:
-                  summary: 이메일 인증 미완료
+                emailVerificationRequired:
+                  summary: 이메일 인증 없음·ID/이메일 불일치·인증 만료·이미 소비됨
                   value:
                     success: false
                     data: null
                     error:
-                      code: EMAIL_NOT_VERIFIED
-                      message: 이메일 인증이 완료되지 않았습니다.
+                      code: EMAIL_VERIFICATION_REQUIRED
+                      message: 이메일 인증이 필요합니다.
                 phoneVerificationRequired:
                   summary: 휴대폰 인증 없음·ID/전화번호 불일치·인증 만료·이미 소비됨
                   value:
@@ -860,6 +862,99 @@ paths:
                     error:
                       code: WITHDRAWN_USER
                       message: 탈퇴한 계정입니다.
+
+  /api/v1/auth/session/restore:
+    post:
+      tags:
+        - Auth
+      summary: 로그인 세션 복원
+      description: |
+        앱 최초 로딩 또는 새로고침 시 HttpOnly Refresh Token 쿠키로 로그인 세션을 복원합니다.
+        유효한 Refresh Token은 기존 토큰을 폐기하고 새 Access Token과 Refresh Token으로 rotation합니다.
+        쿠키가 없거나 Refresh Token이 유효하지 않으면 오류가 아닌 정상적인 비로그인 상태를 반환하며 쿠키를 변경하지 않습니다.
+      operationId: restoreSession
+      parameters:
+        - name: gather_refresh_token
+          in: cookie
+          required: false
+          description: 로그인 또는 직전 rotation에서 받은 HttpOnly Refresh Token 쿠키
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 세션 복원 성공 또는 복원할 세션 없음
+          headers:
+            Set-Cookie:
+              description: 세션 복원 성공 시에만 rotation으로 발급되는 HttpOnly Refresh Token 쿠키
+              schema:
+                type: string
+              example: gather_refresh_token=new-refresh-token-value; Path=/api/v1/auth; Max-Age=1209600; HttpOnly; SameSite=Lax
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionRestoreApiResponse'
+              examples:
+                authenticated:
+                  summary: 세션 복원 성공
+                  value:
+                    success: true
+                    data:
+                      authenticated: true
+                      accessToken: new-access-token-value
+                      tokenType: Bearer
+                    error: null
+                anonymous:
+                  summary: 복원할 세션 없음
+                  value:
+                    success: true
+                    data:
+                      authenticated: false
+                      accessToken: null
+                      tokenType: null
+                    error: null
+        '403':
+          description: 사용자 상태로 인한 세션 복원 차단
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorApiResponse'
+              examples:
+                suspendedUser:
+                  summary: 이용 정지 계정
+                  value:
+                    success: false
+                    data: null
+                    error:
+                      code: SUSPENDED_USER
+                      message: 이용 정지된 계정입니다.
+                withdrawalPendingUser:
+                  summary: 탈퇴 처리 중인 계정
+                  value:
+                    success: false
+                    data: null
+                    error:
+                      code: WITHDRAWAL_PENDING_USER
+                      message: 탈퇴 처리 중인 계정입니다.
+                withdrawnUser:
+                  summary: 탈퇴 계정
+                  value:
+                    success: false
+                    data: null
+                    error:
+                      code: WITHDRAWN_USER
+                      message: 탈퇴한 계정입니다.
+        '500':
+          description: 서버 내부 오류
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorApiResponse'
+              example:
+                success: false
+                data: null
+                error:
+                  code: INTERNAL_SERVER_ERROR
+                  message: 서버 오류가 발생했습니다.
 
   /api/v1/auth/logout:
     post:
@@ -1466,6 +1561,7 @@ components:
         - email
         - verified
         - verifiedAt
+        - emailVerificationId
       properties:
         email:
           type: string
@@ -1478,6 +1574,11 @@ components:
           type: string
           description: 이메일 인증 완료 시각(UTC, offset 없는 ISO-8601)
           example: '2026-06-28T03:05:00'
+        emailVerificationId:
+          type: string
+          format: uuid
+          description: 일반 이메일 회원가입에 사용할 인증 결과 ID
+          example: 98fa88ef-bbeb-4928-a202-7885197b3774
 
     EmailVerificationConfirmApiResponse:
       type: object
@@ -1669,6 +1770,7 @@ components:
         - phoneNumber
         - phoneVerificationId
         - email
+        - emailVerificationId
         - password
         - passwordConfirm
         - nickname
@@ -1708,6 +1810,11 @@ components:
           maxLength: 255
           description: 이메일. 이메일 인증 완료가 필요합니다. 서버에서 앞뒤 공백 제거 및 소문자화합니다.
           example: test@example.com
+        emailVerificationId:
+          type: string
+          format: uuid
+          description: 이 이메일을 VERIFIED로 만든 인증 결과 ID. 가입 성공 트랜잭션에서 한 번만 소비됩니다.
+          example: 98fa88ef-bbeb-4928-a202-7885197b3774
         password:
           type: string
           minLength: 6
@@ -2018,6 +2125,46 @@ components:
           example: true
         data:
           $ref: '#/components/schemas/TokenData'
+        error:
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/ApiError'
+          example: null
+
+    SessionRestoreData:
+      type: object
+      required:
+        - authenticated
+        - accessToken
+        - tokenType
+      properties:
+        authenticated:
+          type: boolean
+          description: 로그인 세션 복원 여부
+          example: true
+        accessToken:
+          type: string
+          nullable: true
+          description: 복원된 세션의 Access Token. 복원할 세션이 없으면 null입니다.
+          example: new-access-token-value
+        tokenType:
+          type: string
+          nullable: true
+          description: 토큰 타입. 복원할 세션이 없으면 null입니다.
+          example: Bearer
+
+    SessionRestoreApiResponse:
+      type: object
+      required:
+        - success
+        - data
+        - error
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          $ref: '#/components/schemas/SessionRestoreData'
         error:
           nullable: true
           allOf:

@@ -17,10 +17,11 @@ import com.gather.gather.domain.region.entity.Region;
 import com.gather.gather.global.exception.BusinessException;
 import com.gather.gather.global.exception.ErrorCode;
 import java.security.SecureRandom;
-import java.sql.SQLException;
 import java.time.Clock;
 import java.time.LocalDateTime;
 import java.util.Locale;
+import java.util.Optional;
+import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.hibernate.exception.ConstraintViolationException;
@@ -42,7 +43,6 @@ public class AuthService {
     private static final int EMAIL_RESEND_COOLDOWN_MINUTES = 3;
     private static final int EMAIL_DAILY_SEND_LIMIT = 5;
     private static final int EMAIL_MAX_VERIFICATION_ATTEMPTS = 5;
-    private static final int MYSQL_DUPLICATE_ENTRY_ERROR_CODE = 1062;
     private static final String EMAIL_VERIFICATION_UNIQUE_CONSTRAINT =
             "uk_email_verification_email";
 
@@ -58,6 +58,7 @@ public class AuthService {
     private final LoginPolicy loginPolicy;
     private final AccountRejoinBlockService accountRejoinBlockService;
     private final AccountIdentityGuardService accountIdentityGuardService;
+    private final EmailVerificationRequirementService emailVerificationRequirementService;
     private final PhoneVerificationRequirementService phoneVerificationRequirementService;
     private final Clock clock;
     private final SecureRandom secureRandom = new SecureRandom();
@@ -70,7 +71,8 @@ public class AuthService {
             throw new BusinessException(ErrorCode.DUPLICATE_EMAIL);
         }
 
-        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime now = LocalDateTime.now(clock);
+        String verificationId = UUID.randomUUID().toString();
         String code = generateVerificationCode();
         LocalDateTime expiresAt = now.plusMinutes(EMAIL_VERIFICATION_EXPIRATION_MINUTES);
 
@@ -83,7 +85,8 @@ public class AuthService {
         }
         EmailVerificationState previousState = null;
         if (emailVerification == null) {
-            emailVerification = EmailVerification.create(email, code, expiresAt);
+            emailVerification =
+                    EmailVerification.create(email, verificationId, code, expiresAt, now);
             try {
                 emailVerificationRepository.saveAndFlush(emailVerification);
             } catch (DataIntegrityViolationException exception) {
@@ -100,7 +103,7 @@ public class AuthService {
                 throw new BusinessException(ErrorCode.EMAIL_SEND_LIMIT_EXCEEDED);
             }
             previousState = EmailVerificationState.from(emailVerification);
-            emailVerification.refresh(code, expiresAt);
+            emailVerification.refresh(verificationId, code, expiresAt, now);
             emailVerificationRepository.saveAndFlush(emailVerification);
         }
 
@@ -135,7 +138,7 @@ public class AuthService {
                                         new BusinessException(
                                                 ErrorCode.EMAIL_VERIFICATION_NOT_FOUND));
 
-        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime now = LocalDateTime.now(clock);
         if (emailVerification.isExpired(now)) {
             throw new BusinessException(ErrorCode.EXPIRED_VERIFICATION_CODE);
         }
@@ -152,7 +155,8 @@ public class AuthService {
         }
 
         emailVerification.verify(now);
-        return new EmailVerificationConfirmResponse(email, true, now);
+        return new EmailVerificationConfirmResponse(
+                email, true, now, UUID.fromString(emailVerification.getVerificationId()));
     }
 
     @Transactional
@@ -168,7 +172,7 @@ public class AuthService {
         RejoinBlockIdentifier phoneIdentifier =
                 accountIdentityGuardService.lockPhone(phoneNumber, now);
         validatePhoneRejoinAllowed(phoneIdentifier, now);
-        validateEmailVerified(email);
+        emailVerificationRequirementService.consumeForSignup(email, request.emailVerificationId());
         phoneVerificationRequirementService.consumeForSignup(
                 request.phoneVerificationId(), phoneNumber);
         validateDuplicates(email, phoneNumber, nickname);
@@ -220,6 +224,22 @@ public class AuthService {
 
     @Transactional
     public TokenIssueResult reissue(String rawRefreshToken) {
+        return rotateRefreshToken(rawRefreshToken);
+    }
+
+    @Transactional
+    public Optional<TokenIssueResult> restoreSession(String rawRefreshToken) {
+        try {
+            return Optional.of(rotateRefreshToken(rawRefreshToken));
+        } catch (BusinessException exception) {
+            if (isSessionRestoreAnonymousError(exception.getErrorCode())) {
+                return Optional.empty();
+            }
+            throw exception;
+        }
+    }
+
+    private TokenIssueResult rotateRefreshToken(String rawRefreshToken) {
         String tokenHash = requireRefreshTokenHash(rawRefreshToken);
         Long userId =
                 refreshTokenRepository
@@ -245,6 +265,12 @@ public class AuthService {
         loginPolicy.validateLoginAllowed(user);
         refreshToken.revoke(now);
         return tokenIssuer.issue(user);
+    }
+
+    private boolean isSessionRestoreAnonymousError(ErrorCode errorCode) {
+        return errorCode == ErrorCode.INVALID_TOKEN
+                || errorCode == ErrorCode.EXPIRED_TOKEN
+                || errorCode == ErrorCode.REVOKED_TOKEN;
     }
 
     @Transactional
@@ -283,16 +309,6 @@ public class AuthService {
         signupValidator.validateInterestCategories(request.interestCategories());
     }
 
-    private void validateEmailVerified(String email) {
-        EmailVerification emailVerification =
-                emailVerificationRepository
-                        .findByEmail(email)
-                        .orElseThrow(() -> new BusinessException(ErrorCode.EMAIL_NOT_VERIFIED));
-        if (!emailVerification.isVerified()) {
-            throw new BusinessException(ErrorCode.EMAIL_NOT_VERIFIED);
-        }
-    }
-
     private void validateDuplicates(String email, String phoneNumber, String nickname) {
         if (userRepository.existsByEmail(email)) {
             throw new BusinessException(ErrorCode.DUPLICATE_EMAIL);
@@ -317,9 +333,6 @@ public class AuthService {
         if (constraintName != null) {
             return isEmailVerificationUniqueConstraint(constraintName);
         }
-        if (hasMySqlDuplicateEntryError(exception)) {
-            return true;
-        }
         return hasEmailVerificationConstraintInMessage(exception);
     }
 
@@ -340,20 +353,6 @@ public class AuthService {
                 constraintName.replace("`", "").replace("\"", "").toLowerCase(Locale.ROOT);
         return normalizedConstraintName.equals(EMAIL_VERIFICATION_UNIQUE_CONSTRAINT)
                 || normalizedConstraintName.endsWith("." + EMAIL_VERIFICATION_UNIQUE_CONSTRAINT);
-    }
-
-    // 제약 이름을 얻지 못했을 때의 차선책. email_verification의 unique 제약이 email 하나뿐이라는 전제에
-    // 기대므로, 이 테이블에 unique 컬럼을 추가하면 무관한 중복키까지 이메일 충돌로 오분류된다.
-    private boolean hasMySqlDuplicateEntryError(Throwable exception) {
-        Throwable cause = exception;
-        while (cause != null) {
-            if (cause instanceof SQLException sqlException
-                    && sqlException.getErrorCode() == MYSQL_DUPLICATE_ENTRY_ERROR_CODE) {
-                return true;
-            }
-            cause = cause.getCause();
-        }
-        return false;
     }
 
     private boolean hasEmailVerificationConstraintInMessage(Throwable exception) {
@@ -410,10 +409,12 @@ public class AuthService {
                         emailVerificationRepository.restoreAfterFailedResend(
                                 compensation.id(),
                                 compensation.failedVersion(),
+                                previous.verificationId(),
                                 previous.code(),
                                 previous.verified(),
                                 previous.expiresAt(),
                                 previous.verifiedAt(),
+                                previous.consumedAt(),
                                 previous.createdAt(),
                                 previous.dailySendCount(),
                                 previous.attemptCount());
@@ -446,20 +447,24 @@ public class AuthService {
             Long id, Long failedVersion, EmailVerificationState previousState) {}
 
     private record EmailVerificationState(
+            String verificationId,
             String code,
             boolean verified,
             LocalDateTime expiresAt,
             LocalDateTime verifiedAt,
+            LocalDateTime consumedAt,
             LocalDateTime createdAt,
             int dailySendCount,
             int attemptCount) {
 
         private static EmailVerificationState from(EmailVerification emailVerification) {
             return new EmailVerificationState(
+                    emailVerification.getVerificationId(),
                     emailVerification.getCode(),
                     emailVerification.isVerified(),
                     emailVerification.getExpiresAt(),
                     emailVerification.getVerifiedAt(),
+                    emailVerification.getConsumedAt(),
                     emailVerification.getCreatedAt(),
                     emailVerification.getDailySendCount(),
                     emailVerification.getAttemptCount());

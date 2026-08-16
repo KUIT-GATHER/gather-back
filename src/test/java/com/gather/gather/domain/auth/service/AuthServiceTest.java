@@ -8,6 +8,7 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -53,6 +54,7 @@ import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.params.provider.NullAndEmptySource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -64,6 +66,10 @@ class AuthServiceTest {
 
     private static final UUID PHONE_VERIFICATION_ID =
             UUID.fromString("5c5d5db1-4187-43d0-8580-672307994878");
+    private static final UUID EMAIL_VERIFICATION_ID =
+            UUID.fromString("98fa88ef-bbeb-4928-a202-7885197b3774");
+    private static final LocalDateTime SERVICE_NOW =
+            LocalDateTime.of(2026, 7, 31, 5, 25, 56, 123456000);
     private static final RejoinBlockIdentifier PHONE_IDENTIFIER =
             new RejoinBlockIdentifier(AccountRejoinBlockIdentifierType.PHONE, "a".repeat(64), 1);
 
@@ -77,6 +83,7 @@ class AuthServiceTest {
     @Mock private LockedTokenIssuanceService lockedTokenIssuanceService;
     @Mock private AccountRejoinBlockService accountRejoinBlockService;
     @Mock private AccountIdentityGuardService accountIdentityGuardService;
+    @Mock private EmailVerificationRequirementService emailVerificationRequirementService;
     @Mock private PhoneVerificationRequirementService phoneVerificationRequirementService;
 
     private AuthService authService;
@@ -102,6 +109,7 @@ class AuthServiceTest {
                         new LoginPolicy(),
                         accountRejoinBlockService,
                         accountIdentityGuardService,
+                        emailVerificationRequirementService,
                         phoneVerificationRequirementService,
                         Clock.fixed(Instant.parse("2026-07-31T05:25:56.123456Z"), ZoneOffset.UTC));
         lenient()
@@ -182,29 +190,27 @@ class AuthServiceTest {
     }
 
     @Test
-    @DisplayName("제약조건 이름이 없으면 MySQL 1062 오류 코드로 unique 충돌을 확인한다")
-    void sendEmailVerificationCode_mysqlDuplicateErrorCodeConflict_throws() {
+    @DisplayName("제약조건 이름이 없는 MySQL 1062 오류는 이메일 충돌로 오분류하지 않는다")
+    void sendEmailVerificationCode_mysqlDuplicateWithoutConstraint_rethrowsOriginalException() {
         String email = "mysql-code-race@example.com";
         SQLException sqlException = new SQLException("duplicate", "23000", 1062);
+        DataIntegrityViolationException integrityException =
+                new DataIntegrityViolationException("duplicate value", sqlException);
         when(userRepository.existsByEmail(email)).thenReturn(false);
         when(emailVerificationRepository.saveAndFlush(any(EmailVerification.class)))
-                .thenThrow(new DataIntegrityViolationException("duplicate email", sqlException));
+                .thenThrow(integrityException);
 
         assertThatThrownBy(
                         () ->
                                 authService.sendEmailVerificationCode(
                                         new EmailVerificationSendRequest(email)))
-                .isInstanceOfSatisfying(
-                        BusinessException.class,
-                        exception ->
-                                assertThat(exception.getErrorCode())
-                                        .isEqualTo(ErrorCode.EMAIL_RESEND_TOO_SOON));
+                .isSameAs(integrityException);
         verify(emailSender, never()).sendVerificationCode(any(), any());
     }
 
     @Test
-    @DisplayName("구조화된 제약조건 이름이 다른 unique 충돌이면 원본 예외를 유지한다")
-    void sendEmailVerificationCode_differentStructuredConstraint_rethrowsOriginalException() {
+    @DisplayName("인증 ID unique 충돌은 이메일 중복으로 오분류하지 않고 원본 예외를 유지한다")
+    void sendEmailVerificationCode_verificationIdConstraint_rethrowsOriginalException() {
         String email = "different-constraint@example.com";
         SQLException sqlException = new SQLException("duplicate", "23000", 1062);
         ConstraintViolationException constraintException =
@@ -212,7 +218,7 @@ class AuthServiceTest {
                         "could not execute statement",
                         sqlException,
                         "insert into email_verification",
-                        "uk_different_constraint");
+                        "uk_email_verification_verification_id");
         DataIntegrityViolationException integrityException =
                 new DataIntegrityViolationException("duplicate value", constraintException);
         when(userRepository.existsByEmail(email)).thenReturn(false);
@@ -250,11 +256,10 @@ class AuthServiceTest {
     void sendEmailVerificationCode_compensationFailure_preservesSmtpFailure() {
         String email = "compensation-failure@example.com";
         RuntimeException smtpException = new RuntimeException("smtp down");
-        EmailVerification existing =
-                EmailVerification.create(email, "111111", LocalDateTime.now().plusMinutes(10));
+        EmailVerification existing = emailVerification(email, "111111");
         ReflectionTestUtils.setField(existing, "id", 1L);
         ReflectionTestUtils.setField(existing, "version", 0L);
-        ReflectionTestUtils.setField(existing, "createdAt", LocalDateTime.now().minusMinutes(5));
+        ReflectionTestUtils.setField(existing, "createdAt", SERVICE_NOW.minusMinutes(5));
         when(userRepository.existsByEmail(email)).thenReturn(false);
         when(emailVerificationRepository.existsByEmail(email)).thenReturn(true);
         when(emailVerificationRepository.findByEmailForUpdate(email))
@@ -264,7 +269,9 @@ class AuthServiceTest {
                         any(),
                         any(),
                         anyString(),
+                        anyString(),
                         anyBoolean(),
+                        any(),
                         any(),
                         any(),
                         any(),
@@ -290,8 +297,7 @@ class AuthServiceTest {
     @DisplayName("재발송 쿨다운 이내면 발송하지 않고 EMAIL_RESEND_TOO_SOON을 던진다")
     void sendEmailVerificationCode_withinCooldown_throws() {
         String email = "cooldown@example.com";
-        EmailVerification existing =
-                EmailVerification.create(email, "111111", LocalDateTime.now().plusMinutes(10));
+        EmailVerification existing = emailVerification(email, "111111");
         when(userRepository.existsByEmail(email)).thenReturn(false);
         when(emailVerificationRepository.existsByEmail(email)).thenReturn(true);
         when(emailVerificationRepository.findByEmailForUpdate(email))
@@ -313,10 +319,9 @@ class AuthServiceTest {
     @DisplayName("당일 발송 한도에 도달하면 EMAIL_SEND_LIMIT_EXCEEDED를 던진다")
     void sendEmailVerificationCode_dailyLimitReached_throws() {
         String email = "limit@example.com";
-        EmailVerification existing =
-                EmailVerification.create(email, "111111", LocalDateTime.now().plusMinutes(10));
+        EmailVerification existing = emailVerification(email, "111111");
         // 쿨다운은 지났지만 같은 날 발송 한도(5회)를 채운 상태를 재현한다.
-        ReflectionTestUtils.setField(existing, "createdAt", LocalDateTime.now().minusMinutes(5));
+        ReflectionTestUtils.setField(existing, "createdAt", SERVICE_NOW.minusMinutes(5));
         ReflectionTestUtils.setField(existing, "dailySendCount", 5);
         when(userRepository.existsByEmail(email)).thenReturn(false);
         when(emailVerificationRepository.existsByEmail(email)).thenReturn(true);
@@ -339,8 +344,7 @@ class AuthServiceTest {
     @DisplayName("틀린 코드를 입력하면 시도 횟수가 증가하고 INVALID_VERIFICATION_CODE를 던진다")
     void confirmEmailVerificationCode_wrongCode_increasesAttempt() {
         String email = "wrong@example.com";
-        EmailVerification existing =
-                EmailVerification.create(email, "123456", LocalDateTime.now().plusMinutes(10));
+        EmailVerification existing = emailVerification(email, "123456");
         when(emailVerificationRepository.existsByEmail(email)).thenReturn(true);
         when(emailVerificationRepository.findByEmailForUpdate(email))
                 .thenReturn(Optional.of(existing));
@@ -358,11 +362,33 @@ class AuthServiceTest {
     }
 
     @Test
+    @DisplayName("올바른 코드를 확인하면 발송 시 생성한 인증 ID를 반환한다")
+    void confirmEmailVerificationCode_validCode_returnsVerificationId() {
+        String email = "confirm@example.com";
+        EmailVerification existing =
+                EmailVerification.create(
+                        email,
+                        EMAIL_VERIFICATION_ID.toString(),
+                        "123456",
+                        LocalDateTime.now().plusMinutes(10),
+                        LocalDateTime.now());
+        when(emailVerificationRepository.existsByEmail(email)).thenReturn(true);
+        when(emailVerificationRepository.findByEmailForUpdate(email))
+                .thenReturn(Optional.of(existing));
+
+        var response =
+                authService.confirmEmailVerificationCode(
+                        new EmailVerificationConfirmRequest(email, "123456"));
+
+        assertThat(response.emailVerificationId()).isEqualTo(EMAIL_VERIFICATION_ID);
+        assertThat(existing.isVerified()).isTrue();
+    }
+
+    @Test
     @DisplayName("시도 횟수를 모두 소진하면 올바른 코드라도 EMAIL_VERIFICATION_ATTEMPTS_EXCEEDED를 던진다")
     void confirmEmailVerificationCode_attemptsExceeded_throws() {
         String email = "exceeded@example.com";
-        EmailVerification existing =
-                EmailVerification.create(email, "123456", LocalDateTime.now().plusMinutes(10));
+        EmailVerification existing = emailVerification(email, "123456");
         for (int i = 0; i < 5; i++) {
             existing.increaseAttempt();
         }
@@ -398,6 +424,21 @@ class AuthServiceTest {
                                         .isEqualTo(ErrorCode.EMAIL_VERIFICATION_NOT_FOUND));
         // 없는 행에 FOR UPDATE를 걸면 빈 갭에 gap lock이 잡히므로 잠금 조회 자체가 일어나면 안 된다.
         verify(emailVerificationRepository, never()).findByEmailForUpdate(any());
+    }
+
+    @Test
+    @DisplayName("회원가입은 유효한 이메일 인증 결과가 없으면 휴대폰 인증 전에 중단한다")
+    void signup_withoutEmailVerification_throwsEmailVerificationRequired() {
+        doThrow(new BusinessException(ErrorCode.EMAIL_VERIFICATION_REQUIRED))
+                .when(emailVerificationRequirementService)
+                .consumeForSignup("test@example.com", EMAIL_VERIFICATION_ID);
+
+        assertErrorCode(
+                () -> authService.signup(signupRequest(123L)),
+                ErrorCode.EMAIL_VERIFICATION_REQUIRED);
+
+        verify(phoneVerificationRequirementService, never()).consumeForSignup(any(), anyString());
+        verify(userRepository, never()).saveAndFlush(any(User.class));
     }
 
     @Test
@@ -481,6 +522,8 @@ class AuthServiceTest {
         assertThat(result.refreshToken()).isEqualTo("refresh-token");
         verify(phoneVerificationRequirementService)
                 .consumeForSignup(PHONE_VERIFICATION_ID, "01012345678");
+        verify(emailVerificationRequirementService)
+                .consumeForSignup("test@example.com", EMAIL_VERIFICATION_ID);
 
         ArgumentCaptor<User> userCaptor = ArgumentCaptor.forClass(User.class);
         verify(userRepository).saveAndFlush(userCaptor.capture());
@@ -827,6 +870,97 @@ class AuthServiceTest {
         verify(refreshTokenRepository, never()).save(org.mockito.ArgumentMatchers.any());
     }
 
+    @Test
+    @DisplayName("세션 복원은 기존 Refresh Token을 revoke하고 새 토큰을 발급한다")
+    void restoreSession_withValidRefreshToken_rotatesToken() {
+        User user = activeUser();
+        RefreshToken oldRefreshToken =
+                RefreshToken.create("old-refresh-hash", user, LocalDateTime.now().plusDays(1));
+        prepareRefreshTokenLookup("old-refresh-token", "old-refresh-hash", user);
+        when(refreshTokenRepository.findByTokenHashForUpdate("old-refresh-hash"))
+                .thenReturn(Optional.of(oldRefreshToken));
+        prepareTokenIssue(user);
+
+        Optional<TokenIssueResult> result = authService.restoreSession("old-refresh-token");
+
+        assertThat(result).isPresent();
+        assertThat(result.orElseThrow().accessToken()).isEqualTo("new-access-token");
+        assertThat(result.orElseThrow().refreshToken()).isEqualTo("new-refresh-token");
+        assertThat(oldRefreshToken.isRevoked()).isTrue();
+        InOrder lockOrder = inOrder(userRepository, refreshTokenRepository);
+        lockOrder.verify(userRepository).findByIdForUpdate(1L);
+        lockOrder.verify(refreshTokenRepository).findByTokenHashForUpdate("old-refresh-hash");
+    }
+
+    @Test
+    @DisplayName("존재하지 않는 Refresh Token의 세션 복원은 anonymous 결과다")
+    void restoreSession_withUnknownRefreshToken_returnsAnonymous() {
+        when(tokenProvider.hashToken("unknown-refresh-token")).thenReturn("unknown-refresh-hash");
+        when(refreshTokenRepository.findUserIdByTokenHash("unknown-refresh-hash"))
+                .thenReturn(Optional.empty());
+
+        Optional<TokenIssueResult> result = authService.restoreSession("unknown-refresh-token");
+
+        assertThat(result).isEmpty();
+        verify(tokenProvider, never()).createAccessToken(any(User.class));
+        verify(refreshTokenRepository, never()).save(any(RefreshToken.class));
+    }
+
+    @Test
+    @DisplayName("만료된 Refresh Token의 세션 복원은 anonymous 결과다")
+    void restoreSession_withExpiredRefreshToken_returnsAnonymous() {
+        User user = activeUser();
+        RefreshToken expiredRefreshToken =
+                RefreshToken.create(
+                        "expired-refresh-hash", user, LocalDateTime.of(2026, 7, 31, 5, 25, 55));
+        prepareRefreshTokenLookup("expired-refresh-token", "expired-refresh-hash", user);
+        when(refreshTokenRepository.findByTokenHashForUpdate("expired-refresh-hash"))
+                .thenReturn(Optional.of(expiredRefreshToken));
+
+        Optional<TokenIssueResult> result = authService.restoreSession("expired-refresh-token");
+
+        assertThat(result).isEmpty();
+        assertThat(expiredRefreshToken.isRevoked()).isFalse();
+        verify(refreshTokenRepository, never()).save(any(RefreshToken.class));
+    }
+
+    @Test
+    @DisplayName("폐기된 Refresh Token의 세션 복원은 anonymous 결과다")
+    void restoreSession_withRevokedRefreshToken_returnsAnonymous() {
+        User user = activeUser();
+        RefreshToken revokedRefreshToken =
+                RefreshToken.create("revoked-refresh-hash", user, LocalDateTime.now().plusDays(1));
+        revokedRefreshToken.revoke(LocalDateTime.now());
+        prepareRefreshTokenLookup("revoked-refresh-token", "revoked-refresh-hash", user);
+        when(refreshTokenRepository.findByTokenHashForUpdate("revoked-refresh-hash"))
+                .thenReturn(Optional.of(revokedRefreshToken));
+
+        Optional<TokenIssueResult> result = authService.restoreSession("revoked-refresh-token");
+
+        assertThat(result).isEmpty();
+        verify(refreshTokenRepository, never()).save(any(RefreshToken.class));
+    }
+
+    @ParameterizedTest
+    @EnumSource(
+            value = UserStatus.class,
+            names = {"SUSPENDED", "WITHDRAWAL_PENDING", "WITHDRAWN"})
+    @DisplayName("세션 복원은 차단된 회원의 기존 계정 상태 오류를 유지한다")
+    void restoreSession_withBlockedUserStatus_throwsStatusError(UserStatus status) {
+        User user = mock(User.class);
+        when(user.getStatus()).thenReturn(status);
+        RefreshToken refreshToken =
+                RefreshToken.create("refresh-hash", user, LocalDateTime.now().plusDays(1));
+        prepareRefreshTokenLookup("refresh-token", "refresh-hash", user);
+        when(refreshTokenRepository.findByTokenHashForUpdate("refresh-hash"))
+                .thenReturn(Optional.of(refreshToken));
+
+        assertErrorCode(() -> authService.restoreSession("refresh-token"), errorCodeFor(status));
+
+        assertThat(refreshToken.isRevoked()).isFalse();
+        verify(refreshTokenRepository, never()).save(any(RefreshToken.class));
+    }
+
     @ParameterizedTest
     @EnumSource(
             value = UserStatus.class,
@@ -905,6 +1039,12 @@ class AuthServiceTest {
         when(tokenProvider.refreshTokenExpiresAt()).thenReturn(LocalDateTime.now().plusDays(14));
     }
 
+    private void prepareRefreshTokenLookup(String rawToken, String tokenHash, User user) {
+        when(tokenProvider.hashToken(rawToken)).thenReturn(tokenHash);
+        when(refreshTokenRepository.findUserIdByTokenHash(tokenHash)).thenReturn(Optional.of(1L));
+        when(userRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(user));
+    }
+
     private void assertErrorCode(Runnable action, ErrorCode expected) {
         assertThatThrownBy(action::run)
                 .isInstanceOfSatisfying(
@@ -922,12 +1062,7 @@ class AuthServiceTest {
     }
 
     private void prepareVerifiedEmail() {
-        EmailVerification emailVerification =
-                EmailVerification.create(
-                        "test@example.com", "123456", LocalDateTime.now().plusMinutes(10));
-        emailVerification.verify(LocalDateTime.now());
-        when(emailVerificationRepository.findByEmail("test@example.com"))
-                .thenReturn(Optional.of(emailVerification));
+        // 이메일 인증 상세 검증은 전용 서비스 테스트에서 수행하고 여기서는 가입 orchestration만 검증한다.
     }
 
     private void prepareSuccessfulSignup() {
@@ -987,6 +1122,7 @@ class AuthServiceTest {
                 "01012345678",
                 PHONE_VERIFICATION_ID,
                 "test@example.com",
+                EMAIL_VERIFICATION_ID,
                 "password123!",
                 "password123!",
                 nickname,
@@ -996,5 +1132,14 @@ class AuthServiceTest {
                 true,
                 true,
                 false);
+    }
+
+    private static EmailVerification emailVerification(String email, String code) {
+        return EmailVerification.create(
+                email,
+                UUID.randomUUID().toString(),
+                code,
+                SERVICE_NOW.plusMinutes(10),
+                SERVICE_NOW);
     }
 }

@@ -5,6 +5,8 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.when;
 
+import com.gather.gather.domain.auth.dto.EmailVerificationConfirmRequest;
+import com.gather.gather.domain.auth.dto.EmailVerificationSendRequest;
 import com.gather.gather.domain.auth.dto.PhoneVerificationStatus;
 import com.gather.gather.domain.auth.dto.SignupRequest;
 import com.gather.gather.domain.auth.entity.EmailVerification;
@@ -135,21 +137,22 @@ class SignupPhoneVerificationConcurrencyIntegrationTest {
     @DisplayName("일반 가입 두 건이 같은 인증 ID를 사용하면 정확히 하나만 성공한다")
     void emailSignupVsEmailSignup_allowsExactlyOneSuccess() throws Exception {
         prepareVerification(true);
-        prepareVerifiedEmail(EMAIL_PREFIX + "first@example.com");
-        prepareVerifiedEmail(EMAIL_PREFIX + "second@example.com");
+        String email = EMAIL_PREFIX + "same-proof@example.com";
+        prepareVerifiedEmail(email);
 
         List<SignupOutcome> outcomes =
                 runConcurrently(
-                        () ->
-                                authService.signup(
-                                        emailSignupRequest(
-                                                EMAIL_PREFIX + "first@example.com", "일반경쟁가")),
-                        () ->
-                                authService.signup(
-                                        emailSignupRequest(
-                                                EMAIL_PREFIX + "second@example.com", "일반경쟁나")));
+                        () -> authService.signup(emailSignupRequest(email, "일반경쟁가")),
+                        () -> authService.signup(emailSignupRequest(email, "일반경쟁나")));
 
-        assertSingleConsumption(outcomes);
+        assertThat(outcomes).filteredOn(SignupOutcome::success).hasSize(1);
+        assertThat(outcomes)
+                .filteredOn(outcome -> !outcome.success())
+                .extracting(SignupOutcome::errorCode)
+                .containsExactly(ErrorCode.EMAIL_VERIFICATION_REQUIRED);
+        assertThat(userCount()).isEqualTo(1L);
+        assertThat(emailVerificationRepository.findByEmail(email).orElseThrow().getConsumedAt())
+                .isNotNull();
     }
 
     @Test
@@ -228,6 +231,101 @@ class SignupPhoneVerificationConcurrencyIntegrationTest {
         }
     }
 
+    @Test
+    @DisplayName("이메일 confirm과 일반 가입 경쟁은 미인증 중간 상태를 소비하지 않는다")
+    void emailConfirmVsEmailSignup_keepsVerificationConsistent() throws Exception {
+        prepareVerification(true);
+        String email = EMAIL_PREFIX + "email-confirm@example.com";
+        prepareEmail(email, false, LocalDateTime.now(clock).minusMinutes(1));
+        SignupRequest signupRequest = emailSignupRequest(email, "이메일확인경쟁");
+        CountDownLatch ready = new CountDownLatch(2);
+        CountDownLatch start = new CountDownLatch(1);
+
+        Future<Boolean> confirm =
+                executorService.submit(
+                        () -> {
+                            awaitStart(ready, start);
+                            authService.confirmEmailVerificationCode(
+                                    new EmailVerificationConfirmRequest(email, "123456"));
+                            return true;
+                        });
+        Future<SignupOutcome> signup =
+                executorService.submit(
+                        () -> {
+                            awaitStart(ready, start);
+                            return attemptSignup(() -> authService.signup(signupRequest));
+                        });
+        assertThat(ready.await(5, TimeUnit.SECONDS)).isTrue();
+        start.countDown();
+
+        assertThat(confirm.get(10, TimeUnit.SECONDS)).isTrue();
+        SignupOutcome signupOutcome = signup.get(10, TimeUnit.SECONDS);
+        EmailVerification verification =
+                emailVerificationRepository.findByEmail(email).orElseThrow();
+        long userCount = userCount();
+
+        assertThat(verification.isVerified()).isTrue();
+        assertThat(userCount).isIn(0L, 1L);
+        assertThat(verification.getConsumedAt() != null).isEqualTo(userCount == 1L);
+        assertThat(signupOutcome.success()).isEqualTo(userCount == 1L);
+        if (!signupOutcome.success()) {
+            assertThat(signupOutcome.errorCode()).isEqualTo(ErrorCode.EMAIL_VERIFICATION_REQUIRED);
+        }
+    }
+
+    @Test
+    @DisplayName("이메일 재발송과 가입 경쟁은 가입 또는 최신 인증 시도 중 하나만 남긴다")
+    void emailResendVsSignup_keepsLatestStateConsistent() throws Exception {
+        prepareVerification(true);
+        String email = EMAIL_PREFIX + "resend@example.com";
+        prepareEmail(email, true, LocalDateTime.now(clock).minusMinutes(5));
+        SignupRequest signupRequest = emailSignupRequest(email, "재발송경쟁");
+        String previousVerificationId = signupRequest.emailVerificationId().toString();
+        CountDownLatch ready = new CountDownLatch(2);
+        CountDownLatch start = new CountDownLatch(1);
+
+        Future<ErrorCode> resend =
+                executorService.submit(
+                        () -> {
+                            awaitStart(ready, start);
+                            try {
+                                authService.sendEmailVerificationCode(
+                                        new EmailVerificationSendRequest(email));
+                                return null;
+                            } catch (BusinessException exception) {
+                                return exception.getErrorCode();
+                            }
+                        });
+        Future<SignupOutcome> signup =
+                executorService.submit(
+                        () -> {
+                            awaitStart(ready, start);
+                            return attemptSignup(() -> authService.signup(signupRequest));
+                        });
+        assertThat(ready.await(5, TimeUnit.SECONDS)).isTrue();
+        start.countDown();
+
+        ErrorCode resendError = resend.get(10, TimeUnit.SECONDS);
+        SignupOutcome signupOutcome = signup.get(10, TimeUnit.SECONDS);
+        EmailVerification verification =
+                emailVerificationRepository.findByEmail(email).orElseThrow();
+
+        if (resendError == ErrorCode.DUPLICATE_EMAIL) {
+            assertThat(signupOutcome.success()).isTrue();
+            assertThat(verification.getVerificationId()).isEqualTo(previousVerificationId);
+            assertThat(verification.getConsumedAt()).isNotNull();
+        } else {
+            assertThat(resendError).isNull();
+            if (!signupOutcome.success()) {
+                assertThat(signupOutcome.errorCode())
+                        .isEqualTo(ErrorCode.EMAIL_VERIFICATION_REQUIRED);
+            }
+            assertThat(verification.getVerificationId()).isNotEqualTo(previousVerificationId);
+            assertThat(verification.isVerified()).isFalse();
+            assertThat(verification.getConsumedAt()).isNull();
+        }
+    }
+
     private void prepareVerification(boolean verified) {
         transactionTemplate()
                 .executeWithoutResult(
@@ -249,13 +347,24 @@ class SignupPhoneVerificationConcurrencyIntegrationTest {
     }
 
     private void prepareVerifiedEmail(String email) {
+        prepareEmail(email, true, LocalDateTime.now(clock));
+    }
+
+    private void prepareEmail(String email, boolean verified, LocalDateTime createdAt) {
         transactionTemplate()
                 .executeWithoutResult(
                         status -> {
                             LocalDateTime now = LocalDateTime.now(clock);
                             EmailVerification verification =
-                                    EmailVerification.create(email, "123456", now.plusDays(1));
-                            verification.verify(now);
+                                    EmailVerification.create(
+                                            email,
+                                            UUID.randomUUID().toString(),
+                                            "123456",
+                                            now.plusDays(1),
+                                            createdAt);
+                            if (verified) {
+                                verification.verify(now);
+                            }
                             emailVerificationRepository.save(verification);
                         });
     }
@@ -276,6 +385,11 @@ class SignupPhoneVerificationConcurrencyIntegrationTest {
                 PHONE_NUMBER,
                 verificationId,
                 email,
+                UUID.fromString(
+                        emailVerificationRepository
+                                .findByEmail(email)
+                                .orElseThrow()
+                                .getVerificationId()),
                 "password1",
                 "password1",
                 nickname,

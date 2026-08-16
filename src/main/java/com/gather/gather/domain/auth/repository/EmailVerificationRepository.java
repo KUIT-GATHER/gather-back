@@ -15,6 +15,8 @@ public interface EmailVerificationRepository extends JpaRepository<EmailVerifica
 
     Optional<EmailVerification> findByEmail(String email);
 
+    Optional<EmailVerification> findByVerificationId(String verificationId);
+
     boolean existsByEmail(String email);
 
     @Modifying(flushAutomatically = true)
@@ -37,10 +39,12 @@ public interface EmailVerificationRepository extends JpaRepository<EmailVerifica
     @Query(
             """
             update EmailVerification e
-               set e.code = :code,
+               set e.verificationId = :verificationId,
+                   e.code = :code,
                    e.verified = :verified,
                    e.expiresAt = :expiresAt,
                    e.verifiedAt = :verifiedAt,
+                   e.consumedAt = :consumedAt,
                    e.createdAt = :createdAt,
                    e.dailySendCount = :dailySendCount,
                    e.attemptCount = :attemptCount,
@@ -51,10 +55,12 @@ public interface EmailVerificationRepository extends JpaRepository<EmailVerifica
     int restoreAfterFailedResend(
             Long id,
             Long failedVersion,
+            String verificationId,
             String code,
             boolean verified,
             LocalDateTime expiresAt,
             LocalDateTime verifiedAt,
+            LocalDateTime consumedAt,
             LocalDateTime createdAt,
             int dailySendCount,
             int attemptCount);
