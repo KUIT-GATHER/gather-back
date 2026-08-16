@@ -27,6 +27,7 @@ import com.gather.gather.global.exception.BusinessException;
 import com.gather.gather.global.exception.ErrorCode;
 import jakarta.servlet.http.Cookie;
 import java.time.LocalDateTime;
+import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -445,6 +446,97 @@ class AuthControllerTest {
                 .andExpect(jsonPath("$.error.code").value("INVALID_TOKEN"));
 
         verifyNoInteractions(authService);
+    }
+
+    @Test
+    @DisplayName("세션 복원은 Refresh Token 쿠키가 없으면 쿠키 변경 없이 anonymous를 반환한다")
+    void restoreSession_withoutRefreshTokenCookie_returnsAnonymousWithoutCookieChange()
+            throws Exception {
+        when(refreshTokenCookieProvider.cookieName()).thenReturn(REFRESH_COOKIE_NAME);
+
+        mockMvc.perform(post("/api/v1/auth/session/restore"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.authenticated").value(false))
+                .andExpect(jsonPath("$.data.accessToken").value((Object) null))
+                .andExpect(jsonPath("$.data.tokenType").value((Object) null))
+                .andExpect(header().doesNotExist(HttpHeaders.SET_COOKIE));
+
+        verifyNoInteractions(authService);
+    }
+
+    @Test
+    @DisplayName("세션 복원 성공은 Access Token과 rotation된 Refresh Token 쿠키를 반환한다")
+    void restoreSession_withValidRefreshToken_returnsTokens() throws Exception {
+        when(refreshTokenCookieProvider.cookieName()).thenReturn(REFRESH_COOKIE_NAME);
+        when(authService.restoreSession("old-refresh-token"))
+                .thenReturn(
+                        Optional.of(new TokenIssueResult("new-access-token", "new-refresh-token")));
+        when(refreshTokenCookieProvider.create("new-refresh-token"))
+                .thenReturn(refreshCookie("new-refresh-token"));
+
+        mockMvc.perform(
+                        post("/api/v1/auth/session/restore")
+                                .cookie(new Cookie(REFRESH_COOKIE_NAME, "old-refresh-token")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.authenticated").value(true))
+                .andExpect(jsonPath("$.data.accessToken").value("new-access-token"))
+                .andExpect(jsonPath("$.data.tokenType").value("Bearer"))
+                .andExpect(header().string(HttpHeaders.SET_COOKIE, refreshCookieMatcher()));
+    }
+
+    @ParameterizedTest
+    @ValueSource(
+            strings = {"invalid-refresh-token", "expired-refresh-token", "revoked-refresh-token"})
+    @DisplayName("복원할 수 없는 Refresh Token은 쿠키 변경 없이 anonymous를 반환한다")
+    void restoreSession_withUnavailableRefreshToken_returnsAnonymousWithoutCookieChange(
+            String refreshToken) throws Exception {
+        when(refreshTokenCookieProvider.cookieName()).thenReturn(REFRESH_COOKIE_NAME);
+        when(authService.restoreSession(refreshToken)).thenReturn(Optional.empty());
+
+        mockMvc.perform(
+                        post("/api/v1/auth/session/restore")
+                                .cookie(new Cookie(REFRESH_COOKIE_NAME, refreshToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.authenticated").value(false))
+                .andExpect(header().doesNotExist(HttpHeaders.SET_COOKIE));
+    }
+
+    @Test
+    @DisplayName("계정 상태로 차단된 세션 복원은 기존 403을 유지하고 쿠키를 변경하지 않는다")
+    void restoreSession_withBlockedUser_returnsForbiddenWithoutCookieChange() throws Exception {
+        when(refreshTokenCookieProvider.cookieName()).thenReturn(REFRESH_COOKIE_NAME);
+        when(authService.restoreSession("blocked-user-refresh-token"))
+                .thenThrow(new BusinessException(ErrorCode.SUSPENDED_USER));
+
+        mockMvc.perform(
+                        post("/api/v1/auth/session/restore")
+                                .cookie(
+                                        new Cookie(
+                                                REFRESH_COOKIE_NAME, "blocked-user-refresh-token")))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.error.code").value("SUSPENDED_USER"))
+                .andExpect(header().doesNotExist(HttpHeaders.SET_COOKIE));
+    }
+
+    @Test
+    @DisplayName("예상하지 못한 세션 복원 오류는 500을 유지하고 쿠키를 변경하지 않는다")
+    void restoreSession_withServerFailure_returnsInternalServerErrorWithoutCookieChange()
+            throws Exception {
+        when(refreshTokenCookieProvider.cookieName()).thenReturn(REFRESH_COOKIE_NAME);
+        when(authService.restoreSession("refresh-token"))
+                .thenThrow(new IllegalStateException("database unavailable"));
+
+        mockMvc.perform(
+                        post("/api/v1/auth/session/restore")
+                                .cookie(new Cookie(REFRESH_COOKIE_NAME, "refresh-token")))
+                .andExpect(status().isInternalServerError())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.error.code").value("INTERNAL_SERVER_ERROR"))
+                .andExpect(header().doesNotExist(HttpHeaders.SET_COOKIE));
     }
 
     @Test

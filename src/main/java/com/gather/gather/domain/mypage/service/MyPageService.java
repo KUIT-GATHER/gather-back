@@ -59,6 +59,8 @@ public class MyPageService {
     private static final Set<PostingParticipationStatus> COMPLETED_STATUSES =
             Set.of(PostingParticipationStatus.COMPLETED, PostingParticipationStatus.REVIEWED);
 
+    private static final Set<PostingParticipationStatus> UPCOMING_VOLUNTEER_STATUSES =
+            Set.of(PostingParticipationStatus.APPLIED, PostingParticipationStatus.CONFIRMED);
     private final UserRepository userRepository;
     private final BookmarkRepository bookmarkRepository;
     private final MeetingBookmarkRepository meetingBookmarkRepository;
@@ -107,7 +109,8 @@ public class MyPageService {
     private List<MyPageActivityResponse> getVolunteerActivities(
             Long userId, LocalDate monthStart, LocalDate monthEnd) {
         List<PostingParticipation> participations =
-                postingParticipationRepository.findByUserId(userId);
+                postingParticipationRepository.findAllByUserIdAndStatusIn(
+                        userId, UPCOMING_VOLUNTEER_STATUSES);
         if (participations.isEmpty()) {
             return List.of();
         }
@@ -135,7 +138,8 @@ public class MyPageService {
     private List<MyPageActivityResponse> getMeetingRecruitActivities(
             Long userId, LocalDate monthStart, LocalDate monthEnd) {
         List<MyPageMeetingRecruitSchedule> schedules =
-                meetingRecruitParticipationRepository.findMyUpcomingSchedules(userId);
+                meetingRecruitParticipationRepository.findMyUpcomingSchedules(
+                        userId, LocalDateTime.now());
         if (schedules.isEmpty()) {
             return List.of();
         }
@@ -360,6 +364,7 @@ public class MyPageService {
      * <p>2026-08 정책 변경: 날짜 source를 공고 전체 활동기간에서 사용자 개인 참여일정으로 바꿨다. 개인 일정이 없는(정책 변경 이전) 기존 참여만 공고 전체
      * 활동기간으로 fallback한다.
      */
+    // isVisibleInMonth: 종료일이 오늘보다 이전이면 "다가오는 활동"에서 제외
     private boolean isVisibleInMonth(
             PostingParticipation participation,
             Posting posting,
@@ -377,6 +382,9 @@ public class MyPageService {
                 participation.getParticipationEndDate() != null
                         ? participation.getParticipationEndDate()
                         : posting.getActEndDate();
+        if (effectiveEnd != null && effectiveEnd.isBefore(LocalDate.now())) {
+            return false;
+        }
         return isWithinMonth(effectiveStart, effectiveEnd, monthStart, monthEnd);
     }
 

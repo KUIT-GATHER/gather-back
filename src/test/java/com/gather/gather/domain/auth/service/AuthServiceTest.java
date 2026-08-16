@@ -8,6 +8,7 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -54,6 +55,7 @@ import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.params.provider.NullAndEmptySource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -883,6 +885,97 @@ class AuthServiceTest {
         verify(refreshTokenRepository, never()).save(org.mockito.ArgumentMatchers.any());
     }
 
+    @Test
+    @DisplayName("세션 복원은 기존 Refresh Token을 revoke하고 새 토큰을 발급한다")
+    void restoreSession_withValidRefreshToken_rotatesToken() {
+        User user = activeUser();
+        RefreshToken oldRefreshToken =
+                RefreshToken.create("old-refresh-hash", user, LocalDateTime.now().plusDays(1));
+        prepareRefreshTokenLookup("old-refresh-token", "old-refresh-hash", user);
+        when(refreshTokenRepository.findByTokenHashForUpdate("old-refresh-hash"))
+                .thenReturn(Optional.of(oldRefreshToken));
+        prepareTokenIssue(user);
+
+        Optional<TokenIssueResult> result = authService.restoreSession("old-refresh-token");
+
+        assertThat(result).isPresent();
+        assertThat(result.orElseThrow().accessToken()).isEqualTo("new-access-token");
+        assertThat(result.orElseThrow().refreshToken()).isEqualTo("new-refresh-token");
+        assertThat(oldRefreshToken.isRevoked()).isTrue();
+        InOrder lockOrder = inOrder(userRepository, refreshTokenRepository);
+        lockOrder.verify(userRepository).findByIdForUpdate(1L);
+        lockOrder.verify(refreshTokenRepository).findByTokenHashForUpdate("old-refresh-hash");
+    }
+
+    @Test
+    @DisplayName("존재하지 않는 Refresh Token의 세션 복원은 anonymous 결과다")
+    void restoreSession_withUnknownRefreshToken_returnsAnonymous() {
+        when(tokenProvider.hashToken("unknown-refresh-token")).thenReturn("unknown-refresh-hash");
+        when(refreshTokenRepository.findUserIdByTokenHash("unknown-refresh-hash"))
+                .thenReturn(Optional.empty());
+
+        Optional<TokenIssueResult> result = authService.restoreSession("unknown-refresh-token");
+
+        assertThat(result).isEmpty();
+        verify(tokenProvider, never()).createAccessToken(any(User.class));
+        verify(refreshTokenRepository, never()).save(any(RefreshToken.class));
+    }
+
+    @Test
+    @DisplayName("만료된 Refresh Token의 세션 복원은 anonymous 결과다")
+    void restoreSession_withExpiredRefreshToken_returnsAnonymous() {
+        User user = activeUser();
+        RefreshToken expiredRefreshToken =
+                RefreshToken.create(
+                        "expired-refresh-hash", user, LocalDateTime.of(2026, 7, 31, 5, 25, 55));
+        prepareRefreshTokenLookup("expired-refresh-token", "expired-refresh-hash", user);
+        when(refreshTokenRepository.findByTokenHashForUpdate("expired-refresh-hash"))
+                .thenReturn(Optional.of(expiredRefreshToken));
+
+        Optional<TokenIssueResult> result = authService.restoreSession("expired-refresh-token");
+
+        assertThat(result).isEmpty();
+        assertThat(expiredRefreshToken.isRevoked()).isFalse();
+        verify(refreshTokenRepository, never()).save(any(RefreshToken.class));
+    }
+
+    @Test
+    @DisplayName("폐기된 Refresh Token의 세션 복원은 anonymous 결과다")
+    void restoreSession_withRevokedRefreshToken_returnsAnonymous() {
+        User user = activeUser();
+        RefreshToken revokedRefreshToken =
+                RefreshToken.create("revoked-refresh-hash", user, LocalDateTime.now().plusDays(1));
+        revokedRefreshToken.revoke(LocalDateTime.now());
+        prepareRefreshTokenLookup("revoked-refresh-token", "revoked-refresh-hash", user);
+        when(refreshTokenRepository.findByTokenHashForUpdate("revoked-refresh-hash"))
+                .thenReturn(Optional.of(revokedRefreshToken));
+
+        Optional<TokenIssueResult> result = authService.restoreSession("revoked-refresh-token");
+
+        assertThat(result).isEmpty();
+        verify(refreshTokenRepository, never()).save(any(RefreshToken.class));
+    }
+
+    @ParameterizedTest
+    @EnumSource(
+            value = UserStatus.class,
+            names = {"SUSPENDED", "WITHDRAWAL_PENDING", "WITHDRAWN"})
+    @DisplayName("세션 복원은 차단된 회원의 기존 계정 상태 오류를 유지한다")
+    void restoreSession_withBlockedUserStatus_throwsStatusError(UserStatus status) {
+        User user = mock(User.class);
+        when(user.getStatus()).thenReturn(status);
+        RefreshToken refreshToken =
+                RefreshToken.create("refresh-hash", user, LocalDateTime.now().plusDays(1));
+        prepareRefreshTokenLookup("refresh-token", "refresh-hash", user);
+        when(refreshTokenRepository.findByTokenHashForUpdate("refresh-hash"))
+                .thenReturn(Optional.of(refreshToken));
+
+        assertErrorCode(() -> authService.restoreSession("refresh-token"), errorCodeFor(status));
+
+        assertThat(refreshToken.isRevoked()).isFalse();
+        verify(refreshTokenRepository, never()).save(any(RefreshToken.class));
+    }
+
     @ParameterizedTest
     @EnumSource(
             value = UserStatus.class,
@@ -959,6 +1052,12 @@ class AuthServiceTest {
         when(tokenProvider.generateToken()).thenReturn("new-refresh-token");
         when(tokenProvider.hashToken("new-refresh-token")).thenReturn("new-refresh-hash");
         when(tokenProvider.refreshTokenExpiresAt()).thenReturn(LocalDateTime.now().plusDays(14));
+    }
+
+    private void prepareRefreshTokenLookup(String rawToken, String tokenHash, User user) {
+        when(tokenProvider.hashToken(rawToken)).thenReturn(tokenHash);
+        when(refreshTokenRepository.findUserIdByTokenHash(tokenHash)).thenReturn(Optional.of(1L));
+        when(userRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(user));
     }
 
     private void assertErrorCode(Runnable action, ErrorCode expected) {

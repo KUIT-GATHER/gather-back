@@ -28,6 +28,7 @@ import com.gather.gather.domain.recruit.repository.MeetingRecruitRepository;
 import com.gather.gather.domain.region.repository.RegionRepository;
 import com.gather.gather.global.exception.BusinessException;
 import com.gather.gather.global.exception.ErrorCode;
+import com.gather.gather.global.util.DuplicateSubmissionGuard;
 import com.gather.gather.global.util.SecurityUtil;
 import java.time.LocalDateTime;
 import java.util.EnumSet;
@@ -73,6 +74,7 @@ public class MeetingRecruitService {
     private final MeetingRecruitRepository meetingRecruitRepository;
     private final MeetingRecruitParticipationRepository participationRepository;
     private final ApplicationEventPublisher eventPublisher;
+    private final DuplicateSubmissionGuard duplicateSubmissionGuard;
 
     @Transactional
     public RecruitDetailResponse createRecruit(Long meetingId, RecruitCreateRequest request) {
@@ -88,6 +90,9 @@ public class MeetingRecruitService {
                 request.activityStartAt(), request.activityEndAt(), request.applyDeadlineAt());
         Integer recognizedMinutes =
                 resolveRecognizedMinutes(request.timeRecognized(), request.recognizedMinutes());
+
+        // 권한·비즈니스 검증을 모두 통과한 뒤에만 쿨다운을 소비한다(검증 실패로 재시도해야 하는 요청까지 막지 않기 위함).
+        duplicateSubmissionGuard.guard("recruit:create:" + userId + ":" + meetingId);
 
         User author = getUser(userId);
         Post post =

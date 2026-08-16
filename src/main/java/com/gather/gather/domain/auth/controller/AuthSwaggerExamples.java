@@ -327,4 +327,15 @@ final class AuthSwaggerExamples {
               }
             }
             """;
+    static final String INTERNAL_SERVER_ERROR_EXAMPLE =
+            """
+            {
+              "success": false,
+              "data": null,
+              "error": {
+                "code": "INTERNAL_SERVER_ERROR",
+                "message": "서버 오류가 발생했습니다."
+              }
+            }
+            """;
 }
