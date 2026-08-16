@@ -1,6 +1,7 @@
 package com.gather.gather.domain.posting.controller;
 
 import com.gather.gather.domain.posting.dto.PostingListItem;
+import com.gather.gather.domain.posting.dto.PostingMapItem;
 import com.gather.gather.domain.posting.dto.PostingResponse;
 import com.gather.gather.domain.posting.dto.PostingSummaryResponse;
 import com.gather.gather.domain.posting.entity.PostingCategory;
@@ -16,6 +17,7 @@ import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.ExampleObject;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
@@ -52,6 +54,8 @@ public class PostingController {
                             + "regionGroupId는 활동 지역 9버튼(서울/부산/.../경상/전라/충청) 선택 시 그 권역에 속한 "
                             + "모든 시도와 시군구 공고를 포함합니다. regionId와 regionGroupId는 동시에 지정할 수 없습니다. "
                             + "noticeStartDate/noticeEndDate는 각각 모집시작일 하한/모집종료일 상한 필터입니다. "
+                            + "activityStartDate/activityEndDate는 활동일 겹침(overlap) 필터로, 선택 기간과 실제"
+                            + " 활동기간이 하루라도 겹치면 조회됩니다. "
                             + "keyword는 제목/모집기관명 부분일치 검색입니다. "
                             + "category를 지정하면 해당 봉사분야 공고만 반환합니다(미지정 시 전체).",
             parameters = {
@@ -161,6 +165,16 @@ public class PostingController {
                     LocalDate noticeStartDate,
             @Parameter(description = "모집종료일 상한 (yyyy-MM-dd)") @RequestParam(required = false)
                     LocalDate noticeEndDate,
+            @Parameter(
+                            description =
+                                    "활동기간 필터 하한(yyyy-MM-dd). 실제 활동기간과 하루라도 겹치면 조회된다"
+                                            + "(활동종료일 >= activityStartDate). POSTING은 actStartDate~actEndDate"
+                                            + "(없으면 activityDate), MEETING_RECRUIT는 activityStartAt~activityEndAt 기준.")
+                    @RequestParam(required = false)
+                    LocalDate activityStartDate,
+            @Parameter(description = "활동기간 필터 상한(yyyy-MM-dd). 활동시작일 <= activityEndDate 조건.")
+                    @RequestParam(required = false)
+                    LocalDate activityEndDate,
             @Parameter(description = "검색 키워드 (제목/모집기관명 부분일치)") @RequestParam(required = false)
                     String keyword,
             @Parameter(
@@ -177,8 +191,45 @@ public class PostingController {
                         status,
                         noticeStartDate,
                         noticeEndDate,
+                        activityStartDate,
+                        activityEndDate,
                         keyword,
                         category));
+    }
+
+    @Operation(
+            summary = "봉사공고 지도 조회",
+            description =
+                    "일반 봉사공고(POSTING)만 지도에 노출한다(모임 모집공고 MEETING_RECRUIT는 정책상 제외). 인증이 필요 없다. "
+                            + "regionId/activityStartDate/activityEndDate/category는 목록 조회와 동일한 필터이며, "
+                            + "swLat/swLng/neLat/neLng(지도 bounds)은 필수다. 한 공고가 여러 활동장소를 가질 수 있어 공고 단위로 "
+                            + "locations 배열을 내려주며, 위·경도가 없는 장소는 제외한다. 페이지네이션 없이 bounds 안의 전체 목록을 "
+                            + "반환하므로, 사용자가 지도를 이동한 뒤 '이 지역 검색하기'를 누르면 바뀐 bounds로 다시 호출해야 한다.")
+    @GetMapping("/map")
+    public ApiResponse<List<PostingMapItem>> getPostingsMap(
+            @Parameter(description = "지역 ID (상위 지역 선택 시 하위 지역까지 포함)")
+                    @RequestParam(required = false)
+                    Long regionId,
+            @Parameter(description = "활동기간 필터 하한 (yyyy-MM-dd)") @RequestParam(required = false)
+                    LocalDate activityStartDate,
+            @Parameter(description = "활동기간 필터 상한 (yyyy-MM-dd)") @RequestParam(required = false)
+                    LocalDate activityEndDate,
+            @Parameter(description = "봉사분야 카테고리 (미지정 시 전체)") @RequestParam(required = false)
+                    PostingCategory category,
+            @Parameter(description = "지도 bounds 남서쪽 위도") @RequestParam BigDecimal swLat,
+            @Parameter(description = "지도 bounds 남서쪽 경도") @RequestParam BigDecimal swLng,
+            @Parameter(description = "지도 bounds 북동쪽 위도") @RequestParam BigDecimal neLat,
+            @Parameter(description = "지도 bounds 북동쪽 경도") @RequestParam BigDecimal neLng) {
+        return ApiResponse.success(
+                postingService.getPostingsMap(
+                        regionId,
+                        activityStartDate,
+                        activityEndDate,
+                        category,
+                        swLat,
+                        swLng,
+                        neLat,
+                        neLng));
     }
 
     @Operation(

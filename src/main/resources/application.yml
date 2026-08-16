@@ -89,10 +89,8 @@ gather:
       path: /api/v1/auth
       max-age-seconds: 1209600
   cors:
-    allowed-origins:
-      - https://gathernow.kr
-      - http://localhost:5173
-      - https://dev.gathernow.kr
+    # 배포 환경에서는 GATHER_CORS_ALLOWED_ORIGINS가 이 목록 전체를 덮어쓴다.
+    allowed-origins: ${GATHER_CORS_ALLOWED_ORIGINS:https://gathernow.kr,http://localhost:5173,https://dev.gathernow.kr,https://intro.gathernow.kr,http://localhost:3000}
   email:
     mode: ${GATHER_EMAIL_MODE:log}
   recommendation:

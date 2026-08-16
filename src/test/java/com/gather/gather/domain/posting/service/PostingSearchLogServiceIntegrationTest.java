@@ -32,7 +32,7 @@ class PostingSearchLogServiceIntegrationTest {
     @Test
     void getPostings_persistsSearchLog_despiteReadOnlyOuterTransaction() {
         postingService.getPostings(
-                PageRequest.of(0, 20), null, null, null, null, null, KEYWORD, null);
+                PageRequest.of(0, 20), null, null, null, null, null, null, null, KEYWORD, null);
 
         boolean logged =
                 postingSearchLogRepository.findAll().stream()
