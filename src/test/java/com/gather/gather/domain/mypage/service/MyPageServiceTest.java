@@ -273,17 +273,19 @@ class MyPageServiceTest {
         try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
             securityUtil.when(SecurityUtil::getCurrentUserId).thenReturn(USER_ID);
             when(postingParticipationRepository.findAllByUserIdAndStatusIn(
-                    eq(USER_ID),
-                    eq(
-                            Set.of(
-                                    PostingParticipationStatus.APPLIED,
-                                    PostingParticipationStatus.CONFIRMED))))
+                            eq(USER_ID),
+                            eq(
+                                    Set.of(
+                                            PostingParticipationStatus.APPLIED,
+                                            PostingParticipationStatus.CONFIRMED))))
                     .thenReturn(List.of(participation));
             when(postingRepository.findAllById(List.of(401L))).thenReturn(List.of(multiDayPosting));
 
             List<MyPageActivityResponse> julyActivities = myPageService.getActivities(firstMonth);
-            List<MyPageActivityResponse> augustActivities = myPageService.getActivities(secondMonth);
-            List<MyPageActivityResponse> septemberActivities = myPageService.getActivities(thirdMonth);
+            List<MyPageActivityResponse> augustActivities =
+                    myPageService.getActivities(secondMonth);
+            List<MyPageActivityResponse> septemberActivities =
+                    myPageService.getActivities(thirdMonth);
 
             assertThat(julyActivities)
                     .extracting(MyPageActivityResponse::postingId)
@@ -320,7 +322,6 @@ class MyPageServiceTest {
         }
     }
 
-
     @Test
     @DisplayName(
             "getActivities excludes a volunteer activity whose participation end date has already"
@@ -338,7 +339,7 @@ class MyPageServiceTest {
         try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
             securityUtil.when(SecurityUtil::getCurrentUserId).thenReturn(USER_ID);
             when(postingParticipationRepository.findAllByUserIdAndStatusIn(
-                    eq(USER_ID), eq(UPCOMING_STATUSES)))
+                            eq(USER_ID), eq(UPCOMING_STATUSES)))
                     .thenReturn(List.of(endedParticipation));
             when(postingRepository.findAllById(List.of(901L))).thenReturn(List.of(endedPosting));
 
