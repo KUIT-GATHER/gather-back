@@ -26,6 +26,7 @@ import com.gather.gather.domain.posting.entity.PostingParticipationStatus;
 import com.gather.gather.domain.posting.entity.PostingStatus;
 import com.gather.gather.domain.posting.repository.BookmarkRepository;
 import com.gather.gather.domain.posting.repository.PostingLocationRepository;
+import com.gather.gather.domain.posting.repository.PostingMapRow;
 import com.gather.gather.domain.posting.repository.PostingParticipationRepository;
 import com.gather.gather.domain.posting.repository.PostingRepository;
 import com.gather.gather.domain.posting.repository.UnifiedPostingQueryRepository;
@@ -349,6 +350,51 @@ class PostingServiceTest {
 
         verify(unifiedPostingQueryRepository)
                 .search(null, null, null, null, from, to, null, null, pageable);
+    }
+
+    @Test
+    @DisplayName("getPostings throws VALIDATION_ERROR when activityStartDate is after activityEndDate")
+    void getPostings_throwsValidationError_whenActivityDateRangeInverted() {
+        Pageable pageable = PageRequest.of(0, 20);
+        LocalDate start = LocalDate.of(2026, 8, 25);
+        LocalDate end = LocalDate.of(2026, 8, 20);
+
+        assertThatThrownBy(
+                        () ->
+                                postingService.getPostings(
+                                        pageable, null, null, null, null, null, start, end, null,
+                                        null))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(
+                        ex ->
+                                assertThat(((BusinessException) ex).getErrorCode())
+                                        .isEqualTo(ErrorCode.VALIDATION_ERROR));
+        verify(unifiedPostingQueryRepository, never())
+                .search(any(), any(), any(), any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("getPostings allows activityStartDate equal to activityEndDate")
+    void getPostings_allowsActivityDateRange_whenStartEqualsEnd() {
+        Pageable pageable = PageRequest.of(0, 20);
+        LocalDate same = LocalDate.of(2026, 8, 20);
+        when(unifiedPostingQueryRepository.search(
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        eq(same),
+                        eq(same),
+                        isNull(),
+                        isNull(),
+                        eq(pageable)))
+                .thenReturn(new SearchResult(List.of(), 0));
+
+        postingService.getPostings(
+                pageable, null, null, null, null, null, same, same, null, null);
+
+        verify(unifiedPostingQueryRepository)
+                .search(null, null, null, null, same, same, null, null, pageable);
     }
 
     @Test
@@ -722,9 +768,9 @@ class PostingServiceTest {
     @Test
     @DisplayName("getPostingsMap includes the primary location and resolves regionName")
     void getPostingsMap_includesPrimaryLocation_andResolvesRegionName() {
-        Posting posting = postingWithMapFields(1L, 2L);
+        PostingMapRow row = postingMapRow(1L, 2L);
         when(postingRepository.searchForMap(any(), any(), any(), any(), any(), any(), any(), any()))
-                .thenReturn(List.of(posting));
+                .thenReturn(List.of(row));
         when(regionRepository.findAllById(any())).thenReturn(List.of(regionWithId(2L, "동구")));
         when(postingLocationRepository.findAllByPostingIdInOrderByPostingIdAscLocationSeqAsc(any()))
                 .thenReturn(List.of());
@@ -749,14 +795,20 @@ class PostingServiceTest {
     }
 
     @Test
-    @DisplayName("getPostingsMap appends secondary locations from the batch lookup")
-    void getPostingsMap_appendsSecondaryLocations_fromBatchLookup() {
-        Posting posting = postingWithMapFields(1L, null);
+    @DisplayName("getPostingsMap appends a secondary location that has valid coordinates")
+    void getPostingsMap_appendsSecondaryLocation_whenCoordinatesArePresent() {
+        PostingMapRow row = postingMapRow(1L, null);
         when(postingRepository.searchForMap(any(), any(), any(), any(), any(), any(), any(), any()))
-                .thenReturn(List.of(posting));
+                .thenReturn(List.of(row));
         when(regionRepository.findAllById(any())).thenReturn(List.of());
         when(postingLocationRepository.findAllByPostingIdInOrderByPostingIdAscLocationSeqAsc(any()))
-                .thenReturn(List.of(locationWithId(2, "2번째 장소")));
+                .thenReturn(
+                        List.of(
+                                locationWithLatLng(
+                                        2,
+                                        "2번째 장소",
+                                        java.math.BigDecimal.valueOf(37.56),
+                                        java.math.BigDecimal.valueOf(126.91))));
 
         List<com.gather.gather.domain.posting.dto.PostingMapItem> result =
                 postingService.getPostingsMap(
@@ -771,6 +823,75 @@ class PostingServiceTest {
 
         assertThat(result.get(0).locations()).hasSize(2);
         assertThat(result.get(0).locations().get(1).locationSeq()).isEqualTo(2);
+    }
+
+    @Test
+    @DisplayName(
+            "getPostingsMap excludes a secondary location without coordinates (B1: contract says"
+                    + " locations without lat/lng are omitted)")
+    void getPostingsMap_excludesSecondaryLocation_whenCoordinatesAreMissing() {
+        PostingMapRow row = postingMapRow(1L, null);
+        when(postingRepository.searchForMap(any(), any(), any(), any(), any(), any(), any(), any()))
+                .thenReturn(List.of(row));
+        when(regionRepository.findAllById(any())).thenReturn(List.of());
+        when(postingLocationRepository.findAllByPostingIdInOrderByPostingIdAscLocationSeqAsc(any()))
+                .thenReturn(
+                        List.of(
+                                locationWithLatLng(
+                                        2,
+                                        "좌표 있는 장소",
+                                        java.math.BigDecimal.valueOf(37.56),
+                                        java.math.BigDecimal.valueOf(126.91)),
+                                locationWithId(3, "좌표 없는 장소")));
+
+        List<com.gather.gather.domain.posting.dto.PostingMapItem> result =
+                postingService.getPostingsMap(
+                        null,
+                        null,
+                        null,
+                        null,
+                        java.math.BigDecimal.valueOf(37.50),
+                        java.math.BigDecimal.valueOf(126.80),
+                        java.math.BigDecimal.valueOf(37.60),
+                        java.math.BigDecimal.valueOf(126.95));
+
+        assertThat(result.get(0).locations()).hasSize(2);
+        assertThat(result.get(0).locations())
+                .extracting(com.gather.gather.domain.posting.dto.PostingLocationResponse::locationSeq)
+                .containsExactly(1, 2);
+    }
+
+    @Test
+    @DisplayName(
+            "getPostingsMap includes only the valid secondary location when the primary location"
+                    + " has no coordinates")
+    void getPostingsMap_includesOnlyValidSecondaryLocation_whenPrimaryHasNoCoordinates() {
+        PostingMapRow row = postingMapRow(1L, null, false);
+        when(postingRepository.searchForMap(any(), any(), any(), any(), any(), any(), any(), any()))
+                .thenReturn(List.of(row));
+        when(regionRepository.findAllById(any())).thenReturn(List.of());
+        when(postingLocationRepository.findAllByPostingIdInOrderByPostingIdAscLocationSeqAsc(any()))
+                .thenReturn(
+                        List.of(
+                                locationWithLatLng(
+                                        2,
+                                        "좌표 있는 장소",
+                                        java.math.BigDecimal.valueOf(37.56),
+                                        java.math.BigDecimal.valueOf(126.91))));
+
+        List<com.gather.gather.domain.posting.dto.PostingMapItem> result =
+                postingService.getPostingsMap(
+                        null,
+                        null,
+                        null,
+                        null,
+                        java.math.BigDecimal.valueOf(37.50),
+                        java.math.BigDecimal.valueOf(126.80),
+                        java.math.BigDecimal.valueOf(37.60),
+                        java.math.BigDecimal.valueOf(126.95));
+
+        assertThat(result.get(0).locations()).hasSize(1);
+        assertThat(result.get(0).locations().get(0).locationSeq()).isEqualTo(2);
     }
 
     @Test
@@ -797,24 +918,161 @@ class PostingServiceTest {
                         eq(List.of(1L, 2L, 3L)), any(), any(), any(), any(), any(), any(), any());
     }
 
+    @Test
+    @DisplayName("getPostingsMap throws VALIDATION_ERROR when activityStartDate is after activityEndDate")
+    void getPostingsMap_throwsValidationError_whenActivityDateRangeInverted() {
+        assertThatThrownBy(
+                        () ->
+                                postingService.getPostingsMap(
+                                        null,
+                                        LocalDate.of(2026, 8, 25),
+                                        LocalDate.of(2026, 8, 20),
+                                        null,
+                                        java.math.BigDecimal.valueOf(37.50),
+                                        java.math.BigDecimal.valueOf(126.80),
+                                        java.math.BigDecimal.valueOf(37.60),
+                                        java.math.BigDecimal.valueOf(126.95)))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(
+                        ex ->
+                                assertThat(((BusinessException) ex).getErrorCode())
+                                        .isEqualTo(ErrorCode.VALIDATION_ERROR));
+        verify(postingRepository, never())
+                .searchForMap(any(), any(), any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("getPostingsMap throws VALIDATION_ERROR when swLat is greater than neLat")
+    void getPostingsMap_throwsValidationError_whenSwLatGreaterThanNeLat() {
+        assertThatThrownBy(
+                        () ->
+                                postingService.getPostingsMap(
+                                        null,
+                                        null,
+                                        null,
+                                        null,
+                                        java.math.BigDecimal.valueOf(37.60),
+                                        java.math.BigDecimal.valueOf(126.80),
+                                        java.math.BigDecimal.valueOf(37.50),
+                                        java.math.BigDecimal.valueOf(126.95)))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(
+                        ex ->
+                                assertThat(((BusinessException) ex).getErrorCode())
+                                        .isEqualTo(ErrorCode.VALIDATION_ERROR));
+        verify(postingRepository, never())
+                .searchForMap(any(), any(), any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("getPostingsMap throws VALIDATION_ERROR when swLng is greater than neLng")
+    void getPostingsMap_throwsValidationError_whenSwLngGreaterThanNeLng() {
+        assertThatThrownBy(
+                        () ->
+                                postingService.getPostingsMap(
+                                        null,
+                                        null,
+                                        null,
+                                        null,
+                                        java.math.BigDecimal.valueOf(37.50),
+                                        java.math.BigDecimal.valueOf(126.95),
+                                        java.math.BigDecimal.valueOf(37.60),
+                                        java.math.BigDecimal.valueOf(126.80)))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(
+                        ex ->
+                                assertThat(((BusinessException) ex).getErrorCode())
+                                        .isEqualTo(ErrorCode.VALIDATION_ERROR));
+        verify(postingRepository, never())
+                .searchForMap(any(), any(), any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("getPostingsMap throws VALIDATION_ERROR when a latitude is out of [-90, 90]")
+    void getPostingsMap_throwsValidationError_whenLatitudeOutOfRange() {
+        assertThatThrownBy(
+                        () ->
+                                postingService.getPostingsMap(
+                                        null,
+                                        null,
+                                        null,
+                                        null,
+                                        java.math.BigDecimal.valueOf(-91),
+                                        java.math.BigDecimal.valueOf(126.80),
+                                        java.math.BigDecimal.valueOf(37.60),
+                                        java.math.BigDecimal.valueOf(126.95)))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(
+                        ex ->
+                                assertThat(((BusinessException) ex).getErrorCode())
+                                        .isEqualTo(ErrorCode.VALIDATION_ERROR));
+        verify(postingRepository, never())
+                .searchForMap(any(), any(), any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("getPostingsMap throws VALIDATION_ERROR when a longitude is out of [-180, 180]")
+    void getPostingsMap_throwsValidationError_whenLongitudeOutOfRange() {
+        assertThatThrownBy(
+                        () ->
+                                postingService.getPostingsMap(
+                                        null,
+                                        null,
+                                        null,
+                                        null,
+                                        java.math.BigDecimal.valueOf(37.50),
+                                        java.math.BigDecimal.valueOf(126.80),
+                                        java.math.BigDecimal.valueOf(37.60),
+                                        java.math.BigDecimal.valueOf(181)))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(
+                        ex ->
+                                assertThat(((BusinessException) ex).getErrorCode())
+                                        .isEqualTo(ErrorCode.VALIDATION_ERROR));
+        verify(postingRepository, never())
+                .searchForMap(any(), any(), any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("getPostingsMap allows the boundary lat/lng values -90/90/-180/180")
+    void getPostingsMap_allowsBoundaryLatLngValues() {
+        when(postingRepository.searchForMap(any(), any(), any(), any(), any(), any(), any(), any()))
+                .thenReturn(List.of());
+
+        postingService.getPostingsMap(
+                null,
+                null,
+                null,
+                null,
+                java.math.BigDecimal.valueOf(-90),
+                java.math.BigDecimal.valueOf(-180),
+                java.math.BigDecimal.valueOf(90),
+                java.math.BigDecimal.valueOf(180));
+
+        verify(postingRepository)
+                .searchForMap(any(), any(), any(), any(), any(), any(), any(), any());
+    }
+
     /** locationSeq=1은 항상 Posting 자신의 위·경도로 표현되므로, 이 헬퍼는 위·경도가 있는 상태로 생성한다. */
-    private Posting postingWithMapFields(Long id, Long regionId) {
-        Posting posting =
-                Posting.builder()
-                        .title("지도 테스트 공고")
-                        .status(PostingStatus.RECRUITING)
-                        .recruitOrg("테스트 기관")
-                        .activityDate(LocalDate.of(2026, 8, 20))
-                        .actStartDate(LocalDate.of(2026, 8, 20))
-                        .actEndDate(LocalDate.of(2026, 8, 25))
-                        .noticeEndDate(LocalDate.of(2026, 8, 18))
-                        .regionId(regionId)
-                        .category(PostingCategory.WELFARE)
-                        .latitude(java.math.BigDecimal.valueOf(37.55))
-                        .longitude(java.math.BigDecimal.valueOf(126.90))
-                        .build();
-        ReflectionTestUtils.setField(posting, "id", id);
-        return posting;
+    private PostingMapRow postingMapRow(Long id, Long regionId) {
+        return postingMapRow(id, regionId, true);
+    }
+
+    private PostingMapRow postingMapRow(Long id, Long regionId, boolean hasPrimaryCoordinates) {
+        return new PostingMapRow(
+                id,
+                "지도 테스트 공고",
+                "테스트 기관",
+                "테스트 주소",
+                regionId,
+                PostingCategory.WELFARE,
+                PostingStatus.RECRUITING,
+                LocalDate.of(2026, 8, 20),
+                LocalDate.of(2026, 8, 20),
+                LocalDate.of(2026, 8, 25),
+                LocalDate.of(2026, 8, 18),
+                hasPrimaryCoordinates ? java.math.BigDecimal.valueOf(37.55) : null,
+                hasPrimaryCoordinates ? java.math.BigDecimal.valueOf(126.90) : null);
     }
 
     private Posting postingWithId(Long id, String title, Long regionId, PostingCategory category) {
@@ -854,6 +1112,11 @@ class PostingServiceTest {
 
     private PostingLocation locationWithId(int locationSeq, String address) {
         return PostingLocation.create(1L, locationSeq, address, null, null);
+    }
+
+    private PostingLocation locationWithLatLng(
+            int locationSeq, String address, java.math.BigDecimal latitude, java.math.BigDecimal longitude) {
+        return PostingLocation.create(1L, locationSeq, address, latitude, longitude);
     }
 
     private PostingParticipation participationWithStatus(

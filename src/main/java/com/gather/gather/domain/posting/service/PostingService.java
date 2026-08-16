@@ -16,6 +16,7 @@ import com.gather.gather.domain.posting.entity.PostingParticipation;
 import com.gather.gather.domain.posting.entity.PostingStatus;
 import com.gather.gather.domain.posting.repository.BookmarkRepository;
 import com.gather.gather.domain.posting.repository.PostingLocationRepository;
+import com.gather.gather.domain.posting.repository.PostingMapRow;
 import com.gather.gather.domain.posting.repository.PostingParticipationRepository;
 import com.gather.gather.domain.posting.repository.PostingRepository;
 import com.gather.gather.domain.posting.repository.UnifiedPostingQueryRepository;
@@ -86,6 +87,7 @@ public class PostingService {
             String keyword,
             PostingCategory category) {
         validateSort(pageable.getSort());
+        validateActivityDateRange(activityStartDate, activityEndDate);
         List<Long> regionIds = resolveRegionIds(regionId, regionGroupId);
 
         SearchResult result =
@@ -156,10 +158,12 @@ public class PostingService {
             BigDecimal swLng,
             BigDecimal neLat,
             BigDecimal neLng) {
+        validateActivityDateRange(activityStartDate, activityEndDate);
+        validateBounds(swLat, swLng, neLat, neLng);
         List<Long> regionIds =
                 regionId != null ? regionRepository.findIdsIncludingChildren(regionId) : null;
 
-        List<Posting> postings =
+        List<PostingMapRow> rows =
                 postingRepository.searchForMap(
                         regionIds,
                         activityStartDate,
@@ -169,14 +173,14 @@ public class PostingService {
                         swLng,
                         neLat,
                         neLng);
-        if (postings.isEmpty()) {
+        if (rows.isEmpty()) {
             return List.of();
         }
 
-        Set<Long> postingIds = postings.stream().map(Posting::getId).collect(Collectors.toSet());
+        Set<Long> postingIds = rows.stream().map(PostingMapRow::id).collect(Collectors.toSet());
         Set<Long> regionIdsForNames =
-                postings.stream()
-                        .map(Posting::getRegionId)
+                rows.stream()
+                        .map(PostingMapRow::regionId)
                         .filter(java.util.Objects::nonNull)
                         .collect(Collectors.toSet());
         Map<Long, String> regionNames = regionNameResolver.resolve(regionIdsForNames);
@@ -192,45 +196,46 @@ public class PostingService {
                                                 PostingLocationResponse::from,
                                                 Collectors.toList())));
 
-        return postings.stream()
+        return rows.stream()
                 .map(
-                        posting ->
+                        row ->
                                 toMapItem(
-                                        posting,
-                                        regionNames.get(posting.getRegionId()),
+                                        row,
+                                        regionNames.get(row.regionId()),
                                         extraLocationsByPostingId.getOrDefault(
-                                                posting.getId(), List.of())))
+                                                row.id(), List.of())))
                 .toList();
     }
 
     private PostingMapItem toMapItem(
-            Posting posting, String regionName, List<PostingLocationResponse> extraLocations) {
+            PostingMapRow row, String regionName, List<PostingLocationResponse> extraLocations) {
         List<PostingLocationResponse> locations = new ArrayList<>();
-        if (posting.getLatitude() != null && posting.getLongitude() != null) {
-            locations.add(PostingLocationResponse.first(posting));
+        if (row.latitude() != null && row.longitude() != null) {
+            locations.add(new PostingLocationResponse(1, row.postAddress(), row.latitude(), row.longitude()));
         }
-        locations.addAll(extraLocations);
+        // 2·3번째 장소는 위·경도가 nullable이라(DB 제약 없음), 값이 없는 장소는 지도 응답에서 제외한다
+        // (Javadoc/Swagger 계약: locations에는 위·경도가 있는 장소만 담는다).
+        extraLocations.stream()
+                .filter(
+                        location ->
+                                location.latitude() != null && location.longitude() != null)
+                .forEach(locations::add);
 
         LocalDate effectiveStart =
-                posting.getActStartDate() != null
-                        ? posting.getActStartDate()
-                        : posting.getActivityDate();
-        LocalDate effectiveEnd =
-                posting.getActEndDate() != null ? posting.getActEndDate() : effectiveStart;
+                row.actStartDate() != null ? row.actStartDate() : row.activityDate();
+        LocalDate effectiveEnd = row.actEndDate() != null ? row.actEndDate() : effectiveStart;
 
         return new PostingMapItem(
-                posting.getId(),
-                posting.getTitle(),
-                posting.getRecruitOrg(),
-                posting.getRegionId(),
+                row.id(),
+                row.title(),
+                row.recruitOrg(),
+                row.regionId(),
                 regionName,
                 effectiveStart != null ? effectiveStart.atStartOfDay() : null,
                 effectiveEnd != null ? effectiveEnd.atStartOfDay() : null,
-                posting.getNoticeEndDate() != null
-                        ? posting.getNoticeEndDate().atStartOfDay()
-                        : null,
-                posting.getCategory(),
-                posting.getStatus(),
+                row.noticeEndDate() != null ? row.noticeEndDate().atStartOfDay() : null,
+                row.category(),
+                row.status(),
                 locations);
     }
 
@@ -271,6 +276,42 @@ public class PostingService {
                 throw new BusinessException(ErrorCode.VALIDATION_ERROR);
             }
         }
+    }
+
+    /** 활동일 필터 시작일이 종료일보다 늦으면 잘못된 요청이다(둘 다 지정된 경우에만 검증). 목록·지도 조회 둘 다 사용한다. */
+    private void validateActivityDateRange(LocalDate activityStartDate, LocalDate activityEndDate) {
+        if (activityStartDate != null
+                && activityEndDate != null
+                && activityStartDate.isAfter(activityEndDate)) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR);
+        }
+    }
+
+    /**
+     * 지도 bounds 4개 값 모두 위도(-90~90)·경도(-180~180) 유효 범위 안에 있어야 하고, 남서쪽이 북동쪽보다 작거나 같아야 한다. 값이
+     * 뒤바뀌거나 범위를 벗어나면 조건이 항상 거짓이 되어 "해당 지역에 공고 없음"과 구분되지 않는 빈 결과가 나오므로, 여기서 명시적으로 400을
+     * 반환한다.
+     */
+    private void validateBounds(BigDecimal swLat, BigDecimal swLng, BigDecimal neLat, BigDecimal neLng) {
+        if (!isValidLatitude(swLat) || !isValidLatitude(neLat)) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR);
+        }
+        if (!isValidLongitude(swLng) || !isValidLongitude(neLng)) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR);
+        }
+        if (swLat.compareTo(neLat) > 0 || swLng.compareTo(neLng) > 0) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR);
+        }
+    }
+
+    private boolean isValidLatitude(BigDecimal value) {
+        return value.compareTo(BigDecimal.valueOf(-90)) >= 0
+                && value.compareTo(BigDecimal.valueOf(90)) <= 0;
+    }
+
+    private boolean isValidLongitude(BigDecimal value) {
+        return value.compareTo(BigDecimal.valueOf(-180)) >= 0
+                && value.compareTo(BigDecimal.valueOf(180)) <= 0;
     }
 
     /** regionId(단일 시도/시군구)와 regionGroupId(9버튼 권역)는 동시에 줄 수 없다 — 필터 기준이 서로 다른 축이라 모호하다. */

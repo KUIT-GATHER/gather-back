@@ -32,6 +32,12 @@ public class PostingRepositoryImpl implements PostingRepositoryCustom {
             List.of(PostingStatus.RECRUITING, PostingStatus.CLOSED);
     private static final ZoneId SEOUL_ZONE = ZoneId.of("Asia/Seoul");
 
+    /**
+     * 지도 조회(#186)는 인증 없이 호출 가능한 공개 API라 bounds를 아주 넓게 잡으면 매칭되는 공고 수가 무제한으로 커질 수 있다. 서버 측
+     * 최대 결과 수를 두어, 넓은 bounds 요청이 와도 응답 크기와 메모리 사용량이 일정 수준 이상으로 커지지 않도록 한다.
+     */
+    private static final int MAX_MAP_RESULTS = 1000;
+
     private final EntityManager entityManager;
 
     @Override
@@ -189,7 +195,7 @@ public class PostingRepositoryImpl implements PostingRepositoryCustom {
     }
 
     @Override
-    public List<Posting> searchForMap(
+    public List<PostingMapRow> searchForMap(
             List<Long> regionIds,
             LocalDate activityStartDate,
             LocalDate activityEndDate,
@@ -199,9 +205,26 @@ public class PostingRepositoryImpl implements PostingRepositoryCustom {
             BigDecimal neLat,
             BigDecimal neLng) {
         CriteriaBuilder cb = entityManager.getCriteriaBuilder();
-        CriteriaQuery<Posting> query = cb.createQuery(Posting.class);
+        CriteriaQuery<PostingMapRow> query = cb.createQuery(PostingMapRow.class);
         Root<Posting> root = query.from(Posting.class);
 
+        // Posting 엔티티 전체(특히 @Lob content)를 로딩하지 않도록, 지도 응답에 필요한 컬럼만 프로젝션한다.
+        query.select(
+                cb.construct(
+                        PostingMapRow.class,
+                        root.get("id"),
+                        root.get("title"),
+                        root.get("recruitOrg"),
+                        root.get("postAddress"),
+                        root.get("regionId"),
+                        root.get("category"),
+                        root.get("status"),
+                        root.get("activityDate"),
+                        root.get("actStartDate"),
+                        root.get("actEndDate"),
+                        root.get("noticeEndDate"),
+                        root.get("latitude"),
+                        root.get("longitude")));
         query.where(
                 buildMapPredicates(
                                 cb,
@@ -218,12 +241,12 @@ public class PostingRepositoryImpl implements PostingRepositoryCustom {
                         .toArray(new Predicate[0]));
         query.orderBy(cb.desc(root.get("id")));
 
-        return entityManager.createQuery(query).getResultList();
+        return entityManager.createQuery(query).setMaxResults(MAX_MAP_RESULTS).getResultList();
     }
 
     private List<Predicate> buildMapPredicates(
             CriteriaBuilder cb,
-            CriteriaQuery<Posting> query,
+            CriteriaQuery<PostingMapRow> query,
             Root<Posting> root,
             List<Long> regionIds,
             LocalDate activityStartDate,
@@ -265,7 +288,7 @@ public class PostingRepositoryImpl implements PostingRepositoryCustom {
     /** 1번째 장소(Posting 자신의 위·경도) 또는 2·3번째 장소(PostingLocation) 중 하나라도 지도 bounds 안에 있으면 통과시킨다. */
     private Predicate buildBoundsPredicate(
             CriteriaBuilder cb,
-            CriteriaQuery<Posting> query,
+            CriteriaQuery<PostingMapRow> query,
             Root<Posting> root,
             BigDecimal swLat,
             BigDecimal swLng,

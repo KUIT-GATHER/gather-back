@@ -26,9 +26,12 @@ public interface PostingRepositoryCustom {
 
     /**
      * 봉사공고 지도 조회(#186)용. RECRUITING·CLOSED 상태만 대상이며, 활동일 겹침(overlap) 필터·지역·카테고리와 함께 지도 bounds(1번째
-     * 장소 또는 2·3번째 장소 중 하나라도 bounds 안이면 포함) 조건으로 조회한다. 페이지네이션 없이 전체 목록을 반환한다.
+     * 장소 또는 2·3번째 장소 중 하나라도 bounds 안이면 포함) 조건으로 조회한다. 페이지네이션은 없지만 결과 수 상한({@code
+     * PostingRepositoryImpl#MAX_MAP_RESULTS})이 있고, {@code Posting} 엔티티 전체가 아니라 지도 응답에 필요한 컬럼만 담은
+     * 경량 프로젝션({@link PostingMapRow})을 반환한다(인증 없이 호출 가능한 공개 API라 @Lob content 등 불필요한 컬럼을 로딩하지 않기
+     * 위함).
      */
-    List<Posting> searchForMap(
+    List<PostingMapRow> searchForMap(
             List<Long> regionIds,
             LocalDate activityStartDate,
             LocalDate activityEndDate,

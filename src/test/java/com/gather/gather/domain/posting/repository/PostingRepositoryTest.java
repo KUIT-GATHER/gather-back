@@ -549,7 +549,7 @@ class PostingRepositoryTest {
         Posting inBounds = postingWithLatLng(new BigDecimal("37.55"), new BigDecimal("126.90"));
         postingWithLatLng(new BigDecimal("35.10"), new BigDecimal("129.00"));
 
-        List<Posting> result =
+        List<PostingMapRow> result =
                 postingRepository.searchForMap(
                         null,
                         null,
@@ -560,7 +560,7 @@ class PostingRepositoryTest {
                         new BigDecimal("37.60"),
                         new BigDecimal("126.95"));
 
-        assertThat(result).extracting(Posting::getId).containsExactly(inBounds.getId());
+        assertThat(result).extracting(PostingMapRow::id).containsExactly(inBounds.getId());
     }
 
     @Test
@@ -575,7 +575,7 @@ class PostingRepositoryTest {
                                 .source(PostingSource.API_1365)
                                 .build());
 
-        List<Posting> result =
+        List<PostingMapRow> result =
                 postingRepository.searchForMap(
                         null,
                         null,
@@ -586,7 +586,7 @@ class PostingRepositoryTest {
                         new BigDecimal("37.60"),
                         new BigDecimal("126.95"));
 
-        assertThat(result).extracting(Posting::getId).doesNotContain(noLocation.getId());
+        assertThat(result).extracting(PostingMapRow::id).doesNotContain(noLocation.getId());
     }
 
     @Test
@@ -600,7 +600,7 @@ class PostingRepositoryTest {
                         new BigDecimal("37.55"),
                         new BigDecimal("126.90")));
 
-        List<Posting> result =
+        List<PostingMapRow> result =
                 postingRepository.searchForMap(
                         null,
                         null,
@@ -611,7 +611,7 @@ class PostingRepositoryTest {
                         new BigDecimal("37.60"),
                         new BigDecimal("126.95"));
 
-        assertThat(result).extracting(Posting::getId).containsExactly(matching.getId());
+        assertThat(result).extracting(PostingMapRow::id).containsExactly(matching.getId());
     }
 
     @Test
@@ -621,7 +621,7 @@ class PostingRepositoryTest {
                         LocalDate.of(2026, 8, 20), LocalDate.of(2026, 8, 25));
         postingWithLatLngAndActivityDates(LocalDate.of(2026, 9, 1), LocalDate.of(2026, 9, 5));
 
-        List<Posting> result =
+        List<PostingMapRow> result =
                 postingRepository.searchForMap(
                         null,
                         LocalDate.of(2026, 8, 18),
@@ -632,7 +632,7 @@ class PostingRepositoryTest {
                         new BigDecimal("37.60"),
                         new BigDecimal("126.95"));
 
-        assertThat(result).extracting(Posting::getId).containsExactly(withinRange.getId());
+        assertThat(result).extracting(PostingMapRow::id).containsExactly(withinRange.getId());
     }
 
     @Test
@@ -649,7 +649,7 @@ class PostingRepositoryTest {
                                 .longitude(new BigDecimal("126.90"))
                                 .build());
 
-        List<Posting> result =
+        List<PostingMapRow> result =
                 postingRepository.searchForMap(
                         null,
                         null,
@@ -660,7 +660,7 @@ class PostingRepositoryTest {
                         new BigDecimal("37.60"),
                         new BigDecimal("126.95"));
 
-        assertThat(result).extracting(Posting::getId).doesNotContain(completed.getId());
+        assertThat(result).extracting(PostingMapRow::id).doesNotContain(completed.getId());
     }
 
     private Posting postingWithLatLng(BigDecimal latitude, BigDecimal longitude) {
