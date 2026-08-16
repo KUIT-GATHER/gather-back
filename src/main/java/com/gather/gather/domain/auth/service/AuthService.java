@@ -5,8 +5,6 @@ import com.gather.gather.domain.auth.dto.EmailVerificationConfirmResponse;
 import com.gather.gather.domain.auth.dto.EmailVerificationSendRequest;
 import com.gather.gather.domain.auth.dto.EmailVerificationSendResponse;
 import com.gather.gather.domain.auth.dto.LoginRequest;
-import com.gather.gather.domain.auth.dto.PhoneNumberAvailabilityRequest;
-import com.gather.gather.domain.auth.dto.PhoneNumberAvailabilityResponse;
 import com.gather.gather.domain.auth.dto.SignupRequest;
 import com.gather.gather.domain.auth.dto.SignupResponse;
 import com.gather.gather.domain.auth.entity.EmailVerification;
@@ -159,17 +157,6 @@ public class AuthService {
         emailVerification.verify(now);
         return new EmailVerificationConfirmResponse(
                 email, true, now, UUID.fromString(emailVerification.getVerificationId()));
-    }
-
-    @Transactional(readOnly = true)
-    public PhoneNumberAvailabilityResponse checkPhoneNumberAvailability(
-            PhoneNumberAvailabilityRequest request) {
-        String phoneNumber = signupValidator.normalizePhoneNumber(request.phoneNumber());
-        LocalDateTime now = LocalDateTime.now(clock);
-        return new PhoneNumberAvailabilityResponse(
-                phoneNumber,
-                !accountRejoinBlockService.isPhoneBlocked(phoneNumber, now)
-                        && !userRepository.existsByPhoneNumber(phoneNumber));
     }
 
     @Transactional

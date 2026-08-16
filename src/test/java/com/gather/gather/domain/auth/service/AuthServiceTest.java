@@ -19,7 +19,6 @@ import static org.mockito.Mockito.when;
 import com.gather.gather.domain.auth.dto.EmailVerificationConfirmRequest;
 import com.gather.gather.domain.auth.dto.EmailVerificationSendRequest;
 import com.gather.gather.domain.auth.dto.LoginRequest;
-import com.gather.gather.domain.auth.dto.PhoneNumberAvailabilityRequest;
 import com.gather.gather.domain.auth.dto.SignupRequest;
 import com.gather.gather.domain.auth.entity.AccountRejoinBlockIdentifierType;
 import com.gather.gather.domain.auth.entity.EmailVerification;
@@ -744,20 +743,6 @@ class AuthServiceTest {
     @DisplayName("회원가입은 정책에 맞지 않는 닉네임을 거부한다")
     void signup_withInvalidNickname_throwsValidationError(String nickname) {
         assertValidationError(signupRequest(123L, "홍길동", nickname));
-    }
-
-    @Test
-    @DisplayName("재가입 제한 중인 전화번호는 가용하지 않다고 응답한다")
-    void checkPhoneNumberAvailability_whenRejoinBlocked_returnsUnavailable() {
-        when(accountRejoinBlockService.isPhoneBlocked(eq("01012345678"), any(LocalDateTime.class)))
-                .thenReturn(true);
-
-        var response =
-                authService.checkPhoneNumberAvailability(
-                        new PhoneNumberAvailabilityRequest("010-1234-5678"));
-
-        assertThat(response.available()).isFalse();
-        verify(userRepository, never()).existsByPhoneNumber(anyString());
     }
 
     @Test

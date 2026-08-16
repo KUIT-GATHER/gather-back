@@ -1,6 +1,7 @@
 package com.gather.gather.domain.auth.repository;
 
 import com.gather.gather.domain.auth.entity.SocialAccount;
+import com.gather.gather.domain.auth.entity.SocialAccountLinkStatus;
 import com.gather.gather.domain.auth.entity.SocialProvider;
 import jakarta.persistence.LockModeType;
 import java.util.List;
@@ -20,6 +21,9 @@ public interface SocialAccountRepository extends JpaRepository<SocialAccount, Lo
     @EntityGraph(attributePaths = "user")
     Optional<SocialAccount> findByProviderAndLegacyProviderUserId(
             SocialProvider provider, String legacyProviderUserId);
+
+    boolean existsByUserIdAndProviderAndLinkStatus(
+            Long userId, SocialProvider provider, SocialAccountLinkStatus linkStatus);
 
     @Query(
             """

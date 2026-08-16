@@ -9,6 +9,7 @@ import com.gather.gather.domain.auth.dto.SignupRequest;
 import com.gather.gather.domain.auth.entity.EmailVerification;
 import com.gather.gather.domain.auth.entity.Gender;
 import com.gather.gather.domain.auth.entity.PhoneVerification;
+import com.gather.gather.domain.auth.entity.PhoneVerificationPurpose;
 import com.gather.gather.domain.auth.entity.RefreshToken;
 import com.gather.gather.domain.auth.repository.EmailVerificationRepository;
 import com.gather.gather.domain.auth.repository.PhoneVerificationRepository;
@@ -83,6 +84,7 @@ class EmailSignupRollbackIntegrationTest {
                                     PhoneVerification.create(
                                             phoneVerificationId.toString(),
                                             PHONE_NUMBER,
+                                            PhoneVerificationPurpose.SIGNUP,
                                             "GATHER-ROLLBACK01",
                                             now.plusMinutes(5),
                                             now.minusMinutes(1));

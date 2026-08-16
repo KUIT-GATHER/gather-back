@@ -40,12 +40,19 @@ Authorization: Bearer <accessToken>
 
 ## 1-2️⃣ 회원가입 휴대폰 인증
 
-- 일반·카카오 회원가입 모두 먼저 `POST /api/v1/auth/phone-verifications`로 휴대폰 인증 세션을 생성합니다.
+- 일반·카카오 회원가입 모두 먼저 `POST /api/v1/auth/phone-verifications`에 `purpose: "SIGNUP"`을 보내 휴대폰 인증 세션을 생성합니다. `purpose`는 필수입니다.
 - 모바일은 응답의 `receiverNumber`와 `messageText`로 문자 앱을 열고, PC는 `POST /api/v1/auth/phone-verifications/{verificationId}/qr-code`로 받은 QR 이미지를 표시합니다.
 - 문자 전송 뒤 `POST /api/v1/auth/phone-verifications/{verificationId}/confirm`을 호출합니다. `PENDING`은 아직 확인되지 않은 정상 응답이고 `VERIFIED`가 인증 완료입니다.
 - 인증 완료 후 30분 안에 동일한 `phoneNumber`와 응답에서 받은 `verificationId`를 회원가입 body의 `phoneVerificationId`로 제출해야 합니다. 인증 결과는 한 번만 사용할 수 있습니다.
 - 인증이 없거나 ID·전화번호가 다르거나 만료·소비된 경우 `400 PHONE_VERIFICATION_REQUIRED`입니다. 요청 제한은 `429 PHONE_VERIFICATION_RATE_LIMITED`, 인증 제공자 장애는 `503 PHONE_VERIFICATION_PROVIDER_UNAVAILABLE`로 처리합니다.
-- 기존 `POST /api/v1/auth/phone-numbers/availability`는 호환용입니다. 신규 회원가입 화면에서는 별도 호출하지 않습니다.
+- 별도의 전화번호 중복확인 API는 제공하지 않습니다. `SIGNUP` 목적의 OCTOMO 인증 완료 시 서버가 중복 여부를 확인합니다.
+
+## 1-2-1️⃣ 아이디 찾기
+
+- `purpose: "FIND_ACCOUNT"`로 휴대폰 인증을 완료한 뒤 `POST /api/v1/auth/account-recoveries/email`에 `phoneVerificationId`만 보냅니다.
+- 서버는 인증 세션에 저장된 전화번호를 사용하므로 아이디 찾기 요청에 전화번호를 다시 보내지 않습니다.
+- 이메일 계정은 `loginType: "EMAIL"`과 가입 이메일을, 카카오 전용 계정은 `loginType: "KAKAO"`와 `email: null`을 반환합니다.
+- 복구 가능한 계정이 없으면 `404 ACCOUNT_NOT_FOUND`이며 이 정상 결과에서도 인증 세션은 소비됩니다.
 
 ## 1-3️⃣ 이메일 회원가입 자동 로그인과 프로필 이미지
 

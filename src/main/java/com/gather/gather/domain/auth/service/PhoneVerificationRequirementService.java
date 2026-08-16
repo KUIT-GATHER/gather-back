@@ -1,6 +1,7 @@
 package com.gather.gather.domain.auth.service;
 
 import com.gather.gather.domain.auth.entity.PhoneVerification;
+import com.gather.gather.domain.auth.entity.PhoneVerificationPurpose;
 import com.gather.gather.domain.auth.repository.PhoneVerificationRepository;
 import com.gather.gather.global.exception.BusinessException;
 import com.gather.gather.global.exception.ErrorCode;
@@ -31,6 +32,9 @@ public class PhoneVerificationRequirementService {
                         .findByVerificationIdForUpdate(verificationId.toString())
                         .orElseThrow(PhoneVerificationRequirementService::required);
         LocalDateTime now = LocalDateTime.now(clock);
+        if (verification.getPurpose() != PhoneVerificationPurpose.SIGNUP) {
+            throw new BusinessException(ErrorCode.PHONE_VERIFICATION_PURPOSE_MISMATCH);
+        }
         if (!verification.isVerified()
                 || !verification.getPhoneNumber().equals(phoneNumber)
                 || verification.isVerifiedResultExpired(now, VERIFIED_RESULT_VALIDITY_MINUTES)

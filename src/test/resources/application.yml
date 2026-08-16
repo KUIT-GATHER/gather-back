@@ -60,6 +60,8 @@ gather:
       cleanup-fixed-delay-milliseconds: 3600000
       cleanup-scheduler-enabled: false
   auth:
+    phone-verification:
+      cleanup-scheduler-enabled: false
     rejoin-block-hmac:
       secret: Z2F0aGVyLXRlc3QtcmVqb2luLWJsb2NrLWhtYWMtc2VjcmV0LTIwMjYtMDctMjk=
       key-version: 1

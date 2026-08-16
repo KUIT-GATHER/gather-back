@@ -25,6 +25,7 @@ public enum ErrorCode {
     PHONE_VERIFICATION_NOT_FOUND(HttpStatus.NOT_FOUND, "휴대폰 인증 요청을 찾을 수 없습니다."),
     PHONE_VERIFICATION_EXPIRED(HttpStatus.BAD_REQUEST, "휴대폰 인증 요청이 만료되었습니다."),
     PHONE_VERIFICATION_REQUIRED(HttpStatus.BAD_REQUEST, "휴대폰 인증이 필요합니다."),
+    PHONE_VERIFICATION_PURPOSE_MISMATCH(HttpStatus.BAD_REQUEST, "휴대폰 인증 목적이 올바르지 않습니다."),
     PHONE_VERIFICATION_PROVIDER_UNAVAILABLE(
             HttpStatus.SERVICE_UNAVAILABLE, "휴대폰 인증 서비스를 일시적으로 사용할 수 없습니다."),
     PHONE_VERIFICATION_RATE_LIMITED(
@@ -40,6 +41,7 @@ public enum ErrorCode {
     WITHDRAWAL_PENDING_USER(HttpStatus.FORBIDDEN, "탈퇴 처리 중인 계정입니다."),
     WITHDRAWN_USER(HttpStatus.FORBIDDEN, "탈퇴한 계정입니다."),
     ACCOUNT_REJOIN_BLOCKED(HttpStatus.CONFLICT, "탈퇴 후 7일 동안 재가입할 수 없습니다."),
+    ACCOUNT_NOT_FOUND(HttpStatus.NOT_FOUND, "계정을 찾을 수 없습니다."),
     ACCOUNT_TERMINATION_STATE_CONFLICT(HttpStatus.CONFLICT, "계정 탈퇴 상태가 올바르지 않습니다."),
     INVALID_TOKEN(HttpStatus.UNAUTHORIZED, "유효하지 않은 토큰입니다."),
     EXPIRED_TOKEN(HttpStatus.UNAUTHORIZED, "만료된 토큰입니다."),
