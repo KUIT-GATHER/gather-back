@@ -83,3 +83,30 @@ jobs:
           EC2_USER: ${{ secrets.EC2_USER }}
         run: |
           ssh -i ~/.ssh/gather-backend-key.pem "$EC2_USER@$EC2_HOST" "chmod +x /opt/gather/deploy.sh && /opt/gather/deploy.sh"
+
+      # deploy.sh는 실패 시 이전 jar로 롤백해 health check가 통과하므로, 알림이 없으면
+      # 배포 실패가 서비스 증상 없이 묻힌다(2026-08-14 Flyway 순서 문제 배포 실패가 하루 넘게 방치됨).
+      # 커밋 메시지는 ${{ }} 직접 삽입 대신 env로 넘겨 셸 주입과 JSON 깨짐을 막는다.
+      - name: Notify Discord on failure
+        if: failure()
+        env:
+          WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          COMMIT_MSG: ${{ github.event.head_commit.message || github.sha }}
+        run: |
+          TEXT="🚨 **배포 실패** — ${COMMIT_MSG%%$'\n'*}
+          ${RUN_URL}"
+          jq -n --arg c "$TEXT" '{content: $c}' \
+            | curl -sS -H "Content-Type: application/json" -d @- "$WEBHOOK"
+
+      - name: Notify Discord on success
+        if: success()
+        env:
+          WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          COMMIT_MSG: ${{ github.event.head_commit.message || github.sha }}
+        run: |
+          TEXT="✅ 배포 완료 — ${COMMIT_MSG%%$'\n'*}
+          ${RUN_URL}"
+          jq -n --arg c "$TEXT" '{content: $c}' \
+            | curl -sS -H "Content-Type: application/json" -d @- "$WEBHOOK"
