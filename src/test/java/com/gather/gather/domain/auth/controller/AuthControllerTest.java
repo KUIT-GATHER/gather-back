@@ -12,6 +12,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.gather.gather.domain.auth.dto.EmailVerificationConfirmRequest;
+import com.gather.gather.domain.auth.dto.EmailVerificationConfirmResponse;
 import com.gather.gather.domain.auth.dto.LoginRequest;
 import com.gather.gather.domain.auth.dto.PhoneNumberAvailabilityRequest;
 import com.gather.gather.domain.auth.dto.PhoneNumberAvailabilityResponse;
@@ -24,7 +26,9 @@ import com.gather.gather.domain.auth.service.TokenIssueResult;
 import com.gather.gather.global.exception.BusinessException;
 import com.gather.gather.global.exception.ErrorCode;
 import jakarta.servlet.http.Cookie;
+import java.time.LocalDateTime;
 import java.util.Optional;
+import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -64,6 +68,7 @@ class AuthControllerTest {
                                           "phoneNumber": "01012345678",
                                           "phoneVerificationId": "5c5d5db1-4187-43d0-8580-672307994878",
                                           "email": "test@example.com",
+                                          "emailVerificationId": "98fa88ef-bbeb-4928-a202-7885197b3774",
                                           "password": "password123!",
                                           "passwordConfirm": "password123!",
                                           "nickname": "길동",
@@ -99,6 +104,7 @@ class AuthControllerTest {
                                           "phoneNumber": "01012345678",
                                           "phoneVerificationId": "not-a-uuid",
                                           "email": "test@example.com",
+                                          "emailVerificationId": "98fa88ef-bbeb-4928-a202-7885197b3774",
                                           "password": "password123!",
                                           "passwordConfirm": "password123!",
                                           "nickname": "길동",
@@ -135,6 +141,7 @@ class AuthControllerTest {
                                           "phoneNumber": "01012345678",
                                         %s
                                           "email": "test@example.com",
+                                          "emailVerificationId": "98fa88ef-bbeb-4928-a202-7885197b3774",
                                           "password": "password123!",
                                           "passwordConfirm": "password123!",
                                           "nickname": "길동",
@@ -152,6 +159,102 @@ class AuthControllerTest {
         verify(authService).signup(any(SignupRequest.class));
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"", "  \"emailVerificationId\": null,"})
+    @DisplayName("회원가입의 이메일 인증 ID가 누락되거나 null이면 EMAIL_VERIFICATION_REQUIRED를 반환한다")
+    void signup_withoutEmailVerificationId_returnsEmailVerificationRequired(
+            String emailVerificationField) throws Exception {
+        when(authService.signup(any(SignupRequest.class)))
+                .thenThrow(new BusinessException(ErrorCode.EMAIL_VERIFICATION_REQUIRED));
+
+        mockMvc.perform(
+                        post("/api/v1/auth/signup")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(
+                                        """
+                                        {
+                                          "name": "홍길동",
+                                          "birthDate": "2000-01-01",
+                                          "gender": "MALE",
+                                          "phoneNumber": "01012345678",
+                                          "phoneVerificationId": "5c5d5db1-4187-43d0-8580-672307994878",
+                                          "email": "test@example.com",
+                                        %s
+                                          "password": "password123!",
+                                          "passwordConfirm": "password123!",
+                                          "nickname": "길동",
+                                          "activityRegionId": 123,
+                                          "interestCategories": ["WELFARE"],
+                                          "serviceTermsAgreed": true,
+                                          "privacyPolicyAgreed": true,
+                                          "marketingAgreed": false
+                                        }
+                                        """
+                                                .formatted(emailVerificationField)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("EMAIL_VERIFICATION_REQUIRED"));
+
+        verify(authService).signup(any(SignupRequest.class));
+    }
+
+    @Test
+    @DisplayName("회원가입의 이메일 인증 ID가 UUID가 아니면 서비스 호출 전에 400으로 막는다")
+    void signup_withInvalidEmailVerificationId_returnsBadRequest() throws Exception {
+        mockMvc.perform(
+                        post("/api/v1/auth/signup")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(
+                                        """
+                                        {
+                                          "name": "홍길동",
+                                          "birthDate": "2000-01-01",
+                                          "gender": "MALE",
+                                          "phoneNumber": "01012345678",
+                                          "phoneVerificationId": "5c5d5db1-4187-43d0-8580-672307994878",
+                                          "email": "test@example.com",
+                                          "emailVerificationId": "not-a-uuid",
+                                          "password": "password123!",
+                                          "passwordConfirm": "password123!",
+                                          "nickname": "길동",
+                                          "activityRegionId": 123,
+                                          "interestCategories": ["WELFARE"],
+                                          "serviceTermsAgreed": true,
+                                          "privacyPolicyAgreed": true,
+                                          "marketingAgreed": false
+                                        }
+                                        """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("VALIDATION_ERROR"));
+
+        verifyNoInteractions(authService);
+    }
+
+    @Test
+    @DisplayName("이메일 인증 확인 성공 응답에 회원가입용 인증 ID를 포함한다")
+    void confirmEmailVerification_returnsVerificationId() throws Exception {
+        UUID verificationId = UUID.fromString("98fa88ef-bbeb-4928-a202-7885197b3774");
+        when(authService.confirmEmailVerificationCode(any(EmailVerificationConfirmRequest.class)))
+                .thenReturn(
+                        new EmailVerificationConfirmResponse(
+                                "test@example.com",
+                                true,
+                                LocalDateTime.of(2026, 8, 10, 10, 0),
+                                verificationId));
+
+        mockMvc.perform(
+                        post("/api/v1/auth/email-verifications/confirm")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(
+                                        """
+                                        {
+                                          "email": "test@example.com",
+                                          "code": "123456"
+                                        }
+                                        """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.emailVerificationId").value(verificationId.toString()));
+    }
+
     @Test
     @DisplayName("회원가입에서 전화번호가 20자를 넘으면 저장 전에 400으로 막는다")
     void signup_withTooLongPhoneNumber_returnsBadRequest() throws Exception {
@@ -167,6 +270,7 @@ class AuthControllerTest {
                                           "phoneNumber": "010123456789012345678",
                                           "phoneVerificationId": "5c5d5db1-4187-43d0-8580-672307994878",
                                           "email": "test@example.com",
+                                          "emailVerificationId": "98fa88ef-bbeb-4928-a202-7885197b3774",
                                           "password": "password123!",
                                           "passwordConfirm": "password123!",
                                           "nickname": "길동",
@@ -214,6 +318,7 @@ class AuthControllerTest {
                                           "phoneNumber": "01012345678901234567",
                                           "phoneVerificationId": "5c5d5db1-4187-43d0-8580-672307994878",
                                           "email": "test@example.com",
+                                          "emailVerificationId": "98fa88ef-bbeb-4928-a202-7885197b3774",
                                           "password": "password123!",
                                           "passwordConfirm": "password123!",
                                           "nickname": "길동",

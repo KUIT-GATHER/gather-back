@@ -195,14 +195,14 @@ final class AuthSwaggerExamples {
               }
             }
             """;
-    static final String EMAIL_NOT_VERIFIED_EXAMPLE =
+    static final String EMAIL_VERIFICATION_REQUIRED_EXAMPLE =
             """
             {
               "success": false,
               "data": null,
               "error": {
-                "code": "EMAIL_NOT_VERIFIED",
-                "message": "이메일 인증이 완료되지 않았습니다."
+                "code": "EMAIL_VERIFICATION_REQUIRED",
+                "message": "이메일 인증이 필요합니다."
               }
             }
             """;
