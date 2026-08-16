@@ -35,6 +35,15 @@ public class KakaoUnlinkWorkerControl {
 
     @Column private Integer lastKakaoCode;
 
+    @Column private LocalDateTime lastPollStartedAt;
+
+    @Column private LocalDateTime lastPollCompletedAt;
+
+    @Column private LocalDateTime lastPollFailedAt;
+
+    @Column(length = 80)
+    private String lastPollFailureType;
+
     @Column(nullable = false)
     private LocalDateTime updatedAt;
 
