@@ -106,7 +106,6 @@ public class PostService {
     @Transactional
     public PostResponse createPost(Long meetingId, PostCreateRequest request) {
         Long userId = SecurityUtil.getCurrentUserId();
-        duplicateSubmissionGuard.guard("post:create:" + userId + ":" + meetingId);
         Meeting meeting = getMeeting(meetingId);
         MeetingMember membership = getApprovedMembership(meetingId, userId);
 
@@ -118,6 +117,9 @@ public class PostService {
             throw new BusinessException(ErrorCode.NOTICE_HOST_ONLY);
         }
         validateContentLength(request.type(), request.content());
+
+        // 권한·비즈니스 검증을 모두 통과한 뒤에만 쿨다운을 소비한다(검증 실패로 재시도해야 하는 요청까지 막지 않기 위함).
+        duplicateSubmissionGuard.guard("post:create:" + userId + ":" + meetingId);
 
         User author = getUser(userId);
         Post post =

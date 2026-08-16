@@ -79,7 +79,6 @@ public class MeetingRecruitService {
     @Transactional
     public RecruitDetailResponse createRecruit(Long meetingId, RecruitCreateRequest request) {
         Long userId = SecurityUtil.getCurrentUserId();
-        duplicateSubmissionGuard.guard("recruit:create:" + userId + ":" + meetingId);
         Meeting meeting = getMeeting(meetingId);
         requireHost(meetingId, userId);
         // RECRUIT 게시글은 자유 모임의 팀장만 작성할 수 있다. 공고 기반 모임(volunteerPostingId != null)은
@@ -91,6 +90,9 @@ public class MeetingRecruitService {
                 request.activityStartAt(), request.activityEndAt(), request.applyDeadlineAt());
         Integer recognizedMinutes =
                 resolveRecognizedMinutes(request.timeRecognized(), request.recognizedMinutes());
+
+        // 권한·비즈니스 검증을 모두 통과한 뒤에만 쿨다운을 소비한다(검증 실패로 재시도해야 하는 요청까지 막지 않기 위함).
+        duplicateSubmissionGuard.guard("recruit:create:" + userId + ":" + meetingId);
 
         User author = getUser(userId);
         Post post =
