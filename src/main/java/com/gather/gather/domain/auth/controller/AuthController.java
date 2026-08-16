@@ -5,8 +5,6 @@ import com.gather.gather.domain.auth.dto.EmailVerificationConfirmResponse;
 import com.gather.gather.domain.auth.dto.EmailVerificationSendRequest;
 import com.gather.gather.domain.auth.dto.EmailVerificationSendResponse;
 import com.gather.gather.domain.auth.dto.LoginRequest;
-import com.gather.gather.domain.auth.dto.PhoneNumberAvailabilityRequest;
-import com.gather.gather.domain.auth.dto.PhoneNumberAvailabilityResponse;
 import com.gather.gather.domain.auth.dto.SignupRequest;
 import com.gather.gather.domain.auth.dto.SignupResponse;
 import com.gather.gather.domain.auth.dto.TokenResponse;
@@ -205,67 +203,6 @@ public class AuthController {
     public ApiResponse<EmailVerificationConfirmResponse> confirmEmailVerificationCode(
             @RequestBody @Valid EmailVerificationConfirmRequest request) {
         return ApiResponse.success(authService.confirmEmailVerificationCode(request));
-    }
-
-    @Operation(
-            summary = "전화번호 중복 확인",
-            description =
-                    "기존 클라이언트 호환을 위해 유지하는 API입니다. 신규 회원가입에서는 휴대폰 인증 API를 사용합니다. "
-                            + "이미 가입에 사용됐거나 탈퇴 후 재가입 제한 중이면 available은 false입니다.")
-    @ApiResponses({
-        @io.swagger.v3.oas.annotations.responses.ApiResponse(
-                responseCode = "200",
-                description = "전화번호 중복 확인 성공",
-                content =
-                        @Content(
-                                mediaType = JSON,
-                                examples = {
-                                    @ExampleObject(
-                                            name = "available",
-                                            summary = "사용 가능한 전화번호",
-                                            value =
-                                                    """
-                                                    {
-                                                      "success": true,
-                                                      "data": {
-                                                        "phoneNumber": "01012345678",
-                                                        "available": true
-                                                      },
-                                                      "error": null
-                                                    }
-                                                    """),
-                                    @ExampleObject(
-                                            name = "unavailable",
-                                            summary = "이미 사용 중이거나 재가입 제한 중인 전화번호",
-                                            value =
-                                                    """
-                                                    {
-                                                      "success": true,
-                                                      "data": {
-                                                        "phoneNumber": "01012345678",
-                                                        "available": false
-                                                      },
-                                                      "error": null
-                                                    }
-                                                    """)
-                                })),
-        @io.swagger.v3.oas.annotations.responses.ApiResponse(
-                responseCode = "400",
-                description = "요청 값 검증 실패",
-                content =
-                        @Content(
-                                mediaType = JSON,
-                                examples =
-                                        @ExampleObject(
-                                                name = "VALIDATION_ERROR",
-                                                value =
-                                                        AuthSwaggerExamples
-                                                                .VALIDATION_ERROR_EXAMPLE)))
-    })
-    @PostMapping("/phone-numbers/availability")
-    public ApiResponse<PhoneNumberAvailabilityResponse> checkPhoneNumberAvailability(
-            @RequestBody @Valid PhoneNumberAvailabilityRequest request) {
-        return ApiResponse.success(authService.checkPhoneNumberAvailability(request));
     }
 
     @Operation(

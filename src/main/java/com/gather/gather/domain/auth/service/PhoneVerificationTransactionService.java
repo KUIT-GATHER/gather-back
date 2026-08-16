@@ -3,6 +3,7 @@ package com.gather.gather.domain.auth.service;
 import com.gather.gather.domain.auth.config.PhoneVerificationProperties;
 import com.gather.gather.domain.auth.dto.PhoneVerificationStatus;
 import com.gather.gather.domain.auth.entity.PhoneVerification;
+import com.gather.gather.domain.auth.entity.PhoneVerificationPurpose;
 import com.gather.gather.domain.auth.repository.PhoneVerificationRepository;
 import com.gather.gather.global.exception.BusinessException;
 import com.gather.gather.global.exception.ErrorCode;
@@ -63,9 +64,11 @@ public class PhoneVerificationTransactionService {
             return PhoneVerificationStatus.VERIFIED;
         }
         requireActive(verification, now);
-        signupValidator.validatePhoneNumberNotDuplicated(verification.getPhoneNumber());
-        if (accountRejoinBlockService.isPhoneBlocked(verification.getPhoneNumber(), now)) {
-            throw new BusinessException(ErrorCode.ACCOUNT_REJOIN_BLOCKED);
+        if (verification.getPurpose() == PhoneVerificationPurpose.SIGNUP) {
+            signupValidator.validatePhoneNumberNotDuplicated(verification.getPhoneNumber());
+            if (accountRejoinBlockService.isPhoneBlocked(verification.getPhoneNumber(), now)) {
+                throw new BusinessException(ErrorCode.ACCOUNT_REJOIN_BLOCKED);
+            }
         }
         verification.verify(now);
         return PhoneVerificationStatus.VERIFIED;

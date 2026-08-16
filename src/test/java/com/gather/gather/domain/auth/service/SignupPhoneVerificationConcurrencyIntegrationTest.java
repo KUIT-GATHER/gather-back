@@ -10,6 +10,7 @@ import com.gather.gather.domain.auth.dto.SignupRequest;
 import com.gather.gather.domain.auth.entity.EmailVerification;
 import com.gather.gather.domain.auth.entity.Gender;
 import com.gather.gather.domain.auth.entity.PhoneVerification;
+import com.gather.gather.domain.auth.entity.PhoneVerificationPurpose;
 import com.gather.gather.domain.auth.kakao.dto.KakaoSignupRequest;
 import com.gather.gather.domain.auth.kakao.service.KakaoAuthService;
 import com.gather.gather.domain.auth.kakao.service.SocialSignupSessionService;
@@ -236,6 +237,7 @@ class SignupPhoneVerificationConcurrencyIntegrationTest {
                                     PhoneVerification.create(
                                             verificationId.toString(),
                                             PHONE_NUMBER,
+                                            PhoneVerificationPurpose.SIGNUP,
                                             "GATHER-FULLRACE1",
                                             now.plusMinutes(5),
                                             now.minusMinutes(1));

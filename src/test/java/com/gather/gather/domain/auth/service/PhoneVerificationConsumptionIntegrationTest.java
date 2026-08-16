@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.gather.gather.domain.auth.entity.PhoneVerification;
+import com.gather.gather.domain.auth.entity.PhoneVerificationPurpose;
 import com.gather.gather.domain.auth.repository.PhoneVerificationRepository;
 import com.gather.gather.global.exception.BusinessException;
 import com.gather.gather.global.exception.ErrorCode;
@@ -52,6 +53,7 @@ class PhoneVerificationConsumptionIntegrationTest {
                                     PhoneVerification.create(
                                             verificationId.toString(),
                                             PHONE_NUMBER,
+                                            PhoneVerificationPurpose.SIGNUP,
                                             "GATHER-CONSUME001",
                                             now.plusMinutes(5),
                                             now.minusMinutes(1));
@@ -136,6 +138,7 @@ class PhoneVerificationConsumptionIntegrationTest {
                                     PhoneVerification.create(
                                             reservationVerificationId.toString(),
                                             "01095550004",
+                                            PhoneVerificationPurpose.SIGNUP,
                                             "GATHER-CONFIRM001",
                                             now.plusMinutes(5),
                                             now.minusMinutes(1)));

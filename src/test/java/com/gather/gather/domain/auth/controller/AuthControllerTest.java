@@ -13,8 +13,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.gather.gather.domain.auth.dto.LoginRequest;
-import com.gather.gather.domain.auth.dto.PhoneNumberAvailabilityRequest;
-import com.gather.gather.domain.auth.dto.PhoneNumberAvailabilityResponse;
 import com.gather.gather.domain.auth.dto.SignupRequest;
 import com.gather.gather.domain.auth.dto.SignupResponse;
 import com.gather.gather.domain.auth.service.AuthService;
@@ -240,43 +238,16 @@ class AuthControllerTest {
     }
 
     @Test
-    @DisplayName("전화번호 중복 확인에서 전화번호가 20자를 넘으면 400으로 막는다")
-    void checkPhoneNumberAvailability_withTooLongPhoneNumber_returnsBadRequest() throws Exception {
+    @DisplayName("제거된 전화번호 중복확인 API는 더 이상 매핑되지 않는다")
+    void phoneNumberAvailability_isRemoved() throws Exception {
         mockMvc.perform(
                         post("/api/v1/auth/phone-numbers/availability")
                                 .contentType(MediaType.APPLICATION_JSON)
-                                .content(
-                                        """
-                                        {
-                                          "phoneNumber": "010123456789012345678"
-                                        }
-                                        """))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.success").value(false))
-                .andExpect(jsonPath("$.error.code").value("VALIDATION_ERROR"));
+                                .content("{\"phoneNumber\":\"01012345678\"}"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error.code").value("NOT_FOUND"));
 
         verifyNoInteractions(authService);
-    }
-
-    @Test
-    @DisplayName("전화번호 중복 확인에서 전화번호가 20자이면 검증을 통과한다")
-    void checkPhoneNumberAvailability_withMaxLengthPhoneNumber_returnsOk() throws Exception {
-        when(authService.checkPhoneNumberAvailability(any(PhoneNumberAvailabilityRequest.class)))
-                .thenReturn(new PhoneNumberAvailabilityResponse("01012345678901234567", true));
-
-        mockMvc.perform(
-                        post("/api/v1/auth/phone-numbers/availability")
-                                .contentType(MediaType.APPLICATION_JSON)
-                                .content(
-                                        """
-                                        {
-                                          "phoneNumber": "01012345678901234567"
-                                        }
-                                        """))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.success").value(true));
-
-        verify(authService).checkPhoneNumberAvailability(any(PhoneNumberAvailabilityRequest.class));
     }
 
     @Test

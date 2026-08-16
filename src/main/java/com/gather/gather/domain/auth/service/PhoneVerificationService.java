@@ -56,7 +56,12 @@ public class PhoneVerificationService {
         String verificationCode = codeGenerator.generate();
         PhoneVerification verification =
                 PhoneVerification.create(
-                        verificationId, phoneNumber, verificationCode, expiresAt, now);
+                        verificationId,
+                        phoneNumber,
+                        request.purpose(),
+                        verificationCode,
+                        expiresAt,
+                        now);
         phoneVerificationRepository.save(verification);
         return new PhoneVerificationStartResponse(
                 verificationId,

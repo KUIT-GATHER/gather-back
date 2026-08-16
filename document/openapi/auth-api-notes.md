@@ -64,25 +64,25 @@
 
 ### 3-3. 휴대폰 문자 인증 — `POST /api/v1/auth/phone-verifications`
 
-- 요청: `{ "phoneNumber": "01012345678" }`. 하이픈·공백은 제거하며 정규화 결과가 `010`으로 시작하는 11자리 숫자여야 합니다.
+- 요청: `{ "phoneNumber": "01012345678", "purpose": "SIGNUP" }`. `purpose`는 `SIGNUP` / `FIND_ACCOUNT` / `RESET_PASSWORD` 중 하나로 필수입니다. 하이픈·공백은 제거하며 정규화 결과가 `010`으로 시작하는 11자리 숫자여야 합니다.
 - 응답의 `verificationId`는 이후 QR·confirm 경로뿐 아니라 최종 회원가입 body의 `phoneVerificationId`로도 사용합니다. `receiverNumber`와 인증코드 원문인 `messageText`는 모바일에서 `sms:` URI를 구성할 때 사용합니다.
 - 같은 번호의 인증 시작은 60초 간격으로 제한합니다.
 - 문자 전송·확인 제한은 5분입니다. 인증문구는 서버가 안전한 난수로 만들며 프론트가 지정하거나 confirm 때 다시 보내지 않습니다.
 - 모바일: `receiverNumber`/`messageText`를 별도 가공 없이 사용해 인증코드만 전송한 뒤 confirm을 호출합니다.
 - PC: `POST /api/v1/auth/phone-verifications/{verificationId}/qr-code`의 `qrCode` data URL을 이미지로 표시합니다. request body는 없습니다. 같은 세션은 10초 간격, 최대 3회로 제한합니다.
 - 확인: `POST /api/v1/auth/phone-verifications/{verificationId}/confirm`. request body는 없으며, 문자가 아직 조회되지 않으면 오류가 아닌 `PENDING`, 성공하면 `VERIFIED`입니다. 같은 세션은 3초 간격, 최대 30회로 제한합니다.
-- OCTOMO가 문자를 확인한 직후 서버가 현재 전화번호 중복과 탈퇴 후 재가입 제한을 확인합니다. 이는 빠른 안내를 위한 사전 검사이며, 최종 정합성은 가입 트랜잭션과 `users.phone_number` UNIQUE 제약이 보장합니다.
+- OCTOMO가 문자를 확인한 직후 `SIGNUP` 목적에서만 현재 전화번호 중복과 탈퇴 후 재가입 제한을 확인합니다. `FIND_ACCOUNT`와 `RESET_PASSWORD`는 기존 회원 번호를 허용하며 계정 존재 여부를 confirm 단계에서 확인하지 않습니다.
 - 인증 완료 결과는 30분 안에 회원가입 body의 동일한 `phoneNumber`와 `phoneVerificationId`를 함께 제출해야 합니다. 한 번 가입에 사용된 인증은 재사용할 수 없으며, 가입 트랜잭션이 실패하면 소비도 함께 rollback됩니다. ID/번호 불일치, 만료, 이미 소비된 인증은 모두 `400 PHONE_VERIFICATION_REQUIRED`입니다.
 - OCTOMO 장애는 `503 PHONE_VERIFICATION_PROVIDER_UNAVAILABLE`, 요청 제한은 `429 PHONE_VERIFICATION_RATE_LIMITED`로 변환됩니다.
 - 자동 확인을 사용하더라도 1초 polling은 피하고 수 초 이상의 간격으로 호출하며 `expiresAt`에서 중단하세요. 휴대폰 인증 응답의 `expiresAt`은 UTC offset(`Z`)을 포함합니다.
 
-### 3-3-1. 기존 전화번호 중복 확인(호환 유지) — `POST /api/v1/auth/phone-numbers/availability`
+### 3-3-1. 아이디 찾기 — `POST /api/v1/auth/account-recoveries/email`
 
-- HTTP 메서드는 **POST**입니다.
-- 하이픈, 공백은 서버에서 제거 후 판단합니다 (`010-1234-5678` → `01012345678`).
-- 이미 가입에 사용됐거나 탈퇴 후 재가입 제한 중이어도 HTTP는 `200`이고 `data.available: false`로 구분합니다.
-  - **에러 응답이 아님에 주의.**
-- 새 회원가입 화면에서는 별도 호출하지 않습니다. 기존 클라이언트 호환을 위해 endpoint만 유지하며, 휴대폰 인증 성공 처리 안에서 서버가 중복을 다시 확인합니다.
+- `FIND_ACCOUNT` 목적으로 완료한 `phoneVerificationId`만 요청합니다. 전화번호는 다시 받지 않고 인증 세션에 저장된 번호를 사용합니다.
+- 이메일 계정은 `EMAIL`과 가입 이메일, 카카오 전용 계정은 `KAKAO`와 `email: null`을 반환합니다.
+- 계정이 없거나 ACTIVE가 아니거나 로그인 credential이 불완전하면 `404 ACCOUNT_NOT_FOUND`입니다.
+- `EMAIL`, `KAKAO`, `ACCOUNT_NOT_FOUND` 모두 정상적인 복구 시도로 인증 세션을 한 번 소비합니다.
+- 기존 전화번호 중복확인 endpoint는 제거되었습니다. 회원가입 중복 검사는 `SIGNUP` 인증 완료 과정에서 수행합니다.
 
 ### 3-4. 회원가입 — `POST /api/v1/auth/signup`
 
