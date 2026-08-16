@@ -260,27 +260,30 @@ class MyPageServiceTest {
             "getActivities includes a multi-day activity in every month it spans, and excludes it"
                     + " from months outside that range")
     void getActivities_includesMultiDayActivityInEveryOverlappingMonth() {
-        Posting multiDayPosting =
-                posting(401L, LocalDate.of(2026, 7, 30), LocalDate.of(2026, 8, 2));
+        // After
+        YearMonth firstMonth = YearMonth.from(LocalDate.now().plusMonths(2));
+        YearMonth secondMonth = firstMonth.plusMonths(1);
+        YearMonth thirdMonth = secondMonth.plusMonths(1);
+        LocalDate spanStart = firstMonth.atEndOfMonth();
+        LocalDate spanEnd = secondMonth.atDay(2);
+
+        Posting multiDayPosting = posting(401L, spanStart, spanEnd);
         PostingParticipation participation = PostingParticipation.create(USER_ID, 401L);
 
         try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
             securityUtil.when(SecurityUtil::getCurrentUserId).thenReturn(USER_ID);
             when(postingParticipationRepository.findAllByUserIdAndStatusIn(
-                            eq(USER_ID),
-                            eq(
-                                    Set.of(
-                                            PostingParticipationStatus.APPLIED,
-                                            PostingParticipationStatus.CONFIRMED))))
+                    eq(USER_ID),
+                    eq(
+                            Set.of(
+                                    PostingParticipationStatus.APPLIED,
+                                    PostingParticipationStatus.CONFIRMED))))
                     .thenReturn(List.of(participation));
             when(postingRepository.findAllById(List.of(401L))).thenReturn(List.of(multiDayPosting));
 
-            List<MyPageActivityResponse> julyActivities =
-                    myPageService.getActivities(YearMonth.of(2026, 7));
-            List<MyPageActivityResponse> augustActivities =
-                    myPageService.getActivities(YearMonth.of(2026, 8));
-            List<MyPageActivityResponse> septemberActivities =
-                    myPageService.getActivities(YearMonth.of(2026, 9));
+            List<MyPageActivityResponse> julyActivities = myPageService.getActivities(firstMonth);
+            List<MyPageActivityResponse> augustActivities = myPageService.getActivities(secondMonth);
+            List<MyPageActivityResponse> septemberActivities = myPageService.getActivities(thirdMonth);
 
             assertThat(julyActivities)
                     .extracting(MyPageActivityResponse::postingId)
@@ -312,6 +315,34 @@ class MyPageServiceTest {
 
             List<MyPageActivityResponse> activities =
                     myPageService.getActivities(YearMonth.of(2026, 7));
+
+            assertThat(activities).isEmpty();
+        }
+    }
+
+
+    @Test
+    @DisplayName(
+            "getActivities excludes a volunteer activity whose participation end date has already"
+                    + " passed, even though it overlaps the requested month")
+    void getActivities_excludesVolunteerActivityThatAlreadyEnded() {
+        LocalDate today = LocalDate.now();
+        YearMonth thisMonth = YearMonth.from(today);
+        LocalDate pastStart = thisMonth.atDay(1);
+
+        Posting endedPosting = posting(901L, pastStart, today.minusDays(1));
+        PostingParticipation endedParticipation = PostingParticipation.create(USER_ID, 901L);
+        ReflectionTestUtils.setField(
+                endedParticipation, "participationEndDate", today.minusDays(1));
+
+        try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
+            securityUtil.when(SecurityUtil::getCurrentUserId).thenReturn(USER_ID);
+            when(postingParticipationRepository.findAllByUserIdAndStatusIn(
+                    eq(USER_ID), eq(UPCOMING_STATUSES)))
+                    .thenReturn(List.of(endedParticipation));
+            when(postingRepository.findAllById(List.of(901L))).thenReturn(List.of(endedPosting));
+
+            List<MyPageActivityResponse> activities = myPageService.getActivities(thisMonth);
 
             assertThat(activities).isEmpty();
         }

@@ -36,11 +36,12 @@ public record MyPageActivityResponse(
         @Schema(description = "활동 장소", nullable = true, example = "서울숲공원") String actPlace,
         @Schema(description = "지역명", nullable = true, example = "강남구") String regionName,
         @Schema(
-                        description =
-                                "참여 상태. VOLUNTEER는 APPLIED/CONFIRMED/COMPLETED/REVIEWED,"
-                                        + " MEETING_RECRUIT은 MeetingRecruitParticipationStatus 값",
-                        example = "APPLIED")
-                String status,
+                description =
+                        "참여 상태. VOLUNTEER는 다가오는 활동 정책상 APPLIED/CONFIRMED만 반환됨"
+                                + " (COMPLETED/REVIEWED는 활동기록 API에서 조회),"
+                                + " MEETING_RECRUIT은 MeetingRecruitParticipationStatus 값",
+                example = "APPLIED")
+        String status,
         @Schema(
                         description =
                                 "카드에서 노출할 액션. MyPage에는 이미 생성된 참여만 반환되므로 실질적으로 CANCEL/NONE만 온다.",
