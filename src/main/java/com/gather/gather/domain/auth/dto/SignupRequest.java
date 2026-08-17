@@ -42,14 +42,9 @@ public record SignupRequest(
                         format = "uuid",
                         requiredMode = Schema.RequiredMode.REQUIRED)
                 UUID emailVerificationId,
-        @Schema(description = "비밀번호. 6자 이상 12자 이하입니다.", example = "password123!")
-                @NotBlank
-                @Size(min = 6, max = 12)
+        @Schema(description = "비밀번호. 공백 없이 6자 이상 12자 이하입니다.", example = "password123!") @NotBlank
                 String password,
-        @Schema(description = "비밀번호 확인", example = "password123!")
-                @NotBlank
-                @Size(min = 6, max = 12)
-                String passwordConfirm,
+        @Schema(description = "비밀번호 확인", example = "password123!") @NotBlank String passwordConfirm,
         @Schema(description = "닉네임. 완성형 한글 2~10자 또는 영문 2~20자만 허용합니다.", example = "길동")
                 @NotBlank
                 @Size(min = 2, max = 20)

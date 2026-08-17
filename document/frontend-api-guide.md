@@ -54,6 +54,15 @@ Authorization: Bearer <accessToken>
 - 이메일 계정은 `loginType: "EMAIL"`과 가입 이메일을, 카카오 전용 계정은 `loginType: "KAKAO"`와 `email: null`을 반환합니다.
 - 복구 가능한 계정이 없으면 `404 ACCOUNT_NOT_FOUND`이며 이 정상 결과에서도 인증 세션은 소비됩니다.
 
+## 1-2-2️⃣ 비밀번호 찾기(재설정)
+
+- `purpose: "RESET_PASSWORD"`로 휴대폰 인증을 완료한 뒤 `POST /api/v1/auth/account-recoveries/password`에 `phoneVerificationId`만 보냅니다. 전화번호·이메일은 다시 보내지 않습니다.
+- 응답의 `passwordResetToken`은 **이때 한 번만 내려오고 10분간 유효**합니다. 재설정 화면까지 클라이언트가 보관하세요.
+- 카카오 전용 계정은 `409 PASSWORD_RESET_NOT_AVAILABLE`이므로 카카오 로그인을 안내합니다. 복구 가능한 계정이 없으면 `404 ACCOUNT_NOT_FOUND`이며, 두 결과 모두 인증 세션은 소비됩니다.
+- 이어서 `POST /api/v1/auth/account-recoveries/password/reset`에 `passwordResetToken`, `password`, `passwordConfirm`을 보냅니다. 비밀번호는 회원가입과 같은 정책(공백 없이 6~12자)이며 정책 위반은 `400 VALIDATION_ERROR`, 확인 불일치는 `400 PASSWORD_MISMATCH`입니다.
+- 재설정 성공 응답은 `data: null`이고 **새 토큰을 발급하지 않습니다.** 기존 Refresh Token은 모두 폐기되므로 로그인 화면으로 이동해 새 비밀번호로 다시 로그인시켜야 합니다.
+- `401 PASSWORD_RESET_TOKEN_INVALID`(형식 오류·없음·이미 사용·파기됨)와 `401 PASSWORD_RESET_TOKEN_EXPIRED`(10분 경과)는 모두 `RESET_PASSWORD` 본인인증부터 다시 시작시키면 됩니다.
+
 ## 1-3️⃣ 이메일 회원가입 자동 로그인과 프로필 이미지
 
 - `POST /api/v1/auth/signup` 성공 시 기존 회원 정보와 함께 `accessToken`, `tokenType: "Bearer"`가 응답 body에 내려옵니다.

@@ -31,6 +31,12 @@ public enum ErrorCode {
     PHONE_VERIFICATION_RATE_LIMITED(
             HttpStatus.TOO_MANY_REQUESTS, "휴대폰 인증 요청이 많습니다. 잠시 후 다시 시도해주세요."),
     PASSWORD_MISMATCH(HttpStatus.BAD_REQUEST, "비밀번호가 일치하지 않습니다."),
+    PASSWORD_RESET_NOT_AVAILABLE(HttpStatus.CONFLICT, "비밀번호 재설정을 지원하지 않는 계정입니다."),
+    // 비밀번호 재설정 전용 토큰. access/refresh 토큰 코드와 구분하기 위해 PASSWORD_RESET_TOKEN_ 접두사를 쓴다.
+    PASSWORD_RESET_TOKEN_INVALID(
+            HttpStatus.UNAUTHORIZED, "유효하지 않은 비밀번호 재설정 요청입니다. 본인인증부터 다시 진행해주세요."),
+    PASSWORD_RESET_TOKEN_EXPIRED(
+            HttpStatus.UNAUTHORIZED, "비밀번호 재설정 요청이 만료되었습니다. 본인인증부터 다시 진행해주세요."),
     REQUIRED_TERMS_NOT_AGREED(HttpStatus.BAD_REQUEST, "필수 약관 동의가 필요합니다."),
     INVALID_ACTIVITY_REGION(HttpStatus.BAD_REQUEST, "활동 지역은 시도 또는 시군구 단위로 1개 선택해야 합니다."),
     INVALID_INTEREST_CATEGORY_COUNT(HttpStatus.BAD_REQUEST, "관심 카테고리는 중복 없이 1개 이상 선택해야 합니다."),

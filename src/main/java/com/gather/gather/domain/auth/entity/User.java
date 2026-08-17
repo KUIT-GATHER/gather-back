@@ -193,6 +193,17 @@ public class User {
                 interestCategories);
     }
 
+    /** 비밀번호 재설정. 이메일 credential이 없는 계정에 password가 새로 생기지 않도록 기존 credential 구조를 요구한다. */
+    public void changePassword(String encodedPassword) {
+        if (encodedPassword == null || encodedPassword.isBlank()) {
+            throw new IllegalArgumentException("암호화된 비밀번호는 필수입니다.");
+        }
+        if (email == null || password == null) {
+            throw new IllegalStateException("이메일 로그인 계정만 비밀번호를 변경할 수 있습니다.");
+        }
+        this.password = encodedPassword;
+    }
+
     public void changeProfileImageKey(String profileImageKey) {
         this.profileImageKey = profileImageKey;
     }

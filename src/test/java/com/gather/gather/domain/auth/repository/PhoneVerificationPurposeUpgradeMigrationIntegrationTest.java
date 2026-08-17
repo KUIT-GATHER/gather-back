@@ -55,8 +55,14 @@ class PhoneVerificationPurposeUpgradeMigrationIntegrationTest {
                             .load();
             flyway.migrate();
 
-            assertThat(flyway.info().current().getVersion().getVersion())
-                    .isEqualTo(PURPOSE_MIGRATION_VERSION);
+            // 이후 마이그레이션이 추가돼도 깨지지 않도록 최신 버전이 아니라 V62 적용 여부를 확인한다.
+            assertThat(flyway.info().applied())
+                    .extracting(
+                            info ->
+                                    info.getVersion() == null
+                                            ? null
+                                            : info.getVersion().getVersion())
+                    .contains(PURPOSE_MIGRATION_VERSION);
             assertThat(queryPurpose(upgradeUrl, username, password)).isEqualTo("SIGNUP");
             assertThat(queryCleanupIndexCount(upgradeUrl, username, password, databaseName))
                     .isEqualTo(1);
