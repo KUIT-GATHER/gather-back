@@ -75,12 +75,8 @@ class EmailVerificationConsumptionIntegrationTest {
     void consumeForSignup_preventsReuse() {
         consume();
 
-        assertThat(
-                        emailVerificationRepository
-                                .findByVerificationId(verificationId.toString())
-                                .orElseThrow()
-                                .getConsumedAt())
-                .isNotNull();
+        assertThat(emailVerificationRepository.findByVerificationId(verificationId.toString()))
+                .isEmpty();
         assertThatThrownBy(this::consume)
                 .isInstanceOfSatisfying(
                         BusinessException.class,
@@ -120,12 +116,8 @@ class EmailVerificationConsumptionIntegrationTest {
 
         assertThat(List.of(first.get(10, TimeUnit.SECONDS), second.get(10, TimeUnit.SECONDS)))
                 .containsExactlyInAnyOrder(true, false);
-        assertThat(
-                        emailVerificationRepository
-                                .findByVerificationId(verificationId.toString())
-                                .orElseThrow()
-                                .getConsumedAt())
-                .isNotNull();
+        assertThat(emailVerificationRepository.findByVerificationId(verificationId.toString()))
+                .isEmpty();
     }
 
     private void consume() {

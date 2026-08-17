@@ -23,6 +23,10 @@ public interface EmailVerificationRepository extends JpaRepository<EmailVerifica
     @Query("delete from EmailVerification e where e.email = :email")
     int deleteAllByEmail(String email);
 
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("delete from EmailVerification e where e.createdAt <= :cutoff")
+    int deleteAllCreatedAtOrBefore(LocalDateTime cutoff);
+
     // 동시 재발송·인증 시도가 검사와 카운터 갱신 사이에 끼어들지 못하도록 행을 잠근다.
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select e from EmailVerification e where e.email = :email")
