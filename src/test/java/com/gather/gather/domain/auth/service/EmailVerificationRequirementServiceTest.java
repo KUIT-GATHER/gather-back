@@ -54,7 +54,7 @@ class EmailVerificationRequirementServiceTest {
 
         service.consumeForSignup(EMAIL, VERIFICATION_ID);
 
-        assertThat(verification.getConsumedAt()).isEqualTo(NOW);
+        verify(emailVerificationRepository).delete(verification);
     }
 
     @Test
