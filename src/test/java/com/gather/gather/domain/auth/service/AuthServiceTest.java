@@ -80,7 +80,6 @@ class AuthServiceTest {
     @Mock private PasswordEncoder passwordEncoder;
     @Mock private EmailSender emailSender;
     @Mock private TokenProvider tokenProvider;
-    @Mock private LockedTokenIssuanceService lockedTokenIssuanceService;
     @Mock private AccountRejoinBlockService accountRejoinBlockService;
     @Mock private AccountIdentityGuardService accountIdentityGuardService;
     @Mock private EmailVerificationRequirementService emailVerificationRequirementService;
@@ -91,7 +90,8 @@ class AuthServiceTest {
 
     @BeforeEach
     void setUp() {
-        // SignupValidator·TokenIssuer·LoginPolicy는 mock이 아니라 실물을 쓴다. 검증·토큰 발급 로직이 AuthService에서
+        // SignupValidator·PasswordPolicy·TokenIssuer·LoginPolicy는 mock이 아니라 실물을 쓴다. 검증·토큰 발급 로직이
+        // AuthService에서
         // 분리됐을 뿐 동작은 그대로여야 하므로, mock으로 대체하면 이 테스트들의 검출력이 사라진다.
         tokenIssuer = spy(new TokenIssuer(tokenProvider, refreshTokenRepository));
         authService =
@@ -103,9 +103,9 @@ class AuthServiceTest {
                         emailSender,
                         tokenProvider,
                         tokenIssuer,
-                        lockedTokenIssuanceService,
                         new SignupValidator(
                                 userRepository, regionRepository, new PhoneNumberPolicy()),
+                        new PasswordPolicy(),
                         new LoginPolicy(),
                         accountRejoinBlockService,
                         accountIdentityGuardService,
@@ -760,28 +760,29 @@ class AuthServiceTest {
     }
 
     @Test
-    @DisplayName("login은 이메일과 비밀번호가 일치하는 활성 회원에게 새 토큰을 발급한다")
-    void login_withValidCredentials_issuesTokens() {
+    @DisplayName("login은 User를 잠근 뒤 비밀번호를 검증하고 같은 트랜잭션에서 토큰을 발급한다")
+    void login_withValidCredentials_issuesTokensUnderUserLock() {
         User user = activeUser();
-        when(userRepository.findByEmail("test@example.com")).thenReturn(Optional.of(user));
+        when(userRepository.existsByEmail("test@example.com")).thenReturn(true);
+        when(userRepository.findByEmailForUpdate("test@example.com")).thenReturn(Optional.of(user));
         when(passwordEncoder.matches("password123!", "encoded-password")).thenReturn(true);
-        when(lockedTokenIssuanceService.issue(user.getId()))
-                .thenReturn(new TokenIssueResult("new-access-token", "new-refresh-token"));
 
         TokenIssueResult result = authService.login(loginRequest());
 
-        assertThat(result.accessToken()).isEqualTo("new-access-token");
-        assertThat(result.refreshToken()).isEqualTo("new-refresh-token");
-        verify(lockedTokenIssuanceService).issue(user.getId());
+        assertThat(result.accessToken()).isEqualTo("access-token");
+        assertThat(result.refreshToken()).isEqualTo("refresh-token");
+        verify(userRepository).findByEmailForUpdate("test@example.com");
+        verify(refreshTokenRepository).save(any(RefreshToken.class));
     }
 
     @Test
-    @DisplayName("login은 존재하지 않는 이메일이면 INVALID_LOGIN이고 토큰을 발급하지 않는다")
+    @DisplayName("login은 존재하지 않는 이메일이면 잠금 없이 INVALID_LOGIN으로 끝낸다")
     void login_withUnknownEmail_throwsInvalidLogin() {
-        when(userRepository.findByEmail("test@example.com")).thenReturn(Optional.empty());
+        when(userRepository.existsByEmail("test@example.com")).thenReturn(false);
 
         assertErrorCode(() -> authService.login(loginRequest()), ErrorCode.INVALID_LOGIN);
 
+        verify(userRepository, never()).findByEmailForUpdate(anyString());
         verify(tokenProvider, never()).createAccessToken(any(User.class));
     }
 
@@ -789,12 +790,14 @@ class AuthServiceTest {
     @DisplayName("login은 비밀번호가 일치하지 않으면 INVALID_LOGIN이고 토큰을 발급하지 않는다")
     void login_withWrongPassword_throwsInvalidLogin() {
         User user = activeUser();
-        when(userRepository.findByEmail("test@example.com")).thenReturn(Optional.of(user));
+        when(userRepository.existsByEmail("test@example.com")).thenReturn(true);
+        when(userRepository.findByEmailForUpdate("test@example.com")).thenReturn(Optional.of(user));
         when(passwordEncoder.matches("password123!", "encoded-password")).thenReturn(false);
 
         assertErrorCode(() -> authService.login(loginRequest()), ErrorCode.INVALID_LOGIN);
 
         verify(tokenProvider, never()).createAccessToken(any(User.class));
+        verify(refreshTokenRepository, never()).save(any(RefreshToken.class));
     }
 
     @ParameterizedTest
@@ -805,14 +808,15 @@ class AuthServiceTest {
     void login_withBlockedUserStatus_throwsStatusError(UserStatus status) {
         User user = mock(User.class);
         when(user.getPassword()).thenReturn("encoded-password");
-        when(userRepository.findByEmail("test@example.com")).thenReturn(Optional.of(user));
+        when(user.getStatus()).thenReturn(status);
+        when(userRepository.existsByEmail("test@example.com")).thenReturn(true);
+        when(userRepository.findByEmailForUpdate("test@example.com")).thenReturn(Optional.of(user));
         when(passwordEncoder.matches("password123!", "encoded-password")).thenReturn(true);
-        when(lockedTokenIssuanceService.issue(user.getId()))
-                .thenThrow(new BusinessException(errorCodeFor(status)));
 
         assertErrorCode(() -> authService.login(loginRequest()), errorCodeFor(status));
 
         verify(tokenProvider, never()).createAccessToken(any(User.class));
+        verify(refreshTokenRepository, never()).save(any(RefreshToken.class));
     }
 
     @Test

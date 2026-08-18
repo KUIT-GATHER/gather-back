@@ -85,6 +85,27 @@
 - `EMAIL`, `KAKAO`, `ACCOUNT_NOT_FOUND` 모두 정상적인 복구 시도로 인증 세션을 한 번 소비합니다.
 - 기존 전화번호 중복확인 endpoint는 제거되었습니다. 회원가입 중복 검사는 `SIGNUP` 인증 완료 과정에서 수행합니다.
 
+### 3-3-2. 비밀번호 재설정 권한 발급 — `POST /api/v1/auth/account-recoveries/password`
+
+- `RESET_PASSWORD` 목적으로 완료한 `phoneVerificationId`만 요청합니다. 전화번호·이메일은 다시 받지 않고 인증 세션에 저장된 번호를 사용합니다.
+- 성공 응답은 `{ "passwordResetToken": "..." }` 하나뿐입니다. **응답에서 단 한 번만 전달되므로** 재설정 화면으로 이동할 때까지 클라이언트가 보관해야 하며, 서버는 hash만 저장합니다.
+- 토큰 유효시간은 **10분**입니다. 사용자당 활성 토큰은 1개이며, 다시 발급하면 직전 토큰은 즉시 무효화됩니다.
+- 카카오 전용 계정은 비밀번호가 없으므로 `409 PASSWORD_RESET_NOT_AVAILABLE`입니다. 아이디 찾기와 같은 화면 흐름으로 카카오 로그인을 안내하세요.
+- 계정이 없거나 ACTIVE가 아니거나 로그인 credential이 불완전하면 `404 ACCOUNT_NOT_FOUND`입니다(구분하지 않습니다).
+- 성공·`PASSWORD_RESET_NOT_AVAILABLE`·`ACCOUNT_NOT_FOUND` 모두 정상적인 시도로 인증 세션을 한 번 소비합니다. 실패해도 같은 `phoneVerificationId`를 재사용할 수 없습니다.
+- 인증 미완료·30분 초과·이미 소비는 `400 PHONE_VERIFICATION_REQUIRED`/`PHONE_VERIFICATION_EXPIRED`, 목적 불일치는 `400 PHONE_VERIFICATION_PURPOSE_MISMATCH`입니다.
+
+### 3-3-3. 비밀번호 재설정 — `POST /api/v1/auth/account-recoveries/password/reset`
+
+- 요청: `{ "passwordResetToken": "...", "password": "...", "passwordConfirm": "..." }`.
+- 비밀번호 정책은 회원가입과 동일합니다. **공백(스페이스·탭·개행·유니코드 공백) 없이 6자 이상 12자 이하**이며 두 값이 같아야 합니다. 정책 위반은 `400 VALIDATION_ERROR`, 확인 불일치는 `400 PASSWORD_MISMATCH`입니다.
+- 성공 응답은 `data: null`입니다. **새 Access/Refresh Token을 발급하지 않으므로** 재설정 후에는 로그인 화면으로 이동해 새 비밀번호로 로그인해야 합니다.
+- 성공 시 해당 계정의 **Refresh Token이 모두 폐기**되어 다른 기기 세션도 끊깁니다. 다만 이미 발급된 Access Token은 stateless JWT라 만료 전까지 즉시 폐기되지 않습니다.
+- 토큰은 1회용입니다. 성공하면 삭제되므로 같은 토큰으로 다시 요청하면 `401 PASSWORD_RESET_TOKEN_INVALID`입니다.
+- `401 PASSWORD_RESET_TOKEN_INVALID`는 형식 오류·존재하지 않음·이미 사용·파기됨·계정 상태 변경(탈퇴 등)을 모두 포함하고, `401 PASSWORD_RESET_TOKEN_EXPIRED`는 발급 후 10분이 지난 경우입니다. **두 코드 모두 프론트는 `RESET_PASSWORD` 본인인증부터 다시 시작**시키면 됩니다.
+- 만료된 토큰은 5분 주기 파기 배치가 삭제하므로, 만료 직후에는 `EXPIRED`, 파기 이후에는 `INVALID`가 반환될 수 있습니다. 같은 상황에서 두 코드가 섞여 나올 수 있다는 뜻이며 화면 처리는 동일하게 두세요.
+- 마이페이지의 로그인 상태 비밀번호 변경은 이 API 범위가 아닙니다(별도 API 없음).
+
 ### 3-4. 회원가입 — `POST /api/v1/auth/signup`
 
 **필드 규칙:**
@@ -98,7 +119,7 @@
 | `phoneVerificationId` | **필수 UUID**. 해당 `phoneNumber`를 VERIFIED로 만든 세션 ID |
 | `email` | **인증 완료된 이메일**이어야 함, 최대 255자 |
 | `emailVerificationId` | **필수 UUID**. 해당 `email`을 VERIFIED로 만든 인증 결과 ID |
-| `password` / `passwordConfirm` | 6~12자, 두 값 일치 필수 |
+| `password` / `passwordConfirm` | 공백(스페이스·탭·개행·유니코드 공백) 없이 6~12자, 두 값 일치 필수. 비밀번호 재설정과 동일한 정책 |
 | `nickname` | 완성형 한글 2~10자 또는 영문 2~20자. 혼합·공백·숫자·특수문자 불가 |
 | `introduction` | 최대 50자, **선택**(생략/빈문자열 가능 — 빈문자열은 null 처리됨) |
 | `activityRegionId` | **시도(level 1) 또는 시군구(level 2) 단위 활동 지역 1개**. 향후 공고/모임 검색의 기본 지역 필터 초기값으로 사용 |
@@ -131,6 +152,7 @@
 - `403 SUSPENDED_USER`(정지) / `403 WITHDRAWAL_PENDING_USER`(탈퇴 처리 중) / `403 WITHDRAWN_USER`(탈퇴)는 별도 안내 필요.
 - 성공 시 응답 body는 `{ accessToken, tokenType: "Bearer" }`.
 - Refresh Token은 `Set-Cookie: gather_refresh_token=...; HttpOnly; Path=/api/v1/auth; SameSite=Lax`로만 전달됩니다.
+- 비밀번호 검증부터 토큰 발급까지 한 트랜잭션에서 처리하므로, 비밀번호 재설정이 완료된 뒤 옛 비밀번호로 보낸 로그인은 항상 `401 INVALID_LOGIN`이며 세션이 만들어지지 않습니다.
 
 ### 3-6. 토큰 재발급 — `POST /api/v1/auth/reissue`
 

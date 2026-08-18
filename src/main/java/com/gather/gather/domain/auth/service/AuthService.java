@@ -53,8 +53,8 @@ public class AuthService {
     private final EmailSender emailSender;
     private final TokenProvider tokenProvider;
     private final TokenIssuer tokenIssuer;
-    private final LockedTokenIssuanceService lockedTokenIssuanceService;
     private final SignupValidator signupValidator;
+    private final PasswordPolicy passwordPolicy;
     private final LoginPolicy loginPolicy;
     private final AccountRejoinBlockService accountRejoinBlockService;
     private final AccountIdentityGuardService accountIdentityGuardService;
@@ -208,18 +208,30 @@ public class AuthService {
                 SignupResponse.bearer(savedUser, tokens.accessToken()), tokens.refreshToken());
     }
 
+    /**
+     * 비밀번호 검증부터 Refresh Token 저장까지 같은 User 잠금 안에서 처리한다.
+     *
+     * <p>잠금을 토큰 발급 직전에만 잡으면, 비밀번호 재설정이 커밋된 뒤에도 옛 비밀번호로 통과한 요청이 새 세션을 만들 수 있다.
+     */
+    @Transactional
     public TokenIssueResult login(LoginRequest request) {
         String email = normalizeEmail(request.email());
+        // 없는 행을 FOR UPDATE로 조회하면 email unique 인덱스의 빈 갭에 gap lock이 걸려 동시 가입 INSERT와
+        // 충돌한다. 인증 없이 호출 가능한 공개 엔드포인트이므로 존재 여부를 먼저 확인한다.
+        if (!userRepository.existsByEmail(email)) {
+            throw new BusinessException(ErrorCode.INVALID_LOGIN);
+        }
         User user =
                 userRepository
-                        .findByEmail(email)
+                        .findByEmailForUpdate(email)
                         .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_LOGIN));
 
         if (!passwordEncoder.matches(request.password(), user.getPassword())) {
             throw new BusinessException(ErrorCode.INVALID_LOGIN);
         }
 
-        return lockedTokenIssuanceService.issue(user.getId());
+        loginPolicy.validateLoginAllowed(user);
+        return tokenIssuer.issue(user);
     }
 
     @Transactional
@@ -300,9 +312,7 @@ public class AuthService {
     private void validateSignupRequest(SignupRequest request) {
         signupValidator.validateName(request.name());
         signupValidator.validateNickname(request.nickname());
-        if (!request.password().equals(request.passwordConfirm())) {
-            throw new BusinessException(ErrorCode.PASSWORD_MISMATCH);
-        }
+        passwordPolicy.validate(request.password(), request.passwordConfirm());
         signupValidator.validateRequiredTermsAgreed(
                 request.serviceTermsAgreed(), request.privacyPolicyAgreed());
         signupValidator.validateActivityRegionId(request.activityRegionId());

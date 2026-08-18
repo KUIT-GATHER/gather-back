@@ -9,6 +9,10 @@ spring:
     name: gather
   profiles:
     active: local           # application-local.yml(DB 접속 정보)이 로드되도록 유지
+  datasource:
+    hikari:
+      maximum-pool-size: 4
+      minimum-idle: 1
   jpa:
     hibernate:
       ddl-auto: validate
@@ -61,6 +65,8 @@ gather:
       cleanup-scheduler-enabled: false
   auth:
     phone-verification:
+      cleanup-scheduler-enabled: false
+    password-reset:
       cleanup-scheduler-enabled: false
     email-verification:
       cleanup-scheduler-enabled: false
