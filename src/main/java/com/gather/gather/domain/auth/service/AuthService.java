@@ -59,6 +59,7 @@ public class AuthService {
     private final AccountRejoinBlockService accountRejoinBlockService;
     private final AccountIdentityGuardService accountIdentityGuardService;
     private final EmailVerificationRequirementService emailVerificationRequirementService;
+    private final EmailVerificationCodeHasher emailVerificationCodeHasher;
     private final PhoneVerificationRequirementService phoneVerificationRequirementService;
     private final Clock clock;
     private final SecureRandom secureRandom = new SecureRandom();
@@ -74,6 +75,8 @@ public class AuthService {
         LocalDateTime now = LocalDateTime.now(clock);
         String verificationId = UUID.randomUUID().toString();
         String code = generateVerificationCode();
+        // 평문 코드는 메일 발송 인자로만 쓰고, 저장은 verificationId에 묶인 HMAC으로만 한다.
+        String codeHash = emailVerificationCodeHasher.hash(verificationId, code);
         LocalDateTime expiresAt = now.plusMinutes(EMAIL_VERIFICATION_EXPIRATION_MINUTES);
 
         EmailVerification emailVerification = null;
@@ -86,7 +89,7 @@ public class AuthService {
         EmailVerificationState previousState = null;
         if (emailVerification == null) {
             emailVerification =
-                    EmailVerification.create(email, verificationId, code, expiresAt, now);
+                    EmailVerification.create(email, verificationId, codeHash, expiresAt, now);
             try {
                 emailVerificationRepository.saveAndFlush(emailVerification);
             } catch (DataIntegrityViolationException exception) {
@@ -102,8 +105,13 @@ public class AuthService {
             if (emailVerification.dailySendCountAsOf(now.toLocalDate()) >= EMAIL_DAILY_SEND_LIMIT) {
                 throw new BusinessException(ErrorCode.EMAIL_SEND_LIMIT_EXCEEDED);
             }
-            previousState = EmailVerificationState.from(emailVerification);
-            emailVerification.refresh(verificationId, code, expiresAt, now);
+            // 구 버전 JAR이 남긴 평문 상태는 복구 대상이 아니다. 스냅샷을 남기지 않으면 발송 실패 시
+            // 복원 대신 이번 발송 세대 삭제로 처리되어, 평문 코드가 되살아나지 않는다.
+            previousState =
+                    emailVerification.isLegacyFormat()
+                            ? null
+                            : EmailVerificationState.from(emailVerification);
+            emailVerification.refresh(verificationId, codeHash, expiresAt, now);
             emailVerificationRepository.saveAndFlush(emailVerification);
         }
 
@@ -139,13 +147,21 @@ public class AuthService {
                                                 ErrorCode.EMAIL_VERIFICATION_NOT_FOUND));
 
         LocalDateTime now = LocalDateTime.now(clock);
+        // 구 버전 JAR이 남긴 평문 행은 기동 시점 purge 전에도 요청을 받을 수 있으므로 요청 경로에서 막는다.
+        // 시도 횟수를 소모시키지 않고, 재발송을 유도하도록 인증 요청이 없는 것과 같은 응답을 준다.
+        if (emailVerification.isLegacyFormat()) {
+            throw new BusinessException(ErrorCode.EMAIL_VERIFICATION_NOT_FOUND);
+        }
         if (emailVerification.isExpired(now)) {
             throw new BusinessException(ErrorCode.EXPIRED_VERIFICATION_CODE);
         }
         if (emailVerification.isAttemptExceeded(EMAIL_MAX_VERIFICATION_ATTEMPTS)) {
             throw new BusinessException(ErrorCode.EMAIL_VERIFICATION_ATTEMPTS_EXCEEDED);
         }
-        if (!emailVerification.getCode().equals(request.code())) {
+        if (!emailVerificationCodeHasher.verify(
+                emailVerification.getVerificationId(),
+                request.code(),
+                emailVerification.getCodeHash())) {
             emailVerification.increaseAttempt();
             if (emailVerification.isAttemptExceeded(EMAIL_MAX_VERIFICATION_ATTEMPTS)) {
                 throw new EmailVerificationAttemptFailureException(
@@ -420,7 +436,7 @@ public class AuthService {
                                 compensation.id(),
                                 compensation.failedVersion(),
                                 previous.verificationId(),
-                                previous.code(),
+                                previous.codeHash(),
                                 previous.verified(),
                                 previous.expiresAt(),
                                 previous.verifiedAt(),
@@ -456,9 +472,10 @@ public class AuthService {
     private record FailedEmailDeliveryCompensation(
             Long id, Long failedVersion, EmailVerificationState previousState) {}
 
+    // verificationId와 codeHash는 HMAC 메시지로 묶여 있어 항상 한 쌍으로 복원해야 이전 코드가 다시 통한다.
     private record EmailVerificationState(
             String verificationId,
-            String code,
+            String codeHash,
             boolean verified,
             LocalDateTime expiresAt,
             LocalDateTime verifiedAt,
@@ -470,7 +487,7 @@ public class AuthService {
         private static EmailVerificationState from(EmailVerification emailVerification) {
             return new EmailVerificationState(
                     emailVerification.getVerificationId(),
-                    emailVerification.getCode(),
+                    emailVerification.getCodeHash(),
                     emailVerification.isVerified(),
                     emailVerification.getExpiresAt(),
                     emailVerification.getVerifiedAt(),

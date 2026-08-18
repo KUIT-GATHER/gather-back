@@ -20,7 +20,10 @@ HMAC_64=$(head -c 64 /dev/zero | base64 | tr -d '\n')
 AES_31=$(head -c 31 /dev/zero | base64 | tr -d '\n')
 AES_32=$(head -c 32 /dev/zero | base64 | tr -d '\n')
 AES_33=$(head -c 33 /dev/zero | base64 | tr -d '\n')
+EMAIL_HMAC_31=$(head -c 31 /dev/zero | base64 | tr -d '\n')
+EMAIL_HMAC_32=$(head -c 32 /dev/zero | base64 | tr -d '\n')
 INVALID_HMAC="invalid-hmac-sensitive-marker"
+INVALID_EMAIL_HMAC="invalid-email-hmac-sensitive-marker"
 INVALID_AES="invalid-aes-sensitive-marker"
 ADMIN_KEY="admin-sensitive-marker"
 OCTOMO_API_KEY="octomo-sensitive-marker"
@@ -48,10 +51,14 @@ write_fixture() {
   local mail_username="${11-$SMTP_USERNAME}"
   local mail_password="${12-$SMTP_PASSWORD}"
   local refresh_cookie_secure="${13-true}"
+  local email_hmac_secret="${14-$EMAIL_HMAC_32}"
 
   : > "$target"
   if [ "$hmac_secret" != "__OMIT__" ]; then
     printf 'GATHER_AUTH_REJOIN_BLOCK_HMAC_SECRET=%s\n' "$hmac_secret" >> "$target"
+  fi
+  if [ "$email_hmac_secret" != "__OMIT__" ]; then
+    printf 'GATHER_AUTH_EMAIL_VERIFICATION_HMAC_SECRET=%s\n' "$email_hmac_secret" >> "$target"
   fi
   if [ "$hmac_version" != "__OMIT__" ]; then
     printf 'GATHER_AUTH_REJOIN_BLOCK_HMAC_KEY_VERSION=%s\n' "$hmac_version" >> "$target"
@@ -285,6 +292,32 @@ write_fixture "$FIXTURE" "$HMAC_32" 1 "$AES_32" 1 false false __OMIT__ "$OCTOMO_
 run_failure_case "refresh cookie secure is invalid" file "$FIXTURE"
 write_fixture "$FIXTURE" "$HMAC_32" 1 "$AES_32" 1 false false __OMIT__ "$OCTOMO_API_KEY" smtp "$SMTP_USERNAME" "$SMTP_PASSWORD" true
 run_success_case "SMTP configuration with secure refresh cookie" file "$FIXTURE"
+
+EMAIL_HMAC_ARGUMENTS=("$HMAC_32" 1 "$AES_32" 1 false false __OMIT__ "$OCTOMO_API_KEY" smtp "$SMTP_USERNAME" "$SMTP_PASSWORD" true)
+
+write_fixture "$FIXTURE" "${EMAIL_HMAC_ARGUMENTS[@]}" "$EMAIL_HMAC_32"
+run_success_case "valid email verification HMAC secret" file "$FIXTURE"
+write_fixture "$FIXTURE" "${EMAIL_HMAC_ARGUMENTS[@]}" __OMIT__
+run_failure_case "missing email verification HMAC secret" file "$FIXTURE"
+write_fixture "$FIXTURE" "${EMAIL_HMAC_ARGUMENTS[@]}" ""
+run_failure_case "empty email verification HMAC secret" file "$FIXTURE"
+write_fixture "$FIXTURE" "${EMAIL_HMAC_ARGUMENTS[@]}" "   "
+run_failure_case "blank email verification HMAC secret" file "$FIXTURE"
+write_fixture "$FIXTURE" "${EMAIL_HMAC_ARGUMENTS[@]}" " $EMAIL_HMAC_32"
+run_failure_case "email verification HMAC secret has surrounding whitespace" file "$FIXTURE"
+write_fixture "$FIXTURE" "${EMAIL_HMAC_ARGUMENTS[@]}" "\"$EMAIL_HMAC_32\""
+run_failure_case "double-quoted email verification HMAC secret is unsupported" file "$FIXTURE"
+write_fixture "$FIXTURE" "${EMAIL_HMAC_ARGUMENTS[@]}" "'$EMAIL_HMAC_32'"
+run_failure_case "single-quoted email verification HMAC secret is unsupported" file "$FIXTURE"
+write_fixture "$FIXTURE" "${EMAIL_HMAC_ARGUMENTS[@]}" "$INVALID_EMAIL_HMAC"
+run_failure_case "invalid email verification HMAC Base64" file "$FIXTURE"
+assert_output_does_not_contain "invalid email verification HMAC is not exposed" "$LAST_OUTPUT" "$INVALID_EMAIL_HMAC"
+write_fixture "$FIXTURE" "${EMAIL_HMAC_ARGUMENTS[@]}" "$EMAIL_HMAC_31"
+run_failure_case "31-byte email verification HMAC secret" file "$FIXTURE"
+assert_output_does_not_contain "email verification HMAC secret is not exposed" "$LAST_OUTPUT" "$EMAIL_HMAC_31"
+write_fixture "$FIXTURE" "${EMAIL_HMAC_ARGUMENTS[@]}" "$EMAIL_HMAC_32"
+printf 'GATHER_AUTH_EMAIL_VERIFICATION_HMAC_SECRET=%s\n' "$EMAIL_HMAC_32" >> "$FIXTURE"
+run_failure_case "duplicate email verification HMAC secret" file "$FIXTURE"
 
 write_fixture "$FIXTURE" "$INVALID_HMAC"
 run_failure_case "invalid HMAC Base64" file "$FIXTURE"

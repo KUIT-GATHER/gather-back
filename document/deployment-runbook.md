@@ -210,10 +210,28 @@ DB, JWT, Kakao OAuth와 JVM UTC 운영 계약은 아래 표에 포함되지만 �
 | `JWT_SECRET` | Access Token 서명 | 필수 | 애플리케이션 기동 |
 | `GATHER_AUTH_REJOIN_BLOCK_HMAC_SECRET` | 재가입 제한 식별자 HMAC | 필수 | deploy validator + 애플리케이션 기동 |
 | `GATHER_AUTH_REJOIN_BLOCK_HMAC_KEY_VERSION` | HMAC key version | 필수 | deploy validator + 애플리케이션 기동 |
+| `GATHER_AUTH_EMAIL_VERIFICATION_HMAC_SECRET` | 이메일 인증 코드 HMAC | 필수 | deploy validator + 애플리케이션 기동 |
 | `GATHER_AUTH_SOCIAL_ACCOUNT_ENCRYPTION_KEY` | social account AES-256-GCM key | 필수 | deploy validator + 애플리케이션 기동 |
 | `GATHER_AUTH_SOCIAL_ACCOUNT_ENCRYPTION_KEY_VERSION` | 암호화 key version | 필수 | deploy validator + 애플리케이션 기동 |
 | `GATHER_REFRESH_COOKIE_SECURE` | HTTPS 전용 Refresh Cookie | 운영에서 `true` 필수 | deploy validator + 애플리케이션 binding |
 | `GATHER_REFRESH_COOKIE_SAME_SITE` | Refresh Cookie SameSite | 선택, 기본 `Lax` | 애플리케이션 binding |
+
+`GATHER_AUTH_EMAIL_VERIFICATION_HMAC_SECRET`은 Base64 디코딩 후 32바이트 이상이어야 하며, `JWT_SECRET`이나 `GATHER_AUTH_REJOIN_BLOCK_HMAC_SECRET`과 다른 값을 써야 한다. 한 키가 유출됐을 때 다른 용도까지 번지지 않도록 용도별로 키를 분리한다.
+
+#### 이메일 인증 HMAC 키 교체
+
+key version이나 keyring을 두지 않았으므로, 키를 바꾸면 기존에 발급된 인증 코드는 모두 검증할 수 없다. 따라서 교체는 전량 파기 방식으로만 한다. 순서를 지키지 않으면 옛 키로 발급된 코드가 새 키 환경에서 계속 실패한다.
+
+1. 이메일 인증 트래픽을 중단하거나 빠진다.
+2. 애플리케이션을 정지해 신규 인증 코드 발급이 불가능한 상태를 만든다.
+3. `email_verification` 테이블을 전량 삭제한다.
+4. `/etc/gather/gather.env`의 `GATHER_AUTH_EMAIL_VERIFICATION_HMAC_SECRET`을 교체한다.
+5. `scripts/validate-deploy-env.sh /etc/gather/gather.env`로 검증한다.
+6. 애플리케이션을 기동한다.
+7. health와 readiness를 확인한다.
+8. 이메일 인증 트래픽을 재개한다.
+
+행을 먼저 지운 뒤 옛 키를 쓰는 애플리케이션이 계속 코드를 발급하면 검증 불가능한 행이 다시 쌓이므로, 반드시 2번(신규 발급 차단)을 3번(전량 삭제)보다 먼저 수행한다.
 
 ### Kakao
 
@@ -313,6 +331,17 @@ done
 - disk, MySQL, batch failure alert
 
 JAR rollback 성공을 DB rollback 또는 전체 시스템 복구 성공으로 표현하지 않는다. DB backup/restore와 monitoring은 별도 Release Blocker 또는 후속 운영 작업으로 관리한다.
+
+### 이메일 인증 평문 행 파기와 rollback
+
+V65 이후 애플리케이션은 기동 시점에 구 버전이 남긴 평문 인증 행을 파기한다. 파기에 실패하면 예외를 그대로 전파해 기동을 실패시키고, 배포 스크립트의 health check 실패 경로를 통해 이전 JAR로 되돌아간다.
+
+이 파기는 rollback 시 사용자 영향의 범위를 줄이지만 모든 기동 실패에서 기존 인증 코드가 보존됨을 보장하지는 않는다.
+
+- 파기 이전 단계에서 기동이 실패하면 기존 행이 남아 있어, 이전 JAR로 되돌린 뒤 기존 인증 코드와 인증 결과를 계속 쓸 수 있다.
+- 파기가 성공한 뒤 다른 기동 단계에서 실패하면 기존 행은 이미 삭제된 상태다. 이전 JAR로 되돌릴 수는 있지만 기존 인증 코드와 인증 결과는 복구되지 않고, 사용자는 인증 코드를 다시 발송받아야 한다.
+
+기동 러너는 준비 완료 이전 관문일 뿐이며 웹 포트가 먼저 열릴 수 있다. 따라서 인증 확인과 회원가입 요청 경로에서도 평문 행을 별도로 차단한다.
 
 ## 11. 장애 확인 순서
 

@@ -22,4 +22,10 @@ public class EmailVerificationCleanupService {
         LocalDateTime cutoff = LocalDateTime.now(clock).minusHours(RETENTION_HOURS);
         return emailVerificationRepository.deleteAllCreatedAtOrBefore(cutoff);
     }
+
+    /** 구 버전 JAR로 롤백된 동안 쌓인 평문 행을 파기한다. 보관 기간 정리와 사유가 달라 삭제 건수를 따로 반환한다. */
+    @Transactional
+    public int purgeLegacyVerifications() {
+        return emailVerificationRepository.deleteAllLegacyFormat();
+    }
 }

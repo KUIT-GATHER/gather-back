@@ -65,6 +65,7 @@ class SignupPhoneVerificationConcurrencyIntegrationTest {
     @Autowired private SocialSignupTokenService signupTokenService;
     @Autowired private RegionRepository regionRepository;
     @Autowired private RejoinBlockIdentifierHasher identifierHasher;
+    @Autowired private EmailVerificationCodeHasher emailVerificationCodeHasher;
     @Autowired private SocialAccountProviderIdCipher providerIdCipher;
     @Autowired private PlatformTransactionManager transactionManager;
     @Autowired private JdbcTemplate jdbcTemplate;
@@ -353,11 +354,13 @@ class SignupPhoneVerificationConcurrencyIntegrationTest {
                 .executeWithoutResult(
                         status -> {
                             LocalDateTime now = LocalDateTime.now(clock);
+                            String verificationId = UUID.randomUUID().toString();
                             EmailVerification verification =
                                     EmailVerification.create(
                                             email,
-                                            UUID.randomUUID().toString(),
-                                            "123456",
+                                            verificationId,
+                                            emailVerificationCodeHasher.hash(
+                                                    verificationId, "123456"),
                                             now.plusDays(1),
                                             createdAt);
                             if (verified) {

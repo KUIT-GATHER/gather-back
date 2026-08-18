@@ -66,7 +66,7 @@ class EmailSignupIntegrationTest {
                 EmailVerification.create(
                         EMAIL,
                         EMAIL_VERIFICATION_ID.toString(),
-                        "123456",
+                        "a".repeat(64),
                         LocalDateTime.now().plusDays(1),
                         LocalDateTime.now());
         verification.verify(LocalDateTime.now());
