@@ -22,7 +22,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 class PhoneVerificationPurposeUpgradeMigrationIntegrationTest {
 
     private static final String PREVIOUS_VERSION = "61";
-    private static final String LATEST_VERSION = "63";
+    private static final String TARGET_VERSION = "63";
     private static final String MIGRATION_TEST_URL_ENV = "GATHER_MIGRATION_TEST_URL";
     private static final String MIGRATION_TEST_USERNAME_ENV = "GATHER_MIGRATION_TEST_USERNAME";
     private static final String MIGRATION_TEST_PASSWORD_ENV = "GATHER_MIGRATION_TEST_PASSWORD";
@@ -56,11 +56,12 @@ class PhoneVerificationPurposeUpgradeMigrationIntegrationTest {
                                     migrationDatabase.username(),
                                     migrationDatabase.password())
                             .locations("classpath:db/migration")
+                            .target(MigrationVersion.fromVersion(TARGET_VERSION))
                             .load();
             flyway.migrate();
             prepared = true;
 
-            assertThat(flyway.info().current().getVersion().getVersion()).isEqualTo(LATEST_VERSION);
+            assertThat(flyway.info().current().getVersion().getVersion()).isEqualTo(TARGET_VERSION);
             assertThat(
                             queryPurpose(
                                     migrationDatabase.url(),
@@ -99,11 +100,12 @@ class PhoneVerificationPurposeUpgradeMigrationIntegrationTest {
                                     migrationDatabase.username(),
                                     migrationDatabase.password())
                             .locations("classpath:db/migration")
+                            .target(MigrationVersion.fromVersion(TARGET_VERSION))
                             .load();
             flyway.migrate();
             prepared = true;
 
-            assertThat(flyway.info().current().getVersion().getVersion()).isEqualTo(LATEST_VERSION);
+            assertThat(flyway.info().current().getVersion().getVersion()).isEqualTo(TARGET_VERSION);
             assertThat(
                             queryEmailCleanupIndexCount(
                                     migrationDatabase.url(),
