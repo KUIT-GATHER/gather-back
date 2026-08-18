@@ -95,6 +95,21 @@ class PasswordChangeIntegrationTest {
     }
 
     @Test
+    @DisplayName("새 비밀번호가 기존과 같아도 변경을 허용하고 재설정 토큰·Refresh Token은 폐기한다")
+    void changePassword_allowsSamePassword() {
+        saveEmailUser();
+        saveResetToken();
+        saveRefreshToken();
+
+        passwordChangeService.changePassword(userId, request(OLD_PASSWORD, OLD_PASSWORD));
+
+        // 기존 비밀번호와 달라야 한다는 정책이 없으므로 동일 비밀번호도 정상 변경이다.
+        assertThat(passwordEncoder.matches(OLD_PASSWORD, currentPassword())).isTrue();
+        assertThat(resetTokenCount()).isZero();
+        assertThat(refreshTokenCount()).isZero();
+    }
+
+    @Test
     @DisplayName("변경 후 옛 비밀번호 로그인은 실패하고 새 비밀번호 로그인은 성공한다")
     void changePassword_switchesLoginCredential() {
         saveEmailUser();

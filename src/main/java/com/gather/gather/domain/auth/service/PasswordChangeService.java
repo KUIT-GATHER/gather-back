@@ -3,7 +3,6 @@ package com.gather.gather.domain.auth.service;
 import com.gather.gather.domain.auth.dto.AccountLoginType;
 import com.gather.gather.domain.auth.dto.PasswordChangeRequest;
 import com.gather.gather.domain.auth.entity.User;
-import com.gather.gather.domain.auth.entity.UserStatus;
 import com.gather.gather.domain.auth.repository.PasswordResetTokenRepository;
 import com.gather.gather.domain.auth.repository.RefreshTokenRepository;
 import com.gather.gather.domain.auth.repository.UserRepository;
@@ -31,6 +30,7 @@ public class PasswordChangeService {
     private final PasswordResetTokenRepository passwordResetTokenRepository;
     private final RefreshTokenRepository refreshTokenRepository;
     private final AccountLoginTypeResolver accountLoginTypeResolver;
+    private final LoginPolicy loginPolicy;
     private final PasswordPolicy passwordPolicy;
     private final PasswordEncoder passwordEncoder;
 
@@ -43,7 +43,8 @@ public class PasswordChangeService {
                 userRepository
                         .findByIdForUpdate(userId)
                         .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
-        validateChangeableStatus(user);
+        // 정지·탈퇴 제재는 로그인과 같은 정책을 써야 하므로 LoginPolicy를 그대로 적용한다.
+        loginPolicy.validateLoginAllowed(user);
         validateEmailCredential(user);
 
         // 잠금 이후의 최신 hash로 검증해야 재설정·변경이 먼저 커밋된 경우를 놓치지 않는다.
@@ -57,20 +58,10 @@ public class PasswordChangeService {
         refreshTokenRepository.deleteAllByUserId(userId);
     }
 
-    private void validateChangeableStatus(User user) {
-        if (user.getStatus() == UserStatus.SUSPENDED) {
-            throw new BusinessException(ErrorCode.SUSPENDED_USER);
-        }
-        if (user.getStatus() == UserStatus.WITHDRAWAL_PENDING) {
-            throw new BusinessException(ErrorCode.WITHDRAWAL_PENDING_USER);
-        }
-        if (user.getStatus() == UserStatus.WITHDRAWN) {
-            throw new BusinessException(ErrorCode.WITHDRAWN_USER);
-        }
-    }
-
     private void validateEmailCredential(User user) {
-        Optional<AccountLoginType> loginType = accountLoginTypeResolver.resolveCredentialType(user);
+        // 계정 상태는 LoginPolicy에서 이미 통과했으므로 credential 구조만 판정한다.
+        Optional<AccountLoginType> loginType =
+                accountLoginTypeResolver.resolveCredentialTypeIgnoringStatus(user);
         if (loginType.isEmpty()) {
             log.error("비밀번호 변경 중 로그인 credential 불일치를 감지했습니다: userId={}", user.getId());
             throw new BusinessException(ErrorCode.INTERNAL_SERVER_ERROR);

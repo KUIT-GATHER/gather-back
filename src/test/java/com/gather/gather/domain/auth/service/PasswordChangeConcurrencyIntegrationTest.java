@@ -139,14 +139,23 @@ class PasswordChangeConcurrencyIntegrationTest {
         assertThat(ready.await(5, TimeUnit.SECONDS)).isTrue();
         start.countDown();
 
+        ErrorCode firstResult = first.get(20, TimeUnit.SECONDS);
+        ErrorCode secondResult = second.get(20, TimeUnit.SECONDS);
+
         // 성공은 errorCode가 없는 결과라 null을 허용하는 리스트가 필요하다.
-        List<ErrorCode> results =
-                Arrays.asList(first.get(20, TimeUnit.SECONDS), second.get(20, TimeUnit.SECONDS));
+        List<ErrorCode> results = Arrays.asList(firstResult, secondResult);
         assertThat(results).filteredOn(Objects::isNull).hasSize(1);
         assertThat(results)
                 .filteredOn(Objects::nonNull)
                 .containsExactly(ErrorCode.CURRENT_PASSWORD_MISMATCH);
-        assertThat(passwordEncoder.matches(OLD_PASSWORD, currentPassword())).isFalse();
+
+        // 승자가 어느 쪽이든 DB에는 그 요청이 보낸 새 비밀번호가 남아야 한다.
+        String storedPassword = currentPassword();
+        String winnerPassword = firstResult == null ? NEW_PASSWORD : OTHER_PASSWORD;
+        String loserPassword = firstResult == null ? OTHER_PASSWORD : NEW_PASSWORD;
+        assertThat(passwordEncoder.matches(winnerPassword, storedPassword)).isTrue();
+        assertThat(passwordEncoder.matches(loserPassword, storedPassword)).isFalse();
+        assertThat(passwordEncoder.matches(OLD_PASSWORD, storedPassword)).isFalse();
         assertThat(resetTokenCount()).isZero();
         assertThat(refreshTokenCount()).isZero();
     }

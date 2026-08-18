@@ -285,7 +285,7 @@ public class UserController {
     })
     @PatchMapping("/password")
     public ResponseEntity<ApiResponse<Void>> changeMyPassword(
-            @RequestBody PasswordChangeRequest request) {
+            @Valid @RequestBody PasswordChangeRequest request) {
         passwordChangeService.changePassword(SecurityUtil.getCurrentUserId(), request);
 
         return ResponseEntity.ok()

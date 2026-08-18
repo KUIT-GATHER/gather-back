@@ -3,7 +3,9 @@ package com.gather.gather.domain.auth.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -27,6 +29,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -47,6 +50,9 @@ class PasswordChangeServiceTest {
     @Mock private AccountLoginTypeResolver accountLoginTypeResolver;
     @Mock private PasswordEncoder passwordEncoder;
 
+    // 상태 제재는 실제 정책으로 검증하면서 호출 여부·순서까지 확인하기 위해 spy를 쓴다.
+    private final LoginPolicy loginPolicy = spy(new LoginPolicy());
+
     private PasswordChangeService passwordChangeService;
 
     @BeforeEach
@@ -57,6 +63,7 @@ class PasswordChangeServiceTest {
                         passwordResetTokenRepository,
                         refreshTokenRepository,
                         accountLoginTypeResolver,
+                        loginPolicy,
                         new PasswordPolicy(),
                         passwordEncoder);
     }
@@ -75,6 +82,10 @@ class PasswordChangeServiceTest {
         assertThat(user.getPassword()).isEqualTo(ENCODED_NEW_PASSWORD);
         verify(passwordResetTokenRepository).deleteAllByUserId(USER_ID);
         verify(refreshTokenRepository).deleteAllByUserId(USER_ID);
+        // 상태 검증은 잠금으로 읽은 최신 User를 기준으로 해야 한다.
+        InOrder inOrder = inOrder(userRepository, loginPolicy);
+        inOrder.verify(userRepository).findByIdForUpdate(USER_ID);
+        inOrder.verify(loginPolicy).validateLoginAllowed(user);
     }
 
     @Test
@@ -143,7 +154,8 @@ class PasswordChangeServiceTest {
     void changePassword_throwsInternalServerError_whenCredentialInvariantViolated() {
         User user = emailUser();
         lockedUser(user);
-        when(accountLoginTypeResolver.resolveCredentialType(user)).thenReturn(Optional.empty());
+        when(accountLoginTypeResolver.resolveCredentialTypeIgnoringStatus(user))
+                .thenReturn(Optional.empty());
 
         assertChangeFails(
                 request(CURRENT_PASSWORD, NEW_PASSWORD), ErrorCode.INTERNAL_SERVER_ERROR, user);
@@ -220,7 +232,7 @@ class PasswordChangeServiceTest {
     }
 
     private void resolvesCredentialType(AccountLoginType loginType) {
-        when(accountLoginTypeResolver.resolveCredentialType(any()))
+        when(accountLoginTypeResolver.resolveCredentialTypeIgnoringStatus(any()))
                 .thenReturn(Optional.of(loginType));
     }
 

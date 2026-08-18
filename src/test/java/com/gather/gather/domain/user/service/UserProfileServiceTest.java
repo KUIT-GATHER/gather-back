@@ -82,8 +82,8 @@ class UserProfileServiceTest {
             assertThat(userProfileService.getMyProfile().loginType())
                     .isEqualTo(AccountLoginType.EMAIL);
             // 상태가 아니라 credential 구조로 판정해야 SUSPENDED 계정에서도 loginType이 유지된다.
-            verify(accountLoginTypeResolver).resolveCredentialType(user);
-            verify(accountLoginTypeResolver, never()).resolve(any());
+            verify(accountLoginTypeResolver).resolveCredentialTypeIgnoringStatus(user);
+            verify(accountLoginTypeResolver, never()).resolveForActiveAccount(any());
         }
     }
 
@@ -110,7 +110,8 @@ class UserProfileServiceTest {
         try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
             securityUtil.when(SecurityUtil::getCurrentUserId).thenReturn(USER_ID);
             when(userRepository.findById(USER_ID)).thenReturn(Optional.of(user));
-            when(accountLoginTypeResolver.resolveCredentialType(user)).thenReturn(Optional.empty());
+            when(accountLoginTypeResolver.resolveCredentialTypeIgnoringStatus(user))
+                    .thenReturn(Optional.empty());
 
             assertThatThrownBy(() -> userProfileService.getMyProfile())
                     .isInstanceOf(BusinessException.class)
@@ -247,7 +248,7 @@ class UserProfileServiceTest {
     }
 
     private void resolvesCredentialType(AccountLoginType loginType) {
-        when(accountLoginTypeResolver.resolveCredentialType(any()))
+        when(accountLoginTypeResolver.resolveCredentialTypeIgnoringStatus(any()))
                 .thenReturn(Optional.of(loginType));
     }
 

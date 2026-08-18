@@ -5,6 +5,7 @@ import static org.hamcrest.Matchers.containsString;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -34,6 +35,8 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
@@ -309,6 +312,48 @@ class UserControllerTest {
                 .andExpect(jsonPath("$.error.code").value("WITHDRAWN_USER"));
     }
 
+    @Test
+    @DisplayName("PATCH /api/v1/users/me/password returns 400 when currentPassword is missing")
+    void changeMyPassword_returns400_whenCurrentPasswordMissing() throws Exception {
+        mockMvc.perform(
+                        passwordChangeRequest(
+                                """
+                                {
+                                  "password": "newpass1",
+                                  "passwordConfirm": "newpass1"
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.error.code").value("VALIDATION_ERROR"));
+
+        // 현재 비밀번호가 없으면 서비스까지 내려가 500이 되지 않아야 한다.
+        verifyNoInteractions(passwordChangeService);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"null", "\"\"", "\"   \""})
+    @DisplayName(
+            "PATCH /api/v1/users/me/password returns 400 when currentPassword is null or blank")
+    void changeMyPassword_returns400_whenCurrentPasswordBlank(String currentPasswordJson)
+            throws Exception {
+        mockMvc.perform(
+                        passwordChangeRequest(
+                                """
+                                {
+                                  "currentPassword": %s,
+                                  "password": "newpass1",
+                                  "passwordConfirm": "newpass1"
+                                }
+                                """
+                                        .formatted(currentPasswordJson)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.error.code").value("VALIDATION_ERROR"));
+
+        verifyNoInteractions(passwordChangeService);
+    }
+
     private void expectServiceError(ErrorCode errorCode) {
         doThrow(new BusinessException(errorCode))
                 .when(passwordChangeService)
@@ -317,17 +362,21 @@ class UserControllerTest {
 
     private MockHttpServletRequestBuilder passwordChangeRequest(
             String currentPassword, String password, String passwordConfirm) {
+        return passwordChangeRequest(
+                """
+                {
+                  "currentPassword": "%s",
+                  "password": "%s",
+                  "passwordConfirm": "%s"
+                }
+                """
+                        .formatted(currentPassword, password, passwordConfirm));
+    }
+
+    private MockHttpServletRequestBuilder passwordChangeRequest(String body) {
         return patch("/api/v1/users/me/password")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(
-                        """
-                        {
-                          "currentPassword": "%s",
-                          "password": "%s",
-                          "passwordConfirm": "%s"
-                        }
-                        """
-                                .formatted(currentPassword, password, passwordConfirm));
+                .content(body);
     }
 
     private UserProfileResponse sampleProfile() {

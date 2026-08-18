@@ -80,7 +80,7 @@ public class UserProfileService {
      */
     private AccountLoginType resolveLoginType(User user) {
         return accountLoginTypeResolver
-                .resolveCredentialType(user)
+                .resolveCredentialTypeIgnoringStatus(user)
                 .orElseThrow(
                         () -> {
                             log.error(
