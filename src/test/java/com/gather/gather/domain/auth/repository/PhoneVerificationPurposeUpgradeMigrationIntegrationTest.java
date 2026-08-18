@@ -9,6 +9,7 @@ import java.sql.ResultSet;
 import java.sql.Statement;
 import java.sql.Timestamp;
 import java.time.LocalDateTime;
+import java.util.Optional;
 import java.util.UUID;
 import org.flywaydb.core.Flyway;
 import org.flywaydb.core.api.MigrationVersion;
@@ -21,56 +22,125 @@ import org.springframework.boot.test.context.SpringBootTest;
 class PhoneVerificationPurposeUpgradeMigrationIntegrationTest {
 
     private static final String PREVIOUS_VERSION = "61";
-    private static final String PURPOSE_MIGRATION_VERSION = "62";
+    private static final String LATEST_VERSION = "63";
+    private static final String MIGRATION_TEST_URL_ENV = "GATHER_MIGRATION_TEST_URL";
+    private static final String MIGRATION_TEST_USERNAME_ENV = "GATHER_MIGRATION_TEST_USERNAME";
+    private static final String MIGRATION_TEST_PASSWORD_ENV = "GATHER_MIGRATION_TEST_PASSWORD";
 
     @Autowired private DataSourceProperties dataSourceProperties;
 
     @Test
-    void migrateFromV61_backfillsExistingRowAndCreatesCleanupIndex() throws Exception {
-        String databaseName =
-                "gather_pv_upgrade_"
-                        + UUID.randomUUID().toString().replace("-", "").substring(0, 16);
-        String sourceUrl = dataSourceProperties.determineUrl();
-        String adminUrl = replaceDatabase(sourceUrl, "mysql");
-        String upgradeUrl = replaceDatabase(sourceUrl, databaseName);
-        String username = dataSourceProperties.determineUsername();
-        String password = dataSourceProperties.determinePassword();
-        boolean databaseCreated = false;
-
+    void migrateFromV61_backfillsExistingRowAndCreatesCleanupIndexes() throws Exception {
+        MigrationDatabase migrationDatabase = createMigrationDatabase();
+        boolean prepared = false;
         try {
-            execute(adminUrl, username, password, "CREATE DATABASE `" + databaseName + "`");
-            databaseCreated = true;
+            reset(migrationDatabase);
             Flyway.configure()
-                    .dataSource(upgradeUrl, username, password)
+                    .dataSource(
+                            migrationDatabase.url(),
+                            migrationDatabase.username(),
+                            migrationDatabase.password())
                     .locations("classpath:db/migration")
                     .target(MigrationVersion.fromVersion(PREVIOUS_VERSION))
                     .load()
                     .migrate();
-            insertLegacyVerification(upgradeUrl, username, password);
+            insertLegacyVerification(
+                    migrationDatabase.url(),
+                    migrationDatabase.username(),
+                    migrationDatabase.password());
 
             Flyway flyway =
                     Flyway.configure()
-                            .dataSource(upgradeUrl, username, password)
+                            .dataSource(
+                                    migrationDatabase.url(),
+                                    migrationDatabase.username(),
+                                    migrationDatabase.password())
                             .locations("classpath:db/migration")
                             .load();
             flyway.migrate();
+            prepared = true;
 
-            // 이후 마이그레이션이 추가돼도 깨지지 않도록 최신 버전이 아니라 V62 적용 여부를 확인한다.
-            assertThat(flyway.info().applied())
-                    .extracting(
-                            info ->
-                                    info.getVersion() == null
-                                            ? null
-                                            : info.getVersion().getVersion())
-                    .contains(PURPOSE_MIGRATION_VERSION);
-            assertThat(queryPurpose(upgradeUrl, username, password)).isEqualTo("SIGNUP");
-            assertThat(queryCleanupIndexCount(upgradeUrl, username, password, databaseName))
+            assertThat(flyway.info().current().getVersion().getVersion()).isEqualTo(LATEST_VERSION);
+            assertThat(
+                            queryPurpose(
+                                    migrationDatabase.url(),
+                                    migrationDatabase.username(),
+                                    migrationDatabase.password()))
+                    .isEqualTo("SIGNUP");
+            assertThat(
+                            queryPhoneCleanupIndexCount(
+                                    migrationDatabase.url(),
+                                    migrationDatabase.username(),
+                                    migrationDatabase.password(),
+                                    migrationDatabase.databaseName()))
+                    .isEqualTo(1);
+            assertThat(
+                            queryEmailCleanupIndexCount(
+                                    migrationDatabase.url(),
+                                    migrationDatabase.username(),
+                                    migrationDatabase.password(),
+                                    migrationDatabase.databaseName()))
                     .isEqualTo(1);
         } finally {
-            if (databaseCreated) {
-                execute(adminUrl, username, password, "DROP DATABASE `" + databaseName + "`");
-            }
+            migrationDatabase.close(prepared);
         }
+    }
+
+    @Test
+    void migrateFreshToV63_createsEmailCleanupIndex() throws Exception {
+        MigrationDatabase migrationDatabase = createMigrationDatabase();
+        boolean prepared = false;
+        try {
+            reset(migrationDatabase);
+            Flyway flyway =
+                    Flyway.configure()
+                            .dataSource(
+                                    migrationDatabase.url(),
+                                    migrationDatabase.username(),
+                                    migrationDatabase.password())
+                            .locations("classpath:db/migration")
+                            .load();
+            flyway.migrate();
+            prepared = true;
+
+            assertThat(flyway.info().current().getVersion().getVersion()).isEqualTo(LATEST_VERSION);
+            assertThat(
+                            queryEmailCleanupIndexCount(
+                                    migrationDatabase.url(),
+                                    migrationDatabase.username(),
+                                    migrationDatabase.password(),
+                                    migrationDatabase.databaseName()))
+                    .isEqualTo(1);
+        } finally {
+            migrationDatabase.close(prepared);
+        }
+    }
+
+    private MigrationDatabase createMigrationDatabase() throws Exception {
+        String sourceUrl = dataSourceProperties.determineUrl();
+        String username = dataSourceProperties.determineUsername();
+        String password = dataSourceProperties.determinePassword();
+        Optional<String> migrationTestUrl = environmentValue(MIGRATION_TEST_URL_ENV);
+        if (migrationTestUrl.isPresent()) {
+            return new MigrationDatabase(
+                    migrationTestUrl.orElseThrow(),
+                    environmentValue(MIGRATION_TEST_USERNAME_ENV).orElse(username),
+                    environmentValue(MIGRATION_TEST_PASSWORD_ENV).orElse(password),
+                    databaseName(migrationTestUrl.orElseThrow()),
+                    null);
+        }
+
+        String databaseName =
+                "gather_pv_upgrade_"
+                        + UUID.randomUUID().toString().replace("-", "").substring(0, 16);
+        String adminUrl = replaceDatabase(sourceUrl, "mysql");
+        execute(adminUrl, username, password, "CREATE DATABASE `" + databaseName + "`");
+        return new MigrationDatabase(
+                replaceDatabase(sourceUrl, databaseName),
+                username,
+                password,
+                databaseName,
+                adminUrl);
     }
 
     private void insertLegacyVerification(String url, String username, String password)
@@ -113,7 +183,7 @@ class PhoneVerificationPurposeUpgradeMigrationIntegrationTest {
         }
     }
 
-    private int queryCleanupIndexCount(
+    private int queryPhoneCleanupIndexCount(
             String url, String username, String password, String databaseName) throws Exception {
         try (Connection connection = DriverManager.getConnection(url, username, password);
                 PreparedStatement statement =
@@ -133,7 +203,44 @@ class PhoneVerificationPurposeUpgradeMigrationIntegrationTest {
         }
     }
 
-    private void execute(String url, String username, String password, String sql)
+    private int queryEmailCleanupIndexCount(
+            String url, String username, String password, String databaseName) throws Exception {
+        try (Connection connection = DriverManager.getConnection(url, username, password);
+                PreparedStatement statement =
+                        connection.prepareStatement(
+                                """
+                                SELECT COUNT(*)
+                                FROM information_schema.statistics
+                                WHERE table_schema = ?
+                                  AND table_name = 'email_verification'
+                                  AND index_name = 'idx_email_verification_created_at'
+                                  AND column_name = 'created_at'
+                                """)) {
+            statement.setString(1, databaseName);
+            try (ResultSet resultSet = statement.executeQuery()) {
+                assertThat(resultSet.next()).isTrue();
+                return resultSet.getInt(1);
+            }
+        }
+    }
+
+    private void reset(MigrationDatabase migrationDatabase) {
+        Flyway.configure()
+                .dataSource(
+                        migrationDatabase.url(),
+                        migrationDatabase.username(),
+                        migrationDatabase.password())
+                .locations("classpath:db/migration")
+                .cleanDisabled(false)
+                .load()
+                .clean();
+    }
+
+    private Optional<String> environmentValue(String name) {
+        return Optional.ofNullable(System.getenv(name)).filter(value -> !value.isBlank());
+    }
+
+    private static void execute(String url, String username, String password, String sql)
             throws Exception {
         try (Connection connection = DriverManager.getConnection(url, username, password);
                 Statement statement = connection.createStatement()) {
@@ -150,5 +257,29 @@ class PhoneVerificationPurposeUpgradeMigrationIntegrationTest {
             throw new IllegalStateException("MySQL datasource URL 형식이 올바르지 않습니다.");
         }
         return base.substring(0, databaseSeparator + 1) + databaseName + query;
+    }
+
+    private String databaseName(String url) {
+        String base = url.contains("?") ? url.substring(0, url.indexOf('?')) : url;
+        return base.substring(base.lastIndexOf('/') + 1);
+    }
+
+    private record MigrationDatabase(
+            String url, String username, String password, String databaseName, String adminUrl) {
+
+        void close(boolean prepared) throws Exception {
+            if (adminUrl != null) {
+                execute(adminUrl, username, password, "DROP DATABASE `" + databaseName + "`");
+                return;
+            }
+            if (prepared) {
+                Flyway.configure()
+                        .dataSource(url, username, password)
+                        .locations("classpath:db/migration")
+                        .cleanDisabled(false)
+                        .load()
+                        .clean();
+            }
+        }
     }
 }

@@ -43,7 +43,7 @@ public class EmailVerificationRequirementService {
                 || verification.isConsumed()) {
             throw required();
         }
-        verification.consume(now);
+        emailVerificationRepository.delete(verification);
     }
 
     private static BusinessException required() {
