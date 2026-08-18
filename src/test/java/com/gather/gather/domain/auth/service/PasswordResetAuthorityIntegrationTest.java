@@ -2,6 +2,7 @@ package com.gather.gather.domain.auth.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.within;
 
 import com.gather.gather.domain.auth.dto.PasswordResetAuthorityRequest;
 import com.gather.gather.domain.auth.dto.PasswordResetTokenResponse;
@@ -25,6 +26,7 @@ import java.security.MessageDigest;
 import java.time.Clock;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.temporal.ChronoUnit;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.UUID;
@@ -102,6 +104,8 @@ class PasswordResetAuthorityIntegrationTest {
                 .isBetween(
                         LocalDateTime.now(clock).minusMinutes(1),
                         LocalDateTime.now(clock).plusMinutes(1));
+        // DB 왕복 시 저장된 값은 마이크로초로 반올림되므로, 저장 전 원본값과는 밀리초 오차 이내로 비교한다.
+        assertThat(response.expiresAt()).isCloseTo(saved.getExpiresAt(), within(1, ChronoUnit.MILLIS));
         assertThat(consumedAt()).isNotNull();
     }
 

@@ -37,7 +37,11 @@ public class PasswordResetTokenCleanupScheduler {
     private void cleanup() {
         try {
             int deletedCount = cleanupService.cleanupExpiredTokens();
-            log.info("Password reset token cleanup completed: deletedCount={}", deletedCount);
+            if (deletedCount > 0) {
+                log.info("Password reset token cleanup completed: deletedCount={}", deletedCount);
+            } else {
+                log.debug("Password reset token cleanup completed: deletedCount=0");
+            }
         } catch (RuntimeException exception) {
             log.error("Password reset token cleanup failed", exception);
         }

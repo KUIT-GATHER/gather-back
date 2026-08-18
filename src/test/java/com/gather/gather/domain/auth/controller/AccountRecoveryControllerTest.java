@@ -19,6 +19,7 @@ import com.gather.gather.domain.auth.service.AccountRecoveryService;
 import com.gather.gather.domain.auth.service.PasswordResetService;
 import com.gather.gather.global.exception.BusinessException;
 import com.gather.gather.global.exception.ErrorCode;
+import java.time.LocalDateTime;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -144,10 +145,11 @@ class AccountRecoveryControllerTest {
     }
 
     @Test
-    @DisplayName("비밀번호 재설정 권한 발급은 재설정 토큰을 반환한다")
+    @DisplayName("비밀번호 재설정 권한 발급은 재설정 토큰과 만료 시각을 반환한다")
     void issuePasswordResetToken_returnsToken() throws Exception {
+        LocalDateTime expiresAt = LocalDateTime.of(2026, 8, 18, 4, 10, 0);
         when(passwordResetService.issueToken(any(PasswordResetAuthorityRequest.class)))
-                .thenReturn(new PasswordResetTokenResponse("A".repeat(43)));
+                .thenReturn(new PasswordResetTokenResponse("A".repeat(43), expiresAt));
 
         mockMvc.perform(
                         post("/api/v1/auth/account-recoveries/password")
@@ -162,6 +164,7 @@ class AccountRecoveryControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.passwordResetToken").value("A".repeat(43)))
+                .andExpect(jsonPath("$.data.expiresAt").value("2026-08-18T04:10:00"))
                 .andExpect(jsonPath("$.error").doesNotExist());
 
         ArgumentCaptor<PasswordResetAuthorityRequest> captor =
