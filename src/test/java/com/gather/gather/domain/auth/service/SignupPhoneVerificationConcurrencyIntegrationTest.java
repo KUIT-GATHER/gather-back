@@ -31,6 +31,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -151,8 +152,7 @@ class SignupPhoneVerificationConcurrencyIntegrationTest {
                 .extracting(SignupOutcome::errorCode)
                 .containsExactly(ErrorCode.EMAIL_VERIFICATION_REQUIRED);
         assertThat(userCount()).isEqualTo(1L);
-        assertThat(emailVerificationRepository.findByEmail(email).orElseThrow().getConsumedAt())
-                .isNotNull();
+        assertThat(emailVerificationRepository.findByEmail(email)).isEmpty();
     }
 
     @Test
@@ -260,13 +260,12 @@ class SignupPhoneVerificationConcurrencyIntegrationTest {
 
         assertThat(confirm.get(10, TimeUnit.SECONDS)).isTrue();
         SignupOutcome signupOutcome = signup.get(10, TimeUnit.SECONDS);
-        EmailVerification verification =
-                emailVerificationRepository.findByEmail(email).orElseThrow();
+        Optional<EmailVerification> verification = emailVerificationRepository.findByEmail(email);
         long userCount = userCount();
 
-        assertThat(verification.isVerified()).isTrue();
         assertThat(userCount).isIn(0L, 1L);
-        assertThat(verification.getConsumedAt() != null).isEqualTo(userCount == 1L);
+        assertThat(verification.isEmpty()).isEqualTo(userCount == 1L);
+        verification.ifPresent(v -> assertThat(v.isVerified()).isTrue());
         assertThat(signupOutcome.success()).isEqualTo(userCount == 1L);
         if (!signupOutcome.success()) {
             assertThat(signupOutcome.errorCode()).isEqualTo(ErrorCode.EMAIL_VERIFICATION_REQUIRED);
@@ -307,22 +306,21 @@ class SignupPhoneVerificationConcurrencyIntegrationTest {
 
         ErrorCode resendError = resend.get(10, TimeUnit.SECONDS);
         SignupOutcome signupOutcome = signup.get(10, TimeUnit.SECONDS);
-        EmailVerification verification =
-                emailVerificationRepository.findByEmail(email).orElseThrow();
+        Optional<EmailVerification> verification = emailVerificationRepository.findByEmail(email);
 
         if (resendError == ErrorCode.DUPLICATE_EMAIL) {
             assertThat(signupOutcome.success()).isTrue();
-            assertThat(verification.getVerificationId()).isEqualTo(previousVerificationId);
-            assertThat(verification.getConsumedAt()).isNotNull();
+            assertThat(verification).isEmpty();
         } else {
             assertThat(resendError).isNull();
             if (!signupOutcome.success()) {
                 assertThat(signupOutcome.errorCode())
                         .isEqualTo(ErrorCode.EMAIL_VERIFICATION_REQUIRED);
             }
-            assertThat(verification.getVerificationId()).isNotEqualTo(previousVerificationId);
-            assertThat(verification.isVerified()).isFalse();
-            assertThat(verification.getConsumedAt()).isNull();
+            EmailVerification existing = verification.orElseThrow();
+            assertThat(existing.getVerificationId()).isNotEqualTo(previousVerificationId);
+            assertThat(existing.isVerified()).isFalse();
+            assertThat(existing.getConsumedAt()).isNull();
         }
     }
 
