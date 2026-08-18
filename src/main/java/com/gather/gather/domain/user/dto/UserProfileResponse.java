@@ -1,5 +1,6 @@
 package com.gather.gather.domain.user.dto;
 
+import com.gather.gather.domain.auth.dto.AccountLoginType;
 import com.gather.gather.domain.auth.entity.Gender;
 import com.gather.gather.domain.auth.entity.User;
 import com.gather.gather.domain.posting.entity.PostingCategory;
@@ -18,9 +19,15 @@ public record UserProfileResponse(
         @Schema(description = "성별", example = "MALE") Gender gender,
         @Schema(description = "활동 지역") RegionResponse activityRegion,
         @Schema(description = "관심 카테고리 목록", example = "[\"WELFARE\", \"EDUCATION\"]")
-                List<PostingCategory> interestCategories) {
+                List<PostingCategory> interestCategories,
+        @Schema(
+                        description =
+                                "계정의 로그인 credential 유형. 현재 세션에서 사용한 로그인 수단이 아니라 계정이 보유한 credential 종류이며, "
+                                        + "EMAIL만 비밀번호 변경 UI를 제공한다.",
+                        example = "EMAIL")
+                AccountLoginType loginType) {
 
-    public static UserProfileResponse of(User user) {
+    public static UserProfileResponse of(User user, AccountLoginType loginType) {
         return new UserProfileResponse(
                 user.getId(),
                 user.getName(),
@@ -31,6 +38,7 @@ public record UserProfileResponse(
                 user.getActivityRegion() == null
                         ? null
                         : RegionResponse.from(user.getActivityRegion()),
-                user.getInterestCategories());
+                user.getInterestCategories(),
+                loginType);
     }
 }

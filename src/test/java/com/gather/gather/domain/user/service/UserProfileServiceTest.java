@@ -9,9 +9,11 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.gather.gather.domain.auth.dto.AccountLoginType;
 import com.gather.gather.domain.auth.entity.Gender;
 import com.gather.gather.domain.auth.entity.User;
 import com.gather.gather.domain.auth.repository.UserRepository;
+import com.gather.gather.domain.auth.service.AccountLoginTypeResolver;
 import com.gather.gather.domain.auth.service.SignupValidator;
 import com.gather.gather.domain.posting.entity.PostingCategory;
 import com.gather.gather.domain.region.entity.Region;
@@ -41,12 +43,14 @@ class UserProfileServiceTest {
 
     @Mock private UserRepository userRepository;
     @Mock private SignupValidator signupValidator;
+    @Mock private AccountLoginTypeResolver accountLoginTypeResolver;
 
     private UserProfileService userProfileService;
 
     @BeforeEach
     void setUp() {
-        userProfileService = new UserProfileService(userRepository, signupValidator);
+        userProfileService =
+                new UserProfileService(userRepository, signupValidator, accountLoginTypeResolver);
     }
 
     @Test
@@ -57,10 +61,61 @@ class UserProfileServiceTest {
         try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
             securityUtil.when(SecurityUtil::getCurrentUserId).thenReturn(USER_ID);
             when(userRepository.findById(USER_ID)).thenReturn(Optional.of(user));
+            resolvesCredentialType(AccountLoginType.EMAIL);
 
             UserProfileResponse response = userProfileService.getMyProfile();
 
             assertThat(response.nickname()).isEqualTo("길동");
+        }
+    }
+
+    @Test
+    @DisplayName("getMyProfile exposes EMAIL loginType for password credential accounts")
+    void getMyProfile_returnsEmailLoginType() {
+        User user = existingUser();
+
+        try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
+            securityUtil.when(SecurityUtil::getCurrentUserId).thenReturn(USER_ID);
+            when(userRepository.findById(USER_ID)).thenReturn(Optional.of(user));
+            resolvesCredentialType(AccountLoginType.EMAIL);
+
+            assertThat(userProfileService.getMyProfile().loginType())
+                    .isEqualTo(AccountLoginType.EMAIL);
+            // 상태가 아니라 credential 구조로 판정해야 SUSPENDED 계정에서도 loginType이 유지된다.
+            verify(accountLoginTypeResolver).resolveCredentialTypeIgnoringStatus(user);
+            verify(accountLoginTypeResolver, never()).resolveForActiveAccount(any());
+        }
+    }
+
+    @Test
+    @DisplayName("getMyProfile exposes KAKAO loginType for Kakao-only accounts")
+    void getMyProfile_returnsKakaoLoginType() {
+        User user = kakaoOnlyUser();
+
+        try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
+            securityUtil.when(SecurityUtil::getCurrentUserId).thenReturn(USER_ID);
+            when(userRepository.findById(USER_ID)).thenReturn(Optional.of(user));
+            resolvesCredentialType(AccountLoginType.KAKAO);
+
+            assertThat(userProfileService.getMyProfile().loginType())
+                    .isEqualTo(AccountLoginType.KAKAO);
+        }
+    }
+
+    @Test
+    @DisplayName("getMyProfile fails with INTERNAL_SERVER_ERROR when the credential type is broken")
+    void getMyProfile_throwsInternalServerError_whenCredentialInvariantViolated() {
+        User user = existingUser();
+
+        try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
+            securityUtil.when(SecurityUtil::getCurrentUserId).thenReturn(USER_ID);
+            when(userRepository.findById(USER_ID)).thenReturn(Optional.of(user));
+            when(accountLoginTypeResolver.resolveCredentialTypeIgnoringStatus(user))
+                    .thenReturn(Optional.empty());
+
+            assertThatThrownBy(() -> userProfileService.getMyProfile())
+                    .isInstanceOf(BusinessException.class)
+                    .hasFieldOrPropertyWithValue("errorCode", ErrorCode.INTERNAL_SERVER_ERROR);
         }
     }
 
@@ -91,6 +146,7 @@ class UserProfileServiceTest {
             when(signupValidator.findActivityRegion(REGION_ID)).thenReturn(newRegion);
             when(signupValidator.normalizeNullableText(any())).thenReturn("소개글");
             when(userRepository.saveAndFlush(user)).thenReturn(user);
+            resolvesCredentialType(AccountLoginType.EMAIL);
 
             UserProfileResponse response = userProfileService.updateMyProfile(request);
 
@@ -114,11 +170,33 @@ class UserProfileServiceTest {
             when(userRepository.findById(USER_ID)).thenReturn(Optional.of(user));
             when(signupValidator.findActivityRegion(REGION_ID)).thenReturn(region);
             when(userRepository.saveAndFlush(user)).thenReturn(user);
+            resolvesCredentialType(AccountLoginType.EMAIL);
 
             UserProfileResponse response = userProfileService.updateMyProfile(request);
 
             assertThat(response.nickname()).isEqualTo("새닉네임");
             verify(signupValidator).validateNicknameNotDuplicated("새닉네임", USER_ID);
+        }
+    }
+
+    @Test
+    @DisplayName("updateMyProfile keeps the loginType because it never touches credentials")
+    void updateMyProfile_keepsLoginType() {
+        User user = existingUser();
+        Region region = Region.create("강남구", 2, "11680", null);
+        UserProfileUpdateRequest request = updateRequest("길동");
+
+        try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
+            securityUtil.when(SecurityUtil::getCurrentUserId).thenReturn(USER_ID);
+            when(userRepository.findById(USER_ID)).thenReturn(Optional.of(user));
+            when(signupValidator.findActivityRegion(REGION_ID)).thenReturn(region);
+            when(userRepository.saveAndFlush(user)).thenReturn(user);
+            resolvesCredentialType(AccountLoginType.EMAIL);
+
+            assertThat(userProfileService.updateMyProfile(request).loginType())
+                    .isEqualTo(AccountLoginType.EMAIL);
+            assertThat(user.getEmail()).isEqualTo("test@example.com");
+            assertThat(user.getPassword()).isEqualTo("encoded-password");
         }
     }
 
@@ -167,6 +245,29 @@ class UserProfileServiceTest {
                     .isInstanceOf(BusinessException.class)
                     .hasFieldOrPropertyWithValue("errorCode", ErrorCode.DUPLICATE_NICKNAME);
         }
+    }
+
+    private void resolvesCredentialType(AccountLoginType loginType) {
+        when(accountLoginTypeResolver.resolveCredentialTypeIgnoringStatus(any()))
+                .thenReturn(Optional.of(loginType));
+    }
+
+    private User kakaoOnlyUser() {
+        User user =
+                User.createSocial(
+                        "홍길동",
+                        LocalDate.of(2000, 1, 1),
+                        Gender.MALE,
+                        "01012345678",
+                        "길동",
+                        "기존 소개글",
+                        true,
+                        true,
+                        false,
+                        Region.create("강남구", 2, "11680", null),
+                        List.of(PostingCategory.WELFARE));
+        ReflectionTestUtils.setField(user, "id", USER_ID);
+        return user;
     }
 
     private User existingUser() {
