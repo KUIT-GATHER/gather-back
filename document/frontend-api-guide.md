@@ -63,6 +63,18 @@ Authorization: Bearer <accessToken>
 - 재설정 성공 응답은 `data: null`이고 **새 토큰을 발급하지 않습니다.** 기존 Refresh Token은 모두 폐기되므로 로그인 화면으로 이동해 새 비밀번호로 다시 로그인시켜야 합니다.
 - `401 PASSWORD_RESET_TOKEN_INVALID`(형식 오류·없음·이미 사용·파기됨)와 `401 PASSWORD_RESET_TOKEN_EXPIRED`(10분 경과)는 모두 `RESET_PASSWORD` 본인인증부터 다시 시작시키면 됩니다.
 
+## 1-2-3️⃣ 마이페이지 로그인 유형과 비밀번호 변경
+
+- `GET /api/v1/users/me` 응답에 `loginType`이 포함됩니다. **현재 세션에서 어떤 로그인 수단을 썼는지가 아니라 계정이 가진 credential 유형**입니다.
+  - `EMAIL`: 이메일·비밀번호 credential 보유. 비밀번호 변경 UI를 노출합니다. (카카오도 함께 연결된 계정이면 `EMAIL`이 우선입니다.)
+  - `KAKAO`: 카카오 전용 계정으로 비밀번호가 없습니다. 비밀번호 변경 UI를 노출하지 않습니다.
+- `PATCH /api/v1/users/me`(프로필 수정) 응답에도 같은 `loginType`이 내려오며, 프로필 수정은 credential을 건드리지 않으므로 값이 바뀌지 않습니다.
+- 로그인 상태에서 비밀번호를 바꿀 때는 Access Token과 함께 `PATCH /api/v1/users/me/password`에 `currentPassword`, `password`, `passwordConfirm`을 보냅니다.
+  - 새 비밀번호 정책은 회원가입·재설정과 동일(공백 없이 6~12자)하며 정책 위반은 `400 VALIDATION_ERROR`, 확인 불일치는 `400 PASSWORD_MISMATCH`, 현재 비밀번호 오류는 `400 CURRENT_PASSWORD_MISMATCH`입니다. **현재 비밀번호 오류는 401이 아니므로 토큰 재발급 인터셉터를 태우지 마세요.**
+  - 카카오 전용 계정은 `409 PASSWORD_CHANGE_NOT_AVAILABLE`이며, 계정 상태에 따라 `403 SUSPENDED_USER`, `403 WITHDRAWAL_PENDING_USER`, `403 WITHDRAWN_USER`가 내려올 수 있습니다.
+- 성공 응답은 `data: null`이고 **새 Access/Refresh Token을 발급하지 않습니다.** 서버는 발급된 비밀번호 재설정 토큰과 모든 기기의 Refresh Token을 폐기하고 현재 Refresh 쿠키도 만료시킵니다.
+- 기존 Access Token은 stateless JWT라 남은 만료 시간 동안 유효할 수 있으므로, 성공 직후 **클라이언트가 Access Token을 삭제하고 로그인 화면으로 이동해 새 비밀번호로 다시 로그인**시켜야 합니다.
+
 ## 1-3️⃣ 이메일 회원가입 자동 로그인과 프로필 이미지
 
 - `POST /api/v1/auth/signup` 성공 시 기존 회원 정보와 함께 `accessToken`, `tokenType: "Bearer"`가 응답 body에 내려옵니다.

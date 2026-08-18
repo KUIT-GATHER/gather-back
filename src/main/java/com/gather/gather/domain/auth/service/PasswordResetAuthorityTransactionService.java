@@ -85,7 +85,8 @@ public class PasswordResetAuthorityTransactionService {
             return PasswordResetAuthorityResult.accountNotFound();
         }
         User user = optionalUser.get();
-        Optional<AccountLoginType> loginType = accountLoginTypeResolver.resolve(user);
+        Optional<AccountLoginType> loginType =
+                accountLoginTypeResolver.resolveForActiveAccount(user);
         if (loginType.isEmpty()) {
             if (user.getStatus() == UserStatus.ACTIVE) {
                 log.error("비밀번호 재설정 중 로그인 credential 불일치를 감지했습니다: userId={}", user.getId());

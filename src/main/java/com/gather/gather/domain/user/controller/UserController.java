@@ -1,8 +1,10 @@
 package com.gather.gather.domain.user.controller;
 
+import com.gather.gather.domain.auth.dto.PasswordChangeRequest;
 import com.gather.gather.domain.auth.entity.WithdrawalReason;
 import com.gather.gather.domain.auth.service.AccountTerminationResult;
 import com.gather.gather.domain.auth.service.AccountTerminationService;
+import com.gather.gather.domain.auth.service.PasswordChangeService;
 import com.gather.gather.domain.auth.service.RefreshTokenCookieProvider;
 import com.gather.gather.domain.user.dto.AccountTerminationResponse;
 import com.gather.gather.domain.user.dto.UserProfileResponse;
@@ -38,6 +40,7 @@ public class UserController {
 
     private final UserProfileService userProfileService;
     private final AccountTerminationService accountTerminationService;
+    private final PasswordChangeService passwordChangeService;
     private final RefreshTokenCookieProvider refreshTokenCookieProvider;
 
     @Operation(summary = "내 프로필 조회", description = "로그인한 사용자의 마이페이지 프로필을 조회합니다.")
@@ -175,6 +178,119 @@ public class UserController {
     public ApiResponse<UserProfileResponse> updateMyProfile(
             @Valid @RequestBody UserProfileUpdateRequest request) {
         return ApiResponse.success(userProfileService.updateMyProfile(request));
+    }
+
+    @Operation(
+            summary = "비밀번호 변경",
+            description =
+                    "로그인한 EMAIL 계정 사용자가 현재 비밀번호를 확인한 뒤 새 비밀번호로 변경합니다. loginType이 KAKAO인 계정은 "
+                            + "비밀번호 credential이 없어 409로 거부합니다. 새 비밀번호는 공백 없이 6자 이상 12자 이하이며 확인값과 같아야 합니다.\n\n"
+                            + "성공 시 발급된 비밀번호 재설정 토큰과 모든 기기의 Refresh Token을 폐기하고 현재 Refresh Cookie를 만료시킵니다. "
+                            + "새 Access/Refresh Token은 발급하지 않으며, 기존 Access Token은 stateless JWT라 남은 TTL 동안 유효할 수 있으므로 "
+                            + "프론트는 성공 직후 Access Token을 삭제하고 로그인 화면으로 이동해 새 비밀번호로 다시 로그인해야 합니다.")
+    @ApiResponses({
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                responseCode = "200",
+                description = "비밀번호 변경 성공",
+                headers =
+                        @Header(name = HttpHeaders.SET_COOKIE, description = "Refresh Token 만료 쿠키"),
+                content =
+                        @Content(
+                                mediaType = JSON,
+                                examples =
+                                        @ExampleObject(
+                                                value = UserSwaggerExamples.PASSWORD_CHANGED))),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                responseCode = "400",
+                description = "비밀번호 정책 위반, 확인값 불일치 또는 현재 비밀번호 오류",
+                content =
+                        @Content(
+                                mediaType = JSON,
+                                examples = {
+                                    @ExampleObject(
+                                            name = "VALIDATION_ERROR",
+                                            value = UserSwaggerExamples.VALIDATION_ERROR),
+                                    @ExampleObject(
+                                            name = "PASSWORD_MISMATCH",
+                                            value = UserSwaggerExamples.PASSWORD_MISMATCH),
+                                    @ExampleObject(
+                                            name = "CURRENT_PASSWORD_MISMATCH",
+                                            value = UserSwaggerExamples.CURRENT_PASSWORD_MISMATCH)
+                                })),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                responseCode = "401",
+                description = "인증 실패",
+                content =
+                        @Content(
+                                mediaType = JSON,
+                                examples = {
+                                    @ExampleObject(
+                                            name = "UNAUTHORIZED",
+                                            value = UserSwaggerExamples.UNAUTHORIZED),
+                                    @ExampleObject(
+                                            name = "INVALID_TOKEN",
+                                            value = UserSwaggerExamples.INVALID_TOKEN),
+                                    @ExampleObject(
+                                            name = "EXPIRED_TOKEN",
+                                            value = UserSwaggerExamples.EXPIRED_TOKEN)
+                                })),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                responseCode = "403",
+                description = "비밀번호를 변경할 수 없는 계정 상태",
+                content =
+                        @Content(
+                                mediaType = JSON,
+                                examples = {
+                                    @ExampleObject(
+                                            name = "SUSPENDED_USER",
+                                            value = UserSwaggerExamples.SUSPENDED_USER),
+                                    @ExampleObject(
+                                            name = "WITHDRAWAL_PENDING_USER",
+                                            value = UserSwaggerExamples.WITHDRAWAL_PENDING_USER),
+                                    @ExampleObject(
+                                            name = "WITHDRAWN_USER",
+                                            value = UserSwaggerExamples.WITHDRAWN_USER)
+                                })),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                responseCode = "404",
+                description = "사용자를 찾을 수 없음",
+                content =
+                        @Content(
+                                mediaType = JSON,
+                                examples =
+                                        @ExampleObject(
+                                                name = "USER_NOT_FOUND",
+                                                value = UserSwaggerExamples.USER_NOT_FOUND))),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                responseCode = "409",
+                description = "비밀번호 변경을 지원하지 않는 계정",
+                content =
+                        @Content(
+                                mediaType = JSON,
+                                examples =
+                                        @ExampleObject(
+                                                name = "PASSWORD_CHANGE_NOT_AVAILABLE",
+                                                value =
+                                                        UserSwaggerExamples
+                                                                .PASSWORD_CHANGE_NOT_AVAILABLE))),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                responseCode = "500",
+                description = "서버 오류",
+                content =
+                        @Content(
+                                mediaType = JSON,
+                                examples =
+                                        @ExampleObject(
+                                                value = UserSwaggerExamples.INTERNAL_SERVER_ERROR)))
+    })
+    @PatchMapping("/password")
+    public ResponseEntity<ApiResponse<Void>> changeMyPassword(
+            @Valid @RequestBody PasswordChangeRequest request) {
+        passwordChangeService.changePassword(SecurityUtil.getCurrentUserId(), request);
+
+        return ResponseEntity.ok()
+                .header(HttpHeaders.SET_COOKIE, refreshTokenCookieProvider.clear().toString())
+                .body(ApiResponse.success(null));
     }
 
     @Operation(

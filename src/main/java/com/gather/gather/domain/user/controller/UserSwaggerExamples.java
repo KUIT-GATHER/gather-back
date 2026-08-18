@@ -97,6 +97,26 @@ final class UserSwaggerExamples {
             """
             { "success": false, "data": null, "error": { "code": "ACCOUNT_TERMINATION_STATE_CONFLICT", "message": "계정 탈퇴 상태가 올바르지 않습니다." } }
             """;
+    static final String PASSWORD_CHANGED =
+            """
+            { "success": true, "data": null, "error": null }
+            """;
+    static final String CURRENT_PASSWORD_MISMATCH =
+            """
+            { "success": false, "data": null, "error": { "code": "CURRENT_PASSWORD_MISMATCH", "message": "현재 비밀번호가 올바르지 않습니다." } }
+            """;
+    static final String PASSWORD_MISMATCH =
+            """
+            { "success": false, "data": null, "error": { "code": "PASSWORD_MISMATCH", "message": "비밀번호가 일치하지 않습니다." } }
+            """;
+    static final String PASSWORD_CHANGE_NOT_AVAILABLE =
+            """
+            { "success": false, "data": null, "error": { "code": "PASSWORD_CHANGE_NOT_AVAILABLE", "message": "비밀번호 변경을 지원하지 않는 계정입니다." } }
+            """;
+    static final String SUSPENDED_USER =
+            """
+            { "success": false, "data": null, "error": { "code": "SUSPENDED_USER", "message": "이용 정지된 계정입니다." } }
+            """;
     static final String INTERNAL_SERVER_ERROR =
             """
             { "success": false, "data": null, "error": { "code": "INTERNAL_SERVER_ERROR", "message": "서버 오류가 발생했습니다." } }
