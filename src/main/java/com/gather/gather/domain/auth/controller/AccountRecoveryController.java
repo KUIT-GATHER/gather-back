@@ -108,7 +108,8 @@ public class AccountRecoveryController {
                                                         {
                                                           "success": true,
                                                           "data": {
-                                                            "passwordResetToken": "Zm9vYmFyYmF6cXV4MTIzNDU2Nzg5MGFiY2RlZmdoaWo"
+                                                            "passwordResetToken": "Zm9vYmFyYmF6cXV4MTIzNDU2Nzg5MGFiY2RlZmdoaWo",
+                                                            "expiresAt": "2026-08-18T04:10:00"
                                                           },
                                                           "error": null
                                                         }

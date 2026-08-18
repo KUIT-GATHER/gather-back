@@ -93,19 +93,19 @@ public class PasswordResetAuthorityTransactionService {
             return PasswordResetAuthorityResult.accountNotFound();
         }
         return switch (loginType.get()) {
-            case EMAIL -> PasswordResetAuthorityResult.email(issueToken(user, rawToken, now));
+            case EMAIL -> issueToken(user, rawToken, now);
             case KAKAO -> PasswordResetAuthorityResult.kakao();
         };
     }
 
-    private String issueToken(User user, String rawToken, LocalDateTime now) {
+    private PasswordResetAuthorityResult issueToken(User user, String rawToken, LocalDateTime now) {
         String tokenHash = passwordResetTokenCodec.validateAndHash(rawToken);
         // 재발급은 직전 토큰을 즉시 무효화한다. user_id UNIQUE 충돌 없이 insert하려면 삭제가 먼저다.
         passwordResetTokenRepository.deleteAllByUserId(user.getId());
+        LocalDateTime expiresAt = now.plusMinutes(TOKEN_VALIDITY_MINUTES);
         // token hash unique 충돌을 커밋까지 미루지 않고 이 자리에서 확인해, 상위에서 재발급을 재시도할 수 있게 한다.
         passwordResetTokenRepository.saveAndFlush(
-                PasswordResetToken.issue(
-                        user, tokenHash, now.plusMinutes(TOKEN_VALIDITY_MINUTES), now));
-        return rawToken;
+                PasswordResetToken.issue(user, tokenHash, expiresAt, now));
+        return PasswordResetAuthorityResult.email(rawToken, expiresAt);
     }
 }

@@ -36,7 +36,7 @@ public class PasswordResetService {
         PasswordResetAuthorityResult result =
                 issueAuthorityWithRetry(request.phoneVerificationId());
         return switch (result.outcome()) {
-            case EMAIL -> new PasswordResetTokenResponse(result.rawToken());
+            case EMAIL -> new PasswordResetTokenResponse(result.rawToken(), result.expiresAt());
             case KAKAO -> throw new BusinessException(ErrorCode.PASSWORD_RESET_NOT_AVAILABLE);
             case ACCOUNT_NOT_FOUND -> throw new BusinessException(ErrorCode.ACCOUNT_NOT_FOUND);
         };

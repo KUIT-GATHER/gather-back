@@ -23,20 +23,20 @@ import org.springframework.boot.test.context.SpringBootTest;
 /**
  * 기존 스키마에 V64를 얹는 업그레이드 경로를 일회용 데이터베이스로 검증한다.
  *
- * <p>V63(이메일 인증 파기 정책)은 별도 PR에 있어 이 브랜치에 없으므로, 직전 버전인 V62를 시작점으로 사용한다.
+ * <p>직전 버전인 V63을 시작점으로 사용한다.
  */
 @SpringBootTest
 class PasswordResetTokenUpgradeMigrationIntegrationTest {
 
-    private static final String PREVIOUS_VERSION = "62";
+    private static final String PREVIOUS_VERSION = "63";
     private static final String PASSWORD_RESET_TOKEN_VERSION = "64";
     private static final LocalDateTime NOW = LocalDateTime.of(2026, 8, 17, 12, 0);
 
     @Autowired private DataSourceProperties dataSourceProperties;
 
     @Test
-    @DisplayName("V62까지 적용된 스키마에 V64를 적용하면 재설정 토큰 테이블과 제약이 만들어진다")
-    void migrateFromV62_createsPasswordResetTokenTableWithConstraints() throws Exception {
+    @DisplayName("V63까지 적용된 스키마에 V64를 적용하면 재설정 토큰 테이블과 제약이 만들어진다")
+    void migrateFromV63_createsPasswordResetTokenTableWithConstraints() throws Exception {
         String databaseName =
                 "gather_prt_upgrade_"
                         + UUID.randomUUID().toString().replace("-", "").substring(0, 16);
