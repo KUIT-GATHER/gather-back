@@ -34,18 +34,27 @@ class EmailVerificationLegacyPurgeIntegrationTest {
     }
 
     @Test
-    @DisplayName("평문 코드가 남은 행과 해시가 없는 행만 파기하고 현재 형식 행은 남긴다")
-    void purgeLegacyVerifications_deletesOnlyLegacyRows() {
-        String plaintextEmail = insertRow("plaintext", "123456", CODE_HASH);
-        String missingHashEmail = insertRow("missing-hash", "", null);
+    @DisplayName("code/code_hash 네 조합에서 엔티티 판정과 파기 쿼리 분류가 일치한다")
+    void purgeLegacyVerifications_classifiesRowsSameAsEntityPredicate() {
+        // 엔티티의 isLegacyFormat()과 파기 쿼리의 조건은 서로 다른 언어로 같은 규칙을 표현하므로,
+        // 네 조합을 실제 DB에 넣고 두 판정이 갈라지지 않는지 한 테스트에서 함께 확인한다.
         String currentEmail = insertRow("current", "", CODE_HASH);
+        String plaintextWithoutHashEmail = insertRow("plaintext-without-hash", "123456", null);
+        String plaintextWithHashEmail = insertRow("plaintext-with-hash", "123456", CODE_HASH);
+        String emptyCodeWithoutHashEmail = insertRow("empty-code-without-hash", "", null);
+
+        assertThat(isLegacyFormat(currentEmail)).isFalse();
+        assertThat(isLegacyFormat(plaintextWithoutHashEmail)).isTrue();
+        assertThat(isLegacyFormat(plaintextWithHashEmail)).isTrue();
+        assertThat(isLegacyFormat(emptyCodeWithoutHashEmail)).isTrue();
 
         int deletedCount = cleanupService.purgeLegacyVerifications();
 
-        assertThat(deletedCount).isEqualTo(2);
-        assertThat(emailVerificationRepository.findByEmail(plaintextEmail)).isEmpty();
-        assertThat(emailVerificationRepository.findByEmail(missingHashEmail)).isEmpty();
+        assertThat(deletedCount).isEqualTo(3);
         assertThat(emailVerificationRepository.findByEmail(currentEmail)).isPresent();
+        assertThat(emailVerificationRepository.findByEmail(plaintextWithoutHashEmail)).isEmpty();
+        assertThat(emailVerificationRepository.findByEmail(plaintextWithHashEmail)).isEmpty();
+        assertThat(emailVerificationRepository.findByEmail(emptyCodeWithoutHashEmail)).isEmpty();
     }
 
     @Test
@@ -72,6 +81,10 @@ class EmailVerificationLegacyPurgeIntegrationTest {
         assertThat(emailVerificationRepository.findByEmail(recentLegacyEmail)).isPresent();
         assertThat(emailVerificationRepository.findByEmail(recentCurrentEmail)).isPresent();
         assertThat(deletedCount).isNotNegative();
+    }
+
+    private boolean isLegacyFormat(String email) {
+        return emailVerificationRepository.findByEmail(email).orElseThrow().isLegacyFormat();
     }
 
     private String insertRow(String suffix, String code, String codeHash) {

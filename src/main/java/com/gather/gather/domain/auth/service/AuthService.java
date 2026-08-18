@@ -425,11 +425,14 @@ public class AuthService {
             String email, FailedEmailDeliveryCompensation compensation) {
         try {
             int affectedRows;
+            String action;
             if (compensation.previousState() == null) {
+                action = "delete";
                 affectedRows =
                         emailVerificationRepository.deleteByIdAndVersion(
                                 compensation.id(), compensation.failedVersion());
             } else {
+                action = "restore";
                 EmailVerificationState previous = compensation.previousState();
                 affectedRows =
                         emailVerificationRepository.restoreAfterFailedResend(
@@ -446,7 +449,12 @@ public class AuthService {
                                 previous.attemptCount());
             }
             if (affectedRows == 0) {
-                log.warn("이메일 발송 실패 보상 생략: 이후 상태 변경 감지, email={}", EmailMasker.mask(email));
+                // 어느 보상 경로가 어떤 세대에서 밀렸는지 알아야 사후에 원인 세대를 추적할 수 있다.
+                log.warn(
+                        "이메일 발송 실패 보상 생략: 이후 상태 변경 감지, action={}, email={}, failedVersion={}",
+                        action,
+                        EmailMasker.mask(email),
+                        compensation.failedVersion());
             }
         } catch (RuntimeException compensationException) {
             log.error(
