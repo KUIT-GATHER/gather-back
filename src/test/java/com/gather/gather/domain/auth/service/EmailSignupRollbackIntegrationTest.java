@@ -83,7 +83,7 @@ class EmailSignupRollbackIntegrationTest {
                                     EmailVerification.create(
                                             EMAIL,
                                             emailVerificationId.toString(),
-                                            "123456",
+                                            "a".repeat(64),
                                             now.plusDays(1),
                                             now);
                             verification.verify(now);

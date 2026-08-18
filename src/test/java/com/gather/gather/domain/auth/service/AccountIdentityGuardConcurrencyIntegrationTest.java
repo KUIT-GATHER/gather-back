@@ -203,7 +203,7 @@ class AccountIdentityGuardConcurrencyIntegrationTest {
                                     EmailVerification.create(
                                             SIGNUP_EMAIL,
                                             EMAIL_VERIFICATION_ID.toString(),
-                                            "123456",
+                                            "a".repeat(64),
                                             NOW.plusDays(1),
                                             NOW);
                             verification.verify(NOW);

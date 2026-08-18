@@ -1,6 +1,8 @@
 package com.gather.gather.domain.auth.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -31,5 +33,17 @@ class EmailVerificationCleanupServiceTest {
         assertThat(service.cleanupOverdueVerifications()).isEqualTo(4);
 
         verify(emailVerificationRepository).deleteAllCreatedAtOrBefore(cutoff);
+    }
+
+    @Test
+    void purgeLegacyVerifications_deletesLegacyRowsWithoutRetentionCutoff() {
+        when(emailVerificationRepository.deleteAllLegacyFormat()).thenReturn(2);
+        EmailVerificationCleanupService service =
+                new EmailVerificationCleanupService(emailVerificationRepository, CLOCK);
+
+        assertThat(service.purgeLegacyVerifications()).isEqualTo(2);
+
+        verify(emailVerificationRepository).deleteAllLegacyFormat();
+        verify(emailVerificationRepository, never()).deleteAllCreatedAtOrBefore(any());
     }
 }

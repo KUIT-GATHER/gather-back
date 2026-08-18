@@ -23,6 +23,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.test.util.ReflectionTestUtils;
 
 @ExtendWith(MockitoExtension.class)
 class EmailVerificationRequirementServiceTest {
@@ -144,6 +145,30 @@ class EmailVerificationRequirementServiceTest {
         assertRequired(() -> service.consumeForSignup(EMAIL, VERIFICATION_ID));
     }
 
+    @Test
+    @DisplayName("구 버전이 남긴 평문 행은 인증 완료 상태여도 회원가입 근거로 쓸 수 없다")
+    void consumeForSignup_rejectsLegacyPlaintextRow() {
+        EmailVerification verification = verifiedAt(NOW.minusMinutes(1));
+        ReflectionTestUtils.setField(verification, "code", "123456");
+        stub(EMAIL, verification);
+
+        assertRequired(() -> service.consumeForSignup(EMAIL, VERIFICATION_ID));
+
+        verify(emailVerificationRepository, never()).delete(verification);
+    }
+
+    @Test
+    @DisplayName("해시가 없는 행도 회원가입 근거로 쓸 수 없다")
+    void consumeForSignup_rejectsRowWithoutCodeHash() {
+        EmailVerification verification = verifiedAt(NOW.minusMinutes(1));
+        ReflectionTestUtils.setField(verification, "codeHash", null);
+        stub(EMAIL, verification);
+
+        assertRequired(() -> service.consumeForSignup(EMAIL, VERIFICATION_ID));
+
+        verify(emailVerificationRepository, never()).delete(verification);
+    }
+
     private EmailVerification create() {
         return create(EMAIL, VERIFICATION_ID);
     }
@@ -152,7 +177,7 @@ class EmailVerificationRequirementServiceTest {
         return EmailVerification.create(
                 email,
                 verificationId.toString(),
-                "123456",
+                "a".repeat(64),
                 NOW.plusMinutes(10),
                 NOW.minusMinutes(5));
     }

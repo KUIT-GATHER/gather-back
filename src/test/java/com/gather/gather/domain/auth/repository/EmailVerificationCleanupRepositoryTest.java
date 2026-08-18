@@ -55,7 +55,7 @@ class EmailVerificationCleanupRepositoryTest {
         return EmailVerification.create(
                 email,
                 UUID.randomUUID().toString(),
-                "123456",
+                "a".repeat(64),
                 createdAt.plusMinutes(10),
                 createdAt);
     }
