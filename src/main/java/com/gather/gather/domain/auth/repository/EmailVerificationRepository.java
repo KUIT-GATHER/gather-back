@@ -27,6 +27,15 @@ public interface EmailVerificationRepository extends JpaRepository<EmailVerifica
     @Query("delete from EmailVerification e where e.createdAt <= :cutoff")
     int deleteAllCreatedAtOrBefore(LocalDateTime cutoff);
 
+    // 구 버전 JAR이 남긴 평문 행은 현재 검증 방식으로 신뢰할 수 없어 파기한다.
+    // 보관 기간 정리와 삭제 사유가 다르므로 조건을 합치지 않고 삭제 건수도 따로 집계한다.
+    // 아래 조건은 EmailVerification.isLegacyFormat()과 반드시 같은 분류를 해야 한다. 둘이 어긋나면
+    // 인증에 쓰이지 않는 행이 DB에 남거나, 인증에 쓰이는 행이 파기된다.
+    // 두 표현이 같은 분류를 하는지는 EmailVerificationLegacyPurgeIntegrationTest가 검증한다.
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("delete from EmailVerification e where e.code <> '' or e.codeHash is null")
+    int deleteAllLegacyFormat();
+
     // 동시 재발송·인증 시도가 검사와 카운터 갱신 사이에 끼어들지 못하도록 행을 잠근다.
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select e from EmailVerification e where e.email = :email")
@@ -44,7 +53,7 @@ public interface EmailVerificationRepository extends JpaRepository<EmailVerifica
             """
             update EmailVerification e
                set e.verificationId = :verificationId,
-                   e.code = :code,
+                   e.codeHash = :codeHash,
                    e.verified = :verified,
                    e.expiresAt = :expiresAt,
                    e.verifiedAt = :verifiedAt,
@@ -60,7 +69,7 @@ public interface EmailVerificationRepository extends JpaRepository<EmailVerifica
             Long id,
             Long failedVersion,
             String verificationId,
-            String code,
+            String codeHash,
             boolean verified,
             LocalDateTime expiresAt,
             LocalDateTime verifiedAt,

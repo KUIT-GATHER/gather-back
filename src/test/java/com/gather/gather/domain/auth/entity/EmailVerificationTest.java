@@ -6,6 +6,7 @@ import java.time.LocalDateTime;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.springframework.test.util.ReflectionTestUtils;
 
 class EmailVerificationTest {
 
@@ -14,7 +15,39 @@ class EmailVerificationTest {
 
     private EmailVerification create() {
         return EmailVerification.create(
-                EMAIL, UUID.randomUUID().toString(), "111111", NOW.plusMinutes(10), NOW);
+                EMAIL, UUID.randomUUID().toString(), "a".repeat(64), NOW.plusMinutes(10), NOW);
+    }
+
+    @Test
+    @DisplayName("생성과 재발송 모두 평문 code를 비우고 해시만 보관한다")
+    void createAndRefresh_keepOnlyCodeHash() {
+        EmailVerification verification = create();
+
+        assertThat(verification.getCode()).isEmpty();
+        assertThat(verification.getCodeHash()).isEqualTo("a".repeat(64));
+        assertThat(verification.isLegacyFormat()).isFalse();
+
+        verification.refresh(
+                UUID.randomUUID().toString(),
+                "b".repeat(64),
+                NOW.plusMinutes(15),
+                NOW.plusMinutes(5));
+
+        assertThat(verification.getCode()).isEmpty();
+        assertThat(verification.getCodeHash()).isEqualTo("b".repeat(64));
+        assertThat(verification.isLegacyFormat()).isFalse();
+    }
+
+    @Test
+    @DisplayName("평문 code가 남아 있거나 해시가 없으면 구 버전 형식으로 판정한다")
+    void isLegacyFormat_detectsPlaintextCodeOrMissingHash() {
+        EmailVerification plaintext = create();
+        ReflectionTestUtils.setField(plaintext, "code", "123456");
+        EmailVerification missingHash = create();
+        ReflectionTestUtils.setField(missingHash, "codeHash", null);
+
+        assertThat(plaintext.isLegacyFormat()).isTrue();
+        assertThat(missingHash.isLegacyFormat()).isTrue();
     }
 
     @Test
@@ -36,7 +69,8 @@ class EmailVerificationTest {
         String previousVerificationId = verification.getVerificationId();
         String nextVerificationId = UUID.randomUUID().toString();
 
-        verification.refresh(nextVerificationId, "222222", NOW.plusMinutes(15), NOW.plusMinutes(5));
+        verification.refresh(
+                nextVerificationId, "b".repeat(64), NOW.plusMinutes(15), NOW.plusMinutes(5));
 
         assertThat(verification.getVerificationId()).isEqualTo(nextVerificationId);
         assertThat(verification.getVerificationId()).isNotEqualTo(previousVerificationId);
@@ -60,7 +94,10 @@ class EmailVerificationTest {
         verification.increaseAttempt();
 
         verification.refresh(
-                UUID.randomUUID().toString(), "222222", NOW.plusMinutes(15), NOW.plusMinutes(5));
+                UUID.randomUUID().toString(),
+                "b".repeat(64),
+                NOW.plusMinutes(15),
+                NOW.plusMinutes(5));
 
         assertThat(verification.isVerified()).isFalse();
         assertThat(verification.getVerifiedAt()).isNull();

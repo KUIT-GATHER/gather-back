@@ -44,7 +44,7 @@ class EmailVerificationAttemptIntegrationTest {
                 EmailVerification.create(
                         EMAIL,
                         UUID.randomUUID().toString(),
-                        "123456",
+                        "a".repeat(64),
                         LocalDateTime.now().plusMinutes(10),
                         LocalDateTime.now()));
 
@@ -69,7 +69,7 @@ class EmailVerificationAttemptIntegrationTest {
                 EmailVerification.create(
                         EMAIL,
                         UUID.randomUUID().toString(),
-                        "123456",
+                        "a".repeat(64),
                         LocalDateTime.now().plusMinutes(10),
                         LocalDateTime.now());
         for (int i = 0; i < 4; i++) {

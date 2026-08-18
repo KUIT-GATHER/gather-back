@@ -73,6 +73,8 @@ gather:
     rejoin-block-hmac:
       secret: Z2F0aGVyLXRlc3QtcmVqb2luLWJsb2NrLWhtYWMtc2VjcmV0LTIwMjYtMDctMjk=
       key-version: 1
+    email-verification-hmac:
+      secret: Z2F0aGVyLXRlc3QtZW1haWwtdmVyaWZpY2F0aW9uLWhtYWMtc2VjcmV0LTIwMjYtMDgtMTg=
     social-account-encryption:
       key: Z2F0aGVyLXRlc3Qtc29jaWFsLWFjY291bnQta2V5ISE=
       key-version: 1

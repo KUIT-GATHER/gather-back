@@ -46,4 +46,30 @@ class EmailVerificationCleanupSchedulerTest {
 
         verify(cleanupService, times(2)).cleanupOverdueVerifications();
     }
+
+    @Test
+    void hourlyRun_purgesLegacyRowsAndOverdueRowsSeparately() {
+        when(cleanupService.purgeLegacyVerifications()).thenReturn(2);
+        when(cleanupService.cleanupOverdueVerifications()).thenReturn(3);
+
+        scheduler.cleanupHourly();
+
+        verify(cleanupService).purgeLegacyVerifications();
+        verify(cleanupService).cleanupOverdueVerifications();
+    }
+
+    @Test
+    void legacyPurgeFailure_stillRunsRetentionCleanupAndRetriesNextRun() {
+        doThrow(new IllegalStateException("database unavailable"))
+                .doReturn(0)
+                .when(cleanupService)
+                .purgeLegacyVerifications();
+        when(cleanupService.cleanupOverdueVerifications()).thenReturn(0);
+
+        scheduler.cleanupHourly();
+        scheduler.cleanupHourly();
+
+        verify(cleanupService, times(2)).purgeLegacyVerifications();
+        verify(cleanupService, times(2)).cleanupOverdueVerifications();
+    }
 }
