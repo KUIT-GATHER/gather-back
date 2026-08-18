@@ -105,7 +105,8 @@ class PasswordResetAuthorityIntegrationTest {
                         LocalDateTime.now(clock).minusMinutes(1),
                         LocalDateTime.now(clock).plusMinutes(1));
         // DB 왕복 시 저장된 값은 마이크로초로 반올림되므로, 저장 전 원본값과는 밀리초 오차 이내로 비교한다.
-        assertThat(response.expiresAt()).isCloseTo(saved.getExpiresAt(), within(1, ChronoUnit.MILLIS));
+        assertThat(response.expiresAt())
+                .isCloseTo(saved.getExpiresAt(), within(1, ChronoUnit.MILLIS));
         assertThat(consumedAt()).isNotNull();
     }
 

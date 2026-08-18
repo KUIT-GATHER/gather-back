@@ -41,27 +41,23 @@ class PasswordResetAuthorityResultTest {
     @Test
     @DisplayName("EMAIL 결과에 raw token이 없으면 만들 수 없다")
     void constructor_rejectsEmailWithoutRawToken() {
-        assertThatThrownBy(
-                        () -> new PasswordResetAuthorityResult(Outcome.EMAIL, null, EXPIRES_AT))
+        assertThatThrownBy(() -> new PasswordResetAuthorityResult(Outcome.EMAIL, null, EXPIRES_AT))
                 .isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(
-                        () -> new PasswordResetAuthorityResult(Outcome.EMAIL, " ", EXPIRES_AT))
+        assertThatThrownBy(() -> new PasswordResetAuthorityResult(Outcome.EMAIL, " ", EXPIRES_AT))
                 .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
     @DisplayName("EMAIL 결과에 만료 시각이 없으면 만들 수 없다")
     void constructor_rejectsEmailWithoutExpiresAt() {
-        assertThatThrownBy(
-                        () -> new PasswordResetAuthorityResult(Outcome.EMAIL, RAW_TOKEN, null))
+        assertThatThrownBy(() -> new PasswordResetAuthorityResult(Outcome.EMAIL, RAW_TOKEN, null))
                 .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
     @DisplayName("EMAIL 외 결과에 raw token을 담을 수 없다")
     void constructor_rejectsRawTokenForNonEmailOutcome() {
-        assertThatThrownBy(
-                        () -> new PasswordResetAuthorityResult(Outcome.KAKAO, RAW_TOKEN, null))
+        assertThatThrownBy(() -> new PasswordResetAuthorityResult(Outcome.KAKAO, RAW_TOKEN, null))
                 .isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(
                         () ->
@@ -73,10 +69,7 @@ class PasswordResetAuthorityResultTest {
     @Test
     @DisplayName("EMAIL 외 결과에 만료 시각을 담을 수 없다")
     void constructor_rejectsExpiresAtForNonEmailOutcome() {
-        assertThatThrownBy(
-                        () ->
-                                new PasswordResetAuthorityResult(
-                                        Outcome.KAKAO, null, EXPIRES_AT))
+        assertThatThrownBy(() -> new PasswordResetAuthorityResult(Outcome.KAKAO, null, EXPIRES_AT))
                 .isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(
                         () ->
