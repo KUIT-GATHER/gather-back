@@ -72,7 +72,8 @@ public class AccountRecoveryTransactionService {
             return AccountRecoveryTransactionResult.accountNotFound();
         }
         User user = optionalUser.get();
-        Optional<AccountLoginType> loginType = accountLoginTypeResolver.resolve(user);
+        Optional<AccountLoginType> loginType =
+                accountLoginTypeResolver.resolveForActiveAccount(user);
         if (loginType.isEmpty()) {
             if (user.getStatus() == UserStatus.ACTIVE) {
                 log.error("계정 복구 중 로그인 credential 불일치를 감지했습니다: userId={}", user.getId());

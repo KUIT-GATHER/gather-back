@@ -57,7 +57,7 @@ class AccountRecoveryTransactionServiceTest {
         PhoneVerification verification = verifiedFindAccount();
         stubVerification(verification);
         when(userRepository.findByPhoneNumberForUpdate(PHONE_NUMBER)).thenReturn(Optional.of(user));
-        when(accountLoginTypeResolver.resolve(user))
+        when(accountLoginTypeResolver.resolveForActiveAccount(user))
                 .thenReturn(Optional.of(AccountLoginType.EMAIL));
         when(user.getEmail()).thenReturn("user@example.com");
 
@@ -74,7 +74,7 @@ class AccountRecoveryTransactionServiceTest {
         PhoneVerification verification = verifiedFindAccount();
         stubVerification(verification);
         when(userRepository.findByPhoneNumberForUpdate(PHONE_NUMBER)).thenReturn(Optional.of(user));
-        when(accountLoginTypeResolver.resolve(user))
+        when(accountLoginTypeResolver.resolveForActiveAccount(user))
                 .thenReturn(Optional.of(AccountLoginType.KAKAO));
 
         AccountRecoveryTransactionResult result = service.recoverEmail(VERIFICATION_ID);
@@ -105,7 +105,7 @@ class AccountRecoveryTransactionServiceTest {
         PhoneVerification verification = verifiedFindAccount();
         stubVerification(verification);
         when(userRepository.findByPhoneNumberForUpdate(PHONE_NUMBER)).thenReturn(Optional.of(user));
-        when(accountLoginTypeResolver.resolve(user)).thenReturn(Optional.empty());
+        when(accountLoginTypeResolver.resolveForActiveAccount(user)).thenReturn(Optional.empty());
 
         AccountRecoveryTransactionResult result = service.recoverEmail(VERIFICATION_ID);
 

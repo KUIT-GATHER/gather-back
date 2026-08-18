@@ -31,6 +31,9 @@ public enum ErrorCode {
     PHONE_VERIFICATION_RATE_LIMITED(
             HttpStatus.TOO_MANY_REQUESTS, "휴대폰 인증 요청이 많습니다. 잠시 후 다시 시도해주세요."),
     PASSWORD_MISMATCH(HttpStatus.BAD_REQUEST, "비밀번호가 일치하지 않습니다."),
+    // 이미 인증된 사용자의 입력값 오류이므로 INVALID_LOGIN(401)이 아닌 400을 쓴다.
+    CURRENT_PASSWORD_MISMATCH(HttpStatus.BAD_REQUEST, "현재 비밀번호가 올바르지 않습니다."),
+    PASSWORD_CHANGE_NOT_AVAILABLE(HttpStatus.CONFLICT, "비밀번호 변경을 지원하지 않는 계정입니다."),
     PASSWORD_RESET_NOT_AVAILABLE(HttpStatus.CONFLICT, "비밀번호 재설정을 지원하지 않는 계정입니다."),
     // 비밀번호 재설정 전용 토큰. access/refresh 토큰 코드와 구분하기 위해 PASSWORD_RESET_TOKEN_ 접두사를 쓴다.
     PASSWORD_RESET_TOKEN_INVALID(

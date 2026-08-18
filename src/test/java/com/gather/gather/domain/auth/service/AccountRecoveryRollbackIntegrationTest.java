@@ -94,7 +94,8 @@ class AccountRecoveryRollbackIntegrationTest {
     @Test
     @DisplayName("계정 판정 중 시스템 오류가 발생하면 verification 소비를 롤백한다")
     void recoverEmail_rollsBackConsumptionOnUnexpectedFailure() {
-        when(accountLoginTypeResolver.resolve(org.mockito.ArgumentMatchers.any(User.class)))
+        when(accountLoginTypeResolver.resolveForActiveAccount(
+                        org.mockito.ArgumentMatchers.any(User.class)))
                 .thenThrow(new IllegalStateException("classification failure"));
 
         assertThatThrownBy(() -> transactionService.recoverEmail(verificationId))
