@@ -9,6 +9,7 @@ TEMP_DIR=""
 
 HMAC_SECRET=""
 HMAC_KEY_VERSION=""
+EMAIL_VERIFICATION_HMAC_SECRET=""
 AES_KEY=""
 AES_KEY_VERSION=""
 KAKAO_ADMIN_ENABLED_VALUE=""
@@ -22,6 +23,7 @@ REFRESH_COOKIE_SECURE_VALUE=""
 
 HMAC_SECRET_SEEN=false
 HMAC_KEY_VERSION_SEEN=false
+EMAIL_VERIFICATION_HMAC_SECRET_SEEN=false
 AES_KEY_SEEN=false
 AES_KEY_VERSION_SEEN=false
 KAKAO_ADMIN_ENABLED_SEEN=false
@@ -83,6 +85,13 @@ record_tracked_value() {
       fi
       HMAC_KEY_VERSION_SEEN=true
       HMAC_KEY_VERSION="$value"
+      ;;
+    GATHER_AUTH_EMAIL_VERIFICATION_HMAC_SECRET)
+      if [ "$EMAIL_VERIFICATION_HMAC_SECRET_SEEN" = true ]; then
+        fail "duplicate tracked key: $variable_name"
+      fi
+      EMAIL_VERIFICATION_HMAC_SECRET_SEEN=true
+      EMAIL_VERIFICATION_HMAC_SECRET="$value"
       ;;
     GATHER_AUTH_SOCIAL_ACCOUNT_ENCRYPTION_KEY)
       if [ "$AES_KEY_SEEN" = true ]; then
@@ -181,6 +190,7 @@ parse_stream() {
     case "$variable_name" in
       GATHER_AUTH_REJOIN_BLOCK_HMAC_SECRET | \
         GATHER_AUTH_REJOIN_BLOCK_HMAC_KEY_VERSION | \
+        GATHER_AUTH_EMAIL_VERIFICATION_HMAC_SECRET | \
         GATHER_AUTH_SOCIAL_ACCOUNT_ENCRYPTION_KEY | \
         GATHER_AUTH_SOCIAL_ACCOUNT_ENCRYPTION_KEY_VERSION | \
         KAKAO_ADMIN_ENABLED | \
@@ -268,7 +278,7 @@ validate_base64_minimum_bytes() {
   local encoded_value="$1"
   local variable_name="$2"
   local minimum_bytes="$3"
-  local decoded_file="$TEMP_DIR/hmac-decoded"
+  local decoded_file="$TEMP_DIR/hmac-decoded-$variable_name"
   local decoded_bytes
 
   decode_base64 "$encoded_value" "$variable_name" "$decoded_file"
@@ -333,6 +343,7 @@ main() {
 
   require_variable "$HMAC_SECRET_SEEN" "$HMAC_SECRET" "GATHER_AUTH_REJOIN_BLOCK_HMAC_SECRET"
   require_variable "$HMAC_KEY_VERSION_SEEN" "$HMAC_KEY_VERSION" "GATHER_AUTH_REJOIN_BLOCK_HMAC_KEY_VERSION"
+  require_variable "$EMAIL_VERIFICATION_HMAC_SECRET_SEEN" "$EMAIL_VERIFICATION_HMAC_SECRET" "GATHER_AUTH_EMAIL_VERIFICATION_HMAC_SECRET"
   require_variable "$AES_KEY_SEEN" "$AES_KEY" "GATHER_AUTH_SOCIAL_ACCOUNT_ENCRYPTION_KEY"
   require_variable "$AES_KEY_VERSION_SEEN" "$AES_KEY_VERSION" "GATHER_AUTH_SOCIAL_ACCOUNT_ENCRYPTION_KEY_VERSION"
   require_variable "$KAKAO_ADMIN_ENABLED_SEEN" "$KAKAO_ADMIN_ENABLED_VALUE" "KAKAO_ADMIN_ENABLED"
@@ -352,6 +363,7 @@ main() {
   trap cleanup EXIT
 
   validate_base64_minimum_bytes "$HMAC_SECRET" "GATHER_AUTH_REJOIN_BLOCK_HMAC_SECRET" 32
+  validate_base64_minimum_bytes "$EMAIL_VERIFICATION_HMAC_SECRET" "GATHER_AUTH_EMAIL_VERIFICATION_HMAC_SECRET" 32
   validate_base64_exact_bytes "$AES_KEY" "GATHER_AUTH_SOCIAL_ACCOUNT_ENCRYPTION_KEY" 32
   validate_admin_worker_relationship
 

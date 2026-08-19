@@ -36,7 +36,9 @@ public class EmailVerificationRequirementService {
                         .findByEmailForUpdate(email)
                         .orElseThrow(EmailVerificationRequirementService::required);
         LocalDateTime now = LocalDateTime.now(clock);
-        if (!verification.getEmail().equals(email)
+        // 구 버전 JAR이 남긴 평문 행은 인증 결과를 신뢰할 수 없어 회원가입 근거로 쓰지 않는다.
+        if (verification.isLegacyFormat()
+                || !verification.getEmail().equals(email)
                 || !verification.getVerificationId().equals(verificationId.toString())
                 || !verification.isVerified()
                 || verification.isVerifiedResultExpired(now, VERIFIED_RESULT_VALIDITY_MINUTES)

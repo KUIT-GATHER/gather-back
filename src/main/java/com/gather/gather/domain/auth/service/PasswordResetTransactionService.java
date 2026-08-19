@@ -45,7 +45,8 @@ public class PasswordResetTransactionService {
             throw invalidToken();
         }
         // 계정 상태·credential 상세를 응답으로 노출하지 않기 위해, 발급 이후 상태가 바뀐 경우도 INVALID로 응답한다.
-        Optional<AccountLoginType> loginType = accountLoginTypeResolver.resolve(user);
+        Optional<AccountLoginType> loginType =
+                accountLoginTypeResolver.resolveForActiveAccount(user);
         if (loginType.isEmpty() || loginType.get() != AccountLoginType.EMAIL) {
             throw invalidToken();
         }

@@ -16,6 +16,7 @@ import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.gather.gather.domain.auth.config.EmailVerificationHmacProperties;
 import com.gather.gather.domain.auth.dto.EmailVerificationConfirmRequest;
 import com.gather.gather.domain.auth.dto.EmailVerificationSendRequest;
 import com.gather.gather.domain.auth.dto.LoginRequest;
@@ -72,6 +73,11 @@ class AuthServiceTest {
             LocalDateTime.of(2026, 7, 31, 5, 25, 56, 123456000);
     private static final RejoinBlockIdentifier PHONE_IDENTIFIER =
             new RejoinBlockIdentifier(AccountRejoinBlockIdentifierType.PHONE, "a".repeat(64), 1);
+    // HMAC 계산은 mock으로 대체하면 코드 검증의 검출력이 사라지므로 실물 해셔를 쓴다.
+    private static final EmailVerificationCodeHasher CODE_HASHER =
+            new EmailVerificationCodeHasher(
+                    new EmailVerificationHmacProperties(
+                            "Z2F0aGVyLXVuaXQtdGVzdC1lbWFpbC12ZXJpZmljYXRpb24taG1hYy1zZWNyZXQ="));
 
     @Mock private UserRepository userRepository;
     @Mock private EmailVerificationRepository emailVerificationRepository;
@@ -110,6 +116,7 @@ class AuthServiceTest {
                         accountRejoinBlockService,
                         accountIdentityGuardService,
                         emailVerificationRequirementService,
+                        CODE_HASHER,
                         phoneVerificationRequirementService,
                         Clock.fixed(Instant.parse("2026-07-31T05:25:56.123456Z"), ZoneOffset.UTC));
         lenient()
@@ -369,7 +376,7 @@ class AuthServiceTest {
                 EmailVerification.create(
                         email,
                         EMAIL_VERIFICATION_ID.toString(),
-                        "123456",
+                        CODE_HASHER.hash(EMAIL_VERIFICATION_ID.toString(), "123456"),
                         LocalDateTime.now().plusMinutes(10),
                         LocalDateTime.now());
         when(emailVerificationRepository.existsByEmail(email)).thenReturn(true);
@@ -1139,10 +1146,11 @@ class AuthServiceTest {
     }
 
     private static EmailVerification emailVerification(String email, String code) {
+        String verificationId = UUID.randomUUID().toString();
         return EmailVerification.create(
                 email,
-                UUID.randomUUID().toString(),
-                code,
+                verificationId,
+                CODE_HASHER.hash(verificationId, code),
                 SERVICE_NOW.plusMinutes(10),
                 SERVICE_NOW);
     }
