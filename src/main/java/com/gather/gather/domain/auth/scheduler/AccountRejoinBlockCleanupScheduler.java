@@ -12,11 +12,13 @@ import org.springframework.stereotype.Component;
 @Slf4j
 @Component
 @RequiredArgsConstructor
+// 과거 upsert가 source_user_id를 갱신하지 않아 legacy row의 기산점이 실제 탈퇴일보다 이를 수 있고 파기는 되돌릴 수
+// 없으므로, 다른 cleanup scheduler와 달리 설정이 없으면 동작하지 않는 opt-in으로 둔다.
 @ConditionalOnProperty(
         prefix = "gather.auth.rejoin-block",
         name = "cleanup-scheduler-enabled",
         havingValue = "true",
-        matchIfMissing = true)
+        matchIfMissing = false)
 public class AccountRejoinBlockCleanupScheduler {
 
     private final AccountRejoinBlockCleanupService cleanupService;

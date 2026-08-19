@@ -30,6 +30,9 @@ class AccountRejoinBlockCleanupRepositoryTest {
 
     private static final LocalDateTime NOW = LocalDateTime.of(2026, 4, 30, 9, 0);
 
+    /** expires_at은 DATETIME(6)이므로 파기 경계 바로 옆 값은 마이크로초 단위여야 DB에서 구분된다. */
+    private static final long MICROSECOND_IN_NANOS = 1_000L;
+
     @Autowired private AccountRejoinBlockRepository accountRejoinBlockRepository;
     @Autowired private UserRepository userRepository;
     @Autowired private PlatformTransactionManager transactionManager;
@@ -108,6 +111,27 @@ class AccountRejoinBlockCleanupRepositoryTest {
         assertThat(accountRejoinBlockRepository.existsById(exactlyThreeMonthsBlockId)).isFalse();
         assertThat(accountRejoinBlockRepository.existsById(monthEndBlockId)).isFalse();
         assertThat(cleanupAt(NOW)).isZero();
+    }
+
+    @Test
+    @DisplayName("보관기간이 지난 row는 expires_at이 기준 시각과 같으면 파기하고 1마이크로초라도 남으면 보존한다")
+    void deleteAllRetentionExpired_appliesInclusiveExpiresAtBoundary() {
+        // setUp의 row가 아직 어느 조건에도 걸리지 않는 시각을 골라야 삭제 건수로 경계를 단독 검증할 수 있다.
+        LocalDateTime now = NOW.minusMonths(1);
+        LocalDateTime withdrawnAt = now.minusMonths(3);
+        Long expiresAtNowBlockId =
+                saveWithdrawnBlock(AccountRejoinBlockIdentifierType.PHONE, withdrawnAt, now);
+        Long expiresAfterNowBlockId =
+                saveWithdrawnBlock(
+                        AccountRejoinBlockIdentifierType.PHONE,
+                        withdrawnAt,
+                        now.plusNanos(MICROSECOND_IN_NANOS));
+
+        int deleted = cleanupAt(now);
+
+        assertThat(deleted).isEqualTo(1);
+        assertThat(accountRejoinBlockRepository.existsById(expiresAtNowBlockId)).isFalse();
+        assertThat(accountRejoinBlockRepository.existsById(expiresAfterNowBlockId)).isTrue();
     }
 
     @Test

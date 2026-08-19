@@ -38,6 +38,14 @@ class AccountRejoinBlockCleanupSchedulerWiringTest {
                                         .doesNotHaveBean(AccountRejoinBlockCleanupScheduler.class));
     }
 
+    @Test
+    void missingProperty_doesNotRegisterCleanupScheduler() {
+        contextRunner.run(
+                context ->
+                        assertThat(context)
+                                .doesNotHaveBean(AccountRejoinBlockCleanupScheduler.class));
+    }
+
     @Configuration(proxyBeanMethods = false)
     @Import(AccountRejoinBlockCleanupScheduler.class)
     static class CleanupSchedulerConfiguration {}

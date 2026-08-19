@@ -57,7 +57,7 @@
 | 카카오 unlink worker | DB UTC claim·lease, preflight, attempt reservation, transaction 밖 Admin HTTP 호출, retry·terminal 분류와 DB 기반 configuration circuit breaker가 구현됐다. |
 | worker finalizer | unlink 성공 또는 동일 generation `UNLINKED` local finalization에서 SocialAccount 직접 식별자 제거, User `WITHDRAWN`·익명화, 프로필 이미지 durable deletion 등록과 task `SUCCEEDED` 전이가 구현됐다. |
 | 재가입 제한 | `AccountRejoinBlock`의 `PHONE`/`KAKAO` 7일 생성·연장과 가입 시 조회가 실제 인증 흐름에 연결됐다. |
-| 재가입 제한 보관기간 | 탈퇴 완료(`users.withdrawn_at`) 후 3 calendar months가 지나고 차단도 끝난 row를 기동 직후와 1시간 주기 cleanup으로 물리 삭제한다. |
+| 재가입 제한 보관기간 | 탈퇴 완료(`users.withdrawn_at`) 후 3 calendar months가 지나고 차단도 끝난 row를 기동 직후와 1시간 주기 cleanup으로 물리 삭제한다. scheduler는 기본 비활성이며 운영 데이터 점검 후 환경변수로 활성화한다. |
 | PHONE 동시성 | `account_identity_guard`와 `AccountIdentityGuardService`가 가입·탈퇴에 동일 PHONE HMAC row의 안정적인 비관적 잠금을 제공한다. |
 | 인증 차단 | `JwtAuthenticationFilter`가 유효한 Access Token 요청마다 User를 PK로 조회해 최신 탈퇴 상태를 검사한다. |
 | 공개 탈퇴 API | body 없는 `DELETE /api/v1/users/me`가 `WithdrawalReason.SELF`로 기존 service를 호출하고 `COMPLETED/ACCEPTED`를 `200/202`로 반환한다. `occurredAt`은 UTC `Instant`로 노출한다. |
@@ -320,7 +320,8 @@ public LockedPendingSocialSignupSessions lockPendingForIdentity(
 - 3개월은 90일이 아니라 달력 기준이며 월말은 보정한다(예: 1월 31일 탈퇴 → 4월 30일 보관 종료).
 - 파기 대상은 `expiresAt <= now`이고 `withdrawnAt + 3개월 <= now`인 row다. 두 경계 모두 inclusive이며, 차단이 아직 유효한 row는 파기하지 않는다.
 - 동일 식별자로 재가입 후 다시 탈퇴하면 기존 row가 재사용되므로 upsert에서 `sourceUserId`와 `keyVersion`을 최신 탈퇴 기준으로 갱신한다. `expiresAt`은 단축하지 않고 `createdAt`은 row 최초 생성 시각으로 유지한다.
-- 정상 운영에서는 보관기간 종료 후 최대 약 1시간 안에 파기된다. 애플리케이션이 장기 중단되면 3개월을 넘겨 남을 수 있으나 다음 기동의 startup cleanup에서 제거한다.
+- cleanup scheduler는 기본 비활성이며 `GATHER_REJOIN_BLOCK_CLEANUP_SCHEDULER_ENABLED=true`로만 켜진다. 과거 upsert가 `sourceUserId`를 갱신하지 않아 legacy row의 기산점이 실제 탈퇴일보다 이를 수 있으므로, 운영 데이터 점검 전에는 환경변수가 누락돼도 파기가 실행되지 않아야 한다.
+- 활성화된 뒤 정상 운영에서는 보관기간 종료 후 최대 약 1시간 안에 파기된다. 애플리케이션이 장기 중단되면 3개월을 넘겨 남을 수 있으나 다음 기동의 startup cleanup에서 제거한다.
 - 이 파기가 보장하는 범위는 `AccountRejoinBlock`에 저장된 PHONE/KAKAO HMAC row에 한정된다. `account_identity_guard` 등 다른 내부 HMAC은 포함하지 않는다.
 
 `[Gather 확정 정책]` `AccountRejoinBlock`과 `AccountIdentityGuard`는 동일한 active HMAC identity와 key version을 사용한다. HMAC keyring과 previous-key lookup이 구현되기 전까지 두 기능에 사용하는 HMAC secret과 key version을 기간 제한 없이 변경하지 않는다. 서비스 운영 중 block은 계속 생성될 수 있으므로 “활성 block의 7일 동안만” 회전을 금지하는 것으로는 충분하지 않다. 준비 없이 회전하면 동일 전화번호가 새 hash로 계산되어 가입과 탈퇴가 서로 다른 guard row를 잠글 수 있고, 기존 key로 만든 block 조회도 실패해 활성 재가입 제한을 우회할 수 있다.
