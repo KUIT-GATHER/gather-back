@@ -99,6 +99,12 @@ public class User {
     @Column(name = "category", nullable = false, length = 20)
     private List<PostingCategory> interestCategories = new ArrayList<>();
 
+    @Column(nullable = false)
+    private LocalDateTime createdAt;
+
+    @Column(nullable = false)
+    private LocalDateTime updatedAt;
+
     private User(
             String name,
             LocalDate birthDate,
@@ -130,6 +136,8 @@ public class User {
         this.marketingAgreed = marketingAgreed;
         this.activityRegion = activityRegion;
         this.interestCategories = new ArrayList<>(interestCategories);
+        this.createdAt = LocalDateTime.now();
+        this.updatedAt = this.createdAt;
     }
 
     public static User create(
@@ -202,10 +210,12 @@ public class User {
             throw new IllegalStateException("이메일 로그인 계정만 비밀번호를 변경할 수 있습니다.");
         }
         this.password = encodedPassword;
+        this.updatedAt = LocalDateTime.now();
     }
 
     public void changeProfileImageKey(String profileImageKey) {
         this.profileImageKey = profileImageKey;
+        this.updatedAt = LocalDateTime.now();
     }
 
     public void requestWithdrawal(WithdrawalReason reason, LocalDateTime now) {
@@ -218,6 +228,7 @@ public class User {
 
         this.status = UserStatus.WITHDRAWAL_PENDING;
         this.withdrawalReason = reason;
+        this.updatedAt = now;
     }
 
     public void withdraw(WithdrawalReason reason, LocalDateTime now) {
@@ -231,6 +242,7 @@ public class User {
         this.status = UserStatus.WITHDRAWN;
         this.withdrawalReason = reason;
         this.withdrawnAt = now;
+        this.updatedAt = now;
     }
 
     public void completePendingWithdrawal(LocalDateTime now) {
@@ -244,6 +256,7 @@ public class User {
         requireWithdrawalTime(now);
         status = UserStatus.WITHDRAWN;
         withdrawnAt = now;
+        updatedAt = now;
     }
 
     public void anonymize(LocalDateTime now) {
@@ -274,6 +287,7 @@ public class User {
         this.activityRegion = null;
         this.interestCategories.clear();
         this.anonymizedAt = now;
+        this.updatedAt = now;
     }
 
     public boolean isWithdrawn() {
@@ -318,5 +332,6 @@ public class User {
         this.gender = gender;
         this.activityRegion = activityRegion;
         this.interestCategories = new ArrayList<>(interestCategories);
+        this.updatedAt = LocalDateTime.now();
     }
 }
