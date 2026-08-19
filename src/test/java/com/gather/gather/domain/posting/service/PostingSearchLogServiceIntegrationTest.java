@@ -7,7 +7,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 
 /**
  * {@link PostingService#getPostings}는 클래스 자체가 {@code @Transactional(readOnly = true)}라, 그 물리 트랜잭션
@@ -32,7 +32,18 @@ class PostingSearchLogServiceIntegrationTest {
     @Test
     void getPostings_persistsSearchLog_despiteReadOnlyOuterTransaction() {
         postingService.getPostings(
-                PageRequest.of(0, 20), null, null, null, null, null, null, null, KEYWORD, null);
+                Sort.by(Sort.Direction.DESC, "id"),
+                null,
+                20,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                KEYWORD,
+                null);
 
         boolean logged =
                 postingSearchLogRepository.findAll().stream()
