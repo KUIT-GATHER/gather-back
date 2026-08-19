@@ -66,7 +66,7 @@ class EmailSignupIntegrationTest {
                 EmailVerification.create(
                         EMAIL,
                         EMAIL_VERIFICATION_ID.toString(),
-                        "123456",
+                        "a".repeat(64),
                         LocalDateTime.now().plusDays(1),
                         LocalDateTime.now());
         verification.verify(LocalDateTime.now());
@@ -86,6 +86,8 @@ class EmailSignupIntegrationTest {
         assertThat(savedRefreshToken.getTokenHash()).isEqualTo(refreshTokenHash);
         assertThat(savedRefreshToken.getTokenHash()).isNotEqualTo(result.refreshToken());
         assertThat(savedRefreshToken.getUser().getId()).isEqualTo(savedUser.getId());
+        assertThat(savedUser.getCreatedAt()).isNotNull();
+        assertThat(savedUser.getUpdatedAt()).isEqualTo(savedUser.getCreatedAt());
         assertThat(result.response().accessToken()).isNotBlank();
         assertThat(result.response().tokenType()).isEqualTo("Bearer");
 

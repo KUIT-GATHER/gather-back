@@ -40,12 +40,40 @@ Authorization: Bearer <accessToken>
 
 ## 1-2️⃣ 회원가입 휴대폰 인증
 
-- 일반·카카오 회원가입 모두 먼저 `POST /api/v1/auth/phone-verifications`로 휴대폰 인증 세션을 생성합니다.
+- 일반·카카오 회원가입 모두 먼저 `POST /api/v1/auth/phone-verifications`에 `purpose: "SIGNUP"`을 보내 휴대폰 인증 세션을 생성합니다. `purpose`는 필수입니다.
 - 모바일은 응답의 `receiverNumber`와 `messageText`로 문자 앱을 열고, PC는 `POST /api/v1/auth/phone-verifications/{verificationId}/qr-code`로 받은 QR 이미지를 표시합니다.
 - 문자 전송 뒤 `POST /api/v1/auth/phone-verifications/{verificationId}/confirm`을 호출합니다. `PENDING`은 아직 확인되지 않은 정상 응답이고 `VERIFIED`가 인증 완료입니다.
 - 인증 완료 후 30분 안에 동일한 `phoneNumber`와 응답에서 받은 `verificationId`를 회원가입 body의 `phoneVerificationId`로 제출해야 합니다. 인증 결과는 한 번만 사용할 수 있습니다.
 - 인증이 없거나 ID·전화번호가 다르거나 만료·소비된 경우 `400 PHONE_VERIFICATION_REQUIRED`입니다. 요청 제한은 `429 PHONE_VERIFICATION_RATE_LIMITED`, 인증 제공자 장애는 `503 PHONE_VERIFICATION_PROVIDER_UNAVAILABLE`로 처리합니다.
-- 기존 `POST /api/v1/auth/phone-numbers/availability`는 호환용입니다. 신규 회원가입 화면에서는 별도 호출하지 않습니다.
+- 별도의 전화번호 중복확인 API는 제공하지 않습니다. `SIGNUP` 목적의 OCTOMO 인증 완료 시 서버가 중복 여부를 확인합니다.
+
+## 1-2-1️⃣ 아이디 찾기
+
+- `purpose: "FIND_ACCOUNT"`로 휴대폰 인증을 완료한 뒤 `POST /api/v1/auth/account-recoveries/email`에 `phoneVerificationId`만 보냅니다.
+- 서버는 인증 세션에 저장된 전화번호를 사용하므로 아이디 찾기 요청에 전화번호를 다시 보내지 않습니다.
+- 이메일 계정은 `loginType: "EMAIL"`과 가입 이메일을, 카카오 전용 계정은 `loginType: "KAKAO"`와 `email: null`을 반환합니다.
+- 복구 가능한 계정이 없으면 `404 ACCOUNT_NOT_FOUND`이며 이 정상 결과에서도 인증 세션은 소비됩니다.
+
+## 1-2-2️⃣ 비밀번호 찾기(재설정)
+
+- `purpose: "RESET_PASSWORD"`로 휴대폰 인증을 완료한 뒤 `POST /api/v1/auth/account-recoveries/password`에 `phoneVerificationId`만 보냅니다. 전화번호·이메일은 다시 보내지 않습니다.
+- 응답의 `passwordResetToken`은 **이때 한 번만 내려오고 10분간 유효**합니다. 재설정 화면까지 클라이언트가 보관하세요.
+- 카카오 전용 계정은 `409 PASSWORD_RESET_NOT_AVAILABLE`이므로 카카오 로그인을 안내합니다. 복구 가능한 계정이 없으면 `404 ACCOUNT_NOT_FOUND`이며, 두 결과 모두 인증 세션은 소비됩니다.
+- 이어서 `POST /api/v1/auth/account-recoveries/password/reset`에 `passwordResetToken`, `password`, `passwordConfirm`을 보냅니다. 비밀번호는 회원가입과 같은 정책(공백 없이 6~12자)이며 정책 위반은 `400 VALIDATION_ERROR`, 확인 불일치는 `400 PASSWORD_MISMATCH`입니다.
+- 재설정 성공 응답은 `data: null`이고 **새 토큰을 발급하지 않습니다.** 기존 Refresh Token은 모두 폐기되므로 로그인 화면으로 이동해 새 비밀번호로 다시 로그인시켜야 합니다.
+- `401 PASSWORD_RESET_TOKEN_INVALID`(형식 오류·없음·이미 사용·파기됨)와 `401 PASSWORD_RESET_TOKEN_EXPIRED`(10분 경과)는 모두 `RESET_PASSWORD` 본인인증부터 다시 시작시키면 됩니다.
+
+## 1-2-3️⃣ 마이페이지 로그인 유형과 비밀번호 변경
+
+- `GET /api/v1/users/me` 응답에 `loginType`이 포함됩니다. **현재 세션에서 어떤 로그인 수단을 썼는지가 아니라 계정이 가진 credential 유형**입니다.
+  - `EMAIL`: 이메일·비밀번호 credential 보유. 비밀번호 변경 UI를 노출합니다. (카카오도 함께 연결된 계정이면 `EMAIL`이 우선입니다.)
+  - `KAKAO`: 카카오 전용 계정으로 비밀번호가 없습니다. 비밀번호 변경 UI를 노출하지 않습니다.
+- `PATCH /api/v1/users/me`(프로필 수정) 응답에도 같은 `loginType`이 내려오며, 프로필 수정은 credential을 건드리지 않으므로 값이 바뀌지 않습니다.
+- 로그인 상태에서 비밀번호를 바꿀 때는 Access Token과 함께 `PATCH /api/v1/users/me/password`에 `currentPassword`, `password`, `passwordConfirm`을 보냅니다.
+  - 새 비밀번호 정책은 회원가입·재설정과 동일(공백 없이 6~12자)하며 정책 위반은 `400 VALIDATION_ERROR`, 확인 불일치는 `400 PASSWORD_MISMATCH`, 현재 비밀번호 오류는 `400 CURRENT_PASSWORD_MISMATCH`입니다. **현재 비밀번호 오류는 401이 아니므로 토큰 재발급 인터셉터를 태우지 마세요.**
+  - 카카오 전용 계정은 `409 PASSWORD_CHANGE_NOT_AVAILABLE`이며, 계정 상태에 따라 `403 SUSPENDED_USER`, `403 WITHDRAWAL_PENDING_USER`, `403 WITHDRAWN_USER`가 내려올 수 있습니다.
+- 성공 응답은 `data: null`이고 **새 Access/Refresh Token을 발급하지 않습니다.** 서버는 발급된 비밀번호 재설정 토큰과 모든 기기의 Refresh Token을 폐기하고 현재 Refresh 쿠키도 만료시킵니다.
+- 기존 Access Token은 stateless JWT라 남은 만료 시간 동안 유효할 수 있으므로, 성공 직후 **클라이언트가 Access Token을 삭제하고 로그인 화면으로 이동해 새 비밀번호로 다시 로그인**시켜야 합니다.
 
 ## 1-3️⃣ 이메일 회원가입 자동 로그인과 프로필 이미지
 

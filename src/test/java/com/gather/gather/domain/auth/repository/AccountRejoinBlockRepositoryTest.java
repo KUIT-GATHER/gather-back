@@ -264,6 +264,50 @@ class AccountRejoinBlockRepositoryTest {
     }
 
     @Test
+    void upsertExtendingExpiration_refreshesSourceUserAndKeyVersionOnRejoinedWithdrawal() {
+        User first = transactionTemplate().execute(status -> saveUser());
+        User second = transactionTemplate().execute(status -> saveUser());
+        String identifierHash = hash();
+
+        transactionTemplate()
+                .executeWithoutResult(
+                        status ->
+                                accountRejoinBlockRepository.upsertExtendingExpiration(
+                                        "PHONE",
+                                        identifierHash,
+                                        1,
+                                        NOW.plusDays(7),
+                                        first.getId(),
+                                        NOW));
+        transactionTemplate()
+                .executeWithoutResult(
+                        status ->
+                                accountRejoinBlockRepository.upsertExtendingExpiration(
+                                        "PHONE",
+                                        identifierHash,
+                                        2,
+                                        NOW.plusMonths(1).plusDays(7),
+                                        second.getId(),
+                                        NOW.plusMonths(1)));
+
+        AccountRejoinBlock found =
+                transactionTemplate()
+                        .execute(
+                                status ->
+                                        accountRejoinBlockRepository
+                                                .findByIdentifierTypeAndIdentifierHash(
+                                                        AccountRejoinBlockIdentifierType.PHONE,
+                                                        identifierHash)
+                                                .orElseThrow());
+        blockIds.add(found.getId());
+
+        assertThat(found.getSourceUserId()).isEqualTo(second.getId());
+        assertThat(found.getKeyVersion()).isEqualTo(2);
+        assertThat(found.getExpiresAt()).isEqualTo(NOW.plusMonths(1).plusDays(7));
+        assertThat(found.getCreatedAt()).isEqualTo(NOW);
+    }
+
+    @Test
     void activeLookup_allowsAtExactExpiration() {
         Fixture fixture = createFixture(AccountRejoinBlockIdentifierType.PHONE, hash());
 

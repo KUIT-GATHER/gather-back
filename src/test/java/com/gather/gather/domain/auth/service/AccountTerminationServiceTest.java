@@ -23,6 +23,7 @@ import com.gather.gather.domain.auth.kakao.service.LockedPendingSocialSignupSess
 import com.gather.gather.domain.auth.kakao.service.SocialSignupSessionService;
 import com.gather.gather.domain.auth.repository.EmailVerificationRepository;
 import com.gather.gather.domain.auth.repository.KakaoUnlinkTaskRepository;
+import com.gather.gather.domain.auth.repository.PasswordResetTokenRepository;
 import com.gather.gather.domain.auth.repository.RefreshTokenRepository;
 import com.gather.gather.domain.auth.repository.SocialAccountIdentitySnapshot;
 import com.gather.gather.domain.auth.repository.SocialAccountRepository;
@@ -62,6 +63,7 @@ class AccountTerminationServiceTest {
     @Mock private AccountRejoinBlockService rejoinBlockService;
     @Mock private AccountIdentityGuardService identityGuardService;
     @Mock private RefreshTokenRepository refreshTokenRepository;
+    @Mock private PasswordResetTokenRepository passwordResetTokenRepository;
     @Mock private EmailVerificationRepository emailVerificationRepository;
     @Mock private KakaoUnlinkTaskRepository unlinkTaskRepository;
     @Mock private ProfileImageDeletionService profileImageDeletionService;
@@ -79,6 +81,7 @@ class AccountTerminationServiceTest {
                         rejoinBlockService,
                         identityGuardService,
                         refreshTokenRepository,
+                        passwordResetTokenRepository,
                         emailVerificationRepository,
                         unlinkTaskRepository,
                         profileImageDeletionService,

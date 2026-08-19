@@ -1,0 +1,13 @@
+package com.gather.gather.domain.auth.entity;
+
+public enum KakaoUnlinkAlertType {
+    WORKER_CONFIGURATION_BLOCKED,
+    DEAD_TASK,
+    DEAD_TASK_SUMMARY,
+    OVERDUE_PENDING,
+    EXPIRED_PROCESSING,
+    WORKER_HEARTBEAT_MISSED,
+    BACKLOG_ACCUMULATION,
+    STATE_INVARIANT_VIOLATION,
+    SYNTHETIC_TEST
+}

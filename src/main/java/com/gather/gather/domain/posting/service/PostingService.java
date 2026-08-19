@@ -20,11 +20,11 @@ import com.gather.gather.domain.posting.repository.PostingMapRow;
 import com.gather.gather.domain.posting.repository.PostingParticipationRepository;
 import com.gather.gather.domain.posting.repository.PostingRepository;
 import com.gather.gather.domain.posting.repository.UnifiedPostingQueryRepository;
-import com.gather.gather.domain.posting.repository.UnifiedPostingQueryRepository.SearchResult;
+import com.gather.gather.domain.posting.repository.UnifiedPostingQueryRepository.CursorSearchResult;
 import com.gather.gather.domain.posting.repository.UnifiedPostingRow;
 import com.gather.gather.domain.region.entity.Region;
 import com.gather.gather.domain.region.repository.RegionRepository;
-import com.gather.gather.global.common.PageResponse;
+import com.gather.gather.global.common.CursorPageResponse;
 import com.gather.gather.global.exception.BusinessException;
 import com.gather.gather.global.exception.ErrorCode;
 import com.gather.gather.global.util.SecurityUtil;
@@ -41,7 +41,6 @@ import java.util.Set;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -50,6 +49,12 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 @RequiredArgsConstructor
 public class PostingService {
+
+    /** 클라이언트가 size를 지정하지 않았을 때(0 이하 포함) 쓰는 기본 페이지 크기. */
+    private static final int DEFAULT_PAGE_SIZE = 20;
+
+    /** 한 번에 가져올 수 있는 최대 페이지 크기. 과도한 size 요청으로 UNION 쿼리 비용이 커지는 것을 막는다. */
+    private static final int MAX_PAGE_SIZE = 100;
 
     private final PostingRepository postingRepository;
     private final PostingLocationRepository postingLocationRepository;
@@ -65,7 +70,14 @@ public class PostingService {
     private final PostingApplicationUrlResolver postingApplicationUrlResolver;
 
     /**
-     * 앱 전체 봉사공고 목록(#9). 기존 봉사공고와 external=true인 모임 모집공고를 하나의 페이지네이션·정렬 안에서 함께 반환한다.
+     * 앱 전체 봉사공고 목록(#9, 무한스크롤). 기존 봉사공고와 external=true인 모임 모집공고를 하나의 정렬 안에서 함께 반환한다.
+     *
+     * <p>키셋(커서) 페이지네이션을 쓴다 — {@code cursor}가 null/blank면 첫 페이지를, 값이 있으면 이전 응답의 {@code nextCursor}를
+     * 그대로 넘겨 그 다음 페이지를 조회한다. 총 개수(totalElements)는 내려주지 않는다(무한스크롤에 불필요하고, 계산하려면 별도 COUNT 쿼리가 필요해 키셋
+     * 페이지네이션의 성능 이점이 사라진다).
+     *
+     * <p>커서는 조회 당시의 {@code sort}(및 우선순위 버킷에 영향을 주는 {@code status})에 종속적이다. 스크롤 세션 도중 sort를 바꾸면서 이전
+     * 커서를 재사용하면 {@link ErrorCode#VALIDATION_ERROR}가 발생한다 — 클라이언트는 정렬을 바꿀 때 커서 없이 처음부터 다시 조회해야 한다.
      *
      * <p>noticeStartDate/noticeEndDate 필터는 기존 봉사공고에만 적용된다(모집공고에는 대응 개념이 없어 항상 포함).
      *
@@ -75,8 +87,10 @@ public class PostingService {
      * activityStartAt/activityEndAt 기준이다.
      */
     @Transactional(readOnly = true)
-    public PageResponse<PostingListItem> getPostings(
-            Pageable pageable,
+    public CursorPageResponse<PostingListItem> getPostings(
+            Sort sort,
+            String cursor,
+            int size,
             Long regionId,
             Long regionGroupId,
             PostingStatus status,
@@ -86,11 +100,12 @@ public class PostingService {
             LocalDate activityEndDate,
             String keyword,
             PostingCategory category) {
-        validateSort(pageable.getSort());
+        validateSort(sort);
         validateActivityDateRange(activityStartDate, activityEndDate);
         List<Long> regionIds = resolveRegionIds(regionId, regionGroupId);
+        int pageSize = resolvePageSize(size);
 
-        SearchResult result =
+        CursorSearchResult result =
                 unifiedPostingQueryRepository.search(
                         status,
                         regionIds,
@@ -100,18 +115,14 @@ public class PostingService {
                         activityEndDate,
                         keyword,
                         category,
-                        pageable);
+                        sort,
+                        cursor,
+                        pageSize);
 
         logSearchKeywordSafely(keyword);
 
         List<PostingListItem> items = toListItems(result.rows());
-        long totalElements = result.totalElements();
-        int totalPages =
-                pageable.getPageSize() == 0
-                        ? 0
-                        : (int) Math.ceil((double) totalElements / pageable.getPageSize());
-        return new PageResponse<>(
-                items, totalElements, totalPages, pageable.getPageNumber(), pageable.getPageSize());
+        return new CursorPageResponse<>(items, result.nextCursor(), result.hasNext());
     }
 
     @Transactional(readOnly = true)
@@ -276,6 +287,14 @@ public class PostingService {
                 throw new BusinessException(ErrorCode.VALIDATION_ERROR);
             }
         }
+    }
+
+    /** size 미지정(0 이하)이면 기본값을, 상한을 넘으면 최대값을 쓴다 — 잘못된 size로 400을 내지 않고 안전하게 보정한다. */
+    private int resolvePageSize(int size) {
+        if (size <= 0) {
+            return DEFAULT_PAGE_SIZE;
+        }
+        return Math.min(size, MAX_PAGE_SIZE);
     }
 
     /** 활동일 필터 시작일이 종료일보다 늦으면 잘못된 요청이다(둘 다 지정된 경우에만 검증). 목록·지도 조회 둘 다 사용한다. */

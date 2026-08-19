@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.when;
 
 import com.gather.gather.domain.auth.entity.PhoneVerification;
+import com.gather.gather.domain.auth.entity.PhoneVerificationPurpose;
 import com.gather.gather.domain.auth.repository.PhoneVerificationRepository;
 import com.gather.gather.global.exception.BusinessException;
 import com.gather.gather.global.exception.ErrorCode;
@@ -82,11 +83,32 @@ class PhoneVerificationRequirementServiceTest {
         assertRequired(() -> service.consumeForSignup(VERIFICATION_ID, "01012345678"));
     }
 
+    @Test
+    @DisplayName("회원가입은 다른 목적의 인증 결과를 소비할 수 없다")
+    void consumeForSignup_rejectsPurposeMismatch() {
+        PhoneVerification verification =
+                verifiedAt(NOW.minusMinutes(1), PhoneVerificationPurpose.FIND_ACCOUNT);
+        stubVerification(verification);
+
+        assertThatThrownBy(() -> service.consumeForSignup(VERIFICATION_ID, "01012345678"))
+                .isInstanceOfSatisfying(
+                        BusinessException.class,
+                        exception ->
+                                assertThat(exception.getErrorCode())
+                                        .isEqualTo(ErrorCode.PHONE_VERIFICATION_PURPOSE_MISMATCH));
+    }
+
     private PhoneVerification verifiedAt(LocalDateTime verifiedAt) {
+        return verifiedAt(verifiedAt, PhoneVerificationPurpose.SIGNUP);
+    }
+
+    private PhoneVerification verifiedAt(
+            LocalDateTime verifiedAt, PhoneVerificationPurpose purpose) {
         PhoneVerification verification =
                 PhoneVerification.create(
                         VERIFICATION_ID.toString(),
                         "01012345678",
+                        purpose,
                         "GATHER-7F2K9Q8M4P",
                         verifiedAt.plusMinutes(5),
                         verifiedAt.minusMinutes(1));

@@ -50,7 +50,13 @@ class PhoneVerificationControllerTest {
         mockMvc.perform(
                         post("/api/v1/auth/phone-verifications")
                                 .contentType(MediaType.APPLICATION_JSON)
-                                .content("{\"phoneNumber\":\"010-1234-5678\"}"))
+                                .content(
+                                        """
+                                        {
+                                          "phoneNumber": "010-1234-5678",
+                                          "purpose": "SIGNUP"
+                                        }
+                                        """))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.verificationId").value(VERIFICATION_ID))
@@ -65,7 +71,39 @@ class PhoneVerificationControllerTest {
         mockMvc.perform(
                         post("/api/v1/auth/phone-verifications")
                                 .contentType(MediaType.APPLICATION_JSON)
-                                .content("{\"phoneNumber\":\"\"}"))
+                                .content("{\"phoneNumber\":\"\",\"purpose\":\"SIGNUP\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("VALIDATION_ERROR"));
+
+        verifyNoInteractions(phoneVerificationService);
+    }
+
+    @Test
+    @DisplayName("인증 목적이 누락되면 서비스 호출 전에 400으로 거부한다")
+    void start_rejectsMissingPurpose() throws Exception {
+        mockMvc.perform(
+                        post("/api/v1/auth/phone-verifications")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("{\"phoneNumber\":\"01012345678\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("VALIDATION_ERROR"));
+
+        verifyNoInteractions(phoneVerificationService);
+    }
+
+    @Test
+    @DisplayName("지원하지 않는 인증 목적은 서비스 호출 전에 400으로 거부한다")
+    void start_rejectsUnsupportedPurpose() throws Exception {
+        mockMvc.perform(
+                        post("/api/v1/auth/phone-verifications")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(
+                                        """
+                                        {
+                                          "phoneNumber": "01012345678",
+                                          "purpose": "LOGIN"
+                                        }
+                                        """))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error.code").value("VALIDATION_ERROR"));
 

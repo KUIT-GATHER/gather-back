@@ -3,6 +3,7 @@ package com.gather.gather.domain.auth.service;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.gather.gather.domain.auth.dto.PhoneVerificationStartRequest;
+import com.gather.gather.domain.auth.entity.PhoneVerificationPurpose;
 import com.gather.gather.global.exception.BusinessException;
 import com.gather.gather.global.exception.ErrorCode;
 import java.util.Arrays;
@@ -77,7 +78,9 @@ class PhoneVerificationStartConcurrencyIntegrationTest {
         ready.countDown();
         start.await();
         try {
-            phoneVerificationService.start(new PhoneVerificationStartRequest(phoneNumber));
+            phoneVerificationService.start(
+                    new PhoneVerificationStartRequest(
+                            phoneNumber, PhoneVerificationPurpose.SIGNUP));
             return StartOutcome.succeeded();
         } catch (BusinessException exception) {
             return StartOutcome.failed(exception.getErrorCode());

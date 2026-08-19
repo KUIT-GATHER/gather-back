@@ -9,6 +9,10 @@ spring:
     name: gather
   profiles:
     active: local           # application-local.yml(DB 접속 정보)이 로드되도록 유지
+  datasource:
+    hikari:
+      maximum-pool-size: 4
+      minimum-idle: 1
   jpa:
     hibernate:
       ddl-auto: validate
@@ -60,9 +64,19 @@ gather:
       cleanup-fixed-delay-milliseconds: 3600000
       cleanup-scheduler-enabled: false
   auth:
+    phone-verification:
+      cleanup-scheduler-enabled: false
+    password-reset:
+      cleanup-scheduler-enabled: false
+    email-verification:
+      cleanup-scheduler-enabled: false
+    rejoin-block:
+      cleanup-scheduler-enabled: false
     rejoin-block-hmac:
       secret: Z2F0aGVyLXRlc3QtcmVqb2luLWJsb2NrLWhtYWMtc2VjcmV0LTIwMjYtMDctMjk=
       key-version: 1
+    email-verification-hmac:
+      secret: Z2F0aGVyLXRlc3QtZW1haWwtdmVyaWZpY2F0aW9uLWhtYWMtc2VjcmV0LTIwMjYtMDgtMTg=
     social-account-encryption:
       key: Z2F0aGVyLXRlc3Qtc29jaWFsLWFjY291bnQta2V5ISE=
       key-version: 1

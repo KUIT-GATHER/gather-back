@@ -42,6 +42,7 @@ class EmailVerificationSendIntegrationTest {
 
     @Autowired private AuthService authService;
     @Autowired private EmailVerificationRepository emailVerificationRepository;
+    @Autowired private EmailVerificationCodeHasher emailVerificationCodeHasher;
     @MockitoBean private EmailSender emailSender;
 
     @BeforeEach
@@ -135,7 +136,11 @@ class EmailVerificationSendIntegrationTest {
         String oldVerificationId = UUID.randomUUID().toString();
         EmailVerification existing =
                 EmailVerification.create(
-                        EMAIL, oldVerificationId, "123456", oldExpiresAt, oldCreatedAt);
+                        EMAIL,
+                        oldVerificationId,
+                        emailVerificationCodeHasher.hash(oldVerificationId, "123456"),
+                        oldExpiresAt,
+                        oldCreatedAt);
         existing.verify(oldVerifiedAt);
         existing.consume(oldConsumedAt);
         existing.increaseAttempt();
@@ -165,7 +170,14 @@ class EmailVerificationSendIntegrationTest {
 
         EmailVerification restored = emailVerificationRepository.findByEmail(EMAIL).orElseThrow();
         assertThat(restored.getVerificationId()).isEqualTo(oldVerificationId);
-        assertThat(restored.getCode()).isEqualTo("123456");
+        // verificationId와 codeHash는 HMAC 메시지로 묶여 있어, 둘 다 복원돼야 이전 코드가 다시 통한다.
+        assertThat(restored.getCodeHash())
+                .isEqualTo(emailVerificationCodeHasher.hash(oldVerificationId, "123456"));
+        assertThat(restored.getCode()).isEmpty();
+        assertThat(
+                        emailVerificationCodeHasher.verify(
+                                restored.getVerificationId(), "123456", restored.getCodeHash()))
+                .isTrue();
         assertThat(restored.isVerified()).isTrue();
         assertThat(restored.getExpiresAt()).isEqualTo(oldExpiresAt);
         assertThat(restored.getVerifiedAt()).isEqualTo(oldVerifiedAt);

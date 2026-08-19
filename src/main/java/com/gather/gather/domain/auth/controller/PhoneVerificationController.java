@@ -34,7 +34,7 @@ public class PhoneVerificationController {
 
     @Operation(
             summary = "휴대폰 문자 인증 시작",
-            description = "인증 세션을 만들고 모바일 문자 앱 호출에 필요한 대표번호와 문자 원문을 반환합니다.")
+            description = "인증 목적이 저장된 세션을 만들고 모바일 문자 앱 호출에 필요한 대표번호와 문자 원문을 반환합니다.")
     @ApiResponses({
         @io.swagger.v3.oas.annotations.responses.ApiResponse(
                 responseCode = "201",
@@ -59,7 +59,7 @@ public class PhoneVerificationController {
                                                         """))),
         @io.swagger.v3.oas.annotations.responses.ApiResponse(
                 responseCode = "400",
-                description = "010으로 시작하는 11자리 휴대폰 번호가 아님",
+                description = "전화번호 또는 인증 목적이 올바르지 않음",
                 content =
                         @Content(
                                 mediaType = JSON,

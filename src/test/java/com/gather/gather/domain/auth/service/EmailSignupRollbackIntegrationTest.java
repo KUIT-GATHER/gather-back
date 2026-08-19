@@ -3,13 +3,17 @@ package com.gather.gather.domain.auth.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.reset;
 import static org.mockito.Mockito.when;
 
 import com.gather.gather.domain.auth.dto.SignupRequest;
 import com.gather.gather.domain.auth.entity.EmailVerification;
 import com.gather.gather.domain.auth.entity.Gender;
 import com.gather.gather.domain.auth.entity.PhoneVerification;
+import com.gather.gather.domain.auth.entity.PhoneVerificationPurpose;
 import com.gather.gather.domain.auth.entity.RefreshToken;
+import com.gather.gather.domain.auth.entity.User;
 import com.gather.gather.domain.auth.repository.EmailVerificationRepository;
 import com.gather.gather.domain.auth.repository.PhoneVerificationRepository;
 import com.gather.gather.domain.auth.repository.RefreshTokenRepository;
@@ -17,6 +21,8 @@ import com.gather.gather.domain.auth.repository.UserRepository;
 import com.gather.gather.domain.posting.entity.PostingCategory;
 import com.gather.gather.domain.region.entity.Region;
 import com.gather.gather.domain.region.repository.RegionRepository;
+import com.gather.gather.global.exception.BusinessException;
+import com.gather.gather.global.exception.ErrorCode;
 import java.time.Clock;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -31,6 +37,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
@@ -49,10 +56,12 @@ class EmailSignupRollbackIntegrationTest {
     @Autowired private JdbcTemplate jdbcTemplate;
     @Autowired private Clock clock;
     @MockitoBean private RefreshTokenRepository refreshTokenRepository;
+    @MockitoSpyBean private SignupValidator signupValidator;
 
     private Long activityRegionId;
     private UUID phoneVerificationId;
     private UUID emailVerificationId;
+    private Long conflictingUserId;
 
     @BeforeEach
     void setUp() {
@@ -74,7 +83,7 @@ class EmailSignupRollbackIntegrationTest {
                                     EmailVerification.create(
                                             EMAIL,
                                             emailVerificationId.toString(),
-                                            "123456",
+                                            "a".repeat(64),
                                             now.plusDays(1),
                                             now);
                             verification.verify(now);
@@ -83,6 +92,7 @@ class EmailSignupRollbackIntegrationTest {
                                     PhoneVerification.create(
                                             phoneVerificationId.toString(),
                                             PHONE_NUMBER,
+                                            PhoneVerificationPurpose.SIGNUP,
                                             "GATHER-ROLLBACK01",
                                             now.plusMinutes(5),
                                             now.minusMinutes(1));
@@ -97,6 +107,9 @@ class EmailSignupRollbackIntegrationTest {
         transactionTemplate()
                 .executeWithoutResult(
                         status -> {
+                            if (conflictingUserId != null) {
+                                userRepository.deleteById(conflictingUserId);
+                            }
                             userRepository.findByEmail(EMAIL).ifPresent(userRepository::delete);
                             emailVerificationRepository.deleteAllByEmail(EMAIL);
                             phoneVerificationRepository
@@ -141,18 +154,83 @@ class EmailSignupRollbackIntegrationTest {
         authService.signup(signupRequest());
 
         assertThat(userRepository.findByEmail(EMAIL)).isPresent();
-        assertThat(
-                        emailVerificationRepository
-                                .findByVerificationId(emailVerificationId.toString())
-                                .orElseThrow()
-                                .getConsumedAt())
-                .isNotNull();
+        assertThat(emailVerificationRepository.findByVerificationId(emailVerificationId.toString()))
+                .isEmpty();
         assertThat(
                         phoneVerificationRepository
                                 .findByVerificationId(phoneVerificationId.toString())
                                 .orElseThrow()
                                 .getConsumedAt())
                 .isNotNull();
+    }
+
+    @Test
+    @DisplayName("User 저장 unique 제약 실패는 이메일 인증 DELETE를 rollback하고 같은 ID 재시도를 허용한다")
+    void signup_whenUserSaveFails_rollsBackEmailVerificationAndAllowsRetry() {
+        doAnswer(
+                        invocation -> {
+                            createCommittedNicknameConflict();
+                            return invocation.callRealMethod();
+                        })
+                .when(signupValidator)
+                .findActivityRegion(activityRegionId);
+
+        assertThatThrownBy(() -> authService.signup(signupRequest()))
+                .isInstanceOfSatisfying(
+                        BusinessException.class,
+                        exception ->
+                                assertThat(exception.getErrorCode())
+                                        .isEqualTo(ErrorCode.DUPLICATE_NICKNAME));
+
+        assertThat(userRepository.findByEmail(EMAIL)).isEmpty();
+        assertThat(emailVerificationRepository.findByVerificationId(emailVerificationId.toString()))
+                .isPresent();
+        assertThat(
+                        phoneVerificationRepository
+                                .findByVerificationId(phoneVerificationId.toString())
+                                .orElseThrow()
+                                .getConsumedAt())
+                .isNull();
+
+        transactionTemplate()
+                .executeWithoutResult(status -> userRepository.deleteById(conflictingUserId));
+        conflictingUserId = null;
+        reset(signupValidator);
+
+        authService.signup(signupRequest());
+
+        assertThat(userRepository.findByEmail(EMAIL)).isPresent();
+        assertThat(emailVerificationRepository.findByVerificationId(emailVerificationId.toString()))
+                .isEmpty();
+    }
+
+    private void createCommittedNicknameConflict() {
+        conflictingUserId =
+                transactionTemplate()
+                        .execute(
+                                status -> {
+                                    Region activityRegion =
+                                            regionRepository
+                                                    .findById(activityRegionId)
+                                                    .orElseThrow();
+                                    User conflictingUser =
+                                            userRepository.saveAndFlush(
+                                                    User.create(
+                                                            "충돌회원",
+                                                            LocalDate.of(2001, 1, 2),
+                                                            Gender.MALE,
+                                                            "01095550003",
+                                                            "email-signup-conflict@example.com",
+                                                            "encoded-password",
+                                                            "롤백검증",
+                                                            null,
+                                                            true,
+                                                            true,
+                                                            false,
+                                                            activityRegion,
+                                                            List.of(PostingCategory.WELFARE)));
+                                    return conflictingUser.getId();
+                                });
     }
 
     private SignupRequest signupRequest() {

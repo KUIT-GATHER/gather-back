@@ -25,11 +25,21 @@ public enum ErrorCode {
     PHONE_VERIFICATION_NOT_FOUND(HttpStatus.NOT_FOUND, "휴대폰 인증 요청을 찾을 수 없습니다."),
     PHONE_VERIFICATION_EXPIRED(HttpStatus.BAD_REQUEST, "휴대폰 인증 요청이 만료되었습니다."),
     PHONE_VERIFICATION_REQUIRED(HttpStatus.BAD_REQUEST, "휴대폰 인증이 필요합니다."),
+    PHONE_VERIFICATION_PURPOSE_MISMATCH(HttpStatus.BAD_REQUEST, "휴대폰 인증 목적이 올바르지 않습니다."),
     PHONE_VERIFICATION_PROVIDER_UNAVAILABLE(
             HttpStatus.SERVICE_UNAVAILABLE, "휴대폰 인증 서비스를 일시적으로 사용할 수 없습니다."),
     PHONE_VERIFICATION_RATE_LIMITED(
             HttpStatus.TOO_MANY_REQUESTS, "휴대폰 인증 요청이 많습니다. 잠시 후 다시 시도해주세요."),
     PASSWORD_MISMATCH(HttpStatus.BAD_REQUEST, "비밀번호가 일치하지 않습니다."),
+    // 이미 인증된 사용자의 입력값 오류이므로 INVALID_LOGIN(401)이 아닌 400을 쓴다.
+    CURRENT_PASSWORD_MISMATCH(HttpStatus.BAD_REQUEST, "현재 비밀번호가 올바르지 않습니다."),
+    PASSWORD_CHANGE_NOT_AVAILABLE(HttpStatus.CONFLICT, "비밀번호 변경을 지원하지 않는 계정입니다."),
+    PASSWORD_RESET_NOT_AVAILABLE(HttpStatus.CONFLICT, "비밀번호 재설정을 지원하지 않는 계정입니다."),
+    // 비밀번호 재설정 전용 토큰. access/refresh 토큰 코드와 구분하기 위해 PASSWORD_RESET_TOKEN_ 접두사를 쓴다.
+    PASSWORD_RESET_TOKEN_INVALID(
+            HttpStatus.UNAUTHORIZED, "유효하지 않은 비밀번호 재설정 요청입니다. 본인인증부터 다시 진행해주세요."),
+    PASSWORD_RESET_TOKEN_EXPIRED(
+            HttpStatus.UNAUTHORIZED, "비밀번호 재설정 요청이 만료되었습니다. 본인인증부터 다시 진행해주세요."),
     REQUIRED_TERMS_NOT_AGREED(HttpStatus.BAD_REQUEST, "필수 약관 동의가 필요합니다."),
     INVALID_ACTIVITY_REGION(HttpStatus.BAD_REQUEST, "활동 지역은 시도 또는 시군구 단위로 1개 선택해야 합니다."),
     INVALID_INTEREST_CATEGORY_COUNT(HttpStatus.BAD_REQUEST, "관심 카테고리는 중복 없이 1개 이상 선택해야 합니다."),
@@ -40,6 +50,7 @@ public enum ErrorCode {
     WITHDRAWAL_PENDING_USER(HttpStatus.FORBIDDEN, "탈퇴 처리 중인 계정입니다."),
     WITHDRAWN_USER(HttpStatus.FORBIDDEN, "탈퇴한 계정입니다."),
     ACCOUNT_REJOIN_BLOCKED(HttpStatus.CONFLICT, "탈퇴 후 7일 동안 재가입할 수 없습니다."),
+    ACCOUNT_NOT_FOUND(HttpStatus.NOT_FOUND, "계정을 찾을 수 없습니다."),
     ACCOUNT_TERMINATION_STATE_CONFLICT(HttpStatus.CONFLICT, "계정 탈퇴 상태가 올바르지 않습니다."),
     INVALID_TOKEN(HttpStatus.UNAUTHORIZED, "유효하지 않은 토큰입니다."),
     EXPIRED_TOKEN(HttpStatus.UNAUTHORIZED, "만료된 토큰입니다."),

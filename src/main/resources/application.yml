@@ -82,6 +82,17 @@ gather:
       confirm-max-attempts: ${GATHER_PHONE_VERIFICATION_CONFIRM_MAX_ATTEMPTS:30}
       qr-cooldown: ${GATHER_PHONE_VERIFICATION_QR_COOLDOWN:10s}
       qr-max-attempts: ${GATHER_PHONE_VERIFICATION_QR_MAX_ATTEMPTS:3}
+      cleanup-scheduler-enabled: ${GATHER_PHONE_VERIFICATION_CLEANUP_SCHEDULER_ENABLED:true}
+      cleanup-fixed-delay: ${GATHER_PHONE_VERIFICATION_CLEANUP_FIXED_DELAY:1h}
+      cleanup-initial-delay: ${GATHER_PHONE_VERIFICATION_CLEANUP_INITIAL_DELAY:1h}
+    email-verification:
+      cleanup-scheduler-enabled: ${GATHER_EMAIL_VERIFICATION_CLEANUP_SCHEDULER_ENABLED:true}
+      cleanup-fixed-delay: ${GATHER_EMAIL_VERIFICATION_CLEANUP_FIXED_DELAY:1h}
+      cleanup-initial-delay: ${GATHER_EMAIL_VERIFICATION_CLEANUP_INITIAL_DELAY:1h}
+    rejoin-block:
+      cleanup-scheduler-enabled: ${GATHER_REJOIN_BLOCK_CLEANUP_SCHEDULER_ENABLED:false}
+      cleanup-fixed-delay: ${GATHER_REJOIN_BLOCK_CLEANUP_FIXED_DELAY:1h}
+      cleanup-initial-delay: ${GATHER_REJOIN_BLOCK_CLEANUP_INITIAL_DELAY:1h}
     refresh-cookie:
       name: gather_refresh_token
       secure: ${GATHER_REFRESH_COOKIE_SECURE:false}

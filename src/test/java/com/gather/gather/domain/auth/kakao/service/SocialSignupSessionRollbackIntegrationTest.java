@@ -7,6 +7,7 @@ import static org.mockito.Mockito.when;
 
 import com.gather.gather.domain.auth.entity.Gender;
 import com.gather.gather.domain.auth.entity.PhoneVerification;
+import com.gather.gather.domain.auth.entity.PhoneVerificationPurpose;
 import com.gather.gather.domain.auth.entity.RefreshToken;
 import com.gather.gather.domain.auth.entity.SocialProvider;
 import com.gather.gather.domain.auth.entity.SocialSignupSession;
@@ -76,6 +77,7 @@ class SocialSignupSessionRollbackIntegrationTest {
                                     PhoneVerification.create(
                                             phoneVerificationId.toString(),
                                             PHONE_NUMBER,
+                                            PhoneVerificationPurpose.SIGNUP,
                                             "GATHER-KAKAORB01",
                                             now.plusMinutes(5),
                                             now.minusMinutes(1));

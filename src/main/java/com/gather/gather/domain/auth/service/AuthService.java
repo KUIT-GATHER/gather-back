@@ -5,8 +5,6 @@ import com.gather.gather.domain.auth.dto.EmailVerificationConfirmResponse;
 import com.gather.gather.domain.auth.dto.EmailVerificationSendRequest;
 import com.gather.gather.domain.auth.dto.EmailVerificationSendResponse;
 import com.gather.gather.domain.auth.dto.LoginRequest;
-import com.gather.gather.domain.auth.dto.PhoneNumberAvailabilityRequest;
-import com.gather.gather.domain.auth.dto.PhoneNumberAvailabilityResponse;
 import com.gather.gather.domain.auth.dto.SignupRequest;
 import com.gather.gather.domain.auth.dto.SignupResponse;
 import com.gather.gather.domain.auth.entity.EmailVerification;
@@ -55,12 +53,13 @@ public class AuthService {
     private final EmailSender emailSender;
     private final TokenProvider tokenProvider;
     private final TokenIssuer tokenIssuer;
-    private final LockedTokenIssuanceService lockedTokenIssuanceService;
     private final SignupValidator signupValidator;
+    private final PasswordPolicy passwordPolicy;
     private final LoginPolicy loginPolicy;
     private final AccountRejoinBlockService accountRejoinBlockService;
     private final AccountIdentityGuardService accountIdentityGuardService;
     private final EmailVerificationRequirementService emailVerificationRequirementService;
+    private final EmailVerificationCodeHasher emailVerificationCodeHasher;
     private final PhoneVerificationRequirementService phoneVerificationRequirementService;
     private final Clock clock;
     private final SecureRandom secureRandom = new SecureRandom();
@@ -76,6 +75,8 @@ public class AuthService {
         LocalDateTime now = LocalDateTime.now(clock);
         String verificationId = UUID.randomUUID().toString();
         String code = generateVerificationCode();
+        // 평문 코드는 메일 발송 인자로만 쓰고, 저장은 verificationId에 묶인 HMAC으로만 한다.
+        String codeHash = emailVerificationCodeHasher.hash(verificationId, code);
         LocalDateTime expiresAt = now.plusMinutes(EMAIL_VERIFICATION_EXPIRATION_MINUTES);
 
         EmailVerification emailVerification = null;
@@ -88,7 +89,7 @@ public class AuthService {
         EmailVerificationState previousState = null;
         if (emailVerification == null) {
             emailVerification =
-                    EmailVerification.create(email, verificationId, code, expiresAt, now);
+                    EmailVerification.create(email, verificationId, codeHash, expiresAt, now);
             try {
                 emailVerificationRepository.saveAndFlush(emailVerification);
             } catch (DataIntegrityViolationException exception) {
@@ -104,8 +105,13 @@ public class AuthService {
             if (emailVerification.dailySendCountAsOf(now.toLocalDate()) >= EMAIL_DAILY_SEND_LIMIT) {
                 throw new BusinessException(ErrorCode.EMAIL_SEND_LIMIT_EXCEEDED);
             }
-            previousState = EmailVerificationState.from(emailVerification);
-            emailVerification.refresh(verificationId, code, expiresAt, now);
+            // 구 버전 JAR이 남긴 평문 상태는 복구 대상이 아니다. 스냅샷을 남기지 않으면 발송 실패 시
+            // 복원 대신 이번 발송 세대 삭제로 처리되어, 평문 코드가 되살아나지 않는다.
+            previousState =
+                    emailVerification.isLegacyFormat()
+                            ? null
+                            : EmailVerificationState.from(emailVerification);
+            emailVerification.refresh(verificationId, codeHash, expiresAt, now);
             emailVerificationRepository.saveAndFlush(emailVerification);
         }
 
@@ -141,13 +147,21 @@ public class AuthService {
                                                 ErrorCode.EMAIL_VERIFICATION_NOT_FOUND));
 
         LocalDateTime now = LocalDateTime.now(clock);
+        // 구 버전 JAR이 남긴 평문 행은 기동 시점 purge 전에도 요청을 받을 수 있으므로 요청 경로에서 막는다.
+        // 시도 횟수를 소모시키지 않고, 재발송을 유도하도록 인증 요청이 없는 것과 같은 응답을 준다.
+        if (emailVerification.isLegacyFormat()) {
+            throw new BusinessException(ErrorCode.EMAIL_VERIFICATION_NOT_FOUND);
+        }
         if (emailVerification.isExpired(now)) {
             throw new BusinessException(ErrorCode.EXPIRED_VERIFICATION_CODE);
         }
         if (emailVerification.isAttemptExceeded(EMAIL_MAX_VERIFICATION_ATTEMPTS)) {
             throw new BusinessException(ErrorCode.EMAIL_VERIFICATION_ATTEMPTS_EXCEEDED);
         }
-        if (!emailVerification.getCode().equals(request.code())) {
+        if (!emailVerificationCodeHasher.verify(
+                emailVerification.getVerificationId(),
+                request.code(),
+                emailVerification.getCodeHash())) {
             emailVerification.increaseAttempt();
             if (emailVerification.isAttemptExceeded(EMAIL_MAX_VERIFICATION_ATTEMPTS)) {
                 throw new EmailVerificationAttemptFailureException(
@@ -159,17 +173,6 @@ public class AuthService {
         emailVerification.verify(now);
         return new EmailVerificationConfirmResponse(
                 email, true, now, UUID.fromString(emailVerification.getVerificationId()));
-    }
-
-    @Transactional(readOnly = true)
-    public PhoneNumberAvailabilityResponse checkPhoneNumberAvailability(
-            PhoneNumberAvailabilityRequest request) {
-        String phoneNumber = signupValidator.normalizePhoneNumber(request.phoneNumber());
-        LocalDateTime now = LocalDateTime.now(clock);
-        return new PhoneNumberAvailabilityResponse(
-                phoneNumber,
-                !accountRejoinBlockService.isPhoneBlocked(phoneNumber, now)
-                        && !userRepository.existsByPhoneNumber(phoneNumber));
     }
 
     @Transactional
@@ -221,18 +224,30 @@ public class AuthService {
                 SignupResponse.bearer(savedUser, tokens.accessToken()), tokens.refreshToken());
     }
 
+    /**
+     * 비밀번호 검증부터 Refresh Token 저장까지 같은 User 잠금 안에서 처리한다.
+     *
+     * <p>잠금을 토큰 발급 직전에만 잡으면, 비밀번호 재설정이 커밋된 뒤에도 옛 비밀번호로 통과한 요청이 새 세션을 만들 수 있다.
+     */
+    @Transactional
     public TokenIssueResult login(LoginRequest request) {
         String email = normalizeEmail(request.email());
+        // 없는 행을 FOR UPDATE로 조회하면 email unique 인덱스의 빈 갭에 gap lock이 걸려 동시 가입 INSERT와
+        // 충돌한다. 인증 없이 호출 가능한 공개 엔드포인트이므로 존재 여부를 먼저 확인한다.
+        if (!userRepository.existsByEmail(email)) {
+            throw new BusinessException(ErrorCode.INVALID_LOGIN);
+        }
         User user =
                 userRepository
-                        .findByEmail(email)
+                        .findByEmailForUpdate(email)
                         .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_LOGIN));
 
         if (!passwordEncoder.matches(request.password(), user.getPassword())) {
             throw new BusinessException(ErrorCode.INVALID_LOGIN);
         }
 
-        return lockedTokenIssuanceService.issue(user.getId());
+        loginPolicy.validateLoginAllowed(user);
+        return tokenIssuer.issue(user);
     }
 
     @Transactional
@@ -313,9 +328,7 @@ public class AuthService {
     private void validateSignupRequest(SignupRequest request) {
         signupValidator.validateName(request.name());
         signupValidator.validateNickname(request.nickname());
-        if (!request.password().equals(request.passwordConfirm())) {
-            throw new BusinessException(ErrorCode.PASSWORD_MISMATCH);
-        }
+        passwordPolicy.validate(request.password(), request.passwordConfirm());
         signupValidator.validateRequiredTermsAgreed(
                 request.serviceTermsAgreed(), request.privacyPolicyAgreed());
         signupValidator.validateActivityRegionId(request.activityRegionId());
@@ -412,18 +425,21 @@ public class AuthService {
             String email, FailedEmailDeliveryCompensation compensation) {
         try {
             int affectedRows;
+            String action;
             if (compensation.previousState() == null) {
+                action = "delete";
                 affectedRows =
                         emailVerificationRepository.deleteByIdAndVersion(
                                 compensation.id(), compensation.failedVersion());
             } else {
+                action = "restore";
                 EmailVerificationState previous = compensation.previousState();
                 affectedRows =
                         emailVerificationRepository.restoreAfterFailedResend(
                                 compensation.id(),
                                 compensation.failedVersion(),
                                 previous.verificationId(),
-                                previous.code(),
+                                previous.codeHash(),
                                 previous.verified(),
                                 previous.expiresAt(),
                                 previous.verifiedAt(),
@@ -433,7 +449,12 @@ public class AuthService {
                                 previous.attemptCount());
             }
             if (affectedRows == 0) {
-                log.warn("이메일 발송 실패 보상 생략: 이후 상태 변경 감지, email={}", EmailMasker.mask(email));
+                // 어느 보상 경로가 어떤 세대에서 밀렸는지 알아야 사후에 원인 세대를 추적할 수 있다.
+                log.warn(
+                        "이메일 발송 실패 보상 생략: 이후 상태 변경 감지, action={}, email={}, failedVersion={}",
+                        action,
+                        EmailMasker.mask(email),
+                        compensation.failedVersion());
             }
         } catch (RuntimeException compensationException) {
             log.error(
@@ -459,9 +480,10 @@ public class AuthService {
     private record FailedEmailDeliveryCompensation(
             Long id, Long failedVersion, EmailVerificationState previousState) {}
 
+    // verificationId와 codeHash는 HMAC 메시지로 묶여 있어 항상 한 쌍으로 복원해야 이전 코드가 다시 통한다.
     private record EmailVerificationState(
             String verificationId,
-            String code,
+            String codeHash,
             boolean verified,
             LocalDateTime expiresAt,
             LocalDateTime verifiedAt,
@@ -473,7 +495,7 @@ public class AuthService {
         private static EmailVerificationState from(EmailVerification emailVerification) {
             return new EmailVerificationState(
                     emailVerification.getVerificationId(),
-                    emailVerification.getCode(),
+                    emailVerification.getCodeHash(),
                     emailVerification.isVerified(),
                     emailVerification.getExpiresAt(),
                     emailVerification.getVerifiedAt(),
