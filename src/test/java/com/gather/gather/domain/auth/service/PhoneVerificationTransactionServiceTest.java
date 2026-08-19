@@ -5,11 +5,13 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.gather.gather.domain.auth.config.PhoneVerificationProperties;
 import com.gather.gather.domain.auth.dto.PhoneVerificationStatus;
 import com.gather.gather.domain.auth.entity.PhoneVerification;
+import com.gather.gather.domain.auth.entity.PhoneVerificationPurpose;
 import com.gather.gather.domain.auth.repository.PhoneVerificationRepository;
 import com.gather.gather.global.exception.BusinessException;
 import com.gather.gather.global.exception.ErrorCode;
@@ -133,6 +135,7 @@ class PhoneVerificationTransactionServiceTest {
                 PhoneVerification.create(
                         VERIFICATION_ID,
                         "01012345678",
+                        PhoneVerificationPurpose.SIGNUP,
                         "GATHER-7F2K9Q8M4P",
                         NOW,
                         NOW.minusMinutes(5));
@@ -171,10 +174,40 @@ class PhoneVerificationTransactionServiceTest {
         assertThat(verification.isVerified()).isFalse();
     }
 
+    @Test
+    @DisplayName("FIND_ACCOUNT 인증은 가입 중복 및 재가입 차단 정책을 적용하지 않는다")
+    void verify_findAccount_skipsSignupPolicy() {
+        PhoneVerification verification = activeVerification(PhoneVerificationPurpose.FIND_ACCOUNT);
+        stubVerification(verification);
+
+        assertThat(service.verify(VERIFICATION_ID)).isEqualTo(PhoneVerificationStatus.VERIFIED);
+
+        assertThat(verification.isVerified()).isTrue();
+        verifyNoInteractions(signupValidator, accountRejoinBlockService);
+    }
+
+    @Test
+    @DisplayName("RESET_PASSWORD 인증은 가입 중복 및 재가입 차단 정책을 적용하지 않는다")
+    void verify_resetPassword_skipsSignupPolicy() {
+        PhoneVerification verification =
+                activeVerification(PhoneVerificationPurpose.RESET_PASSWORD);
+        stubVerification(verification);
+
+        assertThat(service.verify(VERIFICATION_ID)).isEqualTo(PhoneVerificationStatus.VERIFIED);
+
+        assertThat(verification.isVerified()).isTrue();
+        verifyNoInteractions(signupValidator, accountRejoinBlockService);
+    }
+
     private PhoneVerification activeVerification() {
+        return activeVerification(PhoneVerificationPurpose.SIGNUP);
+    }
+
+    private PhoneVerification activeVerification(PhoneVerificationPurpose purpose) {
         return PhoneVerification.create(
                 VERIFICATION_ID,
                 "01012345678",
+                purpose,
                 "GATHER-7F2K9Q8M4P",
                 NOW.plusMinutes(5),
                 NOW.minusMinutes(1));

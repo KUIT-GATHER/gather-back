@@ -16,6 +16,7 @@ import com.gather.gather.global.exception.ErrorCode;
 import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.List;
+import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -41,6 +42,7 @@ class EmailVerificationSendIntegrationTest {
 
     @Autowired private AuthService authService;
     @Autowired private EmailVerificationRepository emailVerificationRepository;
+    @Autowired private EmailVerificationCodeHasher emailVerificationCodeHasher;
     @MockitoBean private EmailSender emailSender;
 
     @BeforeEach
@@ -58,6 +60,25 @@ class EmailVerificationSendIntegrationTest {
 
         verify(emailSender).sendVerificationCode(eq(EMAIL), anyString());
         assertThat(emailVerificationRepository.findByEmail(EMAIL)).isPresent();
+    }
+
+    @Test
+    @DisplayName("재발송은 같은 행의 인증 ID만 회전하고 이전 ID를 무효화한다")
+    void resend_rotatesVerificationIdAndInvalidatesPreviousId() {
+        authService.sendEmailVerificationCode(new EmailVerificationSendRequest(EMAIL));
+        EmailVerification first = emailVerificationRepository.findByEmail(EMAIL).orElseThrow();
+        String previousVerificationId = first.getVerificationId();
+        ReflectionTestUtils.setField(first, "createdAt", LocalDateTime.now().minusMinutes(5));
+        emailVerificationRepository.saveAndFlush(first);
+
+        authService.sendEmailVerificationCode(new EmailVerificationSendRequest(EMAIL));
+
+        EmailVerification resent = emailVerificationRepository.findByEmail(EMAIL).orElseThrow();
+        assertThat(resent.getId()).isEqualTo(first.getId());
+        assertThat(resent.getVerificationId()).isNotEqualTo(previousVerificationId);
+        assertThat(emailVerificationRepository.findByVerificationId(previousVerificationId))
+                .isEmpty();
+        assertThat(resent.getDailySendCount()).isEqualTo(2);
     }
 
     @Test
@@ -111,8 +132,17 @@ class EmailVerificationSendIntegrationTest {
         LocalDateTime oldCreatedAt = LocalDateTime.now().minusMinutes(5).withNano(0);
         LocalDateTime oldExpiresAt = LocalDateTime.now().plusMinutes(5).withNano(0);
         LocalDateTime oldVerifiedAt = LocalDateTime.now().minusMinutes(4).withNano(0);
-        EmailVerification existing = EmailVerification.create(EMAIL, "123456", oldExpiresAt);
+        LocalDateTime oldConsumedAt = LocalDateTime.now().minusMinutes(3).withNano(0);
+        String oldVerificationId = UUID.randomUUID().toString();
+        EmailVerification existing =
+                EmailVerification.create(
+                        EMAIL,
+                        oldVerificationId,
+                        emailVerificationCodeHasher.hash(oldVerificationId, "123456"),
+                        oldExpiresAt,
+                        oldCreatedAt);
         existing.verify(oldVerifiedAt);
+        existing.consume(oldConsumedAt);
         existing.increaseAttempt();
         existing.increaseAttempt();
         ReflectionTestUtils.setField(existing, "createdAt", oldCreatedAt);
@@ -139,10 +169,19 @@ class EmailVerificationSendIntegrationTest {
                         });
 
         EmailVerification restored = emailVerificationRepository.findByEmail(EMAIL).orElseThrow();
-        assertThat(restored.getCode()).isEqualTo("123456");
+        assertThat(restored.getVerificationId()).isEqualTo(oldVerificationId);
+        // verificationId와 codeHash는 HMAC 메시지로 묶여 있어, 둘 다 복원돼야 이전 코드가 다시 통한다.
+        assertThat(restored.getCodeHash())
+                .isEqualTo(emailVerificationCodeHasher.hash(oldVerificationId, "123456"));
+        assertThat(restored.getCode()).isEmpty();
+        assertThat(
+                        emailVerificationCodeHasher.verify(
+                                restored.getVerificationId(), "123456", restored.getCodeHash()))
+                .isTrue();
         assertThat(restored.isVerified()).isTrue();
         assertThat(restored.getExpiresAt()).isEqualTo(oldExpiresAt);
         assertThat(restored.getVerifiedAt()).isEqualTo(oldVerifiedAt);
+        assertThat(restored.getConsumedAt()).isEqualTo(oldConsumedAt);
         assertThat(restored.getCreatedAt()).isEqualTo(oldCreatedAt);
         assertThat(restored.getDailySendCount()).isEqualTo(4);
         assertThat(restored.getAttemptCount()).isEqualTo(2);

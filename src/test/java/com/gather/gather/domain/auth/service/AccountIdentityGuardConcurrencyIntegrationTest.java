@@ -56,6 +56,8 @@ class AccountIdentityGuardConcurrencyIntegrationTest {
     private static final String SIGNUP_EMAIL = "guard-signup@example.com";
     private static final UUID PHONE_VERIFICATION_ID =
             UUID.fromString("5c5d5db1-4187-43d0-8580-672307994878");
+    private static final UUID EMAIL_VERIFICATION_ID =
+            UUID.fromString("98fa88ef-bbeb-4928-a202-7885197b3774");
 
     @Autowired private AuthService authService;
     @Autowired private AccountTerminationService terminationService;
@@ -199,7 +201,11 @@ class AccountIdentityGuardConcurrencyIntegrationTest {
                                                     List.of(PostingCategory.WELFARE)));
                             EmailVerification verification =
                                     EmailVerification.create(
-                                            SIGNUP_EMAIL, "123456", NOW.plusDays(1));
+                                            SIGNUP_EMAIL,
+                                            EMAIL_VERIFICATION_ID.toString(),
+                                            "a".repeat(64),
+                                            NOW.plusDays(1),
+                                            NOW);
                             verification.verify(NOW);
                             emailVerificationRepository.save(verification);
                             return new Fixture(user.getId(), region.getId(), verification.getId());
@@ -214,6 +220,7 @@ class AccountIdentityGuardConcurrencyIntegrationTest {
                 PHONE,
                 PHONE_VERIFICATION_ID,
                 SIGNUP_EMAIL,
+                EMAIL_VERIFICATION_ID,
                 "password1",
                 "password1",
                 "신규회원",

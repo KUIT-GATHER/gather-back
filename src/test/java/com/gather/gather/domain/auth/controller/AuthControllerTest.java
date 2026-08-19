@@ -12,9 +12,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.gather.gather.domain.auth.dto.EmailVerificationConfirmRequest;
+import com.gather.gather.domain.auth.dto.EmailVerificationConfirmResponse;
 import com.gather.gather.domain.auth.dto.LoginRequest;
-import com.gather.gather.domain.auth.dto.PhoneNumberAvailabilityRequest;
-import com.gather.gather.domain.auth.dto.PhoneNumberAvailabilityResponse;
 import com.gather.gather.domain.auth.dto.SignupRequest;
 import com.gather.gather.domain.auth.dto.SignupResponse;
 import com.gather.gather.domain.auth.service.AuthService;
@@ -24,6 +24,9 @@ import com.gather.gather.domain.auth.service.TokenIssueResult;
 import com.gather.gather.global.exception.BusinessException;
 import com.gather.gather.global.exception.ErrorCode;
 import jakarta.servlet.http.Cookie;
+import java.time.LocalDateTime;
+import java.util.Optional;
+import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -63,6 +66,7 @@ class AuthControllerTest {
                                           "phoneNumber": "01012345678",
                                           "phoneVerificationId": "5c5d5db1-4187-43d0-8580-672307994878",
                                           "email": "test@example.com",
+                                          "emailVerificationId": "98fa88ef-bbeb-4928-a202-7885197b3774",
                                           "password": "password123!",
                                           "passwordConfirm": "password123!",
                                           "nickname": "길동",
@@ -98,6 +102,7 @@ class AuthControllerTest {
                                           "phoneNumber": "01012345678",
                                           "phoneVerificationId": "not-a-uuid",
                                           "email": "test@example.com",
+                                          "emailVerificationId": "98fa88ef-bbeb-4928-a202-7885197b3774",
                                           "password": "password123!",
                                           "passwordConfirm": "password123!",
                                           "nickname": "길동",
@@ -134,6 +139,7 @@ class AuthControllerTest {
                                           "phoneNumber": "01012345678",
                                         %s
                                           "email": "test@example.com",
+                                          "emailVerificationId": "98fa88ef-bbeb-4928-a202-7885197b3774",
                                           "password": "password123!",
                                           "passwordConfirm": "password123!",
                                           "nickname": "길동",
@@ -151,6 +157,102 @@ class AuthControllerTest {
         verify(authService).signup(any(SignupRequest.class));
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"", "  \"emailVerificationId\": null,"})
+    @DisplayName("회원가입의 이메일 인증 ID가 누락되거나 null이면 EMAIL_VERIFICATION_REQUIRED를 반환한다")
+    void signup_withoutEmailVerificationId_returnsEmailVerificationRequired(
+            String emailVerificationField) throws Exception {
+        when(authService.signup(any(SignupRequest.class)))
+                .thenThrow(new BusinessException(ErrorCode.EMAIL_VERIFICATION_REQUIRED));
+
+        mockMvc.perform(
+                        post("/api/v1/auth/signup")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(
+                                        """
+                                        {
+                                          "name": "홍길동",
+                                          "birthDate": "2000-01-01",
+                                          "gender": "MALE",
+                                          "phoneNumber": "01012345678",
+                                          "phoneVerificationId": "5c5d5db1-4187-43d0-8580-672307994878",
+                                          "email": "test@example.com",
+                                        %s
+                                          "password": "password123!",
+                                          "passwordConfirm": "password123!",
+                                          "nickname": "길동",
+                                          "activityRegionId": 123,
+                                          "interestCategories": ["WELFARE"],
+                                          "serviceTermsAgreed": true,
+                                          "privacyPolicyAgreed": true,
+                                          "marketingAgreed": false
+                                        }
+                                        """
+                                                .formatted(emailVerificationField)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("EMAIL_VERIFICATION_REQUIRED"));
+
+        verify(authService).signup(any(SignupRequest.class));
+    }
+
+    @Test
+    @DisplayName("회원가입의 이메일 인증 ID가 UUID가 아니면 서비스 호출 전에 400으로 막는다")
+    void signup_withInvalidEmailVerificationId_returnsBadRequest() throws Exception {
+        mockMvc.perform(
+                        post("/api/v1/auth/signup")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(
+                                        """
+                                        {
+                                          "name": "홍길동",
+                                          "birthDate": "2000-01-01",
+                                          "gender": "MALE",
+                                          "phoneNumber": "01012345678",
+                                          "phoneVerificationId": "5c5d5db1-4187-43d0-8580-672307994878",
+                                          "email": "test@example.com",
+                                          "emailVerificationId": "not-a-uuid",
+                                          "password": "password123!",
+                                          "passwordConfirm": "password123!",
+                                          "nickname": "길동",
+                                          "activityRegionId": 123,
+                                          "interestCategories": ["WELFARE"],
+                                          "serviceTermsAgreed": true,
+                                          "privacyPolicyAgreed": true,
+                                          "marketingAgreed": false
+                                        }
+                                        """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("VALIDATION_ERROR"));
+
+        verifyNoInteractions(authService);
+    }
+
+    @Test
+    @DisplayName("이메일 인증 확인 성공 응답에 회원가입용 인증 ID를 포함한다")
+    void confirmEmailVerification_returnsVerificationId() throws Exception {
+        UUID verificationId = UUID.fromString("98fa88ef-bbeb-4928-a202-7885197b3774");
+        when(authService.confirmEmailVerificationCode(any(EmailVerificationConfirmRequest.class)))
+                .thenReturn(
+                        new EmailVerificationConfirmResponse(
+                                "test@example.com",
+                                true,
+                                LocalDateTime.of(2026, 8, 10, 10, 0),
+                                verificationId));
+
+        mockMvc.perform(
+                        post("/api/v1/auth/email-verifications/confirm")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(
+                                        """
+                                        {
+                                          "email": "test@example.com",
+                                          "code": "123456"
+                                        }
+                                        """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.emailVerificationId").value(verificationId.toString()));
+    }
+
     @Test
     @DisplayName("회원가입에서 전화번호가 20자를 넘으면 저장 전에 400으로 막는다")
     void signup_withTooLongPhoneNumber_returnsBadRequest() throws Exception {
@@ -166,6 +268,7 @@ class AuthControllerTest {
                                           "phoneNumber": "010123456789012345678",
                                           "phoneVerificationId": "5c5d5db1-4187-43d0-8580-672307994878",
                                           "email": "test@example.com",
+                                          "emailVerificationId": "98fa88ef-bbeb-4928-a202-7885197b3774",
                                           "password": "password123!",
                                           "passwordConfirm": "password123!",
                                           "nickname": "길동",
@@ -213,6 +316,7 @@ class AuthControllerTest {
                                           "phoneNumber": "01012345678901234567",
                                           "phoneVerificationId": "5c5d5db1-4187-43d0-8580-672307994878",
                                           "email": "test@example.com",
+                                          "emailVerificationId": "98fa88ef-bbeb-4928-a202-7885197b3774",
                                           "password": "password123!",
                                           "passwordConfirm": "password123!",
                                           "nickname": "길동",
@@ -240,43 +344,16 @@ class AuthControllerTest {
     }
 
     @Test
-    @DisplayName("전화번호 중복 확인에서 전화번호가 20자를 넘으면 400으로 막는다")
-    void checkPhoneNumberAvailability_withTooLongPhoneNumber_returnsBadRequest() throws Exception {
+    @DisplayName("제거된 전화번호 중복확인 API는 더 이상 매핑되지 않는다")
+    void phoneNumberAvailability_isRemoved() throws Exception {
         mockMvc.perform(
                         post("/api/v1/auth/phone-numbers/availability")
                                 .contentType(MediaType.APPLICATION_JSON)
-                                .content(
-                                        """
-                                        {
-                                          "phoneNumber": "010123456789012345678"
-                                        }
-                                        """))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.success").value(false))
-                .andExpect(jsonPath("$.error.code").value("VALIDATION_ERROR"));
+                                .content("{\"phoneNumber\":\"01012345678\"}"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error.code").value("NOT_FOUND"));
 
         verifyNoInteractions(authService);
-    }
-
-    @Test
-    @DisplayName("전화번호 중복 확인에서 전화번호가 20자이면 검증을 통과한다")
-    void checkPhoneNumberAvailability_withMaxLengthPhoneNumber_returnsOk() throws Exception {
-        when(authService.checkPhoneNumberAvailability(any(PhoneNumberAvailabilityRequest.class)))
-                .thenReturn(new PhoneNumberAvailabilityResponse("01012345678901234567", true));
-
-        mockMvc.perform(
-                        post("/api/v1/auth/phone-numbers/availability")
-                                .contentType(MediaType.APPLICATION_JSON)
-                                .content(
-                                        """
-                                        {
-                                          "phoneNumber": "01012345678901234567"
-                                        }
-                                        """))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.success").value(true));
-
-        verify(authService).checkPhoneNumberAvailability(any(PhoneNumberAvailabilityRequest.class));
     }
 
     @Test
@@ -340,6 +417,97 @@ class AuthControllerTest {
                 .andExpect(jsonPath("$.error.code").value("INVALID_TOKEN"));
 
         verifyNoInteractions(authService);
+    }
+
+    @Test
+    @DisplayName("세션 복원은 Refresh Token 쿠키가 없으면 쿠키 변경 없이 anonymous를 반환한다")
+    void restoreSession_withoutRefreshTokenCookie_returnsAnonymousWithoutCookieChange()
+            throws Exception {
+        when(refreshTokenCookieProvider.cookieName()).thenReturn(REFRESH_COOKIE_NAME);
+
+        mockMvc.perform(post("/api/v1/auth/session/restore"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.authenticated").value(false))
+                .andExpect(jsonPath("$.data.accessToken").value((Object) null))
+                .andExpect(jsonPath("$.data.tokenType").value((Object) null))
+                .andExpect(header().doesNotExist(HttpHeaders.SET_COOKIE));
+
+        verifyNoInteractions(authService);
+    }
+
+    @Test
+    @DisplayName("세션 복원 성공은 Access Token과 rotation된 Refresh Token 쿠키를 반환한다")
+    void restoreSession_withValidRefreshToken_returnsTokens() throws Exception {
+        when(refreshTokenCookieProvider.cookieName()).thenReturn(REFRESH_COOKIE_NAME);
+        when(authService.restoreSession("old-refresh-token"))
+                .thenReturn(
+                        Optional.of(new TokenIssueResult("new-access-token", "new-refresh-token")));
+        when(refreshTokenCookieProvider.create("new-refresh-token"))
+                .thenReturn(refreshCookie("new-refresh-token"));
+
+        mockMvc.perform(
+                        post("/api/v1/auth/session/restore")
+                                .cookie(new Cookie(REFRESH_COOKIE_NAME, "old-refresh-token")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.authenticated").value(true))
+                .andExpect(jsonPath("$.data.accessToken").value("new-access-token"))
+                .andExpect(jsonPath("$.data.tokenType").value("Bearer"))
+                .andExpect(header().string(HttpHeaders.SET_COOKIE, refreshCookieMatcher()));
+    }
+
+    @ParameterizedTest
+    @ValueSource(
+            strings = {"invalid-refresh-token", "expired-refresh-token", "revoked-refresh-token"})
+    @DisplayName("복원할 수 없는 Refresh Token은 쿠키 변경 없이 anonymous를 반환한다")
+    void restoreSession_withUnavailableRefreshToken_returnsAnonymousWithoutCookieChange(
+            String refreshToken) throws Exception {
+        when(refreshTokenCookieProvider.cookieName()).thenReturn(REFRESH_COOKIE_NAME);
+        when(authService.restoreSession(refreshToken)).thenReturn(Optional.empty());
+
+        mockMvc.perform(
+                        post("/api/v1/auth/session/restore")
+                                .cookie(new Cookie(REFRESH_COOKIE_NAME, refreshToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.authenticated").value(false))
+                .andExpect(header().doesNotExist(HttpHeaders.SET_COOKIE));
+    }
+
+    @Test
+    @DisplayName("계정 상태로 차단된 세션 복원은 기존 403을 유지하고 쿠키를 변경하지 않는다")
+    void restoreSession_withBlockedUser_returnsForbiddenWithoutCookieChange() throws Exception {
+        when(refreshTokenCookieProvider.cookieName()).thenReturn(REFRESH_COOKIE_NAME);
+        when(authService.restoreSession("blocked-user-refresh-token"))
+                .thenThrow(new BusinessException(ErrorCode.SUSPENDED_USER));
+
+        mockMvc.perform(
+                        post("/api/v1/auth/session/restore")
+                                .cookie(
+                                        new Cookie(
+                                                REFRESH_COOKIE_NAME, "blocked-user-refresh-token")))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.error.code").value("SUSPENDED_USER"))
+                .andExpect(header().doesNotExist(HttpHeaders.SET_COOKIE));
+    }
+
+    @Test
+    @DisplayName("예상하지 못한 세션 복원 오류는 500을 유지하고 쿠키를 변경하지 않는다")
+    void restoreSession_withServerFailure_returnsInternalServerErrorWithoutCookieChange()
+            throws Exception {
+        when(refreshTokenCookieProvider.cookieName()).thenReturn(REFRESH_COOKIE_NAME);
+        when(authService.restoreSession("refresh-token"))
+                .thenThrow(new IllegalStateException("database unavailable"));
+
+        mockMvc.perform(
+                        post("/api/v1/auth/session/restore")
+                                .cookie(new Cookie(REFRESH_COOKIE_NAME, "refresh-token")))
+                .andExpect(status().isInternalServerError())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.error.code").value("INTERNAL_SERVER_ERROR"))
+                .andExpect(header().doesNotExist(HttpHeaders.SET_COOKIE));
     }
 
     @Test

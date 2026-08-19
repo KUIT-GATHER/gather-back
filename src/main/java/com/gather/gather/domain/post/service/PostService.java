@@ -23,6 +23,7 @@ import com.gather.gather.domain.post.repository.PostRepository;
 import com.gather.gather.global.common.PageResponse;
 import com.gather.gather.global.exception.BusinessException;
 import com.gather.gather.global.exception.ErrorCode;
+import com.gather.gather.global.util.DuplicateSubmissionGuard;
 import com.gather.gather.global.util.SecurityUtil;
 import java.util.EnumSet;
 import java.util.List;
@@ -63,6 +64,7 @@ public class PostService {
     private final UserRepository userRepository;
     private final ApplicationEventPublisher eventPublisher;
     private final PostReviewSourceService postReviewSourceService;
+    private final DuplicateSubmissionGuard duplicateSubmissionGuard;
 
     public PageResponse<PostSummaryResponse> getPosts(
             Long meetingId, List<PostType> requestedTypes, Pageable pageable) {
@@ -115,6 +117,9 @@ public class PostService {
             throw new BusinessException(ErrorCode.NOTICE_HOST_ONLY);
         }
         validateContentLength(request.type(), request.content());
+
+        // 권한·비즈니스 검증을 모두 통과한 뒤에만 쿨다운을 소비한다(검증 실패로 재시도해야 하는 요청까지 막지 않기 위함).
+        duplicateSubmissionGuard.guard("post:create:" + userId + ":" + meetingId);
 
         User author = getUser(userId);
         Post post =

@@ -9,6 +9,7 @@ import com.gather.gather.global.common.PageResponse;
 import com.gather.gather.global.exception.BusinessException;
 import com.gather.gather.global.exception.ErrorCode;
 import com.gather.gather.global.util.SecurityUtil;
+import java.time.Clock;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
@@ -25,6 +26,7 @@ public class NotificationQueryService {
 
     private final NotificationRepository notificationRepository;
     private final NotificationThumbnailResolver notificationThumbnailResolver;
+    private final Clock clock;
 
     public PageResponse<NotificationResponse> getNotifications(
             NotificationCategory category, Pageable pageable) {
@@ -66,7 +68,7 @@ public class NotificationQueryService {
         Long userId = SecurityUtil.getCurrentUserId();
         Notification notification = getOwnedNotification(notificationId, userId);
 
-        notification.markAsRead();
+        notification.markAsRead(LocalDateTime.now(clock));
 
         Map<Long, String> thumbnailUrls =
                 notificationThumbnailResolver.resolveByNotificationId(List.of(notification));
@@ -78,7 +80,7 @@ public class NotificationQueryService {
     public void markAllAsRead(NotificationCategory category) {
         Long userId = SecurityUtil.getCurrentUserId();
 
-        notificationRepository.markAllAsRead(userId, category, LocalDateTime.now());
+        notificationRepository.markAllAsRead(userId, category, LocalDateTime.now(clock));
     }
 
     @Transactional
@@ -86,7 +88,7 @@ public class NotificationQueryService {
         Long userId = SecurityUtil.getCurrentUserId();
         Notification notification = getOwnedNotification(notificationId, userId);
 
-        notification.delete();
+        notification.delete(LocalDateTime.now(clock));
     }
 
     private Notification getOwnedNotification(Long notificationId, Long userId) {

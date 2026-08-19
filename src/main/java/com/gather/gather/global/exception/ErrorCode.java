@@ -8,6 +8,7 @@ import org.springframework.http.HttpStatus;
 @RequiredArgsConstructor
 public enum ErrorCode {
     VALIDATION_ERROR(HttpStatus.BAD_REQUEST, "요청 값이 올바르지 않습니다."),
+    DUPLICATE_SUBMISSION(HttpStatus.CONFLICT, "이미 처리 중인 요청이에요. 잠시 후 다시 시도해주세요."),
     DUPLICATE_EMAIL(HttpStatus.CONFLICT, "이미 사용 중인 이메일입니다."),
     DUPLICATE_PHONE_NUMBER(HttpStatus.CONFLICT, "이미 사용 중인 전화번호입니다."),
     DUPLICATE_NICKNAME(HttpStatus.CONFLICT, "이미 사용 중인 닉네임입니다."),
@@ -20,17 +21,27 @@ public enum ErrorCode {
             HttpStatus.TOO_MANY_REQUESTS, "하루 이메일 인증 발송 횟수를 초과했습니다. 내일 다시 시도해주세요."),
     EMAIL_VERIFICATION_ATTEMPTS_EXCEEDED(
             HttpStatus.TOO_MANY_REQUESTS, "인증 코드 입력 가능 횟수를 초과했습니다. 코드를 다시 발송해주세요."),
+    EMAIL_VERIFICATION_REQUIRED(HttpStatus.BAD_REQUEST, "이메일 인증이 필요합니다."),
     PHONE_VERIFICATION_NOT_FOUND(HttpStatus.NOT_FOUND, "휴대폰 인증 요청을 찾을 수 없습니다."),
     PHONE_VERIFICATION_EXPIRED(HttpStatus.BAD_REQUEST, "휴대폰 인증 요청이 만료되었습니다."),
     PHONE_VERIFICATION_REQUIRED(HttpStatus.BAD_REQUEST, "휴대폰 인증이 필요합니다."),
+    PHONE_VERIFICATION_PURPOSE_MISMATCH(HttpStatus.BAD_REQUEST, "휴대폰 인증 목적이 올바르지 않습니다."),
     PHONE_VERIFICATION_PROVIDER_UNAVAILABLE(
             HttpStatus.SERVICE_UNAVAILABLE, "휴대폰 인증 서비스를 일시적으로 사용할 수 없습니다."),
     PHONE_VERIFICATION_RATE_LIMITED(
             HttpStatus.TOO_MANY_REQUESTS, "휴대폰 인증 요청이 많습니다. 잠시 후 다시 시도해주세요."),
     PASSWORD_MISMATCH(HttpStatus.BAD_REQUEST, "비밀번호가 일치하지 않습니다."),
-    EMAIL_NOT_VERIFIED(HttpStatus.BAD_REQUEST, "이메일 인증이 완료되지 않았습니다."),
+    // 이미 인증된 사용자의 입력값 오류이므로 INVALID_LOGIN(401)이 아닌 400을 쓴다.
+    CURRENT_PASSWORD_MISMATCH(HttpStatus.BAD_REQUEST, "현재 비밀번호가 올바르지 않습니다."),
+    PASSWORD_CHANGE_NOT_AVAILABLE(HttpStatus.CONFLICT, "비밀번호 변경을 지원하지 않는 계정입니다."),
+    PASSWORD_RESET_NOT_AVAILABLE(HttpStatus.CONFLICT, "비밀번호 재설정을 지원하지 않는 계정입니다."),
+    // 비밀번호 재설정 전용 토큰. access/refresh 토큰 코드와 구분하기 위해 PASSWORD_RESET_TOKEN_ 접두사를 쓴다.
+    PASSWORD_RESET_TOKEN_INVALID(
+            HttpStatus.UNAUTHORIZED, "유효하지 않은 비밀번호 재설정 요청입니다. 본인인증부터 다시 진행해주세요."),
+    PASSWORD_RESET_TOKEN_EXPIRED(
+            HttpStatus.UNAUTHORIZED, "비밀번호 재설정 요청이 만료되었습니다. 본인인증부터 다시 진행해주세요."),
     REQUIRED_TERMS_NOT_AGREED(HttpStatus.BAD_REQUEST, "필수 약관 동의가 필요합니다."),
-    INVALID_ACTIVITY_REGION(HttpStatus.BAD_REQUEST, "활동 지역은 시군구 단위로 1개 선택해야 합니다."),
+    INVALID_ACTIVITY_REGION(HttpStatus.BAD_REQUEST, "활동 지역은 시도 또는 시군구 단위로 1개 선택해야 합니다."),
     INVALID_INTEREST_CATEGORY_COUNT(HttpStatus.BAD_REQUEST, "관심 카테고리는 중복 없이 1개 이상 선택해야 합니다."),
     REGION_NOT_FOUND(HttpStatus.NOT_FOUND, "활동 지역을 찾을 수 없습니다."),
     CATEGORY_NOT_FOUND(HttpStatus.NOT_FOUND, "관심 카테고리를 찾을 수 없습니다."),
@@ -39,6 +50,7 @@ public enum ErrorCode {
     WITHDRAWAL_PENDING_USER(HttpStatus.FORBIDDEN, "탈퇴 처리 중인 계정입니다."),
     WITHDRAWN_USER(HttpStatus.FORBIDDEN, "탈퇴한 계정입니다."),
     ACCOUNT_REJOIN_BLOCKED(HttpStatus.CONFLICT, "탈퇴 후 7일 동안 재가입할 수 없습니다."),
+    ACCOUNT_NOT_FOUND(HttpStatus.NOT_FOUND, "계정을 찾을 수 없습니다."),
     ACCOUNT_TERMINATION_STATE_CONFLICT(HttpStatus.CONFLICT, "계정 탈퇴 상태가 올바르지 않습니다."),
     INVALID_TOKEN(HttpStatus.UNAUTHORIZED, "유효하지 않은 토큰입니다."),
     EXPIRED_TOKEN(HttpStatus.UNAUTHORIZED, "만료된 토큰입니다."),
@@ -81,11 +93,14 @@ public enum ErrorCode {
     PARTICIPATION_NOT_FOUND(HttpStatus.NOT_FOUND, "신청 내역을 찾을 수 없습니다."),
     PARTICIPATION_CANCEL_NOT_ALLOWED(
             HttpStatus.CONFLICT, "이력 보존을 위해 완료되었거나 후기가 작성된 신청은 취소할 수 없습니다."),
-    POSTING_APPLICATION_UNAVAILABLE(HttpStatus.CONFLICT, "1365 신청 정보가 연동되지 않아 신청할 수 없는 공고입니다."),
     PARTICIPATION_ALREADY_COMPLETED(HttpStatus.CONFLICT, "이미 완료 처리된 참여입니다."),
     PARTICIPATION_COMPLETE_NOT_ALLOWED(HttpStatus.CONFLICT, "활동종료일이 지나야 완료 처리를 할 수 있습니다."),
     PARTICIPATION_HOURS_NOT_ALLOWED(HttpStatus.CONFLICT, "완료 처리된 참여만 인정시간을 입력할 수 있습니다."),
     PARTICIPATION_HOURS_ALREADY_SUBMITTED(HttpStatus.CONFLICT, "이미 인정시간을 입력했습니다."),
+    PARTICIPATION_DATE_INVALID_RANGE(HttpStatus.CONFLICT, "참여 시작일은 종료일보다 늦을 수 없습니다."),
+    PARTICIPATION_DATE_OUT_OF_POSTING_PERIOD(
+            HttpStatus.CONFLICT, "참여 일정은 공고 활동기간 안에서만 선택할 수 있습니다."),
+    PARTICIPATION_DATE_IN_PAST(HttpStatus.CONFLICT, "지난 날짜로는 신규 신청할 수 없습니다."),
 
     UNSUPPORTED_PROFILE_IMAGE_TYPE(HttpStatus.BAD_REQUEST, "지원하지 않는 프로필 이미지 형식입니다."),
     PROFILE_IMAGE_SIZE_EXCEEDED(HttpStatus.BAD_REQUEST, "프로필 이미지의 허용 크기를 초과했습니다."),

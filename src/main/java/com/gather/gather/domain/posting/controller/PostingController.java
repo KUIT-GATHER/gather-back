@@ -1,6 +1,7 @@
 package com.gather.gather.domain.posting.controller;
 
 import com.gather.gather.domain.posting.dto.PostingListItem;
+import com.gather.gather.domain.posting.dto.PostingMapItem;
 import com.gather.gather.domain.posting.dto.PostingResponse;
 import com.gather.gather.domain.posting.dto.PostingSummaryResponse;
 import com.gather.gather.domain.posting.entity.PostingCategory;
@@ -9,19 +10,19 @@ import com.gather.gather.domain.posting.service.PostingKeywordRecommendationServ
 import com.gather.gather.domain.posting.service.PostingRecommendationService;
 import com.gather.gather.domain.posting.service.PostingService;
 import com.gather.gather.global.common.ApiResponse;
-import com.gather.gather.global.common.PageResponse;
+import com.gather.gather.global.common.CursorPageResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.ExampleObject;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
-import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
-import org.springframework.data.web.PageableDefault;
+import org.springframework.data.web.SortDefault;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -41,9 +42,14 @@ public class PostingController {
     private final PostingRecommendationService postingRecommendationService;
 
     @Operation(
-            summary = "봉사공고 목록 조회",
+            summary = "봉사공고 목록 조회(무한스크롤)",
             description =
-                    "봉사공고를 페이지 단위로 조회합니다. 인증이 필요 없습니다. "
+                    "봉사공고를 커서(키셋) 기반으로 조회합니다. 인증이 필요 없습니다. "
+                            + "첫 페이지는 cursor 없이 호출하고, 이후에는 이전 응답의 nextCursor 값을 그대로 cursor 파라미터에 넣어 "
+                            + "다음 페이지를 이어서 조회합니다(스크롤을 내릴 때마다 반복). totalElements/totalPages는 제공하지 않으며, "
+                            + "hasNext가 false면 더 불러올 항목이 없다는 뜻입니다. "
+                            + "커서는 조회 당시의 sort(및 정렬 우선순위에 영향을 주는 status)에 종속적이므로, 같은 스크롤 세션 안에서는 "
+                            + "sort/status 등 정렬에 영향을 주는 파라미터를 바꾸지 말고 cursor 없이 처음부터 다시 조회해야 합니다. "
                             + "status를 지정하지 않으면 모집중(RECRUITING)과 모집마감(CLOSED) 공고를 함께 반환하며, "
                             + "모집중 공고가 항상 먼저 오고 그 다음 모집마감 공고가 오는 순서로 정렬한 뒤 각 그룹 안에서 "
                             + "sort 파라미터를 적용합니다(활동 완료 COMPLETED는 기본 목록에서 제외되며 필요 시 status로 "
@@ -52,17 +58,25 @@ public class PostingController {
                             + "regionGroupId는 활동 지역 9버튼(서울/부산/.../경상/전라/충청) 선택 시 그 권역에 속한 "
                             + "모든 시도와 시군구 공고를 포함합니다. regionId와 regionGroupId는 동시에 지정할 수 없습니다. "
                             + "noticeStartDate/noticeEndDate는 각각 모집시작일 하한/모집종료일 상한 필터입니다. "
+                            + "activityStartDate/activityEndDate는 활동일 겹침(overlap) 필터로, 선택 기간과 실제"
+                            + " 활동기간이 하루라도 겹치면 조회됩니다. "
                             + "keyword는 제목/모집기관명 부분일치 검색입니다. "
                             + "category를 지정하면 해당 봉사분야 공고만 반환합니다(미지정 시 전체).",
             parameters = {
                 @Parameter(
+                        name = "cursor",
+                        description = "이전 응답의 nextCursor 값. 첫 페이지 조회 시에는 생략합니다.",
+                        example = "eyJrIjpb..."),
+                @Parameter(
+                        name = "size",
+                        description = "한 번에 가져올 개수 (기본 20, 최대 100). 0 이하로 주면 기본값이 적용됩니다.",
+                        example = "20"),
+                @Parameter(
                         name = "sort",
                         description =
                                 "정렬 기준 (property,direction). 예: id,desc. "
-                                        + "허용 필드: id, title, status, actStartDate, actEndDate, "
-                                        + "noticeStartDate, noticeEndDate, recruitCount, applicantCount, "
-                                        + "createdAt, updatedAt. 허용되지 않은 필드로 정렬을 요청하면 400 "
-                                        + "VALIDATION_ERROR가 반환됩니다.",
+                                        + "허용 필드: id, createdAt, activityStartAt, applyDeadlineAt, appliedCount. "
+                                        + "허용되지 않은 필드로 정렬을 요청하면 400 VALIDATION_ERROR가 반환됩니다.",
                         example = "id,desc")
             })
     @ApiResponses({
@@ -76,36 +90,36 @@ public class PostingController {
                                         @ExampleObject(
                                                 value =
                                                         """
-                                                        {
-                                                          "success": true,
-                                                          "data": {
-                                                            "content": [
-                                                              {
-                                                                "id": 1,
-                                                                "title": "동구 환경정화 봉사",
-                                                                "status": "RECRUITING",
-                                                                "recruitOrg": "울산 동구청",
-                                                                "actStartDate": "2026-07-10",
-                                                                "actEndDate": "2026-07-10",
-                                                                "actPlace": "동구 일대",
-                                                                "recruitCount": 5,
-                                                                "applicantCount": 1,
-                                                                "regionId": 2,
-                                                                "regionName": "동구",
-                                                                "category": "ENVIRONMENT"
-                                                              }
-                                                            ],
-                                                            "totalElements": 1,
-                                                            "totalPages": 1,
-                                                            "page": 0,
-                                                            "size": 20
-                                                          },
-                                                          "error": null
-                                                        }
-                                                        """))),
+                                            {
+                                              "success": true,
+                                              "data": {
+                                                "content": [
+                                                  {
+                                                    "id": 1,
+                                                    "title": "동구 환경정화 봉사",
+                                                    "status": "RECRUITING",
+                                                    "recruitOrg": "울산 동구청",
+                                                    "actStartDate": "2026-07-10",
+                                                    "actEndDate": "2026-07-10",
+                                                    "actPlace": "동구 일대",
+                                                    "recruitCount": 5,
+                                                    "applicantCount": 1,
+                                                    "regionId": 2,
+                                                    "regionName": "동구",
+                                                    "category": "ENVIRONMENT"
+                                                  }
+                                                ],
+                                                "nextCursor": "eyJrIjpb...",
+                                                "hasNext": true
+                                              },
+                                              "error": null
+                                            }
+                                            """))),
         @io.swagger.v3.oas.annotations.responses.ApiResponse(
                 responseCode = "400",
-                description = "요청 값이 올바르지 않음 (예: regionId와 regionGroupId 동시 지정, 존재하지 않는 sort 프로퍼티)",
+                description =
+                        "요청 값이 올바르지 않음 (예: regionId와 regionGroupId 동시 지정, 존재하지 않는 sort 프로퍼티, "
+                                + "정렬이 바뀐 채로 재사용된 커서, 형식이 깨진 커서)",
                 content =
                         @Content(
                                 mediaType = JSON,
@@ -114,15 +128,15 @@ public class PostingController {
                                                 name = "VALIDATION_ERROR",
                                                 value =
                                                         """
-                                                        {
-                                                          "success": false,
-                                                          "data": null,
-                                                          "error": {
-                                                            "code": "VALIDATION_ERROR",
-                                                            "message": "요청 값이 올바르지 않습니다."
-                                                          }
-                                                        }
-                                                        """))),
+                                            {
+                                              "success": false,
+                                              "data": null,
+                                              "error": {
+                                                "code": "VALIDATION_ERROR",
+                                                "message": "요청 값이 올바르지 않습니다."
+                                              }
+                                            }
+                                            """))),
         @io.swagger.v3.oas.annotations.responses.ApiResponse(
                 responseCode = "500",
                 description = "서버 내부 오류",
@@ -134,20 +148,21 @@ public class PostingController {
                                                 name = "INTERNAL_SERVER_ERROR",
                                                 value =
                                                         """
-                                                        {
-                                                          "success": false,
-                                                          "data": null,
-                                                          "error": {
-                                                            "code": "INTERNAL_SERVER_ERROR",
-                                                            "message": "서버 내부 오류가 발생했습니다."
-                                                          }
-                                                        }
-                                                        """)))
+                                            {
+                                              "success": false,
+                                              "data": null,
+                                              "error": {
+                                                "code": "INTERNAL_SERVER_ERROR",
+                                                "message": "서버 내부 오류가 발생했습니다."
+                                              }
+                                            }
+                                            """)))
     })
     @GetMapping
-    public ApiResponse<PageResponse<PostingListItem>> getPostings(
-            @PageableDefault(size = 20, sort = "id", direction = Sort.Direction.DESC)
-                    Pageable pageable,
+    public ApiResponse<CursorPageResponse<PostingListItem>> getPostings(
+            @SortDefault(sort = "id", direction = Sort.Direction.DESC) Sort sort,
+            @RequestParam(required = false) String cursor,
+            @RequestParam(defaultValue = "20") int size,
             @Parameter(description = "지역 ID (상위 지역 선택 시 하위 지역까지 포함, regionGroupId와 동시 지정 불가)")
                     @RequestParam(required = false)
                     Long regionId,
@@ -161,6 +176,16 @@ public class PostingController {
                     LocalDate noticeStartDate,
             @Parameter(description = "모집종료일 상한 (yyyy-MM-dd)") @RequestParam(required = false)
                     LocalDate noticeEndDate,
+            @Parameter(
+                            description =
+                                    "활동기간 필터 하한(yyyy-MM-dd). 실제 활동기간과 하루라도 겹치면 조회된다"
+                                            + "(활동종료일 >= activityStartDate). POSTING은 actStartDate~actEndDate"
+                                            + "(없으면 activityDate), MEETING_RECRUIT는 activityStartAt~activityEndAt 기준.")
+                    @RequestParam(required = false)
+                    LocalDate activityStartDate,
+            @Parameter(description = "활동기간 필터 상한(yyyy-MM-dd). 활동시작일 <= activityEndDate 조건.")
+                    @RequestParam(required = false)
+                    LocalDate activityEndDate,
             @Parameter(description = "검색 키워드 (제목/모집기관명 부분일치)") @RequestParam(required = false)
                     String keyword,
             @Parameter(
@@ -171,14 +196,53 @@ public class PostingController {
                     PostingCategory category) {
         return ApiResponse.success(
                 postingService.getPostings(
-                        pageable,
+                        sort,
+                        cursor,
+                        size,
                         regionId,
                         regionGroupId,
                         status,
                         noticeStartDate,
                         noticeEndDate,
+                        activityStartDate,
+                        activityEndDate,
                         keyword,
                         category));
+    }
+
+    @Operation(
+            summary = "봉사공고 지도 조회",
+            description =
+                    "일반 봉사공고(POSTING)만 지도에 노출한다(모임 모집공고 MEETING_RECRUIT는 정책상 제외). 인증이 필요 없다. "
+                            + "regionId/activityStartDate/activityEndDate/category는 목록 조회와 동일한 필터이며, "
+                            + "swLat/swLng/neLat/neLng(지도 bounds)은 필수다. 한 공고가 여러 활동장소를 가질 수 있어 공고 단위로 "
+                            + "locations 배열을 내려주며, 위·경도가 없는 장소는 제외한다. 페이지네이션 없이 bounds 안의 전체 목록을 "
+                            + "반환하므로, 사용자가 지도를 이동한 뒤 '이 지역 검색하기'를 누르면 바뀐 bounds로 다시 호출해야 한다.")
+    @GetMapping("/map")
+    public ApiResponse<List<PostingMapItem>> getPostingsMap(
+            @Parameter(description = "지역 ID (상위 지역 선택 시 하위 지역까지 포함)")
+                    @RequestParam(required = false)
+                    Long regionId,
+            @Parameter(description = "활동기간 필터 하한 (yyyy-MM-dd)") @RequestParam(required = false)
+                    LocalDate activityStartDate,
+            @Parameter(description = "활동기간 필터 상한 (yyyy-MM-dd)") @RequestParam(required = false)
+                    LocalDate activityEndDate,
+            @Parameter(description = "봉사분야 카테고리 (미지정 시 전체)") @RequestParam(required = false)
+                    PostingCategory category,
+            @Parameter(description = "지도 bounds 남서쪽 위도") @RequestParam BigDecimal swLat,
+            @Parameter(description = "지도 bounds 남서쪽 경도") @RequestParam BigDecimal swLng,
+            @Parameter(description = "지도 bounds 북동쪽 위도") @RequestParam BigDecimal neLat,
+            @Parameter(description = "지도 bounds 북동쪽 경도") @RequestParam BigDecimal neLng) {
+        return ApiResponse.success(
+                postingService.getPostingsMap(
+                        regionId,
+                        activityStartDate,
+                        activityEndDate,
+                        category,
+                        swLat,
+                        swLng,
+                        neLat,
+                        neLng));
     }
 
     @Operation(
@@ -207,15 +271,15 @@ public class PostingController {
                                                 name = "POSTING_NOT_FOUND",
                                                 value =
                                                         """
-                                                        {
-                                                          "success": false,
-                                                          "data": null,
-                                                          "error": {
-                                                            "code": "POSTING_NOT_FOUND",
-                                                            "message": "봉사공고를 찾을 수 없습니다."
-                                                          }
-                                                        }
-                                                        """)))
+                                            {
+                                              "success": false,
+                                              "data": null,
+                                              "error": {
+                                                "code": "POSTING_NOT_FOUND",
+                                                "message": "봉사공고를 찾을 수 없습니다."
+                                              }
+                                            }
+                                            """)))
     })
     @GetMapping("/{id}")
     public ApiResponse<PostingResponse> getPosting(@PathVariable Long id) {

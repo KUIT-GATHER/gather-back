@@ -2,6 +2,8 @@ package com.gather.gather.domain.auth.entity;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
@@ -27,6 +29,10 @@ public class PhoneVerification {
 
     @Column(nullable = false, length = 11)
     private String phoneNumber;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
+    private PhoneVerificationPurpose purpose;
 
     @Column(nullable = false, length = 32)
     private String verificationCode;
@@ -57,11 +63,13 @@ public class PhoneVerification {
     private PhoneVerification(
             String verificationId,
             String phoneNumber,
+            PhoneVerificationPurpose purpose,
             String verificationCode,
             LocalDateTime expiresAt,
             LocalDateTime createdAt) {
         this.verificationId = verificationId;
         this.phoneNumber = phoneNumber;
+        this.purpose = purpose;
         this.verificationCode = verificationCode;
         this.verified = false;
         this.confirmAttemptCount = 0;
@@ -73,11 +81,12 @@ public class PhoneVerification {
     public static PhoneVerification create(
             String verificationId,
             String phoneNumber,
+            PhoneVerificationPurpose purpose,
             String verificationCode,
             LocalDateTime expiresAt,
             LocalDateTime createdAt) {
         return new PhoneVerification(
-                verificationId, phoneNumber, verificationCode, expiresAt, createdAt);
+                verificationId, phoneNumber, purpose, verificationCode, expiresAt, createdAt);
     }
 
     public boolean isExpired(LocalDateTime now) {

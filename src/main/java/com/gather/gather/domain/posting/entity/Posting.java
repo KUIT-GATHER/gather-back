@@ -67,7 +67,7 @@ public class Posting {
     private LocalDate noticeEndDate;
 
     /**
-     * DB 생성 컬럼(V56, {@code COALESCE(notice_end_date, '9999-12-31')}). notice_end_date가 없는 상시모집 공고를
+     * DB 생성 컬럼(V67, {@code COALESCE(notice_end_date, '9999-12-31')}). notice_end_date가 없는 상시모집 공고를
      * 정렬·인덱스 상 항상 맨 뒤로 보내기 위한 값으로, 애플리케이션에서 직접 쓰지 않고 추천 후보 조회의 WHERE/ORDER BY 전용으로만 참조한다.
      */
     @Column(name = "notice_end_date_sort_key", insertable = false, updatable = false)

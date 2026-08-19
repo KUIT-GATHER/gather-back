@@ -5,8 +5,7 @@ import com.gather.gather.domain.auth.dto.EmailVerificationConfirmResponse;
 import com.gather.gather.domain.auth.dto.EmailVerificationSendRequest;
 import com.gather.gather.domain.auth.dto.EmailVerificationSendResponse;
 import com.gather.gather.domain.auth.dto.LoginRequest;
-import com.gather.gather.domain.auth.dto.PhoneNumberAvailabilityRequest;
-import com.gather.gather.domain.auth.dto.PhoneNumberAvailabilityResponse;
+import com.gather.gather.domain.auth.dto.SessionRestoreResponse;
 import com.gather.gather.domain.auth.dto.SignupRequest;
 import com.gather.gather.domain.auth.dto.SignupResponse;
 import com.gather.gather.domain.auth.dto.TokenResponse;
@@ -65,8 +64,8 @@ public class AuthController {
                                                           "success": true,
                                                           "data": {
                                                             "email": "test@example.com",
-                                                            "expiresAt": "2026-06-28T12:10:00",
-                                                            "resendAvailableAt": "2026-06-28T12:03:00",
+                                                            "expiresAt": "2026-06-28T03:10:00",
+                                                            "resendAvailableAt": "2026-06-28T03:03:00",
                                                             "message": "인증 코드가 발송되었습니다."
                                                           },
                                                           "error": null
@@ -150,7 +149,8 @@ public class AuthController {
                                                           "data": {
                                                             "email": "test@example.com",
                                                             "verified": true,
-                                                            "verifiedAt": "2026-06-28T12:05:00"
+                                                            "verifiedAt": "2026-06-28T03:05:00",
+                                                            "emailVerificationId": "98fa88ef-bbeb-4928-a202-7885197b3774"
                                                           },
                                                           "error": null
                                                         }
@@ -208,67 +208,10 @@ public class AuthController {
     }
 
     @Operation(
-            summary = "전화번호 중복 확인",
-            description = "회원가입 기본 정보 단계에서 입력한 전화번호가 이미 가입에 사용되었는지 확인합니다.")
-    @ApiResponses({
-        @io.swagger.v3.oas.annotations.responses.ApiResponse(
-                responseCode = "200",
-                description = "전화번호 중복 확인 성공",
-                content =
-                        @Content(
-                                mediaType = JSON,
-                                examples = {
-                                    @ExampleObject(
-                                            name = "available",
-                                            summary = "사용 가능한 전화번호",
-                                            value =
-                                                    """
-                                                    {
-                                                      "success": true,
-                                                      "data": {
-                                                        "phoneNumber": "01012345678",
-                                                        "available": true
-                                                      },
-                                                      "error": null
-                                                    }
-                                                    """),
-                                    @ExampleObject(
-                                            name = "unavailable",
-                                            summary = "이미 사용 중인 전화번호",
-                                            value =
-                                                    """
-                                                    {
-                                                      "success": true,
-                                                      "data": {
-                                                        "phoneNumber": "01012345678",
-                                                        "available": false
-                                                      },
-                                                      "error": null
-                                                    }
-                                                    """)
-                                })),
-        @io.swagger.v3.oas.annotations.responses.ApiResponse(
-                responseCode = "400",
-                description = "요청 값 검증 실패",
-                content =
-                        @Content(
-                                mediaType = JSON,
-                                examples =
-                                        @ExampleObject(
-                                                name = "VALIDATION_ERROR",
-                                                value =
-                                                        AuthSwaggerExamples
-                                                                .VALIDATION_ERROR_EXAMPLE)))
-    })
-    @PostMapping("/phone-numbers/availability")
-    public ApiResponse<PhoneNumberAvailabilityResponse> checkPhoneNumberAvailability(
-            @RequestBody @Valid PhoneNumberAvailabilityRequest request) {
-        return ApiResponse.success(authService.checkPhoneNumberAvailability(request));
-    }
-
-    @Operation(
             summary = "회원가입",
-            description = "회원가입 성공 시 Access Token은 응답 본문으로, Refresh Token은 HttpOnly 쿠키로 발급합니다.")
+            description =
+                    "요청 전화번호와 일치하는 30분 이내 미소비 휴대폰 인증이 필요합니다. 회원가입 성공 시 Access Token은 응답 본문으로, "
+                            + "Refresh Token은 HttpOnly 쿠키로 발급합니다.")
     @ApiResponses({
         @io.swagger.v3.oas.annotations.responses.ApiResponse(
                 responseCode = "201",
@@ -316,18 +259,21 @@ public class AuthController {
                                             name = "PASSWORD_MISMATCH",
                                             value = AuthSwaggerExamples.PASSWORD_MISMATCH_EXAMPLE),
                                     @ExampleObject(
-                                            name = "EMAIL_NOT_VERIFIED",
-                                            value = AuthSwaggerExamples.EMAIL_NOT_VERIFIED_EXAMPLE),
+                                            name = "EMAIL_VERIFICATION_REQUIRED",
+                                            value =
+                                                    AuthSwaggerExamples
+                                                            .EMAIL_VERIFICATION_REQUIRED_EXAMPLE),
+                                    @ExampleObject(
+                                            name = "PHONE_VERIFICATION_REQUIRED",
+                                            summary = "인증 없음·ID/전화번호 불일치·인증 만료·이미 소비됨",
+                                            value =
+                                                    AuthSwaggerExamples
+                                                            .PHONE_VERIFICATION_REQUIRED_EXAMPLE),
                                     @ExampleObject(
                                             name = "REQUIRED_TERMS_NOT_AGREED",
                                             value =
                                                     AuthSwaggerExamples
                                                             .REQUIRED_TERMS_NOT_AGREED_EXAMPLE),
-                                    @ExampleObject(
-                                            name = "INVALID_ACTIVITY_REGION",
-                                            value =
-                                                    AuthSwaggerExamples
-                                                            .INVALID_ACTIVITY_REGION_EXAMPLE),
                                     @ExampleObject(
                                             name = "INVALID_INTEREST_CATEGORY_COUNT",
                                             value =
@@ -363,7 +309,12 @@ public class AuthController {
                                                             .DUPLICATE_PHONE_NUMBER_EXAMPLE),
                                     @ExampleObject(
                                             name = "DUPLICATE_NICKNAME",
-                                            value = AuthSwaggerExamples.DUPLICATE_NICKNAME_EXAMPLE)
+                                            value = AuthSwaggerExamples.DUPLICATE_NICKNAME_EXAMPLE),
+                                    @ExampleObject(
+                                            name = "ACCOUNT_REJOIN_BLOCKED",
+                                            value =
+                                                    AuthSwaggerExamples
+                                                            .ACCOUNT_REJOIN_BLOCKED_EXAMPLE)
                                 }))
     })
     @PostMapping("/signup")
@@ -446,6 +397,11 @@ public class AuthController {
                                             name = "SUSPENDED_USER",
                                             value = AuthSwaggerExamples.SUSPENDED_USER_EXAMPLE),
                                     @ExampleObject(
+                                            name = "WITHDRAWAL_PENDING_USER",
+                                            value =
+                                                    AuthSwaggerExamples
+                                                            .WITHDRAWAL_PENDING_USER_EXAMPLE),
+                                    @ExampleObject(
                                             name = "WITHDRAWN_USER",
                                             value = AuthSwaggerExamples.WITHDRAWN_USER_EXAMPLE)
                                 }))
@@ -489,18 +445,6 @@ public class AuthController {
                                                         }
                                                         """))),
         @io.swagger.v3.oas.annotations.responses.ApiResponse(
-                responseCode = "400",
-                description = "요청 값 검증 실패",
-                content =
-                        @Content(
-                                mediaType = JSON,
-                                examples =
-                                        @ExampleObject(
-                                                name = "VALIDATION_ERROR",
-                                                value =
-                                                        AuthSwaggerExamples
-                                                                .VALIDATION_ERROR_EXAMPLE))),
-        @io.swagger.v3.oas.annotations.responses.ApiResponse(
                 responseCode = "401",
                 description = "Refresh Token 오류",
                 content =
@@ -528,6 +472,11 @@ public class AuthController {
                                             name = "SUSPENDED_USER",
                                             value = AuthSwaggerExamples.SUSPENDED_USER_EXAMPLE),
                                     @ExampleObject(
+                                            name = "WITHDRAWAL_PENDING_USER",
+                                            value =
+                                                    AuthSwaggerExamples
+                                                            .WITHDRAWAL_PENDING_USER_EXAMPLE),
+                                    @ExampleObject(
                                             name = "WITHDRAWN_USER",
                                             value = AuthSwaggerExamples.WITHDRAWN_USER_EXAMPLE)
                                 }))
@@ -535,6 +484,103 @@ public class AuthController {
     @PostMapping("/reissue")
     public ResponseEntity<ApiResponse<TokenResponse>> reissue(HttpServletRequest request) {
         return tokenResponse(authService.reissue(extractRefreshToken(request)));
+    }
+
+    @Operation(
+            summary = "로그인 세션 복원",
+            description =
+                    "앱 최초 로딩 시 Refresh Token 쿠키로 세션을 복원합니다. 유효한 세션은 Refresh Token을 rotation하며, 복원할 세션이 없으면 정상적인 비로그인 상태를 반환합니다.")
+    @ApiResponses({
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                responseCode = "200",
+                description = "세션 복원 성공 또는 복원할 세션 없음",
+                headers =
+                        @Header(
+                                name = "Set-Cookie",
+                                description =
+                                        "세션 복원 성공 시에만 rotation으로 발급되는 HttpOnly Refresh Token 쿠키",
+                                schema =
+                                        @Schema(
+                                                type = "string",
+                                                example =
+                                                        "gather_refresh_token=new-refresh-token-value; Path=/api/v1/auth; Max-Age=1209600; HttpOnly; SameSite=Lax")),
+                content =
+                        @Content(
+                                mediaType = JSON,
+                                examples = {
+                                    @ExampleObject(
+                                            name = "AUTHENTICATED",
+                                            value =
+                                                    """
+                                                    {
+                                                      "success": true,
+                                                      "data": {
+                                                        "authenticated": true,
+                                                        "accessToken": "new-access-token-value",
+                                                        "tokenType": "Bearer"
+                                                      },
+                                                      "error": null
+                                                    }
+                                                    """),
+                                    @ExampleObject(
+                                            name = "ANONYMOUS",
+                                            value =
+                                                    """
+                                                    {
+                                                      "success": true,
+                                                      "data": {
+                                                        "authenticated": false,
+                                                        "accessToken": null,
+                                                        "tokenType": null
+                                                      },
+                                                      "error": null
+                                                    }
+                                                    """)
+                                })),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                responseCode = "403",
+                description = "사용자 상태로 인한 세션 복원 차단",
+                content =
+                        @Content(
+                                mediaType = JSON,
+                                examples = {
+                                    @ExampleObject(
+                                            name = "SUSPENDED_USER",
+                                            value = AuthSwaggerExamples.SUSPENDED_USER_EXAMPLE),
+                                    @ExampleObject(
+                                            name = "WITHDRAWAL_PENDING_USER",
+                                            value =
+                                                    AuthSwaggerExamples
+                                                            .WITHDRAWAL_PENDING_USER_EXAMPLE),
+                                    @ExampleObject(
+                                            name = "WITHDRAWN_USER",
+                                            value = AuthSwaggerExamples.WITHDRAWN_USER_EXAMPLE)
+                                })),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                responseCode = "500",
+                description = "서버 내부 오류",
+                content =
+                        @Content(
+                                mediaType = JSON,
+                                examples =
+                                        @ExampleObject(
+                                                name = "INTERNAL_SERVER_ERROR",
+                                                value =
+                                                        AuthSwaggerExamples
+                                                                .INTERNAL_SERVER_ERROR_EXAMPLE)))
+    })
+    @PostMapping("/session/restore")
+    public ResponseEntity<ApiResponse<SessionRestoreResponse>> restoreSession(
+            HttpServletRequest request) {
+        Cookie cookie = WebUtils.getCookie(request, refreshTokenCookieProvider.cookieName());
+        if (cookie == null) {
+            return anonymousSessionRestoreResponse();
+        }
+
+        return authService
+                .restoreSession(cookie.getValue())
+                .map(this::authenticatedSessionRestoreResponse)
+                .orElseGet(this::anonymousSessionRestoreResponse);
     }
 
     @Operation(summary = "로그아웃", description = "Access Token 인증을 요구하지 않으며 Refresh Token만으로 처리합니다.")
@@ -565,18 +611,6 @@ public class AuthController {
                                                         }
                                                         """))),
         @io.swagger.v3.oas.annotations.responses.ApiResponse(
-                responseCode = "400",
-                description = "요청 값 검증 실패",
-                content =
-                        @Content(
-                                mediaType = JSON,
-                                examples =
-                                        @ExampleObject(
-                                                name = "VALIDATION_ERROR",
-                                                value =
-                                                        AuthSwaggerExamples
-                                                                .VALIDATION_ERROR_EXAMPLE))),
-        @io.swagger.v3.oas.annotations.responses.ApiResponse(
                 responseCode = "401",
                 description = "유효하지 않은 Refresh Token",
                 content =
@@ -600,6 +634,21 @@ public class AuthController {
                         HttpHeaders.SET_COOKIE,
                         refreshTokenCookieProvider.create(tokenResult.refreshToken()).toString())
                 .body(ApiResponse.success(TokenResponse.bearer(tokenResult.accessToken())));
+    }
+
+    private ResponseEntity<ApiResponse<SessionRestoreResponse>> authenticatedSessionRestoreResponse(
+            TokenIssueResult tokenResult) {
+        return ResponseEntity.ok()
+                .header(
+                        HttpHeaders.SET_COOKIE,
+                        refreshTokenCookieProvider.create(tokenResult.refreshToken()).toString())
+                .body(
+                        ApiResponse.success(
+                                SessionRestoreResponse.authenticated(tokenResult.accessToken())));
+    }
+
+    private ResponseEntity<ApiResponse<SessionRestoreResponse>> anonymousSessionRestoreResponse() {
+        return ResponseEntity.ok(ApiResponse.success(SessionRestoreResponse.anonymous()));
     }
 
     private String extractRefreshToken(HttpServletRequest request) {

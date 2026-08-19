@@ -19,13 +19,13 @@ class NotificationSettingTest {
         assertThat(setting.getUser()).isSameAs(user);
 
         assertThat(setting.isVolunteerScheduleEnabled()).isTrue();
-        assertThat(setting.isBookmarkedPostingDeadlineEnabled()).isFalse();
-        assertThat(setting.isBadgeEnabled()).isFalse();
-        assertThat(setting.isActivityPostCommentEnabled()).isFalse();
+        assertThat(setting.isBookmarkedPostingDeadlineEnabled()).isTrue();
+        assertThat(setting.isBadgeEnabled()).isTrue();
+        assertThat(setting.isActivityPostCommentEnabled()).isTrue();
 
         assertThat(setting.isMeetingJoinResultEnabled()).isTrue();
-        assertThat(setting.isBookmarkedMeetingDeadlineEnabled()).isFalse();
-        assertThat(setting.isMeetingPostCommentEnabled()).isFalse();
+        assertThat(setting.isBookmarkedMeetingDeadlineEnabled()).isTrue();
+        assertThat(setting.isMeetingPostCommentEnabled()).isTrue();
     }
 
     @Test

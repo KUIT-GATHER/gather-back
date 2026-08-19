@@ -3,10 +3,9 @@ package com.gather.gather.domain.posting.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
-import static org.mockito.Mockito.doThrow;
-import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -15,48 +14,34 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.gather.gather.domain.meeting.repository.MeetingImageRepository;
 import com.gather.gather.domain.meeting.service.MeetingImageUrlResolver;
 import com.gather.gather.domain.posting.dto.PostingListItem;
-import com.gather.gather.domain.posting.dto.PostingParticipationAction;
-import com.gather.gather.domain.posting.dto.PostingResponse;
-import com.gather.gather.domain.posting.dto.PostingSourceType;
-import com.gather.gather.domain.posting.entity.Posting;
 import com.gather.gather.domain.posting.entity.PostingCategory;
-import com.gather.gather.domain.posting.entity.PostingLocation;
-import com.gather.gather.domain.posting.entity.PostingParticipation;
-import com.gather.gather.domain.posting.entity.PostingParticipationStatus;
 import com.gather.gather.domain.posting.entity.PostingStatus;
 import com.gather.gather.domain.posting.repository.BookmarkRepository;
 import com.gather.gather.domain.posting.repository.PostingLocationRepository;
 import com.gather.gather.domain.posting.repository.PostingParticipationRepository;
 import com.gather.gather.domain.posting.repository.PostingRepository;
 import com.gather.gather.domain.posting.repository.UnifiedPostingQueryRepository;
-import com.gather.gather.domain.posting.repository.UnifiedPostingQueryRepository.SearchResult;
+import com.gather.gather.domain.posting.repository.UnifiedPostingQueryRepository.CursorSearchResult;
 import com.gather.gather.domain.posting.repository.UnifiedPostingRow;
-import com.gather.gather.domain.region.entity.Region;
 import com.gather.gather.domain.region.repository.RegionRepository;
-import com.gather.gather.global.common.PageResponse;
+import com.gather.gather.global.common.CursorPageResponse;
 import com.gather.gather.global.exception.BusinessException;
 import com.gather.gather.global.exception.ErrorCode;
-import com.gather.gather.global.util.SecurityUtil;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
-import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.CsvSource;
 import org.mockito.Mock;
-import org.mockito.MockedStatic;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
-import org.springframework.test.util.ReflectionTestUtils;
 
 @ExtendWith(MockitoExtension.class)
 class PostingServiceTest {
+
+    private static final Sort ID_DESC = Sort.by(Sort.Direction.DESC, "id");
 
     @Mock private PostingRepository postingRepository;
     @Mock private PostingLocationRepository postingLocationRepository;
@@ -67,7 +52,7 @@ class PostingServiceTest {
     @Mock private UnifiedPostingQueryRepository unifiedPostingQueryRepository;
     @Mock private MeetingImageRepository meetingImageRepository;
     @Mock private MeetingImageUrlResolver meetingImageUrlResolver;
-
+    @Mock private PostingApplicationUrlResolver postingApplicationUrlResolver;
     private PostingService postingService;
 
     @BeforeEach
@@ -84,20 +69,42 @@ class PostingServiceTest {
                         unifiedPostingQueryRepository,
                         meetingImageRepository,
                         meetingImageUrlResolver,
-                        new ObjectMapper());
+                        new ObjectMapper(),
+                        postingApplicationUrlResolver);
+        // 이 클래스의 대부분 테스트는 ID_DESC(정렬: id)를 기본으로 쓰므로, validateSort가 호출하는
+        // isSortable("id")를 여기서 한 번에 true로 stub한다. lenient()를 쓰는 이유는 sort 검증 자체를
+        // 다루는 일부 테스트(예: 알 수 없는 정렬 프로퍼티 거부 테스트)는 이 stub을 아예 쓰지 않기 때문이다.
+        org.mockito.Mockito.lenient()
+                .when(unifiedPostingQueryRepository.isSortable("id"))
+                .thenReturn(true);
+    }
+
+    private CursorSearchResult emptyResult() {
+        return new CursorSearchResult(List.of(), null, false);
     }
 
     @Test
     @DisplayName("getPostings passes a null status through to the repository unchanged")
     void getPostings_passesNullStatusThrough_whenStatusNotProvided() {
-        Pageable pageable = PageRequest.of(0, 20);
         when(unifiedPostingQueryRepository.search(
-                        isNull(), isNull(), isNull(), isNull(), isNull(), isNull(), eq(pageable)))
-                .thenReturn(new SearchResult(List.of(), 0));
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        eq(ID_DESC),
+                        isNull(),
+                        eq(20)))
+                .thenReturn(emptyResult());
 
-        postingService.getPostings(pageable, null, null, null, null, null, null, null);
+        postingService.getPostings(
+                ID_DESC, null, 20, null, null, null, null, null, null, null, null, null);
 
-        verify(unifiedPostingQueryRepository).search(null, null, null, null, null, null, pageable);
+        verify(unifiedPostingQueryRepository)
+                .search(null, null, null, null, null, null, null, null, ID_DESC, null, 20);
         verify(regionRepository, never()).findIdsIncludingChildren(any());
         verify(regionRepository, never()).findIdsIncludingChildrenByGroupId(any());
     }
@@ -105,7 +112,6 @@ class PostingServiceTest {
     @Test
     @DisplayName("getPostings passes an explicitly given status through unchanged")
     void getPostings_usesGivenStatus_whenProvided() {
-        Pageable pageable = PageRequest.of(0, 20);
         when(unifiedPostingQueryRepository.search(
                         eq(PostingStatus.CLOSED),
                         isNull(),
@@ -113,20 +119,45 @@ class PostingServiceTest {
                         isNull(),
                         isNull(),
                         isNull(),
-                        eq(pageable)))
-                .thenReturn(new SearchResult(List.of(), 0));
+                        isNull(),
+                        isNull(),
+                        eq(ID_DESC),
+                        isNull(),
+                        eq(20)))
+                .thenReturn(emptyResult());
 
         postingService.getPostings(
-                pageable, null, null, PostingStatus.CLOSED, null, null, null, null);
+                ID_DESC,
+                null,
+                20,
+                null,
+                null,
+                PostingStatus.CLOSED,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null);
 
         verify(unifiedPostingQueryRepository)
-                .search(PostingStatus.CLOSED, null, null, null, null, null, pageable);
+                .search(
+                        PostingStatus.CLOSED,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        ID_DESC,
+                        null,
+                        20);
     }
 
     @Test
     @DisplayName("getPostings resolves regionId to itself plus children before querying")
     void getPostings_resolvesRegionHierarchy_whenRegionIdProvided() {
-        Pageable pageable = PageRequest.of(0, 20);
         when(regionRepository.findIdsIncludingChildren(1L)).thenReturn(List.of(1L, 2L, 3L));
         when(unifiedPostingQueryRepository.search(
                         isNull(),
@@ -135,22 +166,36 @@ class PostingServiceTest {
                         isNull(),
                         isNull(),
                         isNull(),
-                        eq(pageable)))
-                .thenReturn(new SearchResult(List.of(), 0));
+                        isNull(),
+                        isNull(),
+                        eq(ID_DESC),
+                        isNull(),
+                        eq(20)))
+                .thenReturn(emptyResult());
 
-        postingService.getPostings(pageable, 1L, null, null, null, null, null, null);
+        postingService.getPostings(
+                ID_DESC, null, 20, 1L, null, null, null, null, null, null, null, null);
 
         verify(regionRepository).findIdsIncludingChildren(1L);
         verify(unifiedPostingQueryRepository)
-                .search(null, List.of(1L, 2L, 3L), null, null, null, null, pageable);
+                .search(
+                        null,
+                        List.of(1L, 2L, 3L),
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        ID_DESC,
+                        null,
+                        20);
     }
 
     @Test
     @DisplayName(
-            "getPostings resolves regionGroupId to every sido/gungu in that group before"
-                    + " querying")
+            "getPostings resolves regionGroupId to every sido/gungu in that group before querying")
     void getPostings_resolvesRegionGroupHierarchy_whenRegionGroupIdProvided() {
-        Pageable pageable = PageRequest.of(0, 20);
         when(regionRepository.findIdsIncludingChildrenByGroupId(7L))
                 .thenReturn(List.of(10L, 11L, 12L, 13L));
         when(unifiedPostingQueryRepository.search(
@@ -160,45 +205,73 @@ class PostingServiceTest {
                         isNull(),
                         isNull(),
                         isNull(),
-                        eq(pageable)))
-                .thenReturn(new SearchResult(List.of(), 0));
+                        isNull(),
+                        isNull(),
+                        eq(ID_DESC),
+                        isNull(),
+                        eq(20)))
+                .thenReturn(emptyResult());
 
-        postingService.getPostings(pageable, null, 7L, null, null, null, null, null);
+        postingService.getPostings(
+                ID_DESC, null, 20, null, 7L, null, null, null, null, null, null, null);
 
         verify(regionRepository).findIdsIncludingChildrenByGroupId(7L);
         verify(regionRepository, never()).findIdsIncludingChildren(any());
         verify(unifiedPostingQueryRepository)
-                .search(null, List.of(10L, 11L, 12L, 13L), null, null, null, null, pageable);
+                .search(
+                        null,
+                        List.of(10L, 11L, 12L, 13L),
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        ID_DESC,
+                        null,
+                        20);
     }
 
     @Test
     @DisplayName("getPostings throws VALIDATION_ERROR when both regionId and regionGroupId given")
     void getPostings_throwsValidationError_whenBothRegionIdAndRegionGroupIdProvided() {
-        Pageable pageable = PageRequest.of(0, 20);
-
         assertThatThrownBy(
                         () ->
                                 postingService.getPostings(
-                                        pageable, 1L, 7L, null, null, null, "환경", null))
+                                        ID_DESC, null, 20, 1L, 7L, null, null, null, null, null,
+                                        "환경", null))
                 .isInstanceOf(BusinessException.class)
                 .satisfies(
                         ex ->
                                 assertThat(((BusinessException) ex).getErrorCode())
                                         .isEqualTo(ErrorCode.VALIDATION_ERROR));
         verify(unifiedPostingQueryRepository, never())
-                .search(any(), any(), any(), any(), any(), any(), any());
+                .search(
+                        any(), any(), any(), any(), any(), any(), any(), any(), any(), any(),
+                        anyInt());
         verify(postingSearchLogService, never()).log(any());
     }
 
     @Test
     @DisplayName("getPostings throws VALIDATION_ERROR when sort property is not whitelisted")
     void getPostings_throwsValidationError_whenSortPropertyUnknown() {
-        Pageable pageable = PageRequest.of(0, 20, Sort.by("string"));
+        Sort invalidSort = Sort.by("string");
 
         assertThatThrownBy(
                         () ->
                                 postingService.getPostings(
-                                        pageable, null, null, null, null, null, "환경", null))
+                                        invalidSort,
+                                        null,
+                                        20,
+                                        null,
+                                        null,
+                                        null,
+                                        null,
+                                        null,
+                                        null,
+                                        null,
+                                        "환경",
+                                        null))
                 .isInstanceOf(BusinessException.class)
                 .satisfies(
                         ex ->
@@ -206,32 +279,67 @@ class PostingServiceTest {
                                         .isEqualTo(ErrorCode.VALIDATION_ERROR));
         verify(postingSearchLogService, never()).log(any());
         verify(unifiedPostingQueryRepository, never())
-                .search(any(), any(), any(), any(), any(), any(), any());
+                .search(
+                        any(), any(), any(), any(), any(), any(), any(), any(), any(), any(),
+                        anyInt());
     }
 
     @Test
     @DisplayName("getPostings allows sorting by a whitelisted property")
     void getPostings_allowsSort_whenPropertyKnown() {
-        Pageable pageable = PageRequest.of(0, 20, Sort.by("activityStartAt").ascending());
+        Sort activityStartAtAsc = Sort.by("activityStartAt").ascending();
         when(unifiedPostingQueryRepository.isSortable("activityStartAt")).thenReturn(true);
         when(unifiedPostingQueryRepository.search(
-                        isNull(), isNull(), isNull(), isNull(), isNull(), isNull(), eq(pageable)))
-                .thenReturn(new SearchResult(List.of(), 0));
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        eq(activityStartAtAsc),
+                        isNull(),
+                        eq(20)))
+                .thenReturn(emptyResult());
 
-        postingService.getPostings(pageable, null, null, null, null, null, null, null);
+        postingService.getPostings(
+                activityStartAtAsc, null, 20, null, null, null, null, null, null, null, null, null);
 
-        verify(unifiedPostingQueryRepository).search(null, null, null, null, null, null, pageable);
+        verify(unifiedPostingQueryRepository)
+                .search(
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        activityStartAtAsc,
+                        null,
+                        20);
     }
 
     @Test
     @DisplayName("getPostings logs the keyword only after the search succeeds")
     void getPostings_logsKeyword_onlyAfterSearchSucceeds() {
-        Pageable pageable = PageRequest.of(0, 20);
         when(unifiedPostingQueryRepository.search(
-                        isNull(), isNull(), isNull(), isNull(), eq("환경"), isNull(), eq(pageable)))
-                .thenReturn(new SearchResult(List.of(), 0));
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        eq("환경"),
+                        isNull(),
+                        eq(ID_DESC),
+                        isNull(),
+                        eq(20)))
+                .thenReturn(emptyResult());
 
-        postingService.getPostings(pageable, null, null, null, null, null, "환경", null);
+        postingService.getPostings(
+                ID_DESC, null, 20, null, null, null, null, null, null, null, "환경", null);
 
         verify(postingSearchLogService).log("환경");
     }
@@ -239,14 +347,26 @@ class PostingServiceTest {
     @Test
     @DisplayName("getPostings still returns results when search-log recording throws")
     void getPostings_returnsResults_whenSearchLoggingThrows() {
-        Pageable pageable = PageRequest.of(0, 20);
         when(unifiedPostingQueryRepository.search(
-                        isNull(), isNull(), isNull(), isNull(), eq("환경"), isNull(), eq(pageable)))
-                .thenReturn(new SearchResult(List.of(), 0));
-        doThrow(new RuntimeException("logging failed")).when(postingSearchLogService).log("환경");
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        eq("환경"),
+                        isNull(),
+                        eq(ID_DESC),
+                        isNull(),
+                        eq(20)))
+                .thenReturn(emptyResult());
+        org.mockito.Mockito.doThrow(new RuntimeException("logging failed"))
+                .when(postingSearchLogService)
+                .log("환경");
 
-        PageResponse<PostingListItem> result =
-                postingService.getPostings(pageable, null, null, null, null, null, "환경", null);
+        CursorPageResponse<PostingListItem> result =
+                postingService.getPostings(
+                        ID_DESC, null, 20, null, null, null, null, null, null, null, "환경", null);
 
         assertThat(result.content()).isEmpty();
     }
@@ -254,44 +374,226 @@ class PostingServiceTest {
     @Test
     @DisplayName("getPostings passes the notice date range through to the repository")
     void getPostings_passesNoticeDateRange() {
-        Pageable pageable = PageRequest.of(0, 20);
         LocalDate from = LocalDate.of(2026, 7, 1);
         LocalDate to = LocalDate.of(2026, 7, 31);
         when(unifiedPostingQueryRepository.search(
-                        isNull(), isNull(), eq(from), eq(to), isNull(), isNull(), eq(pageable)))
-                .thenReturn(new SearchResult(List.of(), 0));
+                        isNull(),
+                        isNull(),
+                        eq(from),
+                        eq(to),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        eq(ID_DESC),
+                        isNull(),
+                        eq(20)))
+                .thenReturn(emptyResult());
 
-        postingService.getPostings(pageable, null, null, null, from, to, null, null);
+        postingService.getPostings(
+                ID_DESC, null, 20, null, null, null, from, to, null, null, null, null);
 
-        verify(unifiedPostingQueryRepository).search(null, null, from, to, null, null, pageable);
+        verify(unifiedPostingQueryRepository)
+                .search(null, null, from, to, null, null, null, null, ID_DESC, null, 20);
+    }
+
+    @Test
+    @DisplayName("getPostings passes the activity date range through to the repository")
+    void getPostings_passesActivityDateRange() {
+        LocalDate from = LocalDate.of(2026, 8, 20);
+        LocalDate to = LocalDate.of(2026, 8, 25);
+        when(unifiedPostingQueryRepository.search(
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        eq(from),
+                        eq(to),
+                        isNull(),
+                        isNull(),
+                        eq(ID_DESC),
+                        isNull(),
+                        eq(20)))
+                .thenReturn(emptyResult());
+
+        postingService.getPostings(
+                ID_DESC, null, 20, null, null, null, null, null, from, to, null, null);
+
+        verify(unifiedPostingQueryRepository)
+                .search(null, null, null, null, from, to, null, null, ID_DESC, null, 20);
+    }
+
+    @Test
+    @DisplayName("getPostings allows activityStartDate equal to activityEndDate")
+    void getPostings_allowsActivityDateRange_whenStartEqualsEnd() {
+        LocalDate same = LocalDate.of(2026, 8, 20);
+        when(unifiedPostingQueryRepository.search(
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        eq(same),
+                        eq(same),
+                        isNull(),
+                        isNull(),
+                        eq(ID_DESC),
+                        isNull(),
+                        eq(20)))
+                .thenReturn(emptyResult());
+
+        postingService.getPostings(
+                ID_DESC, null, 20, null, null, null, null, null, same, same, null, null);
+
+        verify(unifiedPostingQueryRepository)
+                .search(null, null, null, null, same, same, null, null, ID_DESC, null, 20);
+    }
+
+    @Test
+    @DisplayName(
+            "getPostings throws VALIDATION_ERROR when activityStartDate is after activityEndDate")
+    void getPostings_throwsValidationError_whenActivityDateRangeInverted() {
+        LocalDate start = LocalDate.of(2026, 8, 25);
+        LocalDate end = LocalDate.of(2026, 8, 20);
+
+        assertThatThrownBy(
+                        () ->
+                                postingService.getPostings(
+                                        ID_DESC, null, 20, null, null, null, null, null, start, end,
+                                        null, null))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(
+                        ex ->
+                                assertThat(((BusinessException) ex).getErrorCode())
+                                        .isEqualTo(ErrorCode.VALIDATION_ERROR));
+        verify(unifiedPostingQueryRepository, never())
+                .search(
+                        any(), any(), any(), any(), any(), any(), any(), any(), any(), any(),
+                        anyInt());
     }
 
     @Test
     @DisplayName("getPostings passes the category through to the repository")
     void getPostings_passesCategory_whenProvided() {
-        Pageable pageable = PageRequest.of(0, 20);
         when(unifiedPostingQueryRepository.search(
+                        isNull(),
+                        isNull(),
                         isNull(),
                         isNull(),
                         isNull(),
                         isNull(),
                         isNull(),
                         eq(PostingCategory.WELFARE),
-                        eq(pageable)))
-                .thenReturn(new SearchResult(List.of(), 0));
+                        eq(ID_DESC),
+                        isNull(),
+                        eq(20)))
+                .thenReturn(emptyResult());
 
         postingService.getPostings(
-                pageable, null, null, null, null, null, null, PostingCategory.WELFARE);
+                ID_DESC,
+                null,
+                20,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                PostingCategory.WELFARE);
 
         verify(unifiedPostingQueryRepository)
-                .search(null, null, null, null, null, PostingCategory.WELFARE, pageable);
+                .search(
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        PostingCategory.WELFARE,
+                        ID_DESC,
+                        null,
+                        20);
+    }
+
+    @Test
+    @DisplayName("getPostings passes the cursor through to the repository unchanged")
+    void getPostings_passesCursorThrough() {
+        String cursor = "abc123";
+        when(unifiedPostingQueryRepository.search(
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        eq(ID_DESC),
+                        eq(cursor),
+                        eq(20)))
+                .thenReturn(emptyResult());
+
+        postingService.getPostings(
+                ID_DESC, cursor, 20, null, null, null, null, null, null, null, null, null);
+
+        verify(unifiedPostingQueryRepository)
+                .search(null, null, null, null, null, null, null, null, ID_DESC, cursor, 20);
+    }
+
+    @Test
+    @DisplayName("getPostings falls back to the default size when size is zero or negative")
+    void getPostings_fallsBackToDefaultSize_whenSizeNotPositive() {
+        when(unifiedPostingQueryRepository.search(
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        eq(ID_DESC),
+                        isNull(),
+                        eq(20)))
+                .thenReturn(emptyResult());
+
+        postingService.getPostings(
+                ID_DESC, null, 0, null, null, null, null, null, null, null, null, null);
+
+        verify(unifiedPostingQueryRepository)
+                .search(null, null, null, null, null, null, null, null, ID_DESC, null, 20);
+    }
+
+    @Test
+    @DisplayName("getPostings clamps size to the maximum when a larger size is requested")
+    void getPostings_clampsSize_whenSizeExceedsMax() {
+        when(unifiedPostingQueryRepository.search(
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        eq(ID_DESC),
+                        isNull(),
+                        eq(100)))
+                .thenReturn(emptyResult());
+
+        postingService.getPostings(
+                ID_DESC, null, 500, null, null, null, null, null, null, null, null, null);
+
+        verify(unifiedPostingQueryRepository)
+                .search(null, null, null, null, null, null, null, null, ID_DESC, null, 100);
     }
 
     @Test
     @DisplayName(
             "getPostings maps a POSTING-sourced row to a PostingListItem with a null thumbnail")
     void getPostings_mapsPostingSourcedRow_withNullThumbnail() {
-        Pageable pageable = PageRequest.of(0, 20);
         UnifiedPostingRow row =
                 new UnifiedPostingRow(
                         "POSTING",
@@ -308,326 +610,25 @@ class PostingServiceTest {
                         1,
                         "[\"ENVIRONMENT\"]",
                         "RECRUITING");
-        when(unifiedPostingQueryRepository.search(any(), any(), any(), any(), any(), any(), any()))
-                .thenReturn(new SearchResult(List.of(row), 1));
-        when(regionRepository.findAllById(any())).thenReturn(List.of(regionWithId(2L, "동구")));
+        when(unifiedPostingQueryRepository.search(
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        eq(ID_DESC),
+                        isNull(),
+                        eq(20)))
+                .thenReturn(new CursorSearchResult(List.of(row), null, false));
 
-        PageResponse<PostingListItem> result =
-                postingService.getPostings(pageable, null, null, null, null, null, null, null);
+        CursorPageResponse<PostingListItem> result =
+                postingService.getPostings(
+                        ID_DESC, null, 20, null, null, null, null, null, null, null, null, null);
 
         assertThat(result.content()).hasSize(1);
-        PostingListItem item = result.content().get(0);
-        assertThat(item.sourceType()).isEqualTo(PostingSourceType.POSTING);
-        assertThat(item.regionName()).isEqualTo("동구");
-        assertThat(item.thumbnailUrl()).isNull();
-        assertThat(item.categories()).containsExactly(PostingCategory.ENVIRONMENT);
-        assertThat(result.totalElements()).isEqualTo(1);
-        verify(meetingImageRepository, never()).findRepresentativeImagesByMeetingIds(any());
-    }
-
-    @Test
-    @DisplayName("getPostings resolves a thumbnail for a MEETING_RECRUIT-sourced row")
-    void getPostings_resolvesThumbnail_forMeetingRecruitSourcedRow() {
-        Pageable pageable = PageRequest.of(0, 20);
-        UnifiedPostingRow row =
-                new UnifiedPostingRow(
-                        "MEETING_RECRUIT",
-                        100L,
-                        9L,
-                        "6월 정기 활동 팀원 모집",
-                        "한강공원 플로깅",
-                        2L,
-                        "여의도동",
-                        LocalDateTime.of(2026, 7, 10, 9, 0),
-                        LocalDateTime.of(2026, 7, 10, 18, 0),
-                        LocalDateTime.of(2026, 7, 9, 23, 59),
-                        4,
-                        2,
-                        "[\"ENVIRONMENT\"]",
-                        "RECRUITING");
-        com.gather.gather.domain.meeting.entity.MeetingImage image =
-                com.gather.gather.domain.meeting.entity.MeetingImage.create(
-                        9L, "meetings/9/a.jpg", 0);
-        when(unifiedPostingQueryRepository.search(any(), any(), any(), any(), any(), any(), any()))
-                .thenReturn(new SearchResult(List.of(row), 1));
-        when(regionRepository.findAllById(any())).thenReturn(List.of());
-        when(meetingImageRepository.findRepresentativeImagesByMeetingIds(any()))
-                .thenReturn(List.of(image));
-        when(meetingImageUrlResolver.resolve("meetings/9/a.jpg"))
-                .thenReturn("https://cdn.example.com/meetings/9/a.jpg");
-
-        PageResponse<PostingListItem> result =
-                postingService.getPostings(pageable, null, null, null, null, null, null, null);
-
-        PostingListItem item = result.content().get(0);
-        assertThat(item.sourceType()).isEqualTo(PostingSourceType.MEETING_RECRUIT);
-        assertThat(item.meetingId()).isEqualTo(9L);
-        assertThat(item.thumbnailUrl()).isEqualTo("https://cdn.example.com/meetings/9/a.jpg");
-    }
-
-    @Test
-    @DisplayName("getPostings returns empty PageResponse when no rows exist")
-    void getPostings_returnsEmptyPageResponse_whenNoRowsExist() {
-        Pageable pageable = PageRequest.of(0, 20);
-        when(unifiedPostingQueryRepository.search(
-                        isNull(), isNull(), isNull(), isNull(), isNull(), isNull(), eq(pageable)))
-                .thenReturn(new SearchResult(List.of(), 0));
-
-        PageResponse<PostingListItem> result =
-                postingService.getPostings(pageable, null, null, null, null, null, null, null);
-
-        assertThat(result.content()).isEmpty();
-        assertThat(result.totalElements()).isZero();
-    }
-
-    @Test
-    @DisplayName("getPosting returns detail with locations when posting exists")
-    void getPosting_returnsDetailWithLocations_whenExists() {
-        Posting posting = postingWithId(1L, "동구 환경정화 봉사", 2L, PostingCategory.ENVIRONMENT);
-        when(postingRepository.findById(1L)).thenReturn(Optional.of(posting));
-        when(regionRepository.findById(2L)).thenReturn(Optional.of(regionWithId(2L, "동구")));
-        when(postingLocationRepository.findAllByPostingIdOrderByLocationSeq(1L))
-                .thenReturn(
-                        List.of(locationWithId(2, "부산시 어딘가 2"), locationWithId(3, "부산시 어딘가 3")));
-
-        PostingResponse response = postingService.getPosting(1L);
-
-        assertThat(response.id()).isEqualTo(1L);
-        assertThat(response.regionName()).isEqualTo("동구");
-        assertThat(response.category()).isEqualTo(PostingCategory.ENVIRONMENT);
-        assertThat(response.locations()).hasSize(3);
-        assertThat(response.locations().get(0).locationSeq()).isEqualTo(1);
-        assertThat(response.locations().get(1).locationSeq()).isEqualTo(2);
-        assertThat(response.locations().get(2).locationSeq()).isEqualTo(3);
-        assertThat(response.bookmarked()).isFalse();
-        assertThat(response.participationStatus()).isNull();
-        assertThat(response.participationAction()).isEqualTo(PostingParticipationAction.APPLY);
-    }
-
-    @Test
-    @DisplayName("getPosting returns bookmarked true when the current user has bookmarked it")
-    void getPosting_returnsBookmarkedTrue_whenCurrentUserHasBookmarked() {
-        Long userId = 1L;
-        Posting posting = postingWithId(1L, "동구 환경정화 봉사", 2L, PostingCategory.ENVIRONMENT);
-        when(postingRepository.findById(1L)).thenReturn(Optional.of(posting));
-        when(regionRepository.findById(2L)).thenReturn(Optional.of(regionWithId(2L, "동구")));
-        when(postingLocationRepository.findAllByPostingIdOrderByLocationSeq(1L))
-                .thenReturn(List.of());
-        when(bookmarkRepository.existsByUserIdAndPostingId(userId, 1L)).thenReturn(true);
-
-        try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
-            securityUtil.when(SecurityUtil::getCurrentUserIdOrNull).thenReturn(userId);
-
-            PostingResponse response = postingService.getPosting(1L);
-
-            assertThat(response.bookmarked()).isTrue();
-        }
-    }
-
-    @Test
-    @DisplayName("getPosting returns bookmarked false when the current user has not bookmarked it")
-    void getPosting_returnsBookmarkedFalse_whenCurrentUserHasNotBookmarked() {
-        Long userId = 1L;
-        Posting posting = postingWithId(1L, "동구 환경정화 봉사", 2L, PostingCategory.ENVIRONMENT);
-        when(postingRepository.findById(1L)).thenReturn(Optional.of(posting));
-        when(regionRepository.findById(2L)).thenReturn(Optional.of(regionWithId(2L, "동구")));
-        when(postingLocationRepository.findAllByPostingIdOrderByLocationSeq(1L))
-                .thenReturn(List.of());
-        when(bookmarkRepository.existsByUserIdAndPostingId(userId, 1L)).thenReturn(false);
-
-        try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
-            securityUtil.when(SecurityUtil::getCurrentUserIdOrNull).thenReturn(userId);
-
-            PostingResponse response = postingService.getPosting(1L);
-
-            assertThat(response.bookmarked()).isFalse();
-        }
-    }
-
-    @Test
-    @DisplayName("getPosting returns bookmarked false without querying bookmarks when anonymous")
-    void getPosting_returnsBookmarkedFalse_whenAnonymous() {
-        Posting posting = postingWithId(1L, "동구 환경정화 봉사", 2L, PostingCategory.ENVIRONMENT);
-        when(postingRepository.findById(1L)).thenReturn(Optional.of(posting));
-        when(regionRepository.findById(2L)).thenReturn(Optional.of(regionWithId(2L, "동구")));
-        when(postingLocationRepository.findAllByPostingIdOrderByLocationSeq(1L))
-                .thenReturn(List.of());
-
-        try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
-            securityUtil.when(SecurityUtil::getCurrentUserIdOrNull).thenReturn(null);
-
-            PostingResponse response = postingService.getPosting(1L);
-
-            assertThat(response.bookmarked()).isFalse();
-        }
-        verify(bookmarkRepository, never()).existsByUserIdAndPostingId(any(), any());
-    }
-
-    @Test
-    @DisplayName("getPosting does not query participation and returns APPLY action when anonymous")
-    void getPosting_doesNotQueryParticipation_whenAnonymous() {
-        Posting posting = postingWithId(1L, "동구 환경정화 봉사", 2L, PostingCategory.ENVIRONMENT);
-        when(postingRepository.findById(1L)).thenReturn(Optional.of(posting));
-        when(regionRepository.findById(2L)).thenReturn(Optional.of(regionWithId(2L, "동구")));
-        when(postingLocationRepository.findAllByPostingIdOrderByLocationSeq(1L))
-                .thenReturn(List.of());
-
-        try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
-            securityUtil.when(SecurityUtil::getCurrentUserIdOrNull).thenReturn(null);
-
-            PostingResponse response = postingService.getPosting(1L);
-
-            assertThat(response.participationStatus()).isNull();
-            assertThat(response.participationAction()).isEqualTo(PostingParticipationAction.APPLY);
-        }
-        verify(postingParticipationRepository, never()).findByUserIdAndPostingId(any(), any());
-    }
-
-    @Test
-    @DisplayName(
-            "getPosting returns null status and APPLY action when the user has not participated")
-    void getPosting_returnsNullParticipationAndApplyAction_whenNoParticipation() {
-        Long userId = 1L;
-        Posting posting = postingWithId(1L, "동구 환경정화 봉사", 2L, PostingCategory.ENVIRONMENT);
-        when(postingRepository.findById(1L)).thenReturn(Optional.of(posting));
-        when(regionRepository.findById(2L)).thenReturn(Optional.of(regionWithId(2L, "동구")));
-        when(postingLocationRepository.findAllByPostingIdOrderByLocationSeq(1L))
-                .thenReturn(List.of());
-        when(postingParticipationRepository.findByUserIdAndPostingId(userId, 1L))
-                .thenReturn(Optional.empty());
-
-        try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
-            securityUtil.when(SecurityUtil::getCurrentUserIdOrNull).thenReturn(userId);
-
-            PostingResponse response = postingService.getPosting(1L);
-
-            assertThat(response.participationStatus()).isNull();
-            assertThat(response.participationAction()).isEqualTo(PostingParticipationAction.APPLY);
-        }
-    }
-
-    @ParameterizedTest
-    @CsvSource({"APPLIED, CANCEL", "CONFIRMED, CANCEL", "COMPLETED, NONE", "REVIEWED, NONE"})
-    @DisplayName(
-            "getPosting derives participationAction from status when the activity has not ended"
-                    + " yet")
-    void getPosting_derivesParticipationAction_fromStatus_whenActivityNotEnded(
-            PostingParticipationStatus status, PostingParticipationAction expectedAction) {
-        Long userId = 1L;
-        Posting posting = postingWithId(1L, "동구 환경정화 봉사", 2L, PostingCategory.ENVIRONMENT);
-        when(postingRepository.findById(1L)).thenReturn(Optional.of(posting));
-        when(regionRepository.findById(2L)).thenReturn(Optional.of(regionWithId(2L, "동구")));
-        when(postingLocationRepository.findAllByPostingIdOrderByLocationSeq(1L))
-                .thenReturn(List.of());
-        when(postingParticipationRepository.findByUserIdAndPostingId(userId, 1L))
-                .thenReturn(Optional.of(participationWithStatus(userId, 1L, status)));
-
-        try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
-            securityUtil.when(SecurityUtil::getCurrentUserIdOrNull).thenReturn(userId);
-
-            PostingResponse response = postingService.getPosting(1L);
-
-            assertThat(response.participationStatus()).isEqualTo(status);
-            assertThat(response.participationAction()).isEqualTo(expectedAction);
-        }
-    }
-
-    @ParameterizedTest
-    @CsvSource({"APPLIED, COMPLETE", "CONFIRMED, COMPLETE", "COMPLETED, NONE", "REVIEWED, NONE"})
-    @DisplayName(
-            "getPosting derives participationAction from status once the activity end date has"
-                    + " passed")
-    void getPosting_derivesParticipationAction_fromStatus_whenActivityEnded(
-            PostingParticipationStatus status, PostingParticipationAction expectedAction) {
-        Long userId = 1L;
-        Posting posting = postingWithActEndDate(1L, "동구 환경정화 봉사", 2L, PostingCategory.ENVIRONMENT);
-        when(postingRepository.findById(1L)).thenReturn(Optional.of(posting));
-        when(regionRepository.findById(2L)).thenReturn(Optional.of(regionWithId(2L, "동구")));
-        when(postingLocationRepository.findAllByPostingIdOrderByLocationSeq(1L))
-                .thenReturn(List.of());
-        when(postingParticipationRepository.findByUserIdAndPostingId(userId, 1L))
-                .thenReturn(Optional.of(participationWithStatus(userId, 1L, status)));
-
-        try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
-            securityUtil.when(SecurityUtil::getCurrentUserIdOrNull).thenReturn(userId);
-
-            PostingResponse response = postingService.getPosting(1L);
-
-            assertThat(response.participationStatus()).isEqualTo(status);
-            assertThat(response.participationAction()).isEqualTo(expectedAction);
-        }
-    }
-
-    @Test
-    @DisplayName("getPosting throws POSTING_NOT_FOUND when id does not exist")
-    void getPosting_throwsPostingNotFound_whenMissing() {
-        when(postingRepository.findById(999L)).thenReturn(Optional.empty());
-
-        assertThatThrownBy(() -> postingService.getPosting(999L))
-                .isInstanceOf(BusinessException.class)
-                .satisfies(
-                        ex ->
-                                assertThat(((BusinessException) ex).getErrorCode())
-                                        .isEqualTo(ErrorCode.POSTING_NOT_FOUND));
-    }
-
-    @Test
-    @DisplayName("getPosting leaves regionName null when regionId is null")
-    void getPosting_regionNameNull_whenRegionIdNull() {
-        Posting posting = postingWithId(1L, "무지역 공고", null, PostingCategory.ENVIRONMENT);
-        when(postingRepository.findById(1L)).thenReturn(Optional.of(posting));
-        when(postingLocationRepository.findAllByPostingIdOrderByLocationSeq(1L))
-                .thenReturn(List.of());
-
-        PostingResponse response = postingService.getPosting(1L);
-
-        assertThat(response.regionName()).isNull();
-        assertThat(response.locations()).hasSize(1);
-    }
-
-    private Posting postingWithId(Long id, String title, Long regionId, PostingCategory category) {
-        Posting posting =
-                Posting.builder()
-                        .extId("ext-" + id)
-                        .title(title)
-                        .status(PostingStatus.RECRUITING)
-                        .regionId(regionId)
-                        .category(category)
-                        .build();
-        ReflectionTestUtils.setField(posting, "id", id);
-        return posting;
-    }
-
-    /** 활동종료일이 어제인 공고 — isActivityEnded()가 true를 반환한다. */
-    private Posting postingWithActEndDate(
-            Long id, String title, Long regionId, PostingCategory category) {
-        Posting posting =
-                Posting.builder()
-                        .extId("ext-" + id)
-                        .title(title)
-                        .status(PostingStatus.RECRUITING)
-                        .regionId(regionId)
-                        .category(category)
-                        .actEndDate(LocalDate.now().minusDays(1))
-                        .build();
-        ReflectionTestUtils.setField(posting, "id", id);
-        return posting;
-    }
-
-    private Region regionWithId(Long id, String name) {
-        Region region = Region.create(name, 3, "code-" + id, null);
-        ReflectionTestUtils.setField(region, "id", id);
-        return region;
-    }
-
-    private PostingLocation locationWithId(int locationSeq, String address) {
-        return PostingLocation.create(1L, locationSeq, address, null, null);
-    }
-
-    private PostingParticipation participationWithStatus(
-            Long userId, Long postingId, PostingParticipationStatus status) {
-        PostingParticipation participation = PostingParticipation.create(userId, postingId);
-        ReflectionTestUtils.setField(participation, "status", status);
-        return participation;
+        assertThat(result.content().get(0).thumbnailUrl()).isNull();
     }
 }

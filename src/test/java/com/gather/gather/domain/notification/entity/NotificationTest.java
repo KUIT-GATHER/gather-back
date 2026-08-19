@@ -7,12 +7,16 @@ import com.gather.gather.domain.auth.entity.User;
 import com.gather.gather.domain.notification.enums.NotificationCategory;
 import com.gather.gather.domain.notification.enums.NotificationTargetType;
 import com.gather.gather.domain.notification.enums.NotificationType;
+import java.time.LocalDateTime;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
 
 class NotificationTest {
+
+    private static final LocalDateTime NOW = LocalDateTime.of(2026, 8, 11, 7, 9);
+    private static final LocalDateTime LATER = NOW.plusMinutes(1);
 
     @Test
     @DisplayName("알림 유형에 따라 카테고리가 결정된다")
@@ -54,11 +58,12 @@ class NotificationTest {
                         NotificationTargetType.MY_PAGE,
                         null);
 
-        notification.markAsRead();
+        notification.markAsRead(NOW);
         var firstReadAt = notification.getReadAt();
-        notification.markAsRead();
+        notification.markAsRead(LATER);
 
-        assertThat(notification.getReadAt()).isEqualTo(firstReadAt);
+        assertThat(firstReadAt).isEqualTo(NOW);
+        assertThat(notification.getReadAt()).isEqualTo(NOW);
     }
 
     @Test
@@ -66,11 +71,12 @@ class NotificationTest {
     void delete_isIdempotent() {
         Notification notification = createMyPageNotification();
 
-        notification.delete();
+        notification.delete(NOW);
         var firstDeletedAt = notification.getDeletedAt();
-        notification.delete();
+        notification.delete(LATER);
 
-        assertThat(notification.getDeletedAt()).isEqualTo(firstDeletedAt);
+        assertThat(firstDeletedAt).isEqualTo(NOW);
+        assertThat(notification.getDeletedAt()).isEqualTo(NOW);
     }
 
     @ParameterizedTest

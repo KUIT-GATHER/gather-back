@@ -12,6 +12,7 @@ import com.gather.gather.domain.auth.kakao.admin.client.KakaoAdminUnlinkResult;
 import com.gather.gather.domain.auth.repository.EmailVerificationRepository;
 import com.gather.gather.domain.auth.repository.KakaoUnlinkTaskRepository;
 import com.gather.gather.domain.auth.repository.KakaoUnlinkWorkerControlRepository;
+import com.gather.gather.domain.auth.repository.PasswordResetTokenRepository;
 import com.gather.gather.domain.auth.repository.RefreshTokenRepository;
 import com.gather.gather.domain.auth.repository.SocialAccountRepository;
 import com.gather.gather.domain.auth.repository.UserRepository;
@@ -33,6 +34,7 @@ public class KakaoUnlinkResultService {
     private final KakaoUnlinkTaskRepository taskRepository;
     private final UserRepository userRepository;
     private final RefreshTokenRepository refreshTokenRepository;
+    private final PasswordResetTokenRepository passwordResetTokenRepository;
     private final EmailVerificationRepository emailVerificationRepository;
     private final ProfileImageDeletionService profileImageDeletionService;
     private final KakaoUnlinkRetryPolicy retryPolicy;
@@ -209,6 +211,8 @@ public class KakaoUnlinkResultService {
         String profileImageKey = context.user().getProfileImageKey();
         context.account().finalizeUnlinkAndPurgeDirectIdentifiers(resultNow);
         refreshTokenRepository.deleteAllByUserId(context.user().getId());
+        // 탈퇴 접수 시 이미 파기하지만, 비동기 마무리가 유일한 종료 지점인 재시도 경로를 위해 한 번 더 확인한다.
+        passwordResetTokenRepository.deleteAllByUserId(context.user().getId());
         if (email != null) {
             emailVerificationRepository.deleteAllByEmail(email);
         }

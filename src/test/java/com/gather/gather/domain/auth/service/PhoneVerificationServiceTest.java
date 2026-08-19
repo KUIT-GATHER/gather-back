@@ -2,6 +2,7 @@ package com.gather.gather.domain.auth.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -12,6 +13,7 @@ import com.gather.gather.domain.auth.config.PhoneVerificationProperties;
 import com.gather.gather.domain.auth.dto.PhoneVerificationStartRequest;
 import com.gather.gather.domain.auth.dto.PhoneVerificationStatus;
 import com.gather.gather.domain.auth.entity.PhoneVerification;
+import com.gather.gather.domain.auth.entity.PhoneVerificationPurpose;
 import com.gather.gather.domain.auth.octomo.client.OctomoApiClient;
 import com.gather.gather.domain.auth.octomo.config.OctomoProperties;
 import com.gather.gather.domain.auth.repository.PhoneVerificationRepository;
@@ -26,6 +28,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
 import org.mockito.Mock;
@@ -73,13 +77,17 @@ class PhoneVerificationServiceTest {
                 .thenReturn(Optional.empty());
         when(codeGenerator.generate()).thenReturn(CODE);
 
-        var response = service.start(new PhoneVerificationStartRequest("010-1234-5678"));
+        var response =
+                service.start(
+                        new PhoneVerificationStartRequest(
+                                "010-1234-5678", PhoneVerificationPurpose.SIGNUP));
 
         ArgumentCaptor<PhoneVerification> captor = ArgumentCaptor.forClass(PhoneVerification.class);
         verify(phoneVerificationRepository).save(captor.capture());
         PhoneVerification saved = captor.getValue();
         assertThat(saved.getVerificationId()).matches("^[0-9a-f-]{36}$");
         assertThat(saved.getPhoneNumber()).isEqualTo("01012345678");
+        assertThat(saved.getPurpose()).isEqualTo(PhoneVerificationPurpose.SIGNUP);
         assertThat(saved.getVerificationCode()).isEqualTo(CODE);
         assertThat(saved.getCreatedAt()).isEqualTo(NOW);
         assertThat(saved.getExpiresAt()).isEqualTo(NOW.plusMinutes(5));
@@ -94,6 +102,21 @@ class PhoneVerificationServiceTest {
         order.verify(phoneVerificationRepository).save(saved);
     }
 
+    @ParameterizedTest
+    @EnumSource(PhoneVerificationPurpose.class)
+    @DisplayName("인증 시작은 요청한 목적을 세션에 저장한다")
+    void start_storesRequestedPurpose(PhoneVerificationPurpose purpose) {
+        when(phoneVerificationRepository.findTopByPhoneNumberOrderByCreatedAtDesc("01012345678"))
+                .thenReturn(Optional.empty());
+        when(codeGenerator.generate()).thenReturn(CODE);
+
+        service.start(new PhoneVerificationStartRequest("01012345678", purpose));
+
+        ArgumentCaptor<PhoneVerification> captor = ArgumentCaptor.forClass(PhoneVerification.class);
+        verify(phoneVerificationRepository).save(captor.capture());
+        assertThat(captor.getValue().getPurpose()).isEqualTo(purpose);
+    }
+
     @Test
     @DisplayName("최근 인증 시작 후 60초 이내의 같은 번호 요청은 거부한다")
     void start_rejectsRequestDuringCooldown() {
@@ -101,6 +124,7 @@ class PhoneVerificationServiceTest {
                 PhoneVerification.create(
                         VERIFICATION_ID,
                         "01012345678",
+                        PhoneVerificationPurpose.SIGNUP,
                         CODE,
                         NOW.plusMinutes(4),
                         NOW.minusSeconds(59));
@@ -108,7 +132,10 @@ class PhoneVerificationServiceTest {
                 .thenReturn(Optional.of(latest));
 
         assertErrorCode(
-                () -> service.start(new PhoneVerificationStartRequest("01012345678")),
+                () ->
+                        service.start(
+                                new PhoneVerificationStartRequest(
+                                        "01012345678", PhoneVerificationPurpose.SIGNUP)),
                 ErrorCode.PHONE_VERIFICATION_RATE_LIMITED);
 
         verify(accountIdentityGuardService).lockPhone("01012345678", NOW);
@@ -119,7 +146,10 @@ class PhoneVerificationServiceTest {
     @DisplayName("인증 시작은 010으로 시작하는 11자리 휴대폰 번호만 허용한다")
     void start_rejectsInvalidMobileNumber() {
         assertErrorCode(
-                () -> service.start(new PhoneVerificationStartRequest("0212345678")),
+                () ->
+                        service.start(
+                                new PhoneVerificationStartRequest(
+                                        "0212345678", PhoneVerificationPurpose.SIGNUP)),
                 ErrorCode.VALIDATION_ERROR);
 
         verifyNoInteractions(
@@ -127,7 +157,7 @@ class PhoneVerificationServiceTest {
     }
 
     @Test
-    @DisplayName("QR은 내부 예약 성공 후 저장된 인증 문구로 OCTOMO에 요청한다")
+    @DisplayName("QR은 내부 예약 성공 후 저장된 인증코드로 OCTOMO에 요청한다")
     void createQrCode_usesReservedVerificationCode() {
         when(transactionService.reserveQr(VERIFICATION_ID)).thenReturn(CODE);
         when(octomoApiClient.createQrCode(CODE)).thenReturn("data:image/png;base64,cXItY29kZQ==");
@@ -182,6 +212,35 @@ class PhoneVerificationServiceTest {
         order.verify(transactionService).reserveConfirm(VERIFICATION_ID);
         order.verify(octomoApiClient).existsMessage("01012345678", CODE, 5);
         order.verify(transactionService).verify(VERIFICATION_ID);
+    }
+
+    @Test
+    @DisplayName("start 응답과 QR 및 confirm의 OCTOMO text는 동일한 인증코드다")
+    void startQrAndConfirm_useExactlySameVerificationCode() {
+        when(phoneVerificationRepository.findTopByPhoneNumberOrderByCreatedAtDesc("01012345678"))
+                .thenReturn(Optional.empty());
+        when(codeGenerator.generate()).thenReturn(CODE);
+        when(transactionService.reserveQr(VERIFICATION_ID)).thenReturn(CODE);
+        when(octomoApiClient.createQrCode(CODE)).thenReturn("data:image/png;base64,cXItY29kZQ==");
+        when(transactionService.reserveConfirm(VERIFICATION_ID))
+                .thenReturn(PhoneVerificationConfirmReservation.reserved("01012345678", CODE));
+        when(octomoApiClient.existsMessage("01012345678", CODE, 5)).thenReturn(false);
+
+        var startResponse =
+                service.start(
+                        new PhoneVerificationStartRequest(
+                                "010-1234-5678", PhoneVerificationPurpose.SIGNUP));
+        service.createQrCode(VERIFICATION_ID);
+        service.confirm(VERIFICATION_ID);
+
+        ArgumentCaptor<String> qrText = ArgumentCaptor.forClass(String.class);
+        ArgumentCaptor<String> confirmText = ArgumentCaptor.forClass(String.class);
+        verify(octomoApiClient).createQrCode(qrText.capture());
+        verify(octomoApiClient).existsMessage(eq("01012345678"), confirmText.capture(), eq(5));
+        assertThat(startResponse.messageText())
+                .isEqualTo(qrText.getValue())
+                .isEqualTo(confirmText.getValue())
+                .isEqualTo(CODE);
     }
 
     private void assertErrorCode(Runnable action, ErrorCode errorCode) {

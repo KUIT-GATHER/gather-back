@@ -5,7 +5,8 @@ import com.gather.gather.domain.notification.enums.NotificationCategory;
 import com.gather.gather.domain.notification.enums.NotificationTargetType;
 import com.gather.gather.domain.notification.enums.NotificationType;
 import io.swagger.v3.oas.annotations.media.Schema;
-import java.time.LocalDateTime;
+import java.time.Instant;
+import java.time.ZoneOffset;
 
 @Schema(description = "알림 응답")
 public record NotificationResponse(
@@ -26,7 +27,8 @@ public record NotificationResponse(
                         nullable = true)
                 String thumbnailUrl,
         @Schema(description = "읽음 여부", example = "false") boolean read,
-        @Schema(description = "알림 생성 일시") LocalDateTime createdAt) {
+        @Schema(description = "알림 생성 일시 (UTC)", example = "2026-08-11T07:09:09.132763Z")
+                Instant createdAt) {
 
     public static NotificationResponse from(Notification notification, String thumbnailUrl) {
         return new NotificationResponse(
@@ -39,6 +41,6 @@ public record NotificationResponse(
                 notification.getTargetMeetingId(),
                 thumbnailUrl,
                 notification.isRead(),
-                notification.getCreatedAt());
+                notification.getCreatedAt().toInstant(ZoneOffset.UTC));
     }
 }

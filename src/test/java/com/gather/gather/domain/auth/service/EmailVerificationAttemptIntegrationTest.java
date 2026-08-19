@@ -9,6 +9,7 @@ import com.gather.gather.domain.auth.repository.EmailVerificationRepository;
 import com.gather.gather.global.exception.BusinessException;
 import com.gather.gather.global.exception.ErrorCode;
 import java.time.LocalDateTime;
+import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -40,7 +41,12 @@ class EmailVerificationAttemptIntegrationTest {
     @DisplayName("틀린 코드 입력 시 예외가 나도 시도 횟수 증가가 커밋되어 남는다")
     void wrongCode_persistsAttemptCount_despiteException() {
         emailVerificationRepository.saveAndFlush(
-                EmailVerification.create(EMAIL, "123456", LocalDateTime.now().plusMinutes(10)));
+                EmailVerification.create(
+                        EMAIL,
+                        UUID.randomUUID().toString(),
+                        "a".repeat(64),
+                        LocalDateTime.now().plusMinutes(10),
+                        LocalDateTime.now()));
 
         assertThatThrownBy(
                         () ->
@@ -60,7 +66,12 @@ class EmailVerificationAttemptIntegrationTest {
     @DisplayName("다섯 번째 오답으로 한도를 초과해도 시도 횟수 5가 커밋되어 남는다")
     void fifthWrongCode_persistsAttemptCountWhenLimitIsExceeded() {
         EmailVerification emailVerification =
-                EmailVerification.create(EMAIL, "123456", LocalDateTime.now().plusMinutes(10));
+                EmailVerification.create(
+                        EMAIL,
+                        UUID.randomUUID().toString(),
+                        "a".repeat(64),
+                        LocalDateTime.now().plusMinutes(10),
+                        LocalDateTime.now());
         for (int i = 0; i < 4; i++) {
             emailVerification.increaseAttempt();
         }

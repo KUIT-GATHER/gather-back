@@ -65,13 +65,13 @@ final class UserSwaggerExamples {
             """
             { "success": false, "data": null, "error": { "code": "EXPIRED_TOKEN", "message": "만료된 토큰입니다." } }
             """;
-    static final String REVOKED_TOKEN =
+    static final String WITHDRAWAL_PENDING_USER =
             """
-            { "success": false, "data": null, "error": { "code": "REVOKED_TOKEN", "message": "폐기된 토큰입니다." } }
+            { "success": false, "data": null, "error": { "code": "WITHDRAWAL_PENDING_USER", "message": "탈퇴 처리 중인 계정입니다." } }
             """;
-    static final String INVALID_ACTIVITY_REGION =
+    static final String WITHDRAWN_USER =
             """
-            { "success": false, "data": null, "error": { "code": "INVALID_ACTIVITY_REGION", "message": "활동 지역이 올바르지 않습니다." } }
+            { "success": false, "data": null, "error": { "code": "WITHDRAWN_USER", "message": "탈퇴한 계정입니다." } }
             """;
     static final String INVALID_INTEREST_CATEGORY_COUNT =
             """
@@ -96,6 +96,26 @@ final class UserSwaggerExamples {
     static final String ACCOUNT_TERMINATION_STATE_CONFLICT =
             """
             { "success": false, "data": null, "error": { "code": "ACCOUNT_TERMINATION_STATE_CONFLICT", "message": "계정 탈퇴 상태가 올바르지 않습니다." } }
+            """;
+    static final String PASSWORD_CHANGED =
+            """
+            { "success": true, "data": null, "error": null }
+            """;
+    static final String CURRENT_PASSWORD_MISMATCH =
+            """
+            { "success": false, "data": null, "error": { "code": "CURRENT_PASSWORD_MISMATCH", "message": "현재 비밀번호가 올바르지 않습니다." } }
+            """;
+    static final String PASSWORD_MISMATCH =
+            """
+            { "success": false, "data": null, "error": { "code": "PASSWORD_MISMATCH", "message": "비밀번호가 일치하지 않습니다." } }
+            """;
+    static final String PASSWORD_CHANGE_NOT_AVAILABLE =
+            """
+            { "success": false, "data": null, "error": { "code": "PASSWORD_CHANGE_NOT_AVAILABLE", "message": "비밀번호 변경을 지원하지 않는 계정입니다." } }
+            """;
+    static final String SUSPENDED_USER =
+            """
+            { "success": false, "data": null, "error": { "code": "SUSPENDED_USER", "message": "이용 정지된 계정입니다." } }
             """;
     static final String INTERNAL_SERVER_ERROR =
             """

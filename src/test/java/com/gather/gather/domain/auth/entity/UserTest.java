@@ -14,6 +14,17 @@ import org.springframework.test.util.ReflectionTestUtils;
 class UserTest {
 
     @Test
+    void create_setsCreatedAtAndUpdatedAtToSameTime() {
+        LocalDateTime before = LocalDateTime.now();
+
+        User user = user(1L);
+
+        assertThat(user.getCreatedAt()).isNotNull();
+        assertThat(user.getUpdatedAt()).isEqualTo(user.getCreatedAt());
+        assertThat(user.getCreatedAt()).isBetween(before, LocalDateTime.now());
+    }
+
+    @Test
     void requestWithdrawal_changesActiveUserToPendingWithoutCompletionFields() {
         User user = user(1L);
         LocalDateTime now = LocalDateTime.of(2026, 7, 29, 12, 0);
@@ -24,6 +35,7 @@ class UserTest {
         assertThat(user.getWithdrawalReason()).isEqualTo(WithdrawalReason.SELF);
         assertThat(user.getWithdrawnAt()).isNull();
         assertThat(user.getAnonymizedAt()).isNull();
+        assertThat(user.getUpdatedAt()).isEqualTo(now);
     }
 
     @Test
@@ -47,6 +59,7 @@ class UserTest {
         user.requestWithdrawal(WithdrawalReason.ADMIN, now.plusDays(1));
 
         assertThat(user.getWithdrawalReason()).isEqualTo(WithdrawalReason.SELF);
+        assertThat(user.getUpdatedAt()).isEqualTo(now);
     }
 
     @Test
@@ -88,6 +101,7 @@ class UserTest {
         assertThat(user.getStatus()).isEqualTo(UserStatus.WITHDRAWN);
         assertThat(user.getWithdrawalReason()).isEqualTo(WithdrawalReason.SELF);
         assertThat(user.getWithdrawnAt()).isEqualTo(withdrawnAt);
+        assertThat(user.getUpdatedAt()).isEqualTo(withdrawnAt);
     }
 
     @Test
@@ -100,6 +114,33 @@ class UserTest {
 
         assertThat(user.getWithdrawalReason()).isEqualTo(WithdrawalReason.SELF);
         assertThat(user.getWithdrawnAt()).isEqualTo(firstWithdrawnAt);
+        assertThat(user.getUpdatedAt()).isEqualTo(firstWithdrawnAt);
+    }
+
+    @Test
+    void completePendingWithdrawal_recordsWithdrawalTimeAsUpdatedAt() {
+        User user = user(1L);
+        LocalDateTime requestedAt = LocalDateTime.of(2026, 7, 29, 12, 0);
+        user.requestWithdrawal(WithdrawalReason.SELF, requestedAt);
+        LocalDateTime completedAt = requestedAt.plusDays(7);
+
+        user.completePendingWithdrawal(completedAt);
+
+        assertThat(user.getStatus()).isEqualTo(UserStatus.WITHDRAWN);
+        assertThat(user.getWithdrawnAt()).isEqualTo(completedAt);
+        assertThat(user.getUpdatedAt()).isEqualTo(completedAt);
+    }
+
+    @Test
+    void completePendingWithdrawal_keepsUpdatedAt_whenAlreadyWithdrawn() {
+        User user = user(1L);
+        LocalDateTime withdrawnAt = LocalDateTime.of(2026, 7, 29, 12, 0);
+        user.withdraw(WithdrawalReason.SELF, withdrawnAt);
+
+        user.completePendingWithdrawal(withdrawnAt.plusDays(1));
+
+        assertThat(user.getWithdrawnAt()).isEqualTo(withdrawnAt);
+        assertThat(user.getUpdatedAt()).isEqualTo(withdrawnAt);
     }
 
     @Test
@@ -169,6 +210,7 @@ class UserTest {
         assertThat(user.isMarketingAgreed()).isFalse();
         assertThat(user.isServiceTermsAgreed()).isTrue();
         assertThat(user.isPrivacyPolicyAgreed()).isTrue();
+        assertThat(user.getUpdatedAt()).isEqualTo(anonymizedAt);
     }
 
     @Test
@@ -198,6 +240,7 @@ class UserTest {
         assertThat(user.getAnonymizedAt()).isEqualTo(firstAnonymizedAt);
         assertThat(user.getPhoneNumber()).isEqualTo("wdp_1");
         assertThat(user.getNickname()).isEqualTo("wdn_1");
+        assertThat(user.getUpdatedAt()).isEqualTo(firstAnonymizedAt);
     }
 
     @Test
@@ -229,6 +272,52 @@ class UserTest {
         assertThatThrownBy(() -> user.anonymize(null))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessage("익명화 시각은 필수입니다.");
+    }
+
+    @Test
+    void changePassword_refreshesUpdatedAtWithoutTouchingCreatedAt() {
+        User user = user(1L);
+        LocalDateTime createdAt = user.getCreatedAt();
+        LocalDateTime staleUpdatedAt = createdAt.minusDays(1);
+        ReflectionTestUtils.setField(user, "updatedAt", staleUpdatedAt);
+
+        user.changePassword("new-encoded-password");
+
+        assertThat(user.getUpdatedAt()).isAfter(staleUpdatedAt);
+        assertThat(user.getCreatedAt()).isEqualTo(createdAt);
+    }
+
+    @Test
+    void changeProfileImageKey_refreshesUpdatedAtWithoutTouchingCreatedAt() {
+        User user = user(1L);
+        LocalDateTime createdAt = user.getCreatedAt();
+        LocalDateTime staleUpdatedAt = createdAt.minusDays(1);
+        ReflectionTestUtils.setField(user, "updatedAt", staleUpdatedAt);
+
+        user.changeProfileImageKey("profiles/1/image.jpg");
+
+        assertThat(user.getUpdatedAt()).isAfter(staleUpdatedAt);
+        assertThat(user.getCreatedAt()).isEqualTo(createdAt);
+    }
+
+    @Test
+    void updateProfile_refreshesUpdatedAtWithoutTouchingCreatedAt() {
+        User user = user(1L);
+        LocalDateTime createdAt = user.getCreatedAt();
+        LocalDateTime staleUpdatedAt = createdAt.minusDays(1);
+        ReflectionTestUtils.setField(user, "updatedAt", staleUpdatedAt);
+
+        user.updateProfile(
+                "김수정",
+                "수정",
+                "수정된 소개",
+                LocalDate.of(1999, 12, 31),
+                Gender.FEMALE,
+                user.getActivityRegion(),
+                List.of(PostingCategory.ENVIRONMENT));
+
+        assertThat(user.getUpdatedAt()).isAfter(staleUpdatedAt);
+        assertThat(user.getCreatedAt()).isEqualTo(createdAt);
     }
 
     private User user(Long id) {

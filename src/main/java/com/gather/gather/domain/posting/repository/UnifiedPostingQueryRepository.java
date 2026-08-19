@@ -2,6 +2,8 @@ package com.gather.gather.domain.posting.repository;
 
 import com.gather.gather.domain.posting.entity.PostingCategory;
 import com.gather.gather.domain.posting.entity.PostingStatus;
+import com.gather.gather.global.exception.BusinessException;
+import com.gather.gather.global.exception.ErrorCode;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.Query;
 import java.math.BigInteger;
@@ -9,24 +11,29 @@ import java.sql.Timestamp;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
-import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Repository;
 
 /**
- * 앱 전체 봉사공고 목록(#9)을 위한 통합 조회. 기존 봉사공고(volunteer_posting)와 external=true인 모임 모집공고를 하나의 페이지네이션·정렬 안에서
- * UNION ALL로 합쳐 반환한다(JPQL/Criteria로는 서로 다른 엔티티를 union할 수 없어 네이티브 SQL을 사용).
+ * 앱 전체 봉사공고 목록(#9)을 위한 통합 조회. 기존 봉사공고(volunteer_posting)와 external=true인 모임 모집공고를 하나의 정렬 안에서 UNION
+ * ALL로 합쳐 반환한다(JPQL/Criteria로는 서로 다른 엔티티를 union할 수 없어 네이티브 SQL을 사용).
+ *
+ * <p>무한스크롤 최적화를 위해 OFFSET/COUNT 기반 페이지네이션 대신 키셋(커서) 페이지네이션을 쓴다. 정렬 키(우선순위 버킷 포함)를 등장 순서대로 튜플 비교하는
+ * 조건 {@code (k1 > c1) OR (k1 = c1 AND k2 > c2) OR ...}으로 다음 페이지를 찾으므로, 뒤 페이지로 갈수록 느려지지 않고 목록 조회 도중
+ * 데이터가 추가·삭제돼도 항목이 중복되거나 누락되지 않는다. 총 개수(COUNT)는 무한스크롤에 필요 없으므로 계산하지 않고, 대신 요청한 size보다 1개 더 가져와 다음
+ * 페이지 존재 여부(hasNext)만 판단한다.
  *
  * <p>알려진 단순화(후속 과제)
  *
  * <ul>
  *   <li>noticeStartDate/noticeEndDate 필터는 기존 봉사공고 쪽에만 적용된다(모집공고에는 대응 개념이 없음).
- *   <li>레거시 {@code PostingRepositoryImpl}은 정렬 파라미터와 무관하게 RECRUITING 그룹을 CLOSED 그룹보다 항상 앞세우지만, 이 통합
- *       쿼리는 {@code applyDeadlineAt} 오름차순 정렬을 요청했을 때만 그 우선순위를 앞세운다({@link #buildOrderBy}). 기본 정렬(id
- *       DESC 등)에서는 모집중/마감 그룹 우선순위가 적용되지 않는다.
+ *   <li>커서는 발급 당시의 정렬 파라미터(sort, status 등 우선순위 버킷에 영향을 주는 조건)에 종속적이다. 정렬을 바꾼 채로 같은 커서를 이어붙이면 키 개수가
+ *       달라져 400(VALIDATION_ERROR)이 반환된다 — 클라이언트는 스크롤 세션 동안 sort/status 등 정렬에 영향을 주는 파라미터를 고정해야 한다.
  * </ul>
  */
 @Repository
@@ -42,10 +49,22 @@ public class UnifiedPostingQueryRepository {
                     "applyDeadlineAt", "apply_deadline_at",
                     "appliedCount", "applied_count");
 
+    /** 커서 토큰을 SQL 바인드 파라미터로 되돌릴 때 필요한 타입 정보. */
+    private static final Map<String, ValueType> SORT_VALUE_TYPES =
+            Map.of(
+                    "id", ValueType.LONG,
+                    "createdAt", ValueType.DATETIME,
+                    "activityStartAt", ValueType.DATETIME,
+                    "applyDeadlineAt", ValueType.DATETIME,
+                    "appliedCount", ValueType.INTEGER);
+
     private static final List<String> ACTIVE_PARTICIPATION_STATUSES =
             List.of("APPLIED", "CONFIRMED", "COMPLETED", "REVIEWED");
 
     private static final ZoneId SEOUL_ZONE = ZoneId.of("Asia/Seoul");
+
+    /** UNION 결과의 기본 선택 컬럼 개수(source_type ~ created_at). 커서용 추가 컬럼은 이 뒤에 ok_0, ok_1... 로 덧붙는다. */
+    private static final int BASE_COLUMN_COUNT = 15;
 
     private final EntityManager entityManager;
 
@@ -53,58 +72,105 @@ public class UnifiedPostingQueryRepository {
         return SORT_COLUMNS.containsKey(property);
     }
 
-    public record SearchResult(List<UnifiedPostingRow> rows, long totalElements) {}
+    private enum ValueType {
+        LONG,
+        INTEGER,
+        DATETIME
+    }
 
-    public SearchResult search(
+    /** 정렬 우선순위 한 단계. selectExpr은 UNION 결과 컬럼 기준 SQL 표현식(우선순위 버킷은 CASE 식, 그 외는 컬럼명 그대로). */
+    private record OrderKey(String selectExpr, boolean ascending, ValueType type) {}
+
+    public record CursorSearchResult(
+            List<UnifiedPostingRow> rows, String nextCursor, boolean hasNext) {}
+
+    public CursorSearchResult search(
             PostingStatus status,
             List<Long> regionIds,
             LocalDate noticeStartDate,
             LocalDate noticeEndDate,
+            LocalDate activityStartDate,
+            LocalDate activityEndDate,
             String keyword,
             PostingCategory category,
-            Pageable pageable) {
+            Sort sort,
+            String cursor,
+            int size) {
 
-        Map<String, Object> params = new java.util.HashMap<>();
+        Map<String, Object> params = new HashMap<>();
         String postingWhere =
                 buildPostingWhere(
                         status,
                         regionIds,
                         noticeStartDate,
                         noticeEndDate,
+                        activityStartDate,
+                        activityEndDate,
                         keyword,
                         category,
                         params);
-        String recruitWhere = buildRecruitWhere(status, regionIds, keyword, category, params);
-        Map<String, Object> orderParams = new java.util.HashMap<>();
-        String orderBy = buildOrderBy(status, pageable.getSort(), orderParams);
+        String recruitWhere =
+                buildRecruitWhere(
+                        status,
+                        regionIds,
+                        activityStartDate,
+                        activityEndDate,
+                        keyword,
+                        category,
+                        params);
+
+        Map<String, Object> orderParams = new HashMap<>();
+        List<OrderKey> orderKeys = buildOrderKeys(status, sort, orderParams);
 
         String unionSql =
                 POSTING_SELECT.replace("__WHERE__", postingWhere)
                         + " UNION ALL "
                         + RECRUIT_SELECT.replace("__WHERE__", recruitWhere);
 
-        String pageSql =
-                "SELECT * FROM ("
-                        + unionSql
-                        + ") unified "
-                        + orderBy
-                        + " LIMIT :limit OFFSET :offset";
-        Query pageQuery = entityManager.createNativeQuery(pageSql);
-        bindParams(pageQuery, params);
-        bindParams(pageQuery, orderParams);
-        pageQuery.setParameter("limit", pageable.getPageSize());
-        pageQuery.setParameter("offset", (int) pageable.getOffset());
+        StringBuilder extraSelect = new StringBuilder();
+        for (int i = 0; i < orderKeys.size(); i++) {
+            extraSelect
+                    .append(", ")
+                    .append(orderKeys.get(i).selectExpr())
+                    .append(" AS ok_")
+                    .append(i);
+        }
+
+        StringBuilder sql =
+                new StringBuilder("SELECT unified.*")
+                        .append(extraSelect)
+                        .append(" FROM (")
+                        .append(unionSql)
+                        .append(") unified");
+
+        Map<String, Object> keysetParams = new HashMap<>();
+        if (cursor != null && !cursor.isBlank()) {
+            List<String> tokens = decodeCursor(cursor, orderKeys.size());
+            sql.append(" WHERE ").append(buildKeysetWhere(orderKeys, tokens, keysetParams));
+        }
+
+        sql.append(' ').append(buildOrderBySql(orderKeys)).append(" LIMIT :limit");
+
+        Query query = entityManager.createNativeQuery(sql.toString());
+        bindParams(query, params);
+        bindParams(query, orderParams);
+        bindParams(query, keysetParams);
+        // 다음 페이지 존재 여부를 별도 COUNT 쿼리 없이 판단하기 위해 요청 size보다 1개 더 가져온다.
+        query.setParameter("limit", size + 1);
 
         @SuppressWarnings("unchecked")
-        List<Object[]> rawRows = pageQuery.getResultList();
-        List<UnifiedPostingRow> rows = rawRows.stream().map(this::toRow).toList();
+        List<Object[]> rawRows = query.getResultList();
 
-        String countSql = "SELECT COUNT(*) FROM (" + unionSql + ") unified";
-        Query countQuery = entityManager.createNativeQuery(countSql);
-        bindParams(countQuery, params);
-        Number total = (Number) countQuery.getSingleResult();
+        boolean hasNext = rawRows.size() > size;
+        List<Object[]> pageRows = hasNext ? rawRows.subList(0, size) : rawRows;
 
-        return new SearchResult(rows, total.longValue());
+        List<UnifiedPostingRow> rows = pageRows.stream().map(this::toRow).toList();
+        String nextCursor =
+                hasNext && !pageRows.isEmpty()
+                        ? encodeCursor(orderKeys, pageRows.get(pageRows.size() - 1))
+                        : null;
+
+        return new CursorSearchResult(rows, nextCursor, hasNext);
     }
 
     private static final String POSTING_SELECT =
@@ -143,6 +209,8 @@ public class UnifiedPostingQueryRepository {
             List<Long> regionIds,
             LocalDate noticeStartDate,
             LocalDate noticeEndDate,
+            LocalDate activityStartDate,
+            LocalDate activityEndDate,
             String keyword,
             PostingCategory category,
             Map<String, Object> params) {
@@ -169,6 +237,15 @@ public class UnifiedPostingQueryRepository {
             where.append(" AND p.notice_end_date <= :noticeEndDate");
             params.put("noticeEndDate", noticeEndDate);
         }
+        if (activityStartDate != null) {
+            where.append(
+                    " AND COALESCE(p.act_end_date, p.act_start_date, p.activity_date) >= :activityStartDate");
+            params.put("activityStartDate", activityStartDate);
+        }
+        if (activityEndDate != null) {
+            where.append(" AND COALESCE(p.act_start_date, p.activity_date) <= :activityEndDate");
+            params.put("activityEndDate", activityEndDate);
+        }
         if (keyword != null && !keyword.isBlank()) {
             where.append(" AND (p.title LIKE :keyword OR p.recruit_org LIKE :keyword)");
             params.put("keyword", "%" + keyword + "%");
@@ -183,14 +260,23 @@ public class UnifiedPostingQueryRepository {
     private String buildRecruitWhere(
             PostingStatus status,
             List<Long> regionIds,
+            LocalDate activityStartDate,
+            LocalDate activityEndDate,
             String keyword,
             PostingCategory category,
             Map<String, Object> params) {
         StringBuilder where =
                 new StringBuilder(
                         "r.external = 1 AND post.deleted_at IS NULL AND m.deleted_at IS NULL");
+        if (activityStartDate != null) {
+            where.append(" AND DATE(r.activity_end_at) >= :activityStartDate");
+            params.put("activityStartDate", activityStartDate);
+        }
+        if (activityEndDate != null) {
+            where.append(" AND DATE(r.activity_start_at) <= :activityEndDate");
+            params.put("activityEndDate", activityEndDate);
+        }
         if (status != null) {
-            // COMPLETED 상태는 모집공고 쪽에 대응 개념이 없어 항상 결과가 비게 된다(기존 목록과 동일하게 기본은 RECRUITING+CLOSED만 노출).
             where.append(
                     " AND (CASE WHEN r.confirmation_status = 'CONFIRMED' THEN 'CLOSED' "
                             + "WHEN r.apply_deadline_at < NOW() THEN 'CLOSED' "
@@ -220,8 +306,11 @@ public class UnifiedPostingQueryRepository {
     }
 
     /**
-     * apply_deadline_at 오름차순(마감임박) 정렬이 요청되면, 마감일 없는 상시모집 공고를 마감일 있는 공고보다 뒤로 미루는 우선순위 보정을 status 필터와
-     * 무관하게 항상 앞세운다(레거시 {@code PostingRepositoryImpl}과 동일한 계약).
+     * 정렬 우선순위를 튜플로 표현한 키 목록을 만든다. {@link #buildOrderBySql}과 {@link #buildKeysetWhere}가 이 목록을 그대로
+     * 재사용하므로, ORDER BY와 키셋 WHERE의 우선순위가 항상 일치한다(둘이 어긋나면 페이지가 중복/누락될 수 있어 반드시 같은 소스에서 파생돼야 한다).
+     *
+     * <p>apply_deadline_at 오름차순(마감임박) 정렬이 요청되면, 마감일 없는 상시모집 공고를 마감일 있는 공고보다 뒤로 미루는 우선순위 보정을 status
+     * 필터와 무관하게 항상 앞세운다(레거시 {@code PostingRepositoryImpl}과 동일한 계약).
      *
      * <p>추가로 status가 null 또는 RECRUITING인 경우에는, 외부 공공데이터 API 동기화 지연으로 마감일이 지났는데도 status가 아직
      * RECRUITING으로 남아있을 수 있는 기존 봉사공고(volunteer_posting)를 실제 신청 가능한 공고 뒤로 미루는 보정을 추가한다. 이 재판정은
@@ -231,26 +320,28 @@ public class UnifiedPostingQueryRepository {
      * 문제가 있었다. "오늘" 판정은 DB 서버의 타임존이 아니라 Java에서 Asia/Seoul 기준으로 계산해 파라미터로 바인딩한다(CI 등 DB 서버가 UTC일 때
      * 자정 경계에서 하루 어긋나는 것을 방지).
      */
-    private String buildOrderBy(PostingStatus status, Sort sort, Map<String, Object> orderParams) {
-        StringBuilder orderBy = new StringBuilder("ORDER BY ");
-        boolean any = false;
+    private List<OrderKey> buildOrderKeys(
+            PostingStatus status, Sort sort, Map<String, Object> orderParams) {
+        List<OrderKey> keys = new ArrayList<>();
         boolean applyDeadlineAscending = isApplyDeadlineAscendingRequested(sort);
 
         if (applyDeadlineAscending && (status == null || status == PostingStatus.RECRUITING)) {
-            orderBy.append(
-                    "CASE WHEN status = 'RECRUITING' AND (source_type <> 'POSTING' "
-                            + "OR apply_deadline_at IS NULL OR DATE(apply_deadline_at) >= :todayForOrder) "
-                            + "THEN 0 ELSE 1 END ASC");
+            keys.add(
+                    new OrderKey(
+                            "CASE WHEN status = 'RECRUITING' AND (source_type <> 'POSTING' "
+                                    + "OR apply_deadline_at IS NULL OR DATE(apply_deadline_at) >= :todayForOrder) "
+                                    + "THEN 0 ELSE 1 END",
+                            true,
+                            ValueType.INTEGER));
             orderParams.put("todayForOrder", LocalDate.now(SEOUL_ZONE));
-            any = true;
         }
 
         if (applyDeadlineAscending) {
-            if (any) {
-                orderBy.append(", ");
-            }
-            orderBy.append("CASE WHEN apply_deadline_at IS NULL THEN 1 ELSE 0 END ASC");
-            any = true;
+            keys.add(
+                    new OrderKey(
+                            "CASE WHEN apply_deadline_at IS NULL THEN 1 ELSE 0 END",
+                            true,
+                            ValueType.INTEGER));
         }
 
         boolean hasIdOrder = false;
@@ -259,23 +350,112 @@ public class UnifiedPostingQueryRepository {
             if (column == null) {
                 continue;
             }
-            if (any) {
-                orderBy.append(", ");
-            }
-            orderBy.append(column).append(order.isAscending() ? " ASC" : " DESC");
+            keys.add(
+                    new OrderKey(
+                            column,
+                            order.isAscending(),
+                            SORT_VALUE_TYPES.get(order.getProperty())));
             if (order.getProperty().equals("id")) {
                 hasIdOrder = true;
             }
-            any = true;
         }
-        if (!any) {
-            orderBy.append("created_at DESC");
-            any = true;
+
+        if (keys.isEmpty()) {
+            keys.add(new OrderKey("created_at", false, ValueType.DATETIME));
         }
         if (!hasIdOrder) {
-            orderBy.append(", id DESC");
+            // id는 항상 마지막 타이브레이커: 동률인 값이 있어도 커서가 유일하게 "다음 행"을 가리킬 수 있게 한다.
+            keys.add(new OrderKey("id", false, ValueType.LONG));
         }
-        return orderBy.toString();
+        return keys;
+    }
+
+    private String buildOrderBySql(List<OrderKey> keys) {
+        StringBuilder sb = new StringBuilder("ORDER BY ");
+        for (int i = 0; i < keys.size(); i++) {
+            if (i > 0) {
+                sb.append(", ");
+            }
+            sb.append("ok_").append(i).append(keys.get(i).ascending() ? " ASC" : " DESC");
+        }
+        return sb.toString();
+    }
+
+    /**
+     * 키셋 페이지네이션 조건: {@code (k0 > c0) OR (k0 <=> c0 AND k1 > c1) OR (k0 <=> c0 AND k1 <=> c1 AND k2
+     * > c2) OR ...} 형태로, 정렬 우선순위를 앞에서부터 튜플 비교한다. 앞선 키들의 동률 판정에는 MySQL의 null-safe 동등 비교(<=>)를 써서,
+     * apply_deadline_at처럼 null이 가능한 키에서 "커서 값도 null, 현재 행도 null"인 경우를 올바르게 동률로 취급하고 다음 키 비교로 넘어가게
+     * 한다(일반 {@code =}는 NULL과 비교하면 항상 UNKNOWN이라 이 목적에 쓸 수 없다).
+     */
+    private String buildKeysetWhere(
+            List<OrderKey> keys, List<String> tokens, Map<String, Object> keysetParams) {
+        StringBuilder sb = new StringBuilder("(");
+        for (int i = 0; i < keys.size(); i++) {
+            if (i > 0) {
+                sb.append(" OR ");
+            }
+            sb.append('(');
+            for (int j = 0; j < i; j++) {
+                sb.append(keys.get(j).selectExpr()).append(" <=> :k").append(j).append(" AND ");
+            }
+            OrderKey key = keys.get(i);
+            sb.append(key.selectExpr()).append(key.ascending() ? " > :k" : " < :k").append(i);
+            sb.append(')');
+        }
+        sb.append(')');
+
+        for (int i = 0; i < keys.size(); i++) {
+            keysetParams.put("k" + i, decodeToken(tokens.get(i), keys.get(i).type()));
+        }
+        return sb.toString();
+    }
+
+    private List<String> decodeCursor(String cursor, int expectedSize) {
+        List<String> tokens;
+        try {
+            tokens = PostingCursor.decode(cursor);
+        } catch (RuntimeException e) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR);
+        }
+        if (tokens.size() != expectedSize) {
+            // 정렬 파라미터가 커서 발급 당시와 달라져 키 개수가 안 맞는 경우(예: sort를 바꿔서 이어붙이기 시도).
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR);
+        }
+        return tokens;
+    }
+
+    private String encodeCursor(List<OrderKey> keys, Object[] lastRow) {
+        List<String> tokens = new ArrayList<>(keys.size());
+        for (int i = 0; i < keys.size(); i++) {
+            tokens.add(encodeToken(lastRow[BASE_COLUMN_COUNT + i], keys.get(i).type()));
+        }
+        return PostingCursor.encode(tokens);
+    }
+
+    private String encodeToken(Object value, ValueType type) {
+        if (value == null) {
+            return null;
+        }
+        return switch (type) {
+            case LONG -> String.valueOf(toLong(value));
+            case INTEGER -> String.valueOf(toInteger(value));
+            case DATETIME -> toLocalDateTime(value).toString();
+        };
+    }
+
+    private Object decodeToken(String token, ValueType type) {
+        if (token == null) {
+            return null;
+        }
+        try {
+            return switch (type) {
+                case LONG -> Long.valueOf(token);
+                case INTEGER -> Integer.valueOf(token);
+                case DATETIME -> LocalDateTime.parse(token);
+            };
+        } catch (RuntimeException e) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR);
+        }
     }
 
     private boolean isApplyDeadlineAscendingRequested(Sort sort) {

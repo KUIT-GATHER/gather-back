@@ -89,7 +89,7 @@ public class PostingRecommendationService {
      *
      * <p>status=RECRUITING, is_active=true, 마감일이 아직 지나지 않음(또는 상시모집)이라는 조건은 {@link
      * PostingRepository#searchRecommendationCandidates}의 WHERE 절에서 이미 걸러지므로 여기서 다시 필터링하지 않는다 — 이
-     * 조건들은 V56에서 추가한 생성 컬럼·전용 인덱스로 커버되어 filesort 없이 처리된다. 신청 이력이 있는 공고만 여기서 추가로 제외한다.
+     * 조건들은 V67에서 추가한 생성 컬럼·전용 인덱스로 커버되어 filesort 없이 처리된다. 신청 이력이 있는 공고만 여기서 추가로 제외한다.
      *
      * <p>{@code regionFilter}는 사용자의 활동지역(상위 지역 선택 시 하위 지역 포함) 목록이다. 활동지역을 설정하지 않은 회원·비로그인은 {@code
      * null}이 넘어와 지역 필터 없이 전체 지역을 대상으로 채점한다(가중치가 아닌 완전 필터링이므로 카테고리·마감일 점수와 달리 후보 조회 단계에서 걸러낸다).

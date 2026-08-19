@@ -3,6 +3,7 @@ package com.gather.gather.domain.posting.repository;
 import com.gather.gather.domain.posting.entity.Posting;
 import com.gather.gather.domain.posting.entity.PostingCategory;
 import com.gather.gather.domain.posting.entity.PostingStatus;
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 import org.springframework.data.domain.Page;
@@ -27,7 +28,7 @@ public interface PostingRepositoryCustom {
     /**
      * 봉사공고 추천({@code PostingRecommendationService}) 전용 후보 조회. status=RECRUITING, is_active=true,
      * 마감일이 아직 지나지 않은(또는 상시모집인) 공고만 WHERE에서 걸러내고 마감임박 오름차순(상시모집은 맨 뒤)으로 정렬한다 — 범용 {@link #search}와
-     * 달리 이 필터·정렬 조합은 V56의 {@code notice_end_date_sort_key} 생성 컬럼과 전용 복합 인덱스로 커버되어 filesort 없이 처리된다.
+     * 달리 이 필터·정렬 조합은 V67의 {@code notice_end_date_sort_key} 생성 컬럼과 전용 복합 인덱스로 커버되어 filesort 없이 처리된다.
      *
      * <p>추천은 상위 5건만 필요하지만 전체 후보를 순회하며 채점해야 해서(더 높은 점수의 후보가 뒤 페이지에 있을 수 있음) 총 건수는 쓰지 않는다. 따라서 페이지마다
      * 별도 COUNT 쿼리가 나가는 {@link Page} 대신, content만 한 번에 조회하고 다음 페이지 존재 여부만 판단하는 {@link Slice}를 반환해
@@ -35,4 +36,20 @@ public interface PostingRepositoryCustom {
      */
     Slice<Posting> searchRecommendationCandidates(
             List<Long> regionIds, LocalDate today, Pageable pageable);
+
+    /**
+     * 봉사공고 지도 조회(#186)용. RECRUITING·CLOSED 상태만 대상이며, 활동일 겹침(overlap) 필터·지역·카테고리와 함께 지도 bounds(1번째
+     * 장소 또는 2·3번째 장소 중 하나라도 bounds 안이면 포함) 조건으로 조회한다. 페이지네이션은 없지만 결과 수 상한({@code
+     * PostingRepositoryImpl#MAX_MAP_RESULTS})이 있고, {@code Posting} 엔티티 전체가 아니라 지도 응답에 필요한 컬럼만 담은 경량
+     * 프로젝션({@link PostingMapRow})을 반환한다(인증 없이 호출 가능한 공개 API라 @Lob content 등 불필요한 컬럼을 로딩하지 않기 위함).
+     */
+    List<PostingMapRow> searchForMap(
+            List<Long> regionIds,
+            LocalDate activityStartDate,
+            LocalDate activityEndDate,
+            PostingCategory category,
+            BigDecimal swLat,
+            BigDecimal swLng,
+            BigDecimal neLat,
+            BigDecimal neLng);
 }

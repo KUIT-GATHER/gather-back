@@ -26,6 +26,7 @@ class OctomoApiClientTest {
     private static final String BASE_URL = "https://api.octoverse.kr";
     private static final String API_KEY = "test-octomo-api-key";
     private static final String PNG_DATA_URL = "data:image/png;base64,iVBORw0KGgo=";
+    private static final String VERIFICATION_CODE = "GATHER-7F2K9Q8M4P";
 
     private MockRestServiceServer server;
     private OctomoApiClient client;
@@ -60,12 +61,12 @@ class OctomoApiClientTest {
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .body("{\"exists\":true}"));
 
-        assertThat(client.existsMessage("01012345678", "GATHER-7F2K9Q8M4P", 5)).isTrue();
+        assertThat(client.existsMessage("01012345678", VERIFICATION_CODE, 5)).isTrue();
         server.verify();
     }
 
     @Test
-    @DisplayName("QR 발급은 저장 인증문구만 body로 보내고 PNG data URL을 반환한다")
+    @DisplayName("QR 발급은 인증코드만 body로 보내고 PNG data URL을 반환한다")
     void createQrCode_sendsTextOnly() {
         server.expect(requestTo(BASE_URL + "/octomo/v1/public/message/qr-code"))
                 .andExpect(method(HttpMethod.POST))
@@ -76,7 +77,7 @@ class OctomoApiClientTest {
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .body("{\"qrCode\":\"" + PNG_DATA_URL + "\"}"));
 
-        assertThat(client.createQrCode("GATHER-7F2K9Q8M4P")).isEqualTo(PNG_DATA_URL);
+        assertThat(client.createQrCode(VERIFICATION_CODE)).isEqualTo(PNG_DATA_URL);
         server.verify();
     }
 

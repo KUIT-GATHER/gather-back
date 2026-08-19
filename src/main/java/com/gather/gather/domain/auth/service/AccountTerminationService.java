@@ -12,6 +12,7 @@ import com.gather.gather.domain.auth.kakao.service.LockedPendingSocialSignupSess
 import com.gather.gather.domain.auth.kakao.service.SocialSignupSessionService;
 import com.gather.gather.domain.auth.repository.EmailVerificationRepository;
 import com.gather.gather.domain.auth.repository.KakaoUnlinkTaskRepository;
+import com.gather.gather.domain.auth.repository.PasswordResetTokenRepository;
 import com.gather.gather.domain.auth.repository.RefreshTokenRepository;
 import com.gather.gather.domain.auth.repository.SocialAccountIdentitySnapshot;
 import com.gather.gather.domain.auth.repository.SocialAccountRepository;
@@ -36,6 +37,7 @@ public class AccountTerminationService {
     private final AccountRejoinBlockService rejoinBlockService;
     private final AccountIdentityGuardService identityGuardService;
     private final RefreshTokenRepository refreshTokenRepository;
+    private final PasswordResetTokenRepository passwordResetTokenRepository;
     private final EmailVerificationRepository emailVerificationRepository;
     private final KakaoUnlinkTaskRepository unlinkTaskRepository;
     private final ProfileImageDeletionService profileImageDeletionService;
@@ -54,6 +56,8 @@ public class AccountTerminationService {
                 userRepository
                         .findByIdForUpdate(userId)
                         .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
+        // 재호출·비동기 마무리를 포함한 모든 경로에서 비밀번호 재설정 credential이 남지 않도록 잠금 직후 파기한다.
+        passwordResetTokenRepository.deleteAllByUserId(userId);
         List<SocialAccountIdentitySnapshot> snapshots =
                 socialAccountRepository.findIdentitySnapshotsByUserIdAndProvider(
                         userId, SocialProvider.KAKAO);

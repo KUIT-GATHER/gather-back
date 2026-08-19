@@ -30,6 +30,7 @@ import org.springframework.test.web.servlet.MockMvc;
 class PhoneVerificationControllerTest {
 
     private static final String VERIFICATION_ID = "5c5d5db1-4187-43d0-8580-672307994878";
+    private static final String VERIFICATION_CODE = "GATHER-7F2K9Q8M4P";
 
     @Autowired private MockMvc mockMvc;
 
@@ -43,18 +44,24 @@ class PhoneVerificationControllerTest {
                         new PhoneVerificationStartResponse(
                                 VERIFICATION_ID,
                                 "16663538",
-                                "GATHER-7F2K9Q8M4P",
+                                VERIFICATION_CODE,
                                 Instant.parse("2026-08-09T06:50:00Z")));
 
         mockMvc.perform(
                         post("/api/v1/auth/phone-verifications")
                                 .contentType(MediaType.APPLICATION_JSON)
-                                .content("{\"phoneNumber\":\"010-1234-5678\"}"))
+                                .content(
+                                        """
+                                        {
+                                          "phoneNumber": "010-1234-5678",
+                                          "purpose": "SIGNUP"
+                                        }
+                                        """))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.verificationId").value(VERIFICATION_ID))
                 .andExpect(jsonPath("$.data.receiverNumber").value("16663538"))
-                .andExpect(jsonPath("$.data.messageText").value("GATHER-7F2K9Q8M4P"))
+                .andExpect(jsonPath("$.data.messageText").value(VERIFICATION_CODE))
                 .andExpect(jsonPath("$.data.expiresAt").value("2026-08-09T06:50:00Z"));
     }
 
@@ -64,7 +71,39 @@ class PhoneVerificationControllerTest {
         mockMvc.perform(
                         post("/api/v1/auth/phone-verifications")
                                 .contentType(MediaType.APPLICATION_JSON)
-                                .content("{\"phoneNumber\":\"\"}"))
+                                .content("{\"phoneNumber\":\"\",\"purpose\":\"SIGNUP\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("VALIDATION_ERROR"));
+
+        verifyNoInteractions(phoneVerificationService);
+    }
+
+    @Test
+    @DisplayName("인증 목적이 누락되면 서비스 호출 전에 400으로 거부한다")
+    void start_rejectsMissingPurpose() throws Exception {
+        mockMvc.perform(
+                        post("/api/v1/auth/phone-verifications")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("{\"phoneNumber\":\"01012345678\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("VALIDATION_ERROR"));
+
+        verifyNoInteractions(phoneVerificationService);
+    }
+
+    @Test
+    @DisplayName("지원하지 않는 인증 목적은 서비스 호출 전에 400으로 거부한다")
+    void start_rejectsUnsupportedPurpose() throws Exception {
+        mockMvc.perform(
+                        post("/api/v1/auth/phone-verifications")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(
+                                        """
+                                        {
+                                          "phoneNumber": "01012345678",
+                                          "purpose": "LOGIN"
+                                        }
+                                        """))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error.code").value("VALIDATION_ERROR"));
 

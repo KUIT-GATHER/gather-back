@@ -37,21 +37,24 @@ public record SignupRequest(
                 @Email
                 @Size(max = 255)
                 String email,
-        @Schema(description = "비밀번호. 6자 이상 12자 이하입니다.", example = "password123!")
-                @NotBlank
-                @Size(min = 6, max = 12)
+        @Schema(
+                        description = "회원가입에 사용할 이메일 인증 결과 ID",
+                        format = "uuid",
+                        requiredMode = Schema.RequiredMode.REQUIRED)
+                UUID emailVerificationId,
+        @Schema(description = "비밀번호. 공백 없이 6자 이상 12자 이하입니다.", example = "password123!") @NotBlank
                 String password,
-        @Schema(description = "비밀번호 확인", example = "password123!")
-                @NotBlank
-                @Size(min = 6, max = 12)
-                String passwordConfirm,
+        @Schema(description = "비밀번호 확인", example = "password123!") @NotBlank String passwordConfirm,
         @Schema(description = "닉네임. 완성형 한글 2~10자 또는 영문 2~20자만 허용합니다.", example = "길동")
                 @NotBlank
                 @Size(min = 2, max = 20)
                 String nickname,
         @Schema(description = "소개글. 최대 50자입니다.", example = "함께 봉사하고 싶습니다.") @Size(max = 50)
                 String introduction,
-        @Schema(description = "활동 지역 ID. 시군구(level 2) 단위 1개만 선택합니다.", example = "123") @NotNull
+        @Schema(
+                        description = "활동 지역 ID. 시도(level 1) 또는 시군구(level 2) 단위 1개를 선택합니다.",
+                        example = "123")
+                @NotNull
                 Long activityRegionId,
         @Schema(
                         description = "관심 카테고리 목록. 중복 없이 1개 이상입니다.",

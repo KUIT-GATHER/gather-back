@@ -42,6 +42,8 @@ class EmailSignupIntegrationTest {
     private static final String PHONE_NUMBER = "01095550001";
     private static final UUID PHONE_VERIFICATION_ID =
             UUID.fromString("5c5d5db1-4187-43d0-8580-672307994878");
+    private static final UUID EMAIL_VERIFICATION_ID =
+            UUID.fromString("98fa88ef-bbeb-4928-a202-7885197b3774");
 
     @Autowired private AuthService authService;
     @Autowired private UserRepository userRepository;
@@ -61,7 +63,12 @@ class EmailSignupIntegrationTest {
                 regionRepository.save(
                         Region.create("email-signup-integration", 2, "email-signup-code", null));
         EmailVerification verification =
-                EmailVerification.create(EMAIL, "123456", LocalDateTime.now().plusDays(1));
+                EmailVerification.create(
+                        EMAIL,
+                        EMAIL_VERIFICATION_ID.toString(),
+                        "a".repeat(64),
+                        LocalDateTime.now().plusDays(1),
+                        LocalDateTime.now());
         verification.verify(LocalDateTime.now());
         emailVerificationRepository.save(verification);
     }
@@ -79,6 +86,8 @@ class EmailSignupIntegrationTest {
         assertThat(savedRefreshToken.getTokenHash()).isEqualTo(refreshTokenHash);
         assertThat(savedRefreshToken.getTokenHash()).isNotEqualTo(result.refreshToken());
         assertThat(savedRefreshToken.getUser().getId()).isEqualTo(savedUser.getId());
+        assertThat(savedUser.getCreatedAt()).isNotNull();
+        assertThat(savedUser.getUpdatedAt()).isEqualTo(savedUser.getCreatedAt());
         assertThat(result.response().accessToken()).isNotBlank();
         assertThat(result.response().tokenType()).isEqualTo("Bearer");
 
@@ -100,6 +109,7 @@ class EmailSignupIntegrationTest {
                 PHONE_NUMBER,
                 PHONE_VERIFICATION_ID,
                 EMAIL,
+                EMAIL_VERIFICATION_ID,
                 "password1",
                 "password1",
                 "자동로그인",
