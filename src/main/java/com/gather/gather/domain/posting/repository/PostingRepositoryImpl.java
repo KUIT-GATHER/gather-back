@@ -19,6 +19,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Slice;
+import org.springframework.data.domain.SliceImpl;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.repository.query.QueryUtils;
 
@@ -80,6 +82,42 @@ public class PostingRepositoryImpl implements PostingRepositoryCustom {
         long total = entityManager.createQuery(countQuery).getSingleResult();
 
         return new PageImpl<>(content, pageable, total);
+    }
+
+    @Override
+    public Slice<Posting> searchRecommendationCandidates(
+            List<Long> regionIds, LocalDate today, Pageable pageable) {
+        CriteriaBuilder cb = entityManager.getCriteriaBuilder();
+
+        CriteriaQuery<Posting> query = cb.createQuery(Posting.class);
+        Root<Posting> root = query.from(Posting.class);
+        query.where(
+                buildRecommendationPredicates(cb, root, regionIds, today)
+                        .toArray(new Predicate[0]));
+        query.orderBy(cb.asc(root.get("noticeEndDateSortKey")), cb.desc(root.get("id")));
+
+        TypedQuery<Posting> typedQuery = entityManager.createQuery(query);
+        typedQuery.setFirstResult((int) pageable.getOffset());
+        // hasNext 판단을 위해 페이지 크기보다 1건 더 조회한다 — 페이지마다 별도 COUNT 쿼리를 내지 않기 위함(Page 대신 Slice).
+        typedQuery.setMaxResults(pageable.getPageSize() + 1);
+        List<Posting> fetched = typedQuery.getResultList();
+
+        boolean hasNext = fetched.size() > pageable.getPageSize();
+        List<Posting> content = hasNext ? fetched.subList(0, pageable.getPageSize()) : fetched;
+        return new SliceImpl<>(content, pageable, hasNext);
+    }
+
+    private List<Predicate> buildRecommendationPredicates(
+            CriteriaBuilder cb, Root<Posting> root, List<Long> regionIds, LocalDate today) {
+        List<Predicate> predicates = new ArrayList<>();
+        predicates.add(cb.equal(root.get("status"), PostingStatus.RECRUITING));
+        predicates.add(cb.isTrue(root.get("isActive")));
+        predicates.add(cb.greaterThanOrEqualTo(root.get("noticeEndDateSortKey"), today));
+        if (regionIds != null) {
+            predicates.add(
+                    regionIds.isEmpty() ? cb.disjunction() : root.get("regionId").in(regionIds));
+        }
+        return predicates;
     }
 
     private List<Predicate> buildPredicates(

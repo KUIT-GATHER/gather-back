@@ -322,6 +322,129 @@ class PostingRepositoryTest {
                 .containsExactly(c2.getId(), c3.getId());
     }
 
+    private static final Pageable RECOMMEND_PAGEABLE = PageRequest.of(0, 200);
+
+    @Test
+    void searchRecommendationCandidates_excludesInactivePostings() {
+        Posting active =
+                recommendationCandidate(PostingStatus.RECRUITING, true, TODAY.plusDays(3), null);
+        recommendationCandidate(PostingStatus.RECRUITING, false, TODAY.plusDays(3), null);
+
+        var result =
+                postingRepository.searchRecommendationCandidates(null, TODAY, RECOMMEND_PAGEABLE);
+
+        assertThat(result.getContent()).extracting(Posting::getId).containsExactly(active.getId());
+    }
+
+    @Test
+    void searchRecommendationCandidates_excludesClosedStatus() {
+        Posting recruiting =
+                recommendationCandidate(PostingStatus.RECRUITING, true, TODAY.plusDays(3), null);
+        recommendationCandidate(PostingStatus.CLOSED, true, TODAY.plusDays(3), null);
+
+        var result =
+                postingRepository.searchRecommendationCandidates(null, TODAY, RECOMMEND_PAGEABLE);
+
+        assertThat(result.getContent())
+                .extracting(Posting::getId)
+                .containsExactly(recruiting.getId());
+    }
+
+    @Test
+    void
+            searchRecommendationCandidates_excludesPostingsPastNoticeEndDate_evenWhenStatusIsStillRecruiting() {
+        // 외부 공공데이터 API 동기화 지연으로 마감일이 지났는데도 status가 아직 RECRUITING인 시나리오.
+        Posting stillOpen = recommendationCandidate(PostingStatus.RECRUITING, true, TODAY, null);
+        recommendationCandidate(PostingStatus.RECRUITING, true, TODAY.minusDays(1), null);
+
+        var result =
+                postingRepository.searchRecommendationCandidates(null, TODAY, RECOMMEND_PAGEABLE);
+
+        assertThat(result.getContent())
+                .extracting(Posting::getId)
+                .containsExactly(stillOpen.getId());
+    }
+
+    @Test
+    void searchRecommendationCandidates_ordersByNoticeEndDateAscendingWithNullDatesLast() {
+        Posting dueLater =
+                recommendationCandidate(PostingStatus.RECRUITING, true, TODAY.plusDays(5), null);
+        Posting dueSoon =
+                recommendationCandidate(PostingStatus.RECRUITING, true, TODAY.plusDays(1), null);
+        Posting rolling = recommendationCandidate(PostingStatus.RECRUITING, true, null, null);
+
+        var result =
+                postingRepository.searchRecommendationCandidates(null, TODAY, RECOMMEND_PAGEABLE);
+
+        assertThat(result.getContent())
+                .extracting(Posting::getId)
+                .containsExactly(dueSoon.getId(), dueLater.getId(), rolling.getId());
+    }
+
+    @Test
+    void searchRecommendationCandidates_filtersByRegionIds_whenProvided() {
+        Posting matching =
+                recommendationCandidate(PostingStatus.RECRUITING, true, TODAY.plusDays(1), 42L);
+        recommendationCandidate(PostingStatus.RECRUITING, true, TODAY.plusDays(1), 43L);
+
+        var result =
+                postingRepository.searchRecommendationCandidates(
+                        List.of(42L), TODAY, RECOMMEND_PAGEABLE);
+
+        assertThat(result.getContent())
+                .extracting(Posting::getId)
+                .containsExactly(matching.getId());
+    }
+
+    @Test
+    void searchRecommendationCandidates_returnsEmpty_withoutException_whenRegionIdsIsEmptyList() {
+        recommendationCandidate(PostingStatus.RECRUITING, true, TODAY.plusDays(1), 42L);
+
+        var result =
+                postingRepository.searchRecommendationCandidates(
+                        List.of(), TODAY, RECOMMEND_PAGEABLE);
+
+        assertThat(result.getContent()).isEmpty();
+    }
+
+    @Test
+    void searchRecommendationCandidates_hasNext_isTrue_whenMoreCandidatesRemain() {
+        recommendationCandidate(PostingStatus.RECRUITING, true, TODAY.plusDays(1), null);
+        recommendationCandidate(PostingStatus.RECRUITING, true, TODAY.plusDays(2), null);
+
+        var result =
+                postingRepository.searchRecommendationCandidates(null, TODAY, PageRequest.of(0, 1));
+
+        assertThat(result.getContent()).hasSize(1);
+        assertThat(result.hasNext()).isTrue();
+    }
+
+    @Test
+    void searchRecommendationCandidates_hasNext_isFalse_onLastPage() {
+        recommendationCandidate(PostingStatus.RECRUITING, true, TODAY.plusDays(1), null);
+
+        var result =
+                postingRepository.searchRecommendationCandidates(null, TODAY, PageRequest.of(0, 2));
+
+        assertThat(result.getContent()).hasSize(1);
+        assertThat(result.hasNext()).isFalse();
+    }
+
+    private Posting recommendationCandidate(
+            PostingStatus status, boolean isActive, LocalDate noticeEndDate, Long regionId) {
+        return postingRepository.save(
+                Posting.builder()
+                        .title("추천 후보 테스트 공고")
+                        .status(status)
+                        .activityDate(LocalDate.of(2026, 7, 15))
+                        .noticeEndDate(noticeEndDate)
+                        .isActive(isActive)
+                        .regionId(regionId)
+                        .category(PostingCategory.ENVIRONMENT)
+                        .source(PostingSource.API_1365)
+                        .build());
+    }
+
     @Test
     void deactivateExpired_deactivatesPosting_whenActEndDateIsBeforeToday() {
         Posting posting =
