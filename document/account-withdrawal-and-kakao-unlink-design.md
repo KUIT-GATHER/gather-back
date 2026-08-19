@@ -57,6 +57,7 @@
 | 카카오 unlink worker | DB UTC claim·lease, preflight, attempt reservation, transaction 밖 Admin HTTP 호출, retry·terminal 분류와 DB 기반 configuration circuit breaker가 구현됐다. |
 | worker finalizer | unlink 성공 또는 동일 generation `UNLINKED` local finalization에서 SocialAccount 직접 식별자 제거, User `WITHDRAWN`·익명화, 프로필 이미지 durable deletion 등록과 task `SUCCEEDED` 전이가 구현됐다. |
 | 재가입 제한 | `AccountRejoinBlock`의 `PHONE`/`KAKAO` 7일 생성·연장과 가입 시 조회가 실제 인증 흐름에 연결됐다. |
+| 재가입 제한 보관기간 | 탈퇴 완료(`users.withdrawn_at`) 후 3 calendar months가 지나고 차단도 끝난 row를 기동 직후와 1시간 주기 cleanup으로 물리 삭제한다. scheduler는 기본 비활성이며 운영 데이터 점검 후 환경변수로 활성화한다. |
 | PHONE 동시성 | `account_identity_guard`와 `AccountIdentityGuardService`가 가입·탈퇴에 동일 PHONE HMAC row의 안정적인 비관적 잠금을 제공한다. |
 | 인증 차단 | `JwtAuthenticationFilter`가 유효한 Access Token 요청마다 User를 PK로 조회해 최신 탈퇴 상태를 검사한다. |
 | 공개 탈퇴 API | body 없는 `DELETE /api/v1/users/me`가 `WithdrawalReason.SELF`로 기존 service를 호출하고 `COMPLETED/ACCEPTED`를 `200/202`로 반환한다. `occurredAt`은 UTC `Instant`로 노출한다. |
@@ -71,7 +72,7 @@
 |---|---|
 | `User.anonymize()` | 개별 사용자 필드는 정리하지만 관련 도메인 데이터 전체의 개인정보 파기 범위는 정의하지 않는다. |
 | `SocialAccount.relink()` | 세대 증가 기능은 있으나 실제 재연결 흐름이 아직 없다. |
-| 재가입 제한 정리 | 만료 판정은 연결됐지만 만료 block cleanup과 identity guard의 장기 retention·안전한 cleanup은 아직 구현하지 않았다. |
+| 재가입 제한 정리 | block 보관기간 cleanup은 구현했으나, 과거 upsert로 `sourceUserId`가 최초 탈퇴자에 머문 legacy row는 자동 보정하지 않는다. identity guard의 장기 retention·안전한 cleanup도 아직 구현하지 않았다. |
 | 운영 활성화 | 운영 환경변수, 운영 DB의 V39/V41, WorkerControl singleton과 기존 backlog를 확인한 뒤 Admin client와 worker를 단계적으로 활성화해야 한다. |
 | 운영 관측 | 구조화 로그는 존재하지만 backlog·`DEAD`·pending 체류시간 metric과 alert는 아직 구현하지 않았다. |
 | 운영 복구 | one-shot command는 configuration 원인의 전체 `DEAD` task 복구만 지원한다. 비-configuration `DEAD`의 감사 가능한 내부 복구 수단은 별도 후속 작업이다. |
@@ -158,7 +159,7 @@
 |---|---|---|---|---|---|---|
 | 일반 회원 동기 완료 | 외부 unlink 없음; `ACTIVE/SUSPENDED → WITHDRAWN`, `200` | 유형 판별 service result, 즉시 익명화·durable 후처리 | User→PHONE guard→PHONE block 순서의 단일 트랜잭션 | 원문 제거, User tombstone 유지 | 두 시작 상태, 중복 `200`, rollback | PR 5·7 |
 | 카카오 회원 비동기 완료 | `ACTIVE/SUSPENDED → PENDING → WITHDRAWN`, 접수 `202` | task enqueue와 worker finalizer | 접수 원자성, claim/call/result 분리 | pending 중 ciphertext 최소 유지 | 두 시작 상태, 중복 `202`, finalizer | PR 5·6·7 |
-| 재가입 7일 | PHONE/KAKAO 동일 cooldown, `now >= expiresAt` 허용 | 고정된 active HMAC, UTC Clock, max 연장 | PHONE guard·locking read·멱등 block upsert | 원문/HMAC 전체 로그 금지 | 경계·연장·24시간 cleanup 지연·가입 경쟁 | PR 5 |
+| 재가입 7일 | PHONE/KAKAO 동일 cooldown, `now >= expiresAt` 허용 | 고정된 active HMAC, UTC Clock, max 연장 | PHONE guard·locking read·멱등 block upsert | 원문/HMAC 전체 로그 금지 | 경계·연장·cleanup 지연·가입 경쟁 | PR 5 |
 | SocialAccount lifecycle | unlink 성공 또는 동일 generation의 기존 `UNLINKED` local finalization 시 직접 ID 제거, HMAC은 cooldown 동안 유지 | nullable migration, local finalizer와 최소 tombstone | 같은 result/finalizer transaction에서 직접 식별자 파기 | task에 ID/ciphertext 복제 금지 | 상태별 직접 식별자 제거와 HMAC 유지 | PR 6·후속 retention |
 | DEAD ciphertext | 미해결 동안 유지, 해결 성공 시 제거 | SLA와 application-service manual retry | `DEAD` 자동 claim 금지 | retention 만료 자동 파기 금지 | 유지·해결 후 제거·민감 로그 부재 | PR 6·후속 운영 |
 | User 익명화 | 일반 즉시, 카카오 unlink 성공 시 | 필드별 null/고유 익명값과 S3 durable 삭제 | 상태 전이와 같은 트랜잭션 | 가역 접두어 익명화 금지 | nullable·unique·관계·S3 retry | PR 5·6 |
@@ -311,7 +312,17 @@ public LockedPendingSocialSignupSessions lockPendingForIdentity(
 - `now < expiresAt`이면 차단하고 `now >= expiresAt`이면 허용한다.
 - 기존 block은 `max(existing.expiresAt, now + 7 days)`로 연장하며 기간을 단축하지 않는다.
 - 모든 시각은 DB에 UTC로 저장하고 애플리케이션의 일관된 `Clock`을 사용한다.
-- 만료 row는 정기 cleanup하며 만료 후 최대 24시간 안에 물리 삭제한다. 조회는 row 존재가 아니라 `expiresAt`을 기준으로 하므로 cleanup 지연이 차단을 연장하지 않는다.
+- 만료 row는 개인정보 보관기간이 끝난 뒤 정기 cleanup으로 물리 삭제한다. 조회는 row 존재가 아니라 `expiresAt`을 기준으로 하므로 cleanup 지연이 차단을 연장하지 않는다.
+
+`[Gather 확정 정책]` 재가입 제한 기간과 `AccountRejoinBlock` row의 보관기간은 별개다. 차단 기간은 7일이고, row 자체는 **실제 탈퇴가 완료된 시각(`users.withdrawn_at`)으로부터 3 calendar months** 동안 보관한 뒤 파기한다.
+
+- 보관기간 기산점은 `AccountRejoinBlock.createdAt`이 아니라 `sourceUserId`가 가리키는 User의 `withdrawnAt`이다. 카카오 회원은 탈퇴 접수 시점에 block이 먼저 생기고 unlink 성공 후에야 탈퇴가 완료되므로 두 시각이 다를 수 있다.
+- 3개월은 90일이 아니라 달력 기준이며 월말은 보정한다(예: 1월 31일 탈퇴 → 4월 30일 보관 종료).
+- 파기 대상은 `expiresAt <= now`이고 `withdrawnAt + 3개월 <= now`인 row다. 두 경계 모두 inclusive이며, 차단이 아직 유효한 row는 파기하지 않는다.
+- 동일 식별자로 재가입 후 다시 탈퇴하면 기존 row가 재사용되므로 upsert에서 `sourceUserId`와 `keyVersion`을 최신 탈퇴 기준으로 갱신한다. `expiresAt`은 단축하지 않고 `createdAt`은 row 최초 생성 시각으로 유지한다.
+- cleanup scheduler는 기본 비활성이며 `GATHER_REJOIN_BLOCK_CLEANUP_SCHEDULER_ENABLED=true`로만 켜진다. 과거 upsert가 `sourceUserId`를 갱신하지 않아 legacy row의 기산점이 실제 탈퇴일보다 이를 수 있으므로, 운영 데이터 점검 전에는 환경변수가 누락돼도 파기가 실행되지 않아야 한다.
+- 활성화된 뒤 정상 운영에서는 보관기간 종료 후 최대 약 1시간 안에 파기된다. 애플리케이션이 장기 중단되면 3개월을 넘겨 남을 수 있으나 다음 기동의 startup cleanup에서 제거한다.
+- 이 파기가 보장하는 범위는 `AccountRejoinBlock`에 저장된 PHONE/KAKAO HMAC row에 한정된다. `account_identity_guard` 등 다른 내부 HMAC은 포함하지 않는다.
 
 `[Gather 확정 정책]` `AccountRejoinBlock`과 `AccountIdentityGuard`는 동일한 active HMAC identity와 key version을 사용한다. HMAC keyring과 previous-key lookup이 구현되기 전까지 두 기능에 사용하는 HMAC secret과 key version을 기간 제한 없이 변경하지 않는다. 서비스 운영 중 block은 계속 생성될 수 있으므로 “활성 block의 7일 동안만” 회전을 금지하는 것으로는 충분하지 않다. 준비 없이 회전하면 동일 전화번호가 새 hash로 계산되어 가입과 탈퇴가 서로 다른 guard row를 잠글 수 있고, 기존 key로 만든 block 조회도 실패해 활성 재가입 제한을 우회할 수 있다.
 
@@ -1064,7 +1075,7 @@ User row는 FK 정합성을 위한 tombstone으로 유지한다. `id`, `status`,
 
 | 데이터 | 보존 정책 |
 |---|---|
-| `AccountRejoinBlock` | 7일 + 최대 24시간 cleanup 지연 |
+| `AccountRejoinBlock` | 재가입 차단 7일, row 보관은 `users.withdrawn_at` + 3 calendar months + 최대 약 1시간 cleanup 지연 |
 | `AccountIdentityGuard` | 현재 자동 만료·cleanup 없음; 안전한 삭제 전략 설계 전 유지 |
 | `SUCCEEDED` task | 완료 후 30일 |
 | `STALE` task | 전이 후 30일 |
@@ -1487,7 +1498,7 @@ PR B-1은 운영 모니터링의 저장·동시성 기반만 제공한다. 애�
 - legacy 평문 provider ID 제거 migration
 - 프로필 이미지 외의 외부 저장소 개인정보 정리
 - 관련 도메인 데이터의 보존·익명화·삭제 정책
-- 만료된 재가입 제한 block cleanup과 `account_identity_guard` 증가량·안전한 cleanup 전략
+- `account_identity_guard` 증가량과 안전한 cleanup 전략(재가입 제한 block 보관기간 cleanup은 구현 완료)
 
 ### 16.4 선택 기능과 의도적 범위 밖
 
