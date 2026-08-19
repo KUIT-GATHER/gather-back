@@ -37,8 +37,8 @@ import org.springframework.transaction.annotation.Transactional;
 /**
  * {@link UnifiedPostingQueryRepository#search}의 키셋(커서) 페이지네이션 검증.
  *
- * <p>정렬 우선순위(마감임박 stale-bucket 보정 포함)는 기존 OFFSET 구현과 동일하게 유지되는지, 그리고 커서로 이어붙였을 때 항목이
- * 중복·누락 없이 순서대로 나오는지를 함께 검증한다.
+ * <p>정렬 우선순위(마감임박 stale-bucket 보정 포함)는 기존 OFFSET 구현과 동일하게 유지되는지, 그리고 커서로 이어붙였을 때 항목이 중복·누락 없이 순서대로
+ * 나오는지를 함께 검증한다.
  */
 @SpringBootTest
 @Transactional
@@ -125,7 +125,8 @@ class UnifiedPostingQueryRepositoryTest {
         Posting mostApplicants = save(PostingStatus.RECRUITING, TODAY.plusDays(1), 10);
         Posting noApplicants = save(PostingStatus.RECRUITING, TODAY.plusDays(1), 0);
         Sort appliedCountDescending =
-                Sort.by(Sort.Direction.DESC, "appliedCount").and(Sort.by(Sort.Direction.DESC, "id"));
+                Sort.by(Sort.Direction.DESC, "appliedCount")
+                        .and(Sort.by(Sort.Direction.DESC, "id"));
 
         CursorSearchResult result = search(PostingStatus.RECRUITING, appliedCountDescending);
 
@@ -141,7 +142,8 @@ class UnifiedPostingQueryRepositoryTest {
         Posting second = save(PostingStatus.RECRUITING, TODAY.plusDays(1));
         Posting third = save(PostingStatus.RECRUITING, TODAY.plusDays(1));
 
-        CursorSearchResult result = search(PostingStatus.RECRUITING, Sort.by(Sort.Direction.ASC, "id"));
+        CursorSearchResult result =
+                search(PostingStatus.RECRUITING, Sort.by(Sort.Direction.ASC, "id"));
 
         assertThat(result.rows())
                 .extracting(UnifiedPostingRow::id)
@@ -161,12 +163,12 @@ class UnifiedPostingQueryRepositoryTest {
     }
 
     /**
-     * 모집공고(external=true)를 실제로 insert해 신청 가능한 모집공고가 봉사공고와 함께 apply_deadline_at 오름차순으로 올바르게
-     * 정렬되는지 확인한다(#163 리뷰 M2 — MEETING_RECRUIT UNION 분기를 실 DB로 검증하는 유일한 테스트).
+     * 모집공고(external=true)를 실제로 insert해 신청 가능한 모집공고가 봉사공고와 함께 apply_deadline_at 오름차순으로 올바르게 정렬되는지
+     * 확인한다(#163 리뷰 M2 — MEETING_RECRUIT UNION 분기를 실 DB로 검증하는 유일한 테스트).
      */
     @Test
     void
-    search_ordersMeetingRecruitRowsAlongsidePostingRows_whenSortingByApplyDeadlineAtAscending() {
+            search_ordersMeetingRecruitRowsAlongsidePostingRows_whenSortingByApplyDeadlineAtAscending() {
         Post nearRecruit = saveRecruit(TODAY.atStartOfDay().plusDays(1));
         Post farRecruit = saveRecruit(TODAY.atStartOfDay().plusDays(5));
         Posting openPosting = save(PostingStatus.RECRUITING, TODAY.plusDays(10));
@@ -240,8 +242,17 @@ class UnifiedPostingQueryRepositoryTest {
 
         CursorSearchResult result =
                 unifiedPostingQueryRepository.search(
-                        PostingStatus.RECRUITING, null, null, null, null, null, null, null,
-                        ID_DESC, null, 2);
+                        PostingStatus.RECRUITING,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        ID_DESC,
+                        null,
+                        2);
 
         assertThat(result.rows()).hasSize(2);
         assertThat(result.hasNext()).isTrue();
@@ -255,8 +266,17 @@ class UnifiedPostingQueryRepositoryTest {
 
         CursorSearchResult result =
                 unifiedPostingQueryRepository.search(
-                        PostingStatus.RECRUITING, null, null, null, null, null, null, null,
-                        ID_DESC, null, 20);
+                        PostingStatus.RECRUITING,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        ID_DESC,
+                        null,
+                        20);
 
         assertThat(result.hasNext()).isFalse();
         assertThat(result.nextCursor()).isNull();
@@ -278,8 +298,17 @@ class UnifiedPostingQueryRepositoryTest {
         while (hasNext) {
             CursorSearchResult page =
                     unifiedPostingQueryRepository.search(
-                            PostingStatus.RECRUITING, null, null, null, null, null, null, null,
-                            ID_DESC, cursor, 3);
+                            PostingStatus.RECRUITING,
+                            null,
+                            null,
+                            null,
+                            null,
+                            null,
+                            null,
+                            null,
+                            ID_DESC,
+                            cursor,
+                            3);
             page.rows().forEach(row -> collected.add(row.id()));
             cursor = page.nextCursor();
             hasNext = page.hasNext();
@@ -290,7 +319,7 @@ class UnifiedPostingQueryRepositoryTest {
 
     @Test
     void
-    search_paginatesThroughAllRows_withoutDuplicatesOrGaps_whenFollowingCursor_forApplyDeadlineAscending() {
+            search_paginatesThroughAllRows_withoutDuplicatesOrGaps_whenFollowingCursor_forApplyDeadlineAscending() {
         Posting a = save(PostingStatus.RECRUITING, TODAY.plusDays(1));
         Posting b = save(PostingStatus.RECRUITING, TODAY.plusDays(2));
         Posting c = save(PostingStatus.RECRUITING, null);
@@ -314,19 +343,19 @@ class UnifiedPostingQueryRepositoryTest {
         save(PostingStatus.RECRUITING, TODAY.plusDays(1));
 
         assertThatThrownBy(
-                () ->
-                        unifiedPostingQueryRepository.search(
-                                PostingStatus.RECRUITING,
-                                null,
-                                null,
-                                null,
-                                null,
-                                null,
-                                null,
-                                null,
-                                ID_DESC,
-                                "이건-유효한-base64가-아님!!",
-                                20))
+                        () ->
+                                unifiedPostingQueryRepository.search(
+                                        PostingStatus.RECRUITING,
+                                        null,
+                                        null,
+                                        null,
+                                        null,
+                                        null,
+                                        null,
+                                        null,
+                                        ID_DESC,
+                                        "이건-유효한-base64가-아님!!",
+                                        20))
                 .isInstanceOf(BusinessException.class)
                 .satisfies(
                         ex ->
@@ -342,25 +371,34 @@ class UnifiedPostingQueryRepositoryTest {
         save(PostingStatus.RECRUITING, TODAY.plusDays(1));
         CursorSearchResult idPage =
                 unifiedPostingQueryRepository.search(
-                        PostingStatus.RECRUITING, null, null, null, null, null, null, null,
-                        ID_DESC, null, 1);
+                        PostingStatus.RECRUITING,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        ID_DESC,
+                        null,
+                        1);
         String cursorFromIdSort = idPage.nextCursor();
 
         assertThatThrownBy(
-                () ->
-                        unifiedPostingQueryRepository.search(
-                                PostingStatus.RECRUITING,
-                                null,
-                                null,
-                                null,
-                                null,
-                                null,
-                                null,
-                                null,
-                                Sort.by(Sort.Direction.DESC, "appliedCount")
-                                        .and(Sort.by(Sort.Direction.DESC, "id")),
-                                cursorFromIdSort,
-                                20))
+                        () ->
+                                unifiedPostingQueryRepository.search(
+                                        PostingStatus.RECRUITING,
+                                        null,
+                                        null,
+                                        null,
+                                        null,
+                                        null,
+                                        null,
+                                        null,
+                                        Sort.by(Sort.Direction.DESC, "appliedCount")
+                                                .and(Sort.by(Sort.Direction.DESC, "id")),
+                                        cursorFromIdSort,
+                                        20))
                 .isInstanceOf(BusinessException.class)
                 .satisfies(
                         ex ->

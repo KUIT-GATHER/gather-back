@@ -87,17 +87,17 @@ class PostingServiceTest {
     @DisplayName("getPostings passes a null status through to the repository unchanged")
     void getPostings_passesNullStatusThrough_whenStatusNotProvided() {
         when(unifiedPostingQueryRepository.search(
-                isNull(),
-                isNull(),
-                isNull(),
-                isNull(),
-                isNull(),
-                isNull(),
-                isNull(),
-                isNull(),
-                eq(ID_DESC),
-                isNull(),
-                eq(20)))
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        eq(ID_DESC),
+                        isNull(),
+                        eq(20)))
                 .thenReturn(emptyResult());
 
         postingService.getPostings(
@@ -113,17 +113,17 @@ class PostingServiceTest {
     @DisplayName("getPostings passes an explicitly given status through unchanged")
     void getPostings_usesGivenStatus_whenProvided() {
         when(unifiedPostingQueryRepository.search(
-                eq(PostingStatus.CLOSED),
-                isNull(),
-                isNull(),
-                isNull(),
-                isNull(),
-                isNull(),
-                isNull(),
-                isNull(),
-                eq(ID_DESC),
-                isNull(),
-                eq(20)))
+                        eq(PostingStatus.CLOSED),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        eq(ID_DESC),
+                        isNull(),
+                        eq(20)))
                 .thenReturn(emptyResult());
 
         postingService.getPostings(
@@ -160,17 +160,17 @@ class PostingServiceTest {
     void getPostings_resolvesRegionHierarchy_whenRegionIdProvided() {
         when(regionRepository.findIdsIncludingChildren(1L)).thenReturn(List.of(1L, 2L, 3L));
         when(unifiedPostingQueryRepository.search(
-                isNull(),
-                eq(List.of(1L, 2L, 3L)),
-                isNull(),
-                isNull(),
-                isNull(),
-                isNull(),
-                isNull(),
-                isNull(),
-                eq(ID_DESC),
-                isNull(),
-                eq(20)))
+                        isNull(),
+                        eq(List.of(1L, 2L, 3L)),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        eq(ID_DESC),
+                        isNull(),
+                        eq(20)))
                 .thenReturn(emptyResult());
 
         postingService.getPostings(
@@ -193,22 +193,23 @@ class PostingServiceTest {
     }
 
     @Test
-    @DisplayName("getPostings resolves regionGroupId to every sido/gungu in that group before querying")
+    @DisplayName(
+            "getPostings resolves regionGroupId to every sido/gungu in that group before querying")
     void getPostings_resolvesRegionGroupHierarchy_whenRegionGroupIdProvided() {
         when(regionRepository.findIdsIncludingChildrenByGroupId(7L))
                 .thenReturn(List.of(10L, 11L, 12L, 13L));
         when(unifiedPostingQueryRepository.search(
-                isNull(),
-                eq(List.of(10L, 11L, 12L, 13L)),
-                isNull(),
-                isNull(),
-                isNull(),
-                isNull(),
-                isNull(),
-                isNull(),
-                eq(ID_DESC),
-                isNull(),
-                eq(20)))
+                        isNull(),
+                        eq(List.of(10L, 11L, 12L, 13L)),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        eq(ID_DESC),
+                        isNull(),
+                        eq(20)))
                 .thenReturn(emptyResult());
 
         postingService.getPostings(
@@ -235,27 +236,19 @@ class PostingServiceTest {
     @DisplayName("getPostings throws VALIDATION_ERROR when both regionId and regionGroupId given")
     void getPostings_throwsValidationError_whenBothRegionIdAndRegionGroupIdProvided() {
         assertThatThrownBy(
-                () ->
-                        postingService.getPostings(
-                                ID_DESC,
-                                null,
-                                20,
-                                1L,
-                                7L,
-                                null,
-                                null,
-                                null,
-                                null,
-                                null,
-                                "환경",
-                                null))
+                        () ->
+                                postingService.getPostings(
+                                        ID_DESC, null, 20, 1L, 7L, null, null, null, null, null,
+                                        "환경", null))
                 .isInstanceOf(BusinessException.class)
                 .satisfies(
                         ex ->
                                 assertThat(((BusinessException) ex).getErrorCode())
                                         .isEqualTo(ErrorCode.VALIDATION_ERROR));
         verify(unifiedPostingQueryRepository, never())
-                .search(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), anyInt());
+                .search(
+                        any(), any(), any(), any(), any(), any(), any(), any(), any(), any(),
+                        anyInt());
         verify(postingSearchLogService, never()).log(any());
     }
 
@@ -265,20 +258,20 @@ class PostingServiceTest {
         Sort invalidSort = Sort.by("string");
 
         assertThatThrownBy(
-                () ->
-                        postingService.getPostings(
-                                invalidSort,
-                                null,
-                                20,
-                                null,
-                                null,
-                                null,
-                                null,
-                                null,
-                                null,
-                                null,
-                                "환경",
-                                null))
+                        () ->
+                                postingService.getPostings(
+                                        invalidSort,
+                                        null,
+                                        20,
+                                        null,
+                                        null,
+                                        null,
+                                        null,
+                                        null,
+                                        null,
+                                        null,
+                                        "환경",
+                                        null))
                 .isInstanceOf(BusinessException.class)
                 .satisfies(
                         ex ->
@@ -286,7 +279,9 @@ class PostingServiceTest {
                                         .isEqualTo(ErrorCode.VALIDATION_ERROR));
         verify(postingSearchLogService, never()).log(any());
         verify(unifiedPostingQueryRepository, never())
-                .search(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), anyInt());
+                .search(
+                        any(), any(), any(), any(), any(), any(), any(), any(), any(), any(),
+                        anyInt());
     }
 
     @Test
@@ -295,17 +290,17 @@ class PostingServiceTest {
         Sort activityStartAtAsc = Sort.by("activityStartAt").ascending();
         when(unifiedPostingQueryRepository.isSortable("activityStartAt")).thenReturn(true);
         when(unifiedPostingQueryRepository.search(
-                isNull(),
-                isNull(),
-                isNull(),
-                isNull(),
-                isNull(),
-                isNull(),
-                isNull(),
-                isNull(),
-                eq(activityStartAtAsc),
-                isNull(),
-                eq(20)))
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        eq(activityStartAtAsc),
+                        isNull(),
+                        eq(20)))
                 .thenReturn(emptyResult());
 
         postingService.getPostings(
@@ -330,17 +325,17 @@ class PostingServiceTest {
     @DisplayName("getPostings logs the keyword only after the search succeeds")
     void getPostings_logsKeyword_onlyAfterSearchSucceeds() {
         when(unifiedPostingQueryRepository.search(
-                isNull(),
-                isNull(),
-                isNull(),
-                isNull(),
-                isNull(),
-                isNull(),
-                eq("환경"),
-                isNull(),
-                eq(ID_DESC),
-                isNull(),
-                eq(20)))
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        eq("환경"),
+                        isNull(),
+                        eq(ID_DESC),
+                        isNull(),
+                        eq(20)))
                 .thenReturn(emptyResult());
 
         postingService.getPostings(
@@ -353,17 +348,17 @@ class PostingServiceTest {
     @DisplayName("getPostings still returns results when search-log recording throws")
     void getPostings_returnsResults_whenSearchLoggingThrows() {
         when(unifiedPostingQueryRepository.search(
-                isNull(),
-                isNull(),
-                isNull(),
-                isNull(),
-                isNull(),
-                isNull(),
-                eq("환경"),
-                isNull(),
-                eq(ID_DESC),
-                isNull(),
-                eq(20)))
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        eq("환경"),
+                        isNull(),
+                        eq(ID_DESC),
+                        isNull(),
+                        eq(20)))
                 .thenReturn(emptyResult());
         org.mockito.Mockito.doThrow(new RuntimeException("logging failed"))
                 .when(postingSearchLogService)
@@ -382,17 +377,17 @@ class PostingServiceTest {
         LocalDate from = LocalDate.of(2026, 7, 1);
         LocalDate to = LocalDate.of(2026, 7, 31);
         when(unifiedPostingQueryRepository.search(
-                isNull(),
-                isNull(),
-                eq(from),
-                eq(to),
-                isNull(),
-                isNull(),
-                isNull(),
-                isNull(),
-                eq(ID_DESC),
-                isNull(),
-                eq(20)))
+                        isNull(),
+                        isNull(),
+                        eq(from),
+                        eq(to),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        eq(ID_DESC),
+                        isNull(),
+                        eq(20)))
                 .thenReturn(emptyResult());
 
         postingService.getPostings(
@@ -408,17 +403,17 @@ class PostingServiceTest {
         LocalDate from = LocalDate.of(2026, 8, 20);
         LocalDate to = LocalDate.of(2026, 8, 25);
         when(unifiedPostingQueryRepository.search(
-                isNull(),
-                isNull(),
-                isNull(),
-                isNull(),
-                eq(from),
-                eq(to),
-                isNull(),
-                isNull(),
-                eq(ID_DESC),
-                isNull(),
-                eq(20)))
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        eq(from),
+                        eq(to),
+                        isNull(),
+                        isNull(),
+                        eq(ID_DESC),
+                        isNull(),
+                        eq(20)))
                 .thenReturn(emptyResult());
 
         postingService.getPostings(
@@ -433,17 +428,17 @@ class PostingServiceTest {
     void getPostings_allowsActivityDateRange_whenStartEqualsEnd() {
         LocalDate same = LocalDate.of(2026, 8, 20);
         when(unifiedPostingQueryRepository.search(
-                isNull(),
-                isNull(),
-                isNull(),
-                isNull(),
-                eq(same),
-                eq(same),
-                isNull(),
-                isNull(),
-                eq(ID_DESC),
-                isNull(),
-                eq(20)))
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        eq(same),
+                        eq(same),
+                        isNull(),
+                        isNull(),
+                        eq(ID_DESC),
+                        isNull(),
+                        eq(20)))
                 .thenReturn(emptyResult());
 
         postingService.getPostings(
@@ -461,44 +456,36 @@ class PostingServiceTest {
         LocalDate end = LocalDate.of(2026, 8, 20);
 
         assertThatThrownBy(
-                () ->
-                        postingService.getPostings(
-                                ID_DESC,
-                                null,
-                                20,
-                                null,
-                                null,
-                                null,
-                                null,
-                                null,
-                                start,
-                                end,
-                                null,
-                                null))
+                        () ->
+                                postingService.getPostings(
+                                        ID_DESC, null, 20, null, null, null, null, null, start, end,
+                                        null, null))
                 .isInstanceOf(BusinessException.class)
                 .satisfies(
                         ex ->
                                 assertThat(((BusinessException) ex).getErrorCode())
                                         .isEqualTo(ErrorCode.VALIDATION_ERROR));
         verify(unifiedPostingQueryRepository, never())
-                .search(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), anyInt());
+                .search(
+                        any(), any(), any(), any(), any(), any(), any(), any(), any(), any(),
+                        anyInt());
     }
 
     @Test
     @DisplayName("getPostings passes the category through to the repository")
     void getPostings_passesCategory_whenProvided() {
         when(unifiedPostingQueryRepository.search(
-                isNull(),
-                isNull(),
-                isNull(),
-                isNull(),
-                isNull(),
-                isNull(),
-                isNull(),
-                eq(PostingCategory.WELFARE),
-                eq(ID_DESC),
-                isNull(),
-                eq(20)))
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        eq(PostingCategory.WELFARE),
+                        eq(ID_DESC),
+                        isNull(),
+                        eq(20)))
                 .thenReturn(emptyResult());
 
         postingService.getPostings(
@@ -535,17 +522,17 @@ class PostingServiceTest {
     void getPostings_passesCursorThrough() {
         String cursor = "abc123";
         when(unifiedPostingQueryRepository.search(
-                isNull(),
-                isNull(),
-                isNull(),
-                isNull(),
-                isNull(),
-                isNull(),
-                isNull(),
-                isNull(),
-                eq(ID_DESC),
-                eq(cursor),
-                eq(20)))
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        eq(ID_DESC),
+                        eq(cursor),
+                        eq(20)))
                 .thenReturn(emptyResult());
 
         postingService.getPostings(
@@ -559,17 +546,17 @@ class PostingServiceTest {
     @DisplayName("getPostings falls back to the default size when size is zero or negative")
     void getPostings_fallsBackToDefaultSize_whenSizeNotPositive() {
         when(unifiedPostingQueryRepository.search(
-                isNull(),
-                isNull(),
-                isNull(),
-                isNull(),
-                isNull(),
-                isNull(),
-                isNull(),
-                isNull(),
-                eq(ID_DESC),
-                isNull(),
-                eq(20)))
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        eq(ID_DESC),
+                        isNull(),
+                        eq(20)))
                 .thenReturn(emptyResult());
 
         postingService.getPostings(
@@ -583,17 +570,17 @@ class PostingServiceTest {
     @DisplayName("getPostings clamps size to the maximum when a larger size is requested")
     void getPostings_clampsSize_whenSizeExceedsMax() {
         when(unifiedPostingQueryRepository.search(
-                isNull(),
-                isNull(),
-                isNull(),
-                isNull(),
-                isNull(),
-                isNull(),
-                isNull(),
-                isNull(),
-                eq(ID_DESC),
-                isNull(),
-                eq(100)))
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        eq(ID_DESC),
+                        isNull(),
+                        eq(100)))
                 .thenReturn(emptyResult());
 
         postingService.getPostings(
@@ -604,7 +591,8 @@ class PostingServiceTest {
     }
 
     @Test
-    @DisplayName("getPostings maps a POSTING-sourced row to a PostingListItem with a null thumbnail")
+    @DisplayName(
+            "getPostings maps a POSTING-sourced row to a PostingListItem with a null thumbnail")
     void getPostings_mapsPostingSourcedRow_withNullThumbnail() {
         UnifiedPostingRow row =
                 new UnifiedPostingRow(
@@ -623,17 +611,17 @@ class PostingServiceTest {
                         "[\"ENVIRONMENT\"]",
                         "RECRUITING");
         when(unifiedPostingQueryRepository.search(
-                isNull(),
-                isNull(),
-                isNull(),
-                isNull(),
-                isNull(),
-                isNull(),
-                isNull(),
-                isNull(),
-                eq(ID_DESC),
-                isNull(),
-                eq(20)))
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        eq(ID_DESC),
+                        isNull(),
+                        eq(20)))
                 .thenReturn(new CursorSearchResult(List.of(row), null, false));
 
         CursorPageResponse<PostingListItem> result =
