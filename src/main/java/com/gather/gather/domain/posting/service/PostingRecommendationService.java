@@ -4,7 +4,6 @@ import com.gather.gather.domain.posting.dto.PostingSummaryResponse;
 import com.gather.gather.domain.posting.entity.Posting;
 import com.gather.gather.domain.posting.entity.PostingCategory;
 import com.gather.gather.domain.posting.entity.PostingParticipation;
-import com.gather.gather.domain.posting.entity.PostingStatus;
 import com.gather.gather.domain.posting.repository.PostingParticipationRepository;
 import com.gather.gather.domain.posting.repository.PostingRepository;
 import com.gather.gather.global.util.ActivityRegionResolver;
@@ -21,11 +20,10 @@ import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
-import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
-import org.springframework.data.domain.Sort;
+import org.springframework.data.domain.Slice;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -87,14 +85,14 @@ public class PostingRecommendationService {
 
     /**
      * 마감일이 가까운 순으로 페이지를 넘겨가며 전체 후보를 채점한다. 첫 페이지만 잘라 채점하면 이후 페이지에 있는 더 높은 점수의 후보(예: 마감일은 멀지만 선호
-     * 카테고리인 공고)가 통째로 누락될 수 있어, 후보가 소진될 때까지 전량을 순회한다. 신청 이력이 있는 공고와 비활성(isActive=false) 공고는 신청 시점에
-     * 이미 막혀 있으므로 여기서 미리 제외한다.
+     * 카테고리인 공고)가 통째로 누락될 수 있어, 후보가 소진될 때까지 전량을 순회한다.
+     *
+     * <p>status=RECRUITING, is_active=true, 마감일이 아직 지나지 않음(또는 상시모집)이라는 조건은 {@link
+     * PostingRepository#searchRecommendationCandidates}의 WHERE 절에서 이미 걸러지므로 여기서 다시 필터링하지 않는다 — 이
+     * 조건들은 V67에서 추가한 생성 컬럼·전용 인덱스로 커버되어 filesort 없이 처리된다. 신청 이력이 있는 공고만 여기서 추가로 제외한다.
      *
      * <p>{@code regionFilter}는 사용자의 활동지역(상위 지역 선택 시 하위 지역 포함) 목록이다. 활동지역을 설정하지 않은 회원·비로그인은 {@code
      * null}이 넘어와 지역 필터 없이 전체 지역을 대상으로 채점한다(가중치가 아닌 완전 필터링이므로 카테고리·마감일 점수와 달리 후보 조회 단계에서 걸러낸다).
-     *
-     * <p>{@code status}는 외부 공공데이터 API 동기화 주기만큼 지연될 수 있어(마감일이 지났는데도 다음 동기화 전까지 RECRUITING으로 남아있을 수
-     * 있음), 저장된 상태만으로 필터링하지 않고 {@code noticeEndDate}가 아직 지나지 않은 공고인지도 함께 확인한다.
      */
     private List<ScoredPosting> scoreAllCandidates(
             Set<PostingCategory> preferredCategories,
@@ -103,26 +101,13 @@ public class PostingRecommendationService {
             LocalDateTime now) {
         List<ScoredPosting> scored = new ArrayList<>();
         LocalDate today = now.toLocalDate();
-        Sort sort = Sort.by(Sort.Direction.ASC, "noticeEndDate");
         int pageNumber = 0;
         while (true) {
-            Pageable pageable = PageRequest.of(pageNumber, PAGE_SIZE, sort);
-            Page<Posting> candidates =
-                    postingRepository.search(
-                            PostingStatus.RECRUITING,
-                            regionFilter,
-                            null,
-                            null,
-                            null,
-                            null,
-                            pageable);
+            Pageable pageable = PageRequest.of(pageNumber, PAGE_SIZE);
+            Slice<Posting> candidates =
+                    postingRepository.searchRecommendationCandidates(regionFilter, today, pageable);
             List<Posting> content = candidates.getContent();
-            if (content.isEmpty()) {
-                break;
-            }
             content.stream()
-                    .filter(posting -> Boolean.TRUE.equals(posting.getIsActive()))
-                    .filter(posting -> isNoticeStillOpen(posting, today))
                     .filter(posting -> !excludedPostingIds.contains(posting.getId()))
                     .forEach(
                             posting ->
@@ -136,12 +121,6 @@ public class PostingRecommendationService {
             pageNumber++;
         }
         return scored;
-    }
-
-    /** noticeEndDate가 없는 공고(상시 모집 등)는 통과시키고, 있으면 오늘을 포함해 아직 지나지 않은 경우만 통과시킨다. */
-    private boolean isNoticeStillOpen(Posting posting, LocalDate today) {
-        LocalDate noticeEndDate = posting.getNoticeEndDate();
-        return noticeEndDate == null || !noticeEndDate.isBefore(today);
     }
 
     private double scoreOf(

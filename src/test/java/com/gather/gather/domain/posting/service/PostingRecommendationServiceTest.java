@@ -35,10 +35,8 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.MockedStatic;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageImpl;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.SliceImpl;
 import org.springframework.test.util.ReflectionTestUtils;
 
 @ExtendWith(MockitoExtension.class)
@@ -84,15 +82,9 @@ class PostingRecommendationServiceTest {
         Posting p5 = posting(5L, PostingCategory.EDUCATION, today.plusDays(2));
         Posting p6 = posting(6L, PostingCategory.ENVIRONMENT, today); // 이미 지원한 공고 → 제외되어야 함
 
-        when(postingRepository.search(
-                        eq(PostingStatus.RECRUITING),
-                        isNull(),
-                        isNull(),
-                        isNull(),
-                        isNull(),
-                        isNull(),
-                        any(Pageable.class)))
-                .thenReturn(new PageImpl<>(List.of(p1, p2, p3, p4, p5, p6)));
+        when(postingRepository.searchRecommendationCandidates(
+                        isNull(), any(LocalDate.class), any(Pageable.class)))
+                .thenReturn(sliceOf(p1, p2, p3, p4, p5, p6));
         when(userRepository.findById(USER_ID))
                 .thenReturn(Optional.of(userWithPreference(PostingCategory.ENVIRONMENT)));
         when(postingParticipationRepository.findByUserId(eq(USER_ID)))
@@ -122,15 +114,9 @@ class PostingRecommendationServiceTest {
         Posting p4 = posting(4L, PostingCategory.WELFARE, today.plusDays(20));
         Posting p5 = posting(5L, PostingCategory.EDUCATION, today.plusDays(2));
 
-        when(postingRepository.search(
-                        eq(PostingStatus.RECRUITING),
-                        isNull(),
-                        isNull(),
-                        isNull(),
-                        isNull(),
-                        isNull(),
-                        any(Pageable.class)))
-                .thenReturn(new PageImpl<>(List.of(p1, p2, p3, p4, p5)));
+        when(postingRepository.searchRecommendationCandidates(
+                        isNull(), any(LocalDate.class), any(Pageable.class)))
+                .thenReturn(sliceOf(p1, p2, p3, p4, p5));
 
         try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
             securityUtil.when(SecurityUtil::getCurrentUserIdOrNull).thenReturn(null);
@@ -152,15 +138,9 @@ class PostingRecommendationServiceTest {
         Posting p1 = posting(1L, PostingCategory.ENVIRONMENT, today.plusDays(1));
         Posting p2 = posting(2L, PostingCategory.WELFARE, today.plusDays(5));
 
-        when(postingRepository.search(
-                        eq(PostingStatus.RECRUITING),
-                        isNull(),
-                        isNull(),
-                        isNull(),
-                        isNull(),
-                        isNull(),
-                        any(Pageable.class)))
-                .thenReturn(new PageImpl<>(List.of(p1, p2)));
+        when(postingRepository.searchRecommendationCandidates(
+                        isNull(), any(LocalDate.class), any(Pageable.class)))
+                .thenReturn(sliceOf(p1, p2));
 
         try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
             securityUtil.when(SecurityUtil::getCurrentUserIdOrNull).thenReturn(null);
@@ -180,15 +160,9 @@ class PostingRecommendationServiceTest {
         Posting p1 = posting(1L, PostingCategory.ENVIRONMENT, today.plusDays(1));
         Posting p2 = posting(2L, PostingCategory.WELFARE, today.plusDays(5));
 
-        when(postingRepository.search(
-                        eq(PostingStatus.RECRUITING),
-                        isNull(),
-                        isNull(),
-                        isNull(),
-                        isNull(),
-                        isNull(),
-                        any(Pageable.class)))
-                .thenReturn(new PageImpl<>(List.of(p1, p2)));
+        when(postingRepository.searchRecommendationCandidates(
+                        isNull(), any(LocalDate.class), any(Pageable.class)))
+                .thenReturn(sliceOf(p1, p2));
         when(userRepository.findById(USER_ID))
                 .thenReturn(Optional.of(userWithPreference(PostingCategory.ENVIRONMENT)));
         when(postingParticipationRepository.findByUserId(eq(USER_ID)))
@@ -215,15 +189,9 @@ class PostingRecommendationServiceTest {
         Posting higherId = posting(20L, PostingCategory.WELFARE, sameDeadline);
         Posting lowerId = posting(10L, PostingCategory.WELFARE, sameDeadline);
 
-        when(postingRepository.search(
-                        eq(PostingStatus.RECRUITING),
-                        isNull(),
-                        isNull(),
-                        isNull(),
-                        isNull(),
-                        isNull(),
-                        any(Pageable.class)))
-                .thenReturn(new PageImpl<>(List.of(higherId, lowerId)));
+        when(postingRepository.searchRecommendationCandidates(
+                        isNull(), any(LocalDate.class), any(Pageable.class)))
+                .thenReturn(sliceOf(higherId, lowerId));
         when(userRepository.findById(USER_ID))
                 .thenReturn(Optional.of(userWithPreference(PostingCategory.ENVIRONMENT)));
         when(postingParticipationRepository.findByUserId(eq(USER_ID))).thenReturn(List.of());
@@ -249,18 +217,12 @@ class PostingRecommendationServiceTest {
         Posting nearNonPreferred = posting(1L, PostingCategory.WELFARE, today.plusDays(1));
         Posting farPreferred = posting(2L, PostingCategory.ENVIRONMENT, today.plusDays(29));
 
-        Page<Posting> firstPage =
-                new PageImpl<>(List.of(nearNonPreferred), PageRequest.of(0, 1), 2);
-        Page<Posting> secondPage = new PageImpl<>(List.of(farPreferred), PageRequest.of(1, 1), 2);
-        when(postingRepository.search(
-                        eq(PostingStatus.RECRUITING),
-                        isNull(),
-                        isNull(),
-                        isNull(),
-                        isNull(),
-                        isNull(),
-                        any(Pageable.class)))
-                .thenReturn(firstPage, secondPage);
+        when(postingRepository.searchRecommendationCandidates(
+                        isNull(), any(LocalDate.class), any(Pageable.class)))
+                .thenReturn(
+                        new SliceImpl<>(List.of(nearNonPreferred), Pageable.ofSize(1), true),
+                        new SliceImpl<>(
+                                List.of(farPreferred), Pageable.ofSize(1).withPage(1), false));
         when(userRepository.findById(USER_ID))
                 .thenReturn(Optional.of(userWithPreference(PostingCategory.ENVIRONMENT)));
         when(postingParticipationRepository.findByUserId(eq(USER_ID))).thenReturn(List.of());
@@ -276,76 +238,14 @@ class PostingRecommendationServiceTest {
     }
 
     @Test
-    @DisplayName("getRecommendedPostings excludes postings that are RECRUITING but isActive=false")
-    void getRecommendedPostings_excludesInactivePostings() {
-        LocalDate today = LocalDate.now();
-        Posting active = posting(1L, PostingCategory.ENVIRONMENT, today.plusDays(1), true);
-        Posting inactive = posting(2L, PostingCategory.ENVIRONMENT, today.plusDays(2), false);
-
-        when(postingRepository.search(
-                        eq(PostingStatus.RECRUITING),
-                        isNull(),
-                        isNull(),
-                        isNull(),
-                        isNull(),
-                        isNull(),
-                        any(Pageable.class)))
-                .thenReturn(new PageImpl<>(List.of(active, inactive)));
-
-        try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
-            securityUtil.when(SecurityUtil::getCurrentUserIdOrNull).thenReturn(null);
-
-            List<PostingSummaryResponse> recommended =
-                    postingRecommendationService.getRecommendedPostings();
-
-            assertThat(recommended).extracting(PostingSummaryResponse::id).containsExactly(1L);
-        }
-    }
-
-    @Test
-    @DisplayName(
-            "getRecommendedPostings excludes postings whose noticeEndDate has already passed even"
-                    + " though the stored status is still RECRUITING (sync lag)")
-    void getRecommendedPostings_excludesPostingsPastNoticeEndDate() {
-        LocalDate today = LocalDate.now();
-        Posting stillOpen = posting(1L, PostingCategory.ENVIRONMENT, today);
-        Posting expired = posting(2L, PostingCategory.ENVIRONMENT, today.minusDays(1));
-
-        when(postingRepository.search(
-                        eq(PostingStatus.RECRUITING),
-                        isNull(),
-                        isNull(),
-                        isNull(),
-                        isNull(),
-                        isNull(),
-                        any(Pageable.class)))
-                .thenReturn(new PageImpl<>(List.of(stillOpen, expired)));
-
-        try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
-            securityUtil.when(SecurityUtil::getCurrentUserIdOrNull).thenReturn(null);
-
-            List<PostingSummaryResponse> recommended =
-                    postingRecommendationService.getRecommendedPostings();
-
-            assertThat(recommended).extracting(PostingSummaryResponse::id).containsExactly(1L);
-        }
-    }
-
-    @Test
     @DisplayName(
             "getRecommendedPostings keeps postings with a null noticeEndDate (rolling recruitment)")
     void getRecommendedPostings_keepsPostingsWithNullNoticeEndDate() {
         Posting rollingRecruitment = posting(1L, PostingCategory.ENVIRONMENT, null);
 
-        when(postingRepository.search(
-                        eq(PostingStatus.RECRUITING),
-                        isNull(),
-                        isNull(),
-                        isNull(),
-                        isNull(),
-                        isNull(),
-                        any(Pageable.class)))
-                .thenReturn(new PageImpl<>(List.of(rollingRecruitment)));
+        when(postingRepository.searchRecommendationCandidates(
+                        isNull(), any(LocalDate.class), any(Pageable.class)))
+                .thenReturn(sliceOf(rollingRecruitment));
 
         try (MockedStatic<SecurityUtil> securityUtil = mockStatic(SecurityUtil.class)) {
             securityUtil.when(SecurityUtil::getCurrentUserIdOrNull).thenReturn(null);
@@ -366,15 +266,9 @@ class PostingRecommendationServiceTest {
         Posting p1 = posting(1L, PostingCategory.ENVIRONMENT, today.plusDays(1));
 
         List<Long> regionFilter = List.of(2L, 20L, 21L);
-        when(postingRepository.search(
-                        eq(PostingStatus.RECRUITING),
-                        eq(regionFilter),
-                        isNull(),
-                        isNull(),
-                        isNull(),
-                        isNull(),
-                        any(Pageable.class)))
-                .thenReturn(new PageImpl<>(List.of(p1)));
+        when(postingRepository.searchRecommendationCandidates(
+                        eq(regionFilter), any(LocalDate.class), any(Pageable.class)))
+                .thenReturn(sliceOf(p1));
         when(userRepository.findById(USER_ID)).thenReturn(Optional.of(userWithActivityRegion(2L)));
         when(regionRepository.findIdsIncludingChildren(2L)).thenReturn(regionFilter);
         when(postingParticipationRepository.findByUserId(eq(USER_ID))).thenReturn(List.of());
@@ -389,19 +283,18 @@ class PostingRecommendationServiceTest {
         }
     }
 
-    private Posting posting(Long id, PostingCategory category, LocalDate noticeEndDate) {
-        return posting(id, category, noticeEndDate, true);
+    private SliceImpl<Posting> sliceOf(Posting... postings) {
+        return new SliceImpl<>(List.of(postings), Pageable.ofSize(200), false);
     }
 
-    private Posting posting(
-            Long id, PostingCategory category, LocalDate noticeEndDate, boolean isActive) {
+    private Posting posting(Long id, PostingCategory category, LocalDate noticeEndDate) {
         Posting createdPosting =
                 Posting.builder()
                         .title("테스트 공고 " + id)
                         .status(PostingStatus.RECRUITING)
                         .category(category)
                         .noticeEndDate(noticeEndDate)
-                        .isActive(isActive)
+                        .isActive(true)
                         .build();
         ReflectionTestUtils.setField(createdPosting, "id", id);
         return createdPosting;

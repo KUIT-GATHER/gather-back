@@ -66,6 +66,18 @@ public class Posting {
     @Column(name = "notice_end_date")
     private LocalDate noticeEndDate;
 
+    /**
+     * DB 생성 컬럼(V67, {@code COALESCE(notice_end_date, '9999-12-31')}). notice_end_date가 없는 상시모집 공고를
+     * 정렬·인덱스 상 항상 맨 뒤로 보내기 위한 값으로, {@link
+     * com.gather.gather.domain.posting.repository.PostingRepositoryImpl}의 Criteria API 경로({@code
+     * root.get("noticeEndDateSortKey")})로만 참조되는 WHERE/ORDER BY 전용 컬럼이다. 애플리케이션 코드에서 읽어 쓸 일이 없으므로
+     * getter를 노출하지 않는다 — 같은 영속성 컨텍스트 내에서 저장 직후 조회하면(Hibernate가 생성 컬럼 값을 재조회하지 않아) stale 값을 반환할 수 있는
+     * 트랩이기도 하다.
+     */
+    @Getter(AccessLevel.NONE)
+    @Column(name = "notice_end_date_sort_key", insertable = false, updatable = false)
+    private LocalDate noticeEndDateSortKey;
+
     @Column(name = "act_wkdy")
     private String actWkdy;
 

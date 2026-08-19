@@ -22,6 +22,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Slice;
+import org.springframework.data.domain.SliceImpl;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.repository.query.QueryUtils;
 
@@ -91,6 +93,54 @@ public class PostingRepositoryImpl implements PostingRepositoryCustom {
         return new PageImpl<>(content, pageable, total);
     }
 
+    @Override
+    public Slice<Posting> searchRecommendationCandidates(
+            List<Long> regionIds, LocalDate today, Pageable pageable) {
+        CriteriaBuilder cb = entityManager.getCriteriaBuilder();
+
+        CriteriaQuery<Posting> query = cb.createQuery(Posting.class);
+        Root<Posting> root = query.from(Posting.class);
+        query.where(
+                buildRecommendationPredicates(cb, root, regionIds, today)
+                        .toArray(new Predicate[0]));
+        query.orderBy(cb.asc(root.get("noticeEndDateSortKey")), cb.desc(root.get("id")));
+
+        TypedQuery<Posting> typedQuery = entityManager.createQuery(query);
+        typedQuery.setFirstResult((int) pageable.getOffset());
+        // hasNext 판단을 위해 페이지 크기보다 1건 더 조회한다 — 페이지마다 별도 COUNT 쿼리를 내지 않기 위함(Page 대신 Slice).
+        typedQuery.setMaxResults(pageable.getPageSize() + 1);
+        List<Posting> fetched = typedQuery.getResultList();
+
+        boolean hasNext = fetched.size() > pageable.getPageSize();
+        List<Posting> content = hasNext ? fetched.subList(0, pageable.getPageSize()) : fetched;
+        return new SliceImpl<>(content, pageable, hasNext);
+    }
+
+    private List<Predicate> buildRecommendationPredicates(
+            CriteriaBuilder cb, Root<Posting> root, List<Long> regionIds, LocalDate today) {
+        List<Predicate> predicates = new ArrayList<>();
+        predicates.add(cb.equal(root.get("status"), PostingStatus.RECRUITING));
+        predicates.add(cb.isTrue(root.get("isActive")));
+        predicates.add(cb.greaterThanOrEqualTo(root.get("noticeEndDateSortKey"), today));
+        addRegionFilter(predicates, cb, root, regionIds);
+        return predicates;
+    }
+
+    /**
+     * regionIds가 null이면 지역 필터 없이 전체를 대상으로 하고, 빈 리스트면 매칭되는 지역이 하나도 없다는 의미로 결과를 0건으로 만든다({@code
+     * cb.disjunction()} = 항상 false). null과 빈 리스트가 서로 반대 의미를 가지므로 호출부에서 혼동하지 않도록 이 헬퍼로 통일한다.
+     */
+    private void addRegionFilter(
+            List<Predicate> predicates,
+            CriteriaBuilder cb,
+            Root<Posting> root,
+            List<Long> regionIds) {
+        if (regionIds != null) {
+            predicates.add(
+                    regionIds.isEmpty() ? cb.disjunction() : root.get("regionId").in(regionIds));
+        }
+    }
+
     private List<Predicate> buildPredicates(
             CriteriaBuilder cb,
             Root<Posting> root,
@@ -107,10 +157,7 @@ public class PostingRepositoryImpl implements PostingRepositoryCustom {
                         ? cb.equal(root.get("status"), status)
                         : root.get("status").in(DEFAULT_STATUSES));
 
-        if (regionIds != null) {
-            predicates.add(
-                    regionIds.isEmpty() ? cb.disjunction() : root.get("regionId").in(regionIds));
-        }
+        addRegionFilter(predicates, cb, root, regionIds);
 
         if (noticeStartFrom != null) {
             predicates.add(cb.greaterThanOrEqualTo(root.get("noticeStartDate"), noticeStartFrom));
@@ -259,10 +306,7 @@ public class PostingRepositoryImpl implements PostingRepositoryCustom {
         List<Predicate> predicates = new ArrayList<>();
         predicates.add(root.get("status").in(DEFAULT_STATUSES));
 
-        if (regionIds != null) {
-            predicates.add(
-                    regionIds.isEmpty() ? cb.disjunction() : root.get("regionId").in(regionIds));
-        }
+        addRegionFilter(predicates, cb, root, regionIds);
         if (category != null) {
             predicates.add(cb.equal(root.get("category"), category));
         }
