@@ -10,7 +10,7 @@ import com.gather.gather.domain.posting.service.PostingKeywordRecommendationServ
 import com.gather.gather.domain.posting.service.PostingRecommendationService;
 import com.gather.gather.domain.posting.service.PostingService;
 import com.gather.gather.global.common.ApiResponse;
-import com.gather.gather.global.common.PageResponse;
+import com.gather.gather.global.common.CursorPageResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -21,9 +21,8 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
-import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
-import org.springframework.data.web.PageableDefault;
+import org.springframework.data.web.SortDefault;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -43,9 +42,14 @@ public class PostingController {
     private final PostingRecommendationService postingRecommendationService;
 
     @Operation(
-            summary = "봉사공고 목록 조회",
+            summary = "봉사공고 목록 조회(무한스크롤)",
             description =
-                    "봉사공고를 페이지 단위로 조회합니다. 인증이 필요 없습니다. "
+                    "봉사공고를 커서(키셋) 기반으로 조회합니다. 인증이 필요 없습니다. "
+                            + "첫 페이지는 cursor 없이 호출하고, 이후에는 이전 응답의 nextCursor 값을 그대로 cursor 파라미터에 넣어 "
+                            + "다음 페이지를 이어서 조회합니다(스크롤을 내릴 때마다 반복). totalElements/totalPages는 제공하지 않으며, "
+                            + "hasNext가 false면 더 불러올 항목이 없다는 뜻입니다. "
+                            + "커서는 조회 당시의 sort(및 정렬 우선순위에 영향을 주는 status)에 종속적이므로, 같은 스크롤 세션 안에서는 "
+                            + "sort/status 등 정렬에 영향을 주는 파라미터를 바꾸지 말고 cursor 없이 처음부터 다시 조회해야 합니다. "
                             + "status를 지정하지 않으면 모집중(RECRUITING)과 모집마감(CLOSED) 공고를 함께 반환하며, "
                             + "모집중 공고가 항상 먼저 오고 그 다음 모집마감 공고가 오는 순서로 정렬한 뒤 각 그룹 안에서 "
                             + "sort 파라미터를 적용합니다(활동 완료 COMPLETED는 기본 목록에서 제외되며 필요 시 status로 "
@@ -60,13 +64,19 @@ public class PostingController {
                             + "category를 지정하면 해당 봉사분야 공고만 반환합니다(미지정 시 전체).",
             parameters = {
                 @Parameter(
+                        name = "cursor",
+                        description = "이전 응답의 nextCursor 값. 첫 페이지 조회 시에는 생략합니다.",
+                        example = "eyJrIjpb..."),
+                @Parameter(
+                        name = "size",
+                        description = "한 번에 가져올 개수 (기본 20, 최대 100). 0 이하로 주면 기본값이 적용됩니다.",
+                        example = "20"),
+                @Parameter(
                         name = "sort",
                         description =
                                 "정렬 기준 (property,direction). 예: id,desc. "
-                                        + "허용 필드: id, title, status, actStartDate, actEndDate, "
-                                        + "noticeStartDate, noticeEndDate, recruitCount, applicantCount, "
-                                        + "createdAt, updatedAt. 허용되지 않은 필드로 정렬을 요청하면 400 "
-                                        + "VALIDATION_ERROR가 반환됩니다.",
+                                        + "허용 필드: id, createdAt, activityStartAt, applyDeadlineAt, appliedCount. "
+                                        + "허용되지 않은 필드로 정렬을 요청하면 400 VALIDATION_ERROR가 반환됩니다.",
                         example = "id,desc")
             })
     @ApiResponses({
@@ -80,36 +90,36 @@ public class PostingController {
                                         @ExampleObject(
                                                 value =
                                                         """
-                                                        {
-                                                          "success": true,
-                                                          "data": {
-                                                            "content": [
-                                                              {
-                                                                "id": 1,
-                                                                "title": "동구 환경정화 봉사",
-                                                                "status": "RECRUITING",
-                                                                "recruitOrg": "울산 동구청",
-                                                                "actStartDate": "2026-07-10",
-                                                                "actEndDate": "2026-07-10",
-                                                                "actPlace": "동구 일대",
-                                                                "recruitCount": 5,
-                                                                "applicantCount": 1,
-                                                                "regionId": 2,
-                                                                "regionName": "동구",
-                                                                "category": "ENVIRONMENT"
-                                                              }
-                                                            ],
-                                                            "totalElements": 1,
-                                                            "totalPages": 1,
-                                                            "page": 0,
-                                                            "size": 20
-                                                          },
-                                                          "error": null
-                                                        }
-                                                        """))),
+                                            {
+                                              "success": true,
+                                              "data": {
+                                                "content": [
+                                                  {
+                                                    "id": 1,
+                                                    "title": "동구 환경정화 봉사",
+                                                    "status": "RECRUITING",
+                                                    "recruitOrg": "울산 동구청",
+                                                    "actStartDate": "2026-07-10",
+                                                    "actEndDate": "2026-07-10",
+                                                    "actPlace": "동구 일대",
+                                                    "recruitCount": 5,
+                                                    "applicantCount": 1,
+                                                    "regionId": 2,
+                                                    "regionName": "동구",
+                                                    "category": "ENVIRONMENT"
+                                                  }
+                                                ],
+                                                "nextCursor": "eyJrIjpb...",
+                                                "hasNext": true
+                                              },
+                                              "error": null
+                                            }
+                                            """))),
         @io.swagger.v3.oas.annotations.responses.ApiResponse(
                 responseCode = "400",
-                description = "요청 값이 올바르지 않음 (예: regionId와 regionGroupId 동시 지정, 존재하지 않는 sort 프로퍼티)",
+                description =
+                        "요청 값이 올바르지 않음 (예: regionId와 regionGroupId 동시 지정, 존재하지 않는 sort 프로퍼티, "
+                                + "정렬이 바뀐 채로 재사용된 커서, 형식이 깨진 커서)",
                 content =
                         @Content(
                                 mediaType = JSON,
@@ -118,15 +128,15 @@ public class PostingController {
                                                 name = "VALIDATION_ERROR",
                                                 value =
                                                         """
-                                                        {
-                                                          "success": false,
-                                                          "data": null,
-                                                          "error": {
-                                                            "code": "VALIDATION_ERROR",
-                                                            "message": "요청 값이 올바르지 않습니다."
-                                                          }
-                                                        }
-                                                        """))),
+                                            {
+                                              "success": false,
+                                              "data": null,
+                                              "error": {
+                                                "code": "VALIDATION_ERROR",
+                                                "message": "요청 값이 올바르지 않습니다."
+                                              }
+                                            }
+                                            """))),
         @io.swagger.v3.oas.annotations.responses.ApiResponse(
                 responseCode = "500",
                 description = "서버 내부 오류",
@@ -138,20 +148,21 @@ public class PostingController {
                                                 name = "INTERNAL_SERVER_ERROR",
                                                 value =
                                                         """
-                                                        {
-                                                          "success": false,
-                                                          "data": null,
-                                                          "error": {
-                                                            "code": "INTERNAL_SERVER_ERROR",
-                                                            "message": "서버 내부 오류가 발생했습니다."
-                                                          }
-                                                        }
-                                                        """)))
+                                            {
+                                              "success": false,
+                                              "data": null,
+                                              "error": {
+                                                "code": "INTERNAL_SERVER_ERROR",
+                                                "message": "서버 내부 오류가 발생했습니다."
+                                              }
+                                            }
+                                            """)))
     })
     @GetMapping
-    public ApiResponse<PageResponse<PostingListItem>> getPostings(
-            @PageableDefault(size = 20, sort = "id", direction = Sort.Direction.DESC)
-                    Pageable pageable,
+    public ApiResponse<CursorPageResponse<PostingListItem>> getPostings(
+            @SortDefault(sort = "id", direction = Sort.Direction.DESC) Sort sort,
+            @RequestParam(required = false) String cursor,
+            @RequestParam(defaultValue = "20") int size,
             @Parameter(description = "지역 ID (상위 지역 선택 시 하위 지역까지 포함, regionGroupId와 동시 지정 불가)")
                     @RequestParam(required = false)
                     Long regionId,
@@ -185,7 +196,9 @@ public class PostingController {
                     PostingCategory category) {
         return ApiResponse.success(
                 postingService.getPostings(
-                        pageable,
+                        sort,
+                        cursor,
+                        size,
                         regionId,
                         regionGroupId,
                         status,
@@ -258,15 +271,15 @@ public class PostingController {
                                                 name = "POSTING_NOT_FOUND",
                                                 value =
                                                         """
-                                                        {
-                                                          "success": false,
-                                                          "data": null,
-                                                          "error": {
-                                                            "code": "POSTING_NOT_FOUND",
-                                                            "message": "봉사공고를 찾을 수 없습니다."
-                                                          }
-                                                        }
-                                                        """)))
+                                            {
+                                              "success": false,
+                                              "data": null,
+                                              "error": {
+                                                "code": "POSTING_NOT_FOUND",
+                                                "message": "봉사공고를 찾을 수 없습니다."
+                                              }
+                                            }
+                                            """)))
     })
     @GetMapping("/{id}")
     public ApiResponse<PostingResponse> getPosting(@PathVariable Long id) {
