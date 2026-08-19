@@ -50,7 +50,7 @@ class EmailVerificationConsumptionIntegrationTest {
                                     EmailVerification.create(
                                             EMAIL,
                                             verificationId.toString(),
-                                            "123456",
+                                            "a".repeat(64),
                                             now.plusMinutes(10),
                                             now.minusMinutes(2));
                             verification.verify(now.minusMinutes(1));

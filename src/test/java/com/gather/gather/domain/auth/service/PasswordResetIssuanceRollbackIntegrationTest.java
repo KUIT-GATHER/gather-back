@@ -110,7 +110,7 @@ class PasswordResetIssuanceRollbackIntegrationTest {
     @DisplayName("계정 판정 중 시스템 오류가 나면 토큰을 만들지 않고 인증 소비도 롤백한다")
     void issueToken_rollsBackConsumptionOnUnexpectedFailure() {
         when(passwordResetTokenCodec.generateToken()).thenReturn(COLLIDING_TOKEN);
-        when(accountLoginTypeResolver.resolve(any(User.class)))
+        when(accountLoginTypeResolver.resolveForActiveAccount(any(User.class)))
                 .thenThrow(new IllegalStateException("classification failure"));
 
         assertThatThrownBy(
@@ -130,7 +130,7 @@ class PasswordResetIssuanceRollbackIntegrationTest {
         when(passwordResetTokenCodec.generateToken()).thenReturn(COLLIDING_TOKEN, RETRIED_TOKEN);
         when(passwordResetTokenCodec.validateAndHash(COLLIDING_TOKEN)).thenReturn(COLLIDING_HASH);
         when(passwordResetTokenCodec.validateAndHash(RETRIED_TOKEN)).thenReturn(RETRIED_HASH);
-        when(accountLoginTypeResolver.resolve(any(User.class)))
+        when(accountLoginTypeResolver.resolveForActiveAccount(any(User.class)))
                 .thenReturn(Optional.of(AccountLoginType.EMAIL));
 
         String issued =
@@ -153,7 +153,7 @@ class PasswordResetIssuanceRollbackIntegrationTest {
         saveConflictingToken();
         when(passwordResetTokenCodec.generateToken()).thenReturn(COLLIDING_TOKEN);
         when(passwordResetTokenCodec.validateAndHash(COLLIDING_TOKEN)).thenReturn(COLLIDING_HASH);
-        when(accountLoginTypeResolver.resolve(any(User.class)))
+        when(accountLoginTypeResolver.resolveForActiveAccount(any(User.class)))
                 .thenReturn(Optional.of(AccountLoginType.EMAIL));
 
         assertThatThrownBy(
